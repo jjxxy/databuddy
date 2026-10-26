@@ -1,0 +1,12 @@
+{
+  "version": "0.20.0",
+  "baseline": {
+    "filename": "Atlas-DataBuddy-v0.19.0-deploy.zip",
+    "sha256": "8c8e762b2c312d0de2802c9c82a3ac836b0f8d1d2991f527732d315906153f68"
+  },
+  "release_focus": "Isolated workspace gateway/deployment tooling and delegated workflow cancellation/authority fences",
+  "includes": "complete source, deployment configuration, dependency locks, regression tests and validation evidence",
+  "excludes": "credentials, runtime data, installed dependencies, caches, Git working directories",
+  "deployed_this_release": false,
+  "production_accepted": false
+}

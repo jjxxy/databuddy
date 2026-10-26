@@ -1,0 +1,63 @@
+{
+  "source_version": "0.14.0",
+  "verification_date": "2026-10-21",
+  "timezone": "Asia/Shanghai",
+  "python_tests": {
+    "passed": 201,
+    "skipped": 4,
+    "failed": 0,
+    "distinct": 205,
+    "skip_details": [
+      {
+        "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+        "reason": "Restic binary is installed in deployment images"
+      },
+      {
+        "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+        "reason": "requires real PostgreSQL"
+      },
+      {
+        "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+        "reason": "requires real PostgreSQL"
+      },
+      {
+        "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+        "reason": "requires real PostgreSQL"
+      }
+    ],
+    "reports": [
+      "regression-final.xml",
+      "governance-boundaries.xml",
+      "publication-lease.xml"
+    ]
+  },
+  "frontend_dom_tests": {
+    "passed": true,
+    "commands": [
+      "npm test --prefix tests/ui"
+    ],
+    "real_browser_layout_verified": false
+  },
+  "javascript_syntax": {
+    "passed": true,
+    "files": [
+      "app.js",
+      "data-app.js",
+      "lifecycle.js",
+      "sw.js"
+    ]
+  },
+  "real_local_service": {
+    "api_and_worker": true,
+    "csv_dlt_dbt_contract_release": true,
+    "conversation_and_restart_persistence": true,
+    "upstream_model_configured": false
+  },
+  "cloud_deployed": false,
+  "real_postgresql_tested": false,
+  "real_restic_tested": false,
+  "real_company_identity_tested": false,
+  "real_model_evaluated_this_revision": false,
+  "multi_replica_failover_verified": false,
+  "scope": "Full v0.13 source plus supplied contracts overlay and v0.14 governance. Local SQLite and deterministic/model-mocked regression only."
+}

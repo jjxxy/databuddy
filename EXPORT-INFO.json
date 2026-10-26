@@ -1,0 +1,12 @@
+{
+  "project": "Atlas DataBuddy",
+  "version": "0.20.0",
+  "portable_baseline": "r14",
+  "export_date": "2026-10-26",
+  "kind": "source_with_tests_and_dependency_locks",
+  "bundled_runtime_included": false,
+  "credentials_included": false,
+  "personal_workspace_data_included": false,
+  "full_finance_G1_passed": false,
+  "r14_backend_source_files_verified": 133
+}

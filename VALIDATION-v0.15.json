@@ -1,0 +1,231 @@
+{
+  "version": "0.15.0",
+  "generated_at": "2026-10-21T04:48:10.233934+00:00",
+  "full_regression": {
+    "tests": 582,
+    "passed": 574,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 8
+  },
+  "latest_distinct_python_tests": {
+    "tests": 582,
+    "passed": 574,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 8
+  },
+  "reports": [
+    {
+      "file": "verification/v0.15/v15-release-final.xml",
+      "tests": 582,
+      "passed": 574,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 8
+    },
+    {
+      "file": "verification/v0.15/v15-final-supplement.xml",
+      "tests": 54,
+      "passed": 54,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "verification/v0.15/v15-final-evidence.xml",
+      "tests": 49,
+      "passed": 49,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "explicit_skips": [
+    {
+      "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+      "reason": "Restic binary is installed in deployment images"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+      "reason": "requires real PostgreSQL"
+    }
+  ],
+  "ui_dom_checks": [
+    {
+      "ok": true,
+      "unchanged_turn_identity": true,
+      "details_preserved": true,
+      "nav_position": true,
+      "drawer_focus": true,
+      "native_wheel_verified": false,
+      "css_layout_verified": false
+    },
+    {
+      "resume": true,
+      "pending_request_id_preserved": true,
+      "no_automatic_send": true,
+      "no_permission_prompt_on_load": true,
+      "permission_denial_handled": true,
+      "notification_navigation": true,
+      "draft_conflict_preserves_input": true
+    },
+    {
+      "actual_app_boot_restore": true,
+      "explicit_resend_reuses_request_and_source": true,
+      "accepted_message_clears_persisted_draft": true
+    },
+    {
+      "ok": true,
+      "permission_policy": true,
+      "duplicate_push_and_page_event_suppressed": true,
+      "generic_content_only": true,
+      "click_deep_link": true,
+      "logout_suppresses": true,
+      "untrusted_navigation_rejected": true,
+      "real_os_delivery_evaluated": false
+    },
+    {
+      "approval_is_inline": true,
+      "exact_digest": true,
+      "arguments_escaped": true,
+      "unknown_cannot_be_retried_from_card": true
+    },
+    {
+      "task_centric_landing": true,
+      "saved_task_source_result_states": true,
+      "deterministic_failure_next_action": true,
+      "no_blind_financial_retry": true,
+      "data_review": true,
+      "exact_numeric_strings": true,
+      "paginated_complete_result": true,
+      "frozen_source_evidence": true,
+      "untrusted_values_escaped": true,
+      "no_automatic_approval": true,
+      "optimistic_conflict_preserves_edits": true,
+      "review_digest_and_actor_scope": true,
+      "fact_quote_and_amount_review": true,
+      "fact_blockers_disable_approval": true,
+      "real_browser_layout_verified": false
+    }
+  ],
+  "legacy_real_service": {
+    "cloud_supervisor": false,
+    "restart_persistence": false,
+    "ok": true,
+    "version": "0.15.0",
+    "records": 2,
+    "net_amount": "118.1500",
+    "services": [
+      "uvicorn",
+      "worker"
+    ],
+    "checks": [
+      "goal",
+      "rules",
+      "git",
+      "dlt",
+      "dbt",
+      "manual_release",
+      "heartbeat",
+      "audit"
+    ]
+  },
+  "personal_business_real_service": {
+    "ok": true,
+    "version": "0.15.0",
+    "real_api_worker": true,
+    "restart_persistence": true,
+    "exact_total": "300.000000000002",
+    "full_rows": 2,
+    "complete_excel": true,
+    "docx_pptx_reusable": true,
+    "specific_failure_retains_adopted": true,
+    "real_model_evaluated": false,
+    "browser_layout_verified": false
+  },
+  "conversation_service_and_restart": [
+    {
+      "ok": true,
+      "version": "0.15.0",
+      "agent_process_healthy": true,
+      "worker_healthy": true,
+      "negative_instructions_blocked": true,
+      "conditional_query_api": true,
+      "model_configured": false,
+      "real_model_evaluated": false,
+      "remote_code_execution_configured": false,
+      "sample_run_id": "eea2bc8575b7f8524d7a399d",
+      "sample_real_dbt_rerun": true,
+      "memory_cgroup": {
+        "anon": 502308864,
+        "file": 2273144832,
+        "kernel": 276860928,
+        "shmem": 0,
+        "current_bytes": 3053613056
+      },
+      "uid": 0
+    },
+    {
+      "ok": true,
+      "version": "0.15.0",
+      "agent_process_healthy": true,
+      "worker_healthy": true,
+      "negative_instructions_blocked": true,
+      "conditional_query_api": true,
+      "model_configured": false,
+      "real_model_evaluated": false,
+      "remote_code_execution_configured": false,
+      "sample_run_id": "eea2bc8575b7f8524d7a399d",
+      "sample_real_dbt_rerun": true,
+      "memory_cgroup": {
+        "anon": 438095872,
+        "file": 2273161216,
+        "kernel": 276459520,
+        "shmem": 0,
+        "current_bytes": 2989588480
+      },
+      "uid": 0
+    }
+  ],
+  "dependency_lock_check": "uv lock --check --offline passed",
+  "syntax_checks": "Python compileall and node --check app.js/data-workbench.js passed",
+  "resource_budget_scope": "rows/cells/serialized bytes/execution time; not an OS RSS or distributed-data guarantee",
+  "not_verified": {
+    "live_enterprise_report_sites": true,
+    "actual_browser_layout": true,
+    "real_model_task_accuracy": true,
+    "corporate_oidc_integration": true,
+    "native_excel_formula_recalculation": true,
+    "authoritative_image_or_chart_ocr": true,
+    "arbitrary_company_template_fidelity": true,
+    "database_cdc": true,
+    "production_ha_and_load": true
+  },
+  "deployed_this_release": false,
+  "requirements_mapping": "BUSINESS-WORKSPACE.md"
+}

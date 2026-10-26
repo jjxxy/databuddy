@@ -1,0 +1,114 @@
+{
+  "version": "0.16.1",
+  "generated_at": "2026-10-21T08:16:17.774941+00:00",
+  "full_regression": {
+    "tests": 774,
+    "passed": 766,
+    "skipped": 8,
+    "failures": 0,
+    "errors": 0
+  },
+  "latest_distinct_python_tests": {
+    "tests": 788,
+    "passed": 780,
+    "skipped": 8,
+    "failures": 0,
+    "errors": 0
+  },
+  "reports": [
+    {
+      "file": "verification/v0.16.1/v161-release-final.xml",
+      "tests": 774,
+      "passed": 766,
+      "skipped": 8,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "file": "verification/v0.16.1/v161-deployment-supplement.xml",
+      "tests": 109,
+      "passed": 109,
+      "skipped": 0,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "explicit_skips": [
+    {
+      "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+      "reason": "Restic binary is installed in deployment images"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+      "reason": "requires real PostgreSQL"
+    }
+  ],
+  "quickstart_real_processes_simulated_model": {
+    "ok": true,
+    "version": "0.16.1",
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "quickstart_cli_executed": true,
+    "quickstart_setup_idempotent": true,
+    "cloud_supervisor": true,
+    "container_health_command_verified": true,
+    "api_worker_agent_healthy": true,
+    "model_configured_share_data": true,
+    "agent_authored_versioned_files": true,
+    "complete_csv_workflow": true,
+    "full_rows": 2,
+    "exact_total": "300.000000000002",
+    "complete_excel": true,
+    "docx_pptx_exact_assertions": true,
+    "restart_persistence": true,
+    "model_credentials_survive_restart": true,
+    "model_calls": {
+      "connection": 1,
+      "source_planning": 1,
+      "agent": 9
+    }
+  },
+  "launcher_scope": "Real Bash execution with simulated Docker command contracts; Windows BOM/argument static checks",
+  "syntax_checks": "Python compileall; Bash syntax; unchanged JavaScript syntax passed",
+  "dependency_lock": "uv lock --check --offline passed",
+  "configuration": "Only LLM base_url/model/api_key required; example explicitly enables share_data; secrets generated on first setup",
+  "deployment_profile": "single owner_workspace; one Docker container; API/Agent/Worker with SQLite and named volume",
+  "docker_image_built_here": false,
+  "docker_container_executed_here": false,
+  "windows_powershell_executed_here": false,
+  "real_model_evaluated": false,
+  "production_deployed": false,
+  "not_verified": [
+    "Docker image build and Linux capabilities/volume ownership",
+    "Native Windows Docker Desktop/PowerShell",
+    "User-supplied actual LLM endpoint and task accuracy",
+    "Production capacity, enterprise SSO and HA"
+  ],
+  "previous_product_audit": "PRODUCTION-REVIEW-v0.16.md",
+  "start_here": "QUICKSTART.md"
+}

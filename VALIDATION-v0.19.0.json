@@ -1,0 +1,226 @@
+{
+  "version": "0.19.0",
+  "generated_at": "2026-10-23T10:53:32.366161+00:00",
+  "full_regression": {
+    "tests": 1234,
+    "passed": 1226,
+    "skipped": 8
+  },
+  "supplemental_regression": {
+    "tests": 114,
+    "passed": 114
+  },
+  "distinct_test_cases": {
+    "passed": 1226,
+    "skipped": 8
+  },
+  "explicit_skips": [
+    {
+      "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+      "reason": "Restic binary is installed in deployment images"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+      "reason": "requires real PostgreSQL"
+    }
+  ],
+  "ui_suites": {
+    "suites": 10,
+    "passed": true,
+    "scope": "Actual app state and API interaction regression in jsdom"
+  },
+  "real_chromium_ui": {
+    "ok": true,
+    "version": "0.19.0",
+    "browser": "153.0.8010.0",
+    "real_browser": true,
+    "synthetic_data": true,
+    "checks": {
+      "markdown_table_rendered": true,
+      "exact_decimal_in_chat": true,
+      "topbar_one_primary_action": true,
+      "artifact_close_visible_after_preview_reveal": true,
+      "xlsx_exact_decimal_preview": true,
+      "xlsx_pagination_visible": true,
+      "xlsx_full_row_count": true,
+      "real_xlsx_download": true,
+      "download_matches_frozen_sha256": true,
+      "artifact_html_not_executed": true,
+      "artifact_continue_sets_draft": true,
+      "artifact_continue_no_credentials": true,
+      "conversation_rename": true,
+      "conversation_deleted_from_sidebar": true,
+      "conversation_restored": true,
+      "project_deleted_from_sidebar": true,
+      "project_restored": true,
+      "resized_artifact_underlay_inert": true,
+      "mobile_no_page_overflow": true,
+      "mobile_sidebar_focus_isolation": true,
+      "no_browser_javascript_errors": true,
+      "downloaded_xlsx_precision_and_rows_verified": true
+    },
+    "errors": [],
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "download_sha256": "9146065555b29f6eeb7152bda931b7a06c791500dc09a3272dba8cd93de30e1e"
+  },
+  "real_native_agent_collaboration_with_simulated_model": {
+    "ok": true,
+    "version": "0.19.0",
+    "checks": {
+      "real_A_to_B": true,
+      "complete_40_row_handoff": true,
+      "exact_result_and_manifest": true,
+      "service_token_not_business_token": true,
+      "cross_project_denied": true,
+      "source_bytes_exact": true,
+      "cross_client_task_denied": true,
+      "real_B_to_A": true,
+      "mcp_agent_adapter": true,
+      "real_readonly_child_agents": true,
+      "parallel_model_calls": true,
+      "shared_durable_model_budget": true,
+      "child_model_pinned": true,
+      "distinct_opencode_child_sessions": true,
+      "idempotent_submit": true,
+      "changed_request_rejected": true,
+      "needs_input_not_success": true,
+      "cancel_inflight_late_reply_no_tool": true,
+      "ambiguous_submit_no_replay": true,
+      "unknown_survives_restart": true,
+      "completed_result_receipt_survives_restart": true,
+      "revoked_client_denied": true,
+      "credentials_not_in_model_or_plain_db": true
+    },
+    "rows": 40,
+    "exact_total": "300.000000000002",
+    "result_receipts": [
+      {
+        "rows": 40,
+        "exact_total": "300.000000000002",
+        "sha256": "8f332b51ef29f75d2ca84343bcb8fcae1ac4c43fd31df0229c3c7fc9cd3d2876"
+      }
+    ],
+    "instances": 2,
+    "real_api_agent_worker": true,
+    "opencode_runtime_executed": true,
+    "opencode_version": "2.1.2",
+    "native_tool_loop_calls": 39,
+    "native_compaction_calls": 7,
+    "model_requests": 41,
+    "max_parallel_specialist_requests": 2,
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "production_ha_evaluated": false,
+    "offline_evaluated": false
+  },
+  "real_legacy_agent_collaboration_with_simulated_model": {
+    "ok": true,
+    "version": "0.19.0",
+    "checks": {
+      "real_A_to_B": true,
+      "complete_40_row_handoff": true,
+      "exact_result_and_manifest": true,
+      "service_token_not_business_token": true,
+      "cross_project_denied": true,
+      "source_bytes_exact": true,
+      "cross_client_task_denied": true,
+      "real_B_to_A": true,
+      "mcp_agent_adapter": true,
+      "real_readonly_child_agents": true,
+      "parallel_model_calls": true,
+      "shared_durable_model_budget": true,
+      "child_model_pinned": true,
+      "idempotent_submit": true,
+      "changed_request_rejected": true,
+      "needs_input_not_success": true,
+      "cancel_inflight_late_reply_no_tool": true,
+      "ambiguous_submit_no_replay": true,
+      "unknown_survives_restart": true,
+      "completed_result_receipt_survives_restart": true,
+      "revoked_client_denied": true,
+      "credentials_not_in_model_or_plain_db": true
+    },
+    "rows": 40,
+    "exact_total": "300.000000000002",
+    "result_receipts": [
+      {
+        "rows": 40,
+        "exact_total": "300.000000000002",
+        "sha256": "93d226b007936843edd9623a0314b6755e0ba4b3cfa5bbcf7151a79befe90c6e"
+      }
+    ],
+    "instances": 2,
+    "real_api_agent_worker": true,
+    "opencode_runtime_executed": false,
+    "opencode_version": null,
+    "native_tool_loop_calls": 0,
+    "native_compaction_calls": 0,
+    "model_requests": 41,
+    "max_parallel_specialist_requests": 2,
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "production_ha_evaluated": false,
+    "offline_evaluated": false
+  },
+  "syntax_checks": "Python compileall, Bash and JavaScript syntax passed",
+  "dependency_lock": "uv lock --check --offline passed; no new runtime dependency required",
+  "capabilities": [
+    "Simple project/conversation tree and quiet topbar",
+    "Versioned rename, trash and restore with task cancellation and late-enqueue race protection",
+    "Precise full table paging, workbook grids, safe Markdown and Office content previews",
+    "Real original-file downloads and continued modifications",
+    "Scoped inbound A2A 1.0 async/0.3 polling and MCP Agent gateway",
+    "Durable outbound delegation, exact handoffs, real received results and project artifacts",
+    "Read-only independent OpenCode specialist sessions with shared durable budgets",
+    "Bounded native compaction and original constraint/reference preservation"
+  ],
+  "deployment_scope": "Single owner/common-authorized workspace. Personal Skills/MCP/memory are actor scoped; projects/data are shared within the instance. Not independent multi-tenant SaaS.",
+  "start_here": "QUICKSTART.md",
+  "product_review": "docs/v19-review.md",
+  "acceptance": "acceptance/finance_monthly/V19-AGENT-ACCEPTANCE.md",
+  "additional_acceptance_cases": 27,
+  "docker_image_built_here": false,
+  "docker_container_executed_here": false,
+  "windows_executed_here": false,
+  "macos_picker_executed_here": false,
+  "arm64_executed_here": false,
+  "strict_offline_evaluated": false,
+  "real_commercial_model_evaluated": false,
+  "production_deployed": false,
+  "production_ha_evaluated": false,
+  "limits": [
+    "Office previews extract content and do not prove layout fidelity or formula recalculation",
+    "Inline Agent exchange is bounded and refuses oversized data rather than truncating it",
+    "Financial meaning, metric approval and byte integrity remain separate",
+    "Artifact catalogs currently scan metadata; load, disk retention and capacity need deployment qualification",
+    "App destination policy is not OS process/network isolation",
+    "Customer LLM accuracy, actual Docker/Windows deployment, business websites/OCR/formulas, SSO/tenant ACL, load/HA and disaster recovery need acceptance"
+  ]
+}

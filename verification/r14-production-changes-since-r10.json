@@ -1,0 +1,19 @@
+[
+  "agent_service/agent.py",
+  "agent_service/agent_context.py",
+  "agent_service/agent_mesh.py",
+  "agent_service/agent_team.py",
+  "agent_service/collaboration_budget.py",
+  "agent_service/data_tools.py",
+  "agent_service/data_workflows.py",
+  "agent_service/intents.py",
+  "agent_service/opencode_context.mjs",
+  "agent_service/opencode_plugin.mjs",
+  "agent_service/opencode_runtime.py",
+  "agent_service/project_data.py",
+  "agent_service/provider.py",
+  "agent_service/provider_compatibility.py",
+  "agent_service/quotas.py",
+  "agent_service/task_budget.py",
+  "agent_service/tasks.py"
+]

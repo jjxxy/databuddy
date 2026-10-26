@@ -1,0 +1,21 @@
+{
+  "default_model_id": "finance",
+  "models": [
+    {
+      "id": "finance",
+      "name": "财经分析",
+      "base_url": "https://your-llm.example.com/v1",
+      "model": "YOUR_MODEL",
+      "api_key": "YOUR_API_KEY",
+      "share_data": true
+    },
+    {
+      "id": "fast",
+      "name": "快速处理",
+      "base_url": "https://your-llm.example.com/v1",
+      "model": "YOUR_MODEL",
+      "api_key": "YOUR_API_KEY",
+      "share_data": true
+    }
+  ]
+}

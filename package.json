@@ -1,0 +1,23 @@
+{
+  "name": "atlas-databuddy-desktop",
+  "version": "0.20.0",
+  "private": true,
+  "description": "Atlas DataBuddy portable local desktop",
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "desktop:dev": "electron .",
+    "desktop:runtime": "node node_modules/electron/install.js",
+    "ui:build": "vite build --config ui/vite.config.mjs",
+    "desktop:test": "node --test desktop/tests/*.test.cjs",
+    "desktop:build": "npm run ui:build && node packaging/build-desktop.mjs"
+  },
+  "dependencies": {
+    "@xyflow/react": "12.12.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "vite": "8.3.5"
+  }
+}

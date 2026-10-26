@@ -1,0 +1,82 @@
+name: atlas-personal-agent
+x-runtime: &runtime
+  build: .
+  env_file: .env
+  environment: &environment
+    DATA_DIR: /data
+    RUNTIME__DLTHUB_TELEMETRY: "false"
+    DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    DATABASE_URL: postgresql+psycopg2://atlas:${POSTGRES_PASSWORD:?Run python bootstrap.py}@postgres:5432/atlas
+    SCHEDULER_MODE: dagster
+    AGENT_ORCHESTRATION_MODE: separate
+    # Compatibility deployment: each role overrides the cloud supervisor, so
+    # no local OpenCode runtime is started. Native OpenCode uses quickstart.
+    ATLAS_OPENCODE_RUNTIME: "0"
+    DAGSTER_HOME: /data/dagster
+  volumes:
+    - agent_data:/data
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: atlas
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python bootstrap.py}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+  api:
+    <<: *runtime
+    ports: ["127.0.0.1:8000:8000"]
+    command: ["uvicorn", "agent_service.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  worker:
+    <<: *runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["python", "-m", "agent_service.worker"]
+    mem_limit: 2g
+    cpus: 2.0
+  dagster-web:
+    <<: *runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["sh", "-c", "mkdir -p /data/dagster; exec dagster-webserver -h 0.0.0.0 -p 3000 -m agent_service.dagster_defs"]
+    ports: ["127.0.0.1:3000:3000"]
+    mem_limit: 768m
+  agent:
+    <<: *runtime
+    command: ["python", "-m", "agent_service.orchestrator"]
+    mem_limit: 768m
+    cpus: 1.0
+  dagster-daemon:
+    <<: *runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["sh", "-c", "mkdir -p /data/dagster; exec dagster-daemon run -m agent_service.dagster_defs"]
+    mem_limit: 768m
+volumes:
+  agent_data:
+  postgres_data:

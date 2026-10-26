@@ -1,0 +1,62 @@
+name: atlas-databuddy-local
+services:
+  atlas:
+    build:
+      context: .
+      dockerfile: Dockerfile.quickstart
+    env_file: .env
+    environment:
+      DATA_DIR: /local-workspace/.atlas
+      PORT: "8000"
+      DATABASE_URL: sqlite:////local-workspace/.atlas/metadata.sqlite
+      ATLAS_DROP_PRIVILEGES: "1"
+      ATLAS_LLM_CONFIG_FILE: /run/atlas/llm.json
+      ATLAS_QUICKSTART_CONTAINER: "1"
+      ATLAS_LOCAL_MODE: "1"
+      ATLAS_LOCAL_WORKSPACE: /local-workspace
+      ATLAS_LOCAL_LABEL: "${ATLAS_LOCAL_LABEL:-本地文件夹}"
+      ATLAS_RUN_UID: "${ATLAS_LOCAL_UID:-10001}"
+      ATLAS_RUN_GID: "${ATLAS_LOCAL_GID:-10001}"
+      ATLAS_NETWORK_MODE: "${ATLAS_NETWORK_MODE:-connected}"
+      ATLAS_OPENCODE_RUNTIME: "1"
+      ATLAS_DEPLOYMENT_PROFILE: single
+      ATLAS_AUTH_MODE: token
+      SCHEDULER_MODE: worker
+      AGENT_ORCHESTRATION_MODE: separate
+      RUNTIME__DLTHUB_TELEMETRY: "false"
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    ports:
+      - "${ATLAS_BIND_ADDRESS:-127.0.0.1}:${ATLAS_HTTP_PORT:-8000}:8000"
+    volumes:
+      - type: bind
+        source: "${ATLAS_LOCAL_WORKSPACE_HOST:?Choose a local folder with start-local}"
+        target: /local-workspace
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./llm.json
+        target: /run/atlas/llm.json
+        read_only: true
+        bind:
+          create_host_path: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    mem_limit: 4g
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-m", "agent_service.quickstart_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s

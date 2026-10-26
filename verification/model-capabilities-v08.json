@@ -1,0 +1,13 @@
+{
+  "source": "https://api-docs.deepseek.com/api/list-models/",
+  "queried_at": "2026-10-24",
+  "models": [
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek-V4-Pro",
+      "context_window": 1048576,
+      "max_output_tokens": 393216
+    }
+  ],
+  "model_generation_calls": 0
+}

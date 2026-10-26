@@ -1,0 +1,1536 @@
+{
+  "hash_definition": "SHA256(UTF8(\"delivered-files-v1\\n\" + sorted(path + NUL + file_sha256 + NUL + decimal_size + LF)))",
+  "not_an_upstream_wheel_hash": true,
+  "packages": [
+    {
+      "name": "agate",
+      "version": "1.9.1",
+      "sha256": "5a0f0ade81a656772155774b2e203cc3a7172c71a1cf9039f7436d2930374a74",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 108,
+      "delivered_bytes": 236498,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "aiohappyeyeballs",
+      "version": "2.7.1",
+      "sha256": "9b12ad307cdb831ebb9c1ea2985ead1bd93e3d0ce81ddafab1b69647c1cb71cd",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 40200,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "aiohttp",
+      "version": "3.14.5",
+      "sha256": "40356431fd826c1babad94a0748ac1620c4566537b949731540a7afea8d19bca",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 75,
+      "delivered_bytes": 1607388,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "aiosignal",
+      "version": "1.4.0",
+      "sha256": "0ac22167c8d72760abb8d868391d536c199d26c99494820d13a509728d9c79e3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 17368,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "alembic",
+      "version": "1.20.0",
+      "sha256": "104a0e96920bf71a0533aee99f61d391aa5e01bd7cd4bff354296965f55aad2b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 105,
+      "delivered_bytes": 1087814,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "annotated-doc",
+      "version": "0.0.5",
+      "sha256": "ccc98a45c12e81dc05a1adc176b4269ef51febb3d60ab9f091a7a8e32dd7eb00",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 10,
+      "delivered_bytes": 9703,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "sha256": "efa854e09ad22b112ee5c4db82a8aa421b616f5acb618fa31653108dca51d299",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 36539,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "antlr4-python3-runtime",
+      "version": "4.13.2",
+      "sha256": "31e9322592de8d76f0709082b97e07ea28d781c782cce2ef8fe2398f910c50c9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 65,
+      "delivered_bytes": 477648,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "anyio",
+      "version": "4.15.1",
+      "sha256": "261a03f0b13431d553b6f14c5697ddcadf7b726cc6b545fe8879ead5cfa2849f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 55,
+      "delivered_bytes": 539391,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "attrs",
+      "version": "26.1.0",
+      "sha256": "0a33f390b9153d6e63a30346826fc1f7f0afdaeadf5b423b9599a6dd77efc8b1",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 37,
+      "delivered_bytes": 233865,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "babel",
+      "version": "2.18.0",
+      "sha256": "207b7fb50e582d992c73b426ac0bc5a6b19c5c8f4d80dbf54556cbb8c9bfbdc4",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 1121,
+      "delivered_bytes": 30909553,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "backoff",
+      "version": "2.2.1",
+      "sha256": "c4e3eb450731e7134ad48ba65150a8404b4fa04d3cb5a84952144e6c0936833f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 46953,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "certifi",
+      "version": "2026.7.22",
+      "sha256": "56a1da36054d80bca83b823f2c256876694fc916ef91449c6c97c03044e7618f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 249105,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "cffi",
+      "version": "2.1.1",
+      "sha256": "8e6d9852163da4180a8f96ca1958a31c03c2485e294adb5028ce7573162f4f57",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 33,
+      "delivered_bytes": 567793,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "sha256": "0318e6e07dfa874333a38e8346b33788ee93463d033ccc109f5c65d42efa7c8e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 23,
+      "delivered_bytes": 573162,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "click",
+      "version": "8.5.0",
+      "sha256": "da5678226ecfc9a8923d4c4a666240595a44063e5854538e007fb164a04a34e2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 24,
+      "delivered_bytes": 447891,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "sha256": "065a268aa485a896b5b19a49d7a9e9d1e235cc1fe9476788eb1348785ad6a271",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 77847,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "coloredlogs",
+      "version": "14.0",
+      "sha256": "e57b57c3618d6d5049c4a8afd628aaed4dc757f6723e45eb0b24a4bf5bfddc73",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 143982,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "croniter",
+      "version": "6.2.4",
+      "sha256": "5a9d0eff41b654cd8060be5e6b2a93befecae652e64082f33a6df5ab12a174f9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 239528,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "cryptography",
+      "version": "50.0.2",
+      "sha256": "3f3ae2be1414025f4a77be095f772b04fedee48d4f210ab58ff95a605daeaa9f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 122,
+      "delivered_bytes": 10462736,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "daff",
+      "version": "1.4.2",
+      "sha256": "df223144189f3fc9fcd646140970703e7ef9f671f3cc7e45925b007109c27585",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 432294,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dagster",
+      "version": "1.13.26",
+      "sha256": "e7361fc0ffb68d5f7c7f469ba5494a79d8c8c725178b085a03e8e2137ee03b25",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 842,
+      "delivered_bytes": 8331824,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dagster-graphql",
+      "version": "1.13.26",
+      "sha256": "4925cbf9d27659f05f41ea055f6acec339a692e7dd714ea0373efa31beb143ea",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 122,
+      "delivered_bytes": 1049997,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dagster-pipes",
+      "version": "1.13.26",
+      "sha256": "1c1cd3c5ab83b03cf66a800df1dfd087322c822f8657abeaa7fdf883b9044a52",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 85006,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dagster-shared",
+      "version": "1.13.26",
+      "sha256": "47a5c98c9979aca4f78e40fe91256b80c4562e631046dd4430a8e62382a4141a",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 57,
+      "delivered_bytes": 338407,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dagster-webserver",
+      "version": "1.13.26",
+      "sha256": "b2467e3694729f85b62f31cbe70b62f0fc760d0dfc61e9f3a5125c12c4e40519",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 815,
+      "delivered_bytes": 41062962,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-adapters",
+      "version": "1.24.5",
+      "sha256": "c0aa6844cb5d01b0ae962054fc35b0712d64698b7f931c2ace70b5aa7f7c46e6",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 177,
+      "delivered_bytes": 498383,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-common",
+      "version": "1.39.0",
+      "sha256": "5e531dd8e2a04e7305032adfedbd056715feb19abca71449b08291cbb6eaf113",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 65,
+      "delivered_bytes": 260799,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-core",
+      "version": "1.11.16",
+      "sha256": "4e4fe954352c4566fa701a62e5ff916de6efb00cfcb734971e2b9b5ca1aff692",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 247,
+      "delivered_bytes": 4165229,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-duckdb",
+      "version": "1.11.0",
+      "sha256": "bd41002b6e5dbbce7745d7c068003e90339886784714f7e51de1d3d4ff25f7e9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 68,
+      "delivered_bytes": 261229,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-extractor",
+      "version": "0.6.0",
+      "sha256": "038225b1e9a618e9094c1e585de87729ca92873278019d40ffd6d64d73eefe5e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 8,
+      "delivered_bytes": 636101,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-protos",
+      "version": "1.0.594",
+      "sha256": "f424bc66a290bdff344a0fc4943ef77b87aaf877d44647d0a3e63165e2ee5197",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 135,
+      "delivered_bytes": 1732269,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dbt-semantic-interfaces",
+      "version": "0.9.0",
+      "sha256": "09f6e4cd2819723262768ac35b0a2c4bfbced446d18f9ce8290b6fa3aca94766",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 122,
+      "delivered_bytes": 505386,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "deepdiff",
+      "version": "8.6.2",
+      "sha256": "ee5a5c42dac8b36d1b7a3e3e735736129eb5c4d0dc4f4cd3b615af1d02d31e09",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 25,
+      "delivered_bytes": 369395,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "distro",
+      "version": "1.9.0",
+      "sha256": "981ae6191a47a92a4cd502e9fc2b724e55b326f35ec06b861e588448b86bf0d5",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 69757,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "dlt",
+      "version": "1.31.0",
+      "sha256": "aa44722440a6ab618507ba028ac6924bdc6f2ed82000737d99cfb57c2435f355",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 620,
+      "delivered_bytes": 5230882,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "docstring_parser",
+      "version": "0.18.0",
+      "sha256": "a664f950c2892a408d5ee2432d55451e6e3dd124d0e35ec7311434c2ec566204",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 73626,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "duckdb",
+      "version": "1.5.6",
+      "sha256": "63e1762964db26e169cac1fe322d70d9dee7ac50de3ebb6955e101e04baebe86",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 56,
+      "delivered_bytes": 38008431,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "et_xmlfile",
+      "version": "2.0.0",
+      "sha256": "08fa5b660420c5b24b7ad1ac62c2e499b2f53c9f744c9491df1fdcfbbc1634dc",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 59385,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "fastapi",
+      "version": "0.143.0",
+      "sha256": "68a1cbf75f73502805e101a622f61b0cbc9bec9abb10e6610118fabe56022f54",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 67,
+      "delivered_bytes": 867225,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "filelock",
+      "version": "4.1.1",
+      "sha256": "275bc23f975c7832d5e05d25fcfb567599746ac8b15df24051ccde52d759015f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 461459,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "frozenlist",
+      "version": "1.8.0",
+      "sha256": "71a9e93c9beeda21c53337c9f46dc281e0c960bfa29583debb61206ce861c5e2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 110384,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "fsspec",
+      "version": "2026.9.0",
+      "sha256": "7443a690080a09851e8bc57179ee9ce8dc0f6495f5b70a4f9281ab0fd7bd714b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 64,
+      "delivered_bytes": 810762,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "gitdb",
+      "version": "4.0.12",
+      "sha256": "5a59e34818e3dd9b4e506bde5db848548e85b11b645c8be6050ac9c2d7e91e7b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 33,
+      "delivered_bytes": 181222,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "GitPython",
+      "version": "3.2.0",
+      "sha256": "08ae6369e914d537ec3eb70f9b7d4afbe2609f7dd5c312fd46b360612f923bcb",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 46,
+      "delivered_bytes": 776622,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "giturlparse",
+      "version": "0.15.0",
+      "sha256": "9cfe19c295670edcbebf936aeee69518ddb9d4693ccd4ccff298b9aa1b45baa3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 20,
+      "delivered_bytes": 64291,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "gql",
+      "version": "4.0.0",
+      "sha256": "8407aeb86875627ef11f4997babe8ef9daeaf60b00d94cc09099102efc2a40d0",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 49,
+      "delivered_bytes": 349330,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "graphene",
+      "version": "3.4.3",
+      "sha256": "0993517cb287c13083551ad31b4d6208ceb07ed56069d44efaaea50dd55233d3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 127,
+      "delivered_bytes": 364924,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "graphql-core",
+      "version": "3.2.13",
+      "sha256": "86976668842171befc98c9838cd0e7ead2bb41a5ce1cd1f07199a6a84cfd3045",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 136,
+      "delivered_bytes": 1085832,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "graphql-relay",
+      "version": "3.2.0",
+      "sha256": "833800d21f9204c627d92910976bb0efdcd60297b7ce8e996e47420dcd6fcb3d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 21,
+      "delivered_bytes": 43962,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "grpcio",
+      "version": "1.84.0",
+      "sha256": "22c17c416b5d0babcc363de4445a45530d057105a10f49da111804a138c8edc7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 68,
+      "delivered_bytes": 12725894,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "grpcio-health-checking",
+      "version": "1.81.1",
+      "sha256": "715fb6949ef18d2f66f29467662149f8d99dcdafbb99fb5537e306aab3e14a8d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 54730,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "sha256": "8b114cfb53e1b5871ee175b63704e9b7a21ff779971243a08eb8d1fec2073cbd",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 104105,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "http_ece",
+      "version": "1.2.1",
+      "sha256": "2208f85796867ddac396beb680c986d5f14c95cc9ce6e3565ea283c3d95d3b2c",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 8,
+      "delivered_bytes": 15095,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9",
+      "sha256": "e77d9b25abcff262b93d1649079cacb52748d77a9d6478332adee04718007568",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 38,
+      "delivered_bytes": 288194,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "httpcore2",
+      "version": "2.13.1",
+      "sha256": "ac55e9a95087ee5449db01bba854e45736cd20409d8eeab43d5b23d3ca242535",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 38,
+      "delivered_bytes": 301205,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "httptools",
+      "version": "0.9.0",
+      "sha256": "836d6a45d5d20db42a1112fc5f54cb029f88ed7239eb7cc1649526b441d1b5da",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 24,
+      "delivered_bytes": 225294,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "httpx",
+      "version": "0.28.1",
+      "sha256": "6004732754fb626ce22b3a0f1c59bf2e0f79c84f448760bb50ecfdd964412ac8",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 31,
+      "delivered_bytes": 295558,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "httpx2",
+      "version": "2.13.1",
+      "sha256": "21c545417023bc8c425973d6b0baacfe7e34daa88e2906b45e1f1c4b090b7c28",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 38,
+      "delivered_bytes": 406387,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "humanfriendly",
+      "version": "10.0",
+      "sha256": "06b9367465480aaca96536a077a3c7d0e7764aedf9bf727d4cef63d163db6624",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 24,
+      "delivered_bytes": 298935,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "humanize",
+      "version": "4.16.0",
+      "sha256": "afe5d6b4f6134df6a6cb686c52898a13b2a7ab20661739c90458b3d5136fcf8f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 84,
+      "delivered_bytes": 431880,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "sha256": "3ba4f3e620ed897f88dd02ce3678ceeb6ab2107aa045a1a8da831b7e6fc2ea6e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 342323,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "importlib_metadata",
+      "version": "8.9.0",
+      "sha256": "d7c416b579fd965409243cf6a7acb51de595b68a438a4a838ed0ecb82f8de40b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 20,
+      "delivered_bytes": 74747,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "isodate",
+      "version": "0.7.2",
+      "sha256": "0dc0287129d7a65b52ffed3ea049b997bb0e70b2dca1eb02f714fd0567f26b50",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 63307,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "Jinja2",
+      "version": "3.1.6",
+      "sha256": "fe0f8880b958db9a92f1968d3f2e8709432532e9b1c0e76be37f6ffadd4c7812",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 33,
+      "delivered_bytes": 497066,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "jsonpatch",
+      "version": "1.35",
+      "sha256": "e4a77176fc636dc4c03c37a20425999bc707cf7cb9bb38980ec304c073beb11d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 11,
+      "delivered_bytes": 54710,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "jsonpath-ng",
+      "version": "1.10.1",
+      "sha256": "dcc805ab3ee417302e444d22f4fbc3b79b519b8fde8cd23c928351ec30893f10",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 303015,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "jsonpointer",
+      "version": "3.2.1",
+      "sha256": "0eaa97fbc6f5db8e731531bfa46f8a623751c719cd03f2959be5817b976f9488",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 16535,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "jsonschema",
+      "version": "4.26.0",
+      "sha256": "f6e3951f9bfc22a2a85a28dbce565d209abc286a6ad7f2ad8fe55e72142269a4",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 45,
+      "delivered_bytes": 476351,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "jsonschema-specifications",
+      "version": "2025.9.1",
+      "sha256": "095aa20c1f0a7c49070bb03c6077ffdb6dca128336f545b501c3a1242c527141",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 47479,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langchain-core",
+      "version": "1.6.10",
+      "sha256": "d57922689871f0544a99ff450e8836090cc691f52b849836371ee2fefbda8b06",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 189,
+      "delivered_bytes": 2453585,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langchain-protocol",
+      "version": "0.0.19",
+      "sha256": "b0bd61f98c1c84da8447d9661b65a62e55c1cd5dca883ae107849484e30c1040",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 23664,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langgraph",
+      "version": "1.2.15",
+      "sha256": "12b14c49b529f95e9556c1eb3579806dae62a8215312f309912acaf5d7e62104",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 86,
+      "delivered_bytes": 1078277,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langgraph-checkpoint",
+      "version": "4.3.0",
+      "sha256": "b131e5eb6b4702619526e3c2bfda3e267bbe29645d5faf1000aea6847b2ec54e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 29,
+      "delivered_bytes": 220317,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langgraph-prebuilt",
+      "version": "1.1.0",
+      "sha256": "30c404bba7795a121d9a92bc401f63a633667d95544409c42ccca2f08a805564",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 149640,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langgraph-sdk",
+      "version": "0.4.7",
+      "sha256": "619f56e7adee35df9346bb615351b781f418f0d5845499065dbc95ff41f4dbad",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 52,
+      "delivered_bytes": 708444,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "langsmith",
+      "version": "0.14.8",
+      "sha256": "5eb6c91a28170b070b7ffe19845860e17dc2eb1a2cbff9353bd70a23aecc4d16",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 347,
+      "delivered_bytes": 3537362,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "leather",
+      "version": "0.4.1",
+      "sha256": "d4fc00e00d839143d8f2f1d9b6a78509865baa7d7edac465007ad34184978f14",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 35,
+      "delivered_bytes": 81885,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "lxml",
+      "version": "6.1.3",
+      "sha256": "55f6c35636eeec12bbcf7a56a189bf6620cf35b19ed583978f52645b4093f2de",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 180,
+      "delivered_bytes": 8952484,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "Mako",
+      "version": "1.4.3",
+      "sha256": "9ae0c303507c1caf4686e0df046382fb0e937e25b6fcc1853bf1c528f6406ae3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 41,
+      "delivered_bytes": 280793,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "markdown-it-py",
+      "version": "4.2.0",
+      "sha256": "dedf4f48cd53015951f5cd743a581ee67c47b34dd9c7522f0d5987e62a588300",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 76,
+      "delivered_bytes": 244961,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "MarkupSafe",
+      "version": "3.0.4",
+      "sha256": "b3dc4990f2a42b5170347fab5a787a8a5c3d37194b0d50901ab50d8558c505a2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 35785,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "mashumaro",
+      "version": "3.14",
+      "sha256": "92b5d8dc973b8e5506a1fdc22c307a9105dc7c0aa8490ace2c214dcd7eb902a7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 49,
+      "delivered_bytes": 388890,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "mdurl",
+      "version": "0.1.2",
+      "sha256": "41f8dd697ae8ef2762e9ce56340dbc7c8110f64249ad1db269b065a1f7755bd3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 23480,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "more-itertools",
+      "version": "10.8.0",
+      "sha256": "6eb172dea2f60a1be54764d22935f86523cd8774cf05dce1b22a124c142a4337",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 280683,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "msgpack",
+      "version": "1.2.3",
+      "sha256": "31d8bf6d949c254bca15e6756bd43e811ec8dfa912b9ba8f7e39fb97d4cd8445",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 188589,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "multidict",
+      "version": "7.1.0",
+      "sha256": "1b73764c5dfc16cac9ba9821ef856b5bc8b6ed839b73430d33c547492a8f476e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 17,
+      "delivered_bytes": 256358,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "networkx",
+      "version": "3.7",
+      "sha256": "b5bd582b7bd121049046ec76a335b4347bd60fa2e6d5a64f8c2452df1f488381",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 606,
+      "delivered_bytes": 7298394,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "openpyxl",
+      "version": "3.1.5",
+      "sha256": "a400637083e58e841805f0f3f031d6feab0da910060566349e23a8b3e6c591e2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 197,
+      "delivered_bytes": 864018,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "opentelemetry-api",
+      "version": "1.45.1",
+      "sha256": "68fafc3a4273f3f34fd0ddff893392cb86f8ba54f9b820533f100c2a55afbc57",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 49,
+      "delivered_bytes": 196591,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "orderly-set",
+      "version": "5.5.0",
+      "sha256": "09354f3b0ef5d8d7fc2bc8008dce41d0742fe364728171d8a8851f0e0d129911",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 52301,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "orjson",
+      "version": "3.13.0",
+      "sha256": "3a16815a04c2b335ce024700f10fee6b11484e3a1919b0fb52662c76a911bf61",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 322458,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "ormsgpack",
+      "version": "1.12.2",
+      "sha256": "214cc156770d5823fb62e397f42194c569824000417fa39786ff8814f6e31809",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 228621,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "sha256": "5cd43e704965f438d682410a0e46836733e51ed1e3ab5ddc62615296319f2923",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 31,
+      "delivered_bytes": 499357,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "parsedatetime",
+      "version": "2.6",
+      "sha256": "0eb5c6a8802e8dc96096e40874f5c082509a8ba7fc0bedfaafed8c5ea897c7ac",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 23,
+      "delivered_bytes": 157616,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pathlib_abc",
+      "version": "0.5.2",
+      "sha256": "b653b7b2ae43b4614a4df004e6de799c0911b8592ce15260120bd4e3b5f4b6db",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 10,
+      "delivered_bytes": 59779,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pathspec",
+      "version": "0.12.1",
+      "sha256": "e984cd059b86c7d0de1ba12b9cf93d9f7c01a662a5d787032271e97ed975005d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 102918,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pathvalidate",
+      "version": "3.3.1",
+      "sha256": "ea885be511c3cb909ddb4e4d96a7ebcf448118f2bd4b495aeaba3e156d5ad2b9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 22,
+      "delivered_bytes": 84315,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pendulum",
+      "version": "3.3.0",
+      "sha256": "996e425db5fea4f454ca2852a77c3a0528e91a756b7f8bb0a59d35356be56ebe",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 132,
+      "delivered_bytes": 764626,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pillow",
+      "version": "12.3.0",
+      "sha256": "7e6d8a284493f83620f994061f93dfceeb64d5a476c0a900cdb51a068482e3d4",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 123,
+      "delivered_bytes": 14761206,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "platformdirs",
+      "version": "4.13.0",
+      "sha256": "7afa4b2045c2a2d5c94b7300f23ae1a0af6bb8dce0bb007132e2a2130156bd93",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 20,
+      "delivered_bytes": 152581,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0",
+      "sha256": "6b19a1dc3ee9d5243709cbaccb91bcdc0a9a902abb2516e473ac16510ef51897",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 65997,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "propcache",
+      "version": "0.5.4",
+      "sha256": "8cc6de28205fc3515bd0969c41050806fc37e7949d87f2ba827f19e48cf8858a",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 113698,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "protobuf",
+      "version": "6.33.6",
+      "sha256": "137da3a4880539218972ae2a901d1bd5b6c7d2bccdb99c2ceca46cf2c3bf8992",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 61,
+      "delivered_bytes": 1643531,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "psutil",
+      "version": "7.2.2",
+      "sha256": "6795bbc454ae47d9a491a671d204e52303c5984f05ad7f6d1631994c83d2e5ca",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 451228,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "psycopg2-binary",
+      "version": "2.9.13",
+      "sha256": "c29500a5c4ab89bfe96354112b873ed0f5e302988b6d3a68d27950561293350f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 23,
+      "delivered_bytes": 6942295,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "py-vapid",
+      "version": "1.9.6",
+      "sha256": "a5eddb12f3acb9562ba4591445853b9b607363da859b8c7d029715b1ea279b8e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 53337,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pyarrow",
+      "version": "26.0.0",
+      "sha256": "8a59820a5ffa6392189fbdd8975b36fc0d4ef8eb5b92824c801338d72fe3a474",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 762,
+      "delivered_bytes": 88419465,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pycparser",
+      "version": "3.11",
+      "sha256": "a1126ce339a428093423718eb1d8eee8bd2a3c199892e1aee56b8102579188dd",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 214051,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pydantic",
+      "version": "2.14.1",
+      "sha256": "2e4ab5db501ed51cab65b962313a8d59e882bdba2b4b7dd48573542468ae6db2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 113,
+      "delivered_bytes": 1964613,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pydantic_core",
+      "version": "2.50.1",
+      "sha256": "6a6e68f0a3c0a0845161ed51daefd12a7dd062f2216d310adfea124ee2363be8",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 5910162,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "Pygments",
+      "version": "2.21.0",
+      "sha256": "30acfb259c7ecbe31e1e42ddd11a37d623f6efc502bead63a8ef071c3c738e72",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 351,
+      "delivered_bytes": 4621432,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "PyJWT",
+      "version": "2.15.1",
+      "sha256": "3c7007496610d2ce607b211919845deb7313238cf1e8fa2c26dca0cde05dc625",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 21,
+      "delivered_bytes": 122344,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "PyMySQL",
+      "version": "1.2.3",
+      "sha256": "158bcea15459c6bed22c38e8f91f7dc842e27f66ca9a768fc6347dc87ac22fca",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 25,
+      "delivered_bytes": 147664,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pypdf",
+      "version": "6.20.1",
+      "sha256": "57022d1a8262a7536b2511491431ac0f73ffe0d61a290241c78fe399c715f2b0",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 66,
+      "delivered_bytes": 1749580,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pyreadline3",
+      "version": "3.5.6",
+      "sha256": "82025bc413eac94cb2d554d35ff96b01410bf92bded1d20c4b163feded7cbc59",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 57,
+      "delivered_bytes": 301950,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-dateutil",
+      "version": "2.9.0.post0",
+      "sha256": "788e9ba9af0036ac20eda48aee9173863772d27cbff3d82dadc6c25a952f8ba0",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 27,
+      "delivered_bytes": 441783,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-docx",
+      "version": "1.2.0",
+      "sha256": "f1a4ae5700f443f67da344224eff88850b992ee702723302bfc55b8b0ac113dc",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 126,
+      "delivered_bytes": 1551478,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-dotenv",
+      "version": "1.2.4",
+      "sha256": "604ac3242f66b4cfc15bf21e018225fc861d30b4b24e81f8b34feaee09d5895d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 17,
+      "delivered_bytes": 66167,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-multipart",
+      "version": "0.0.32",
+      "sha256": "c26b3009b18c640239ab11e0c4d69eb6b5153020c2524aa4571b1317643138b5",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 104421,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-pptx",
+      "version": "1.0.2",
+      "sha256": "8575aa4afa06a83621c548087ec7ca5eb1132ab29b586888c6c74c93255c8cf0",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 117,
+      "delivered_bytes": 1287274,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "python-slugify",
+      "version": "9.1.3",
+      "sha256": "871d5da8f99d364d2631241607f43d8a448f7c26d6f8394822736965f286f406",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 38120,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pytimeparse",
+      "version": "1.1.9",
+      "sha256": "3c2898b95e7d3f89a76dd8730b78a9a701d1133d51a6d9167f261a274b137e4b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 32249,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pytz",
+      "version": "2026.5",
+      "sha256": "e59e6a1a70eb58d2ad87f03a864894211fa9f21696c4ea9e3d5515aa435954a3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 618,
+      "delivered_bytes": 1002871,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pywebpush",
+      "version": "2.5.0",
+      "sha256": "88ce1b4c6984181abec226124bf733fa44dca1ace7f5427f5daa343717cd8e86",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 80583,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pywin32",
+      "version": "312",
+      "sha256": "a12c73da90180d731ae5cc7b83c8b3d07d74034e7537de96007d23abf1b42f91",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 611,
+      "delivered_bytes": 15093354,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "sha256": "f1616f66e3250509b2bb7786482d82d59ca8286d148c86d1cb4de5e667a6484f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 26,
+      "delivered_bytes": 478443,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "referencing",
+      "version": "0.37.0",
+      "sha256": "b0005cda6736dc4c4981315d51308fe54209cbe222c6d075768774fe5d6f963a",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 21,
+      "delivered_bytes": 115554,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "sha256": "51119c181054a167008cc36936240538fcc514aaab7cfa35a4cd10684f413925",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 28,
+      "delivered_bytes": 234577,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "requests-toolbelt",
+      "version": "1.0.0",
+      "sha256": "c2523287010df05a8d7d8a71a5447315c74e7e619c1577d5fcf60855c19f65df",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 42,
+      "delivered_bytes": 146095,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "requirements-parser",
+      "version": "0.13.1",
+      "sha256": "0a9d67a8f6e47b2fad3bb8b8cbc5e538a3cf70016d719763a8b53d60c3b21552",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 37392,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "rich",
+      "version": "15.0.0",
+      "sha256": "b0941bf8cd8486aa69d667fb02db8fc46284192ee8091077ba645886f84b51e5",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 107,
+      "delivered_bytes": 1245988,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "rich-argparse",
+      "version": "1.8.0",
+      "sha256": "c166bc0b3d946c6ddae24bf0e7cb6a6b1970ef2ea179c7008e68f7a683d7297a",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 74840,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "rpds-py",
+      "version": "2026.9.1",
+      "sha256": "82695b7837fea2c44ca1747d1ef0ff18484befab041cdd4ac9a87bf23036e0b7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 11,
+      "delivered_bytes": 588740,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "semver",
+      "version": "3.1.0",
+      "sha256": "695f09be291f887c7c6e27f4f77a77bd6adc22ed9447c8eb88f777feb1ad1e4b",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 56067,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "setuptools",
+      "version": "84.0.0",
+      "sha256": "d7ddf2a9297f48f1665002195b4815162a1f86af2f6409dd4afaa115b155c851",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 345,
+      "delivered_bytes": 2773813,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "simplejson",
+      "version": "4.2.0",
+      "sha256": "406aba931e7ed17aa32615a039adbcfee5cc4ceea750ea4216dd8aa3ade937ca",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 53,
+      "delivered_bytes": 292513,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "sha256": "28c61f362239be8406ea296abf3035dc68efdbda11d08efcde23903e4aa042af",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 8,
+      "delivered_bytes": 38145,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "smmap",
+      "version": "5.0.3",
+      "sha256": "b529e4e4454f5abd8b1ebdeebd86fa0752545eea87ff8499cf79fd4b04f2f20c",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 69597,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "sniffio",
+      "version": "1.3.1",
+      "sha256": "ca99fbc171bbda07ad26ffa9c3435a49189e8a74890cbae66708c53a687f1efb",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 15,
+      "delivered_bytes": 23097,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "snowplow-tracker",
+      "version": "1.1.0",
+      "sha256": "a827cfe58a51400accd738be13bee55d7c813fcec4cc407b9481974550ad7403",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 151898,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "SQLAlchemy",
+      "version": "2.1.4",
+      "sha256": "e4512a3a5a77bb67d60c21c95dc510d9c5765f01a00f9dba926e9e4572444bb9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 278,
+      "delivered_bytes": 9684141,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "sqlglot",
+      "version": "30.22.0",
+      "sha256": "8b114d8dfbf4e90003c8cff33ed12532a103598ea549f05503a027230ebedb18",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 192,
+      "delivered_bytes": 3005209,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "sqlparse",
+      "version": "0.5.5",
+      "sha256": "e99053ae0924996af9a5c1f03137075f0037ad9ac33a3666d95fb1ca404abe03",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 147526,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "starlette",
+      "version": "1.7.0",
+      "sha256": "3f56d6129578b4532faff3cda84d08611fd43759ec3f5de67b3f83ff996f59bc",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 43,
+      "delivered_bytes": 269735,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "structlog",
+      "version": "26.1.0",
+      "sha256": "e0578a9bbd0107e30a78211d6d2181c0b3ebbcb52ee59e081f972e591d39cad1",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 30,
+      "delivered_bytes": 243006,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tabulate",
+      "version": "0.10.0",
+      "sha256": "295d0de4634aa374d92062f8515d211e10a4d7e317cbe43ba3d01a45dde81724",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 9,
+      "delivered_bytes": 151121,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tenacity",
+      "version": "9.2.1",
+      "sha256": "30b3b4a50444bdebf9dd94bc3a4a56236fa3d0de9ea59af7748e850bbe22b80d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 20,
+      "delivered_bytes": 97581,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "text-unidecode",
+      "version": "1.3",
+      "sha256": "b9f6e20d371ed438bff3c8ad32def8dadeca615750d44abd051fe99c8cc437e3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 11,
+      "delivered_bytes": 324107,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tomli",
+      "version": "2.5.0",
+      "sha256": "89bfa2615a9425ce4fceaea5a3d49acc0c2135f2d03decb76720ed7a9d973770",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 17,
+      "delivered_bytes": 268110,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tomlkit",
+      "version": "0.15.1",
+      "sha256": "f08690b166a0e4979e47826056fb2e6aeb334ba3756ee0620443e6d8c5c30488",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 207938,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "toposort",
+      "version": "1.10",
+      "sha256": "c06b4aef8b4699ff4daa2a4198cf1ab587f18749d7325af5d752b1bea2661c9f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 8,
+      "delivered_bytes": 19847,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tqdm",
+      "version": "4.70.1",
+      "sha256": "c0a65a8290a90dd93bd41523a6a6a6743574155a47533f93720dc88e0117affc",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 41,
+      "delivered_bytes": 233731,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "truststore",
+      "version": "0.10.5",
+      "sha256": "fa08c27a93f0bc2c593bdf2c2af2d110a2805f60a21422e09666bda15c4f6870",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 63217,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.4",
+      "sha256": "28842eedcc2ab470c4d583d11812ed2c19ae5105e62acc2fcdafc266152bfd02",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 11,
+      "delivered_bytes": 54734,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "sha256": "31d9b4c4bdd195d66a03681b1bd9c9590d3233b51c4d7eaa9410e2ac2ae93960",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 7,
+      "delivered_bytes": 182965,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tzdata",
+      "version": "2026.5",
+      "sha256": "1adc1db14de9697d3391b2099a590e432a639d448da77f5177244682cfe9791e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 635,
+      "delivered_bytes": 582094,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "universal_pathlib",
+      "version": "0.3.10",
+      "sha256": "76638f177e8f7c09ee061da4a53e229ca90af461c3516f54073635b1b53a0e74",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 39,
+      "delivered_bytes": 321137,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "sha256": "0722aed533868ad2be4ee1033c6289868ef6211adcbee8419d95886d1cab567e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 44,
+      "delivered_bytes": 450637,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "uuid_utils",
+      "version": "0.17.1",
+      "sha256": "2f1a4ec6f6ccc703fd93e23e3e622ead96ed1266aeafaaf7e0c414ddcd8e6e07",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 412897,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.54.0",
+      "sha256": "3405f5833e4a28f0a7973d23d00ca7acfba88d4cc9b2cb85b760bc95d633dd9c",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 53,
+      "delivered_bytes": 294440,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "watchdog",
+      "version": "6.0.0",
+      "sha256": "2ca995273e82d89035b74fc73d4d351388c519dc0b72a7244622517cee3c2d3d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 36,
+      "delivered_bytes": 269528,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "watchfiles",
+      "version": "1.3.0",
+      "sha256": "e81e935d69440d04d1710496b2ebdb37bbc8dac72120c23cf9cfb70ad238517f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 725210,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "websockets",
+      "version": "16.1.1",
+      "sha256": "6e4c205c69fb4d25a206bd4c6d875c6ba4486ccc2a2dcaf32e82824df271bf27",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 60,
+      "delivered_bytes": 668387,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "win-precise-time",
+      "version": "1.4.2",
+      "sha256": "8520c97a8324cfc0d4639293fdf84551b1840681510a95d3abc829ce7d991578",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 36758,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "xlsxwriter",
+      "version": "3.2.9",
+      "sha256": "387c2b5af0a17b3fc6c0e3f3f694dfba7716588690d7964e69737e0615e5dc4e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 49,
+      "delivered_bytes": 850144,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "xxhash",
+      "version": "4.0.1",
+      "sha256": "ae312ea2d116d1a6e0964f56bfb1d20a7723a2318a52281db396536d80b1abff",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 94520,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "yarl",
+      "version": "1.25.1",
+      "sha256": "ea5bc5294cc9a8f8ca867e8f2d3462d8459c52f92f1b5874ea4c2d2acb7a451e",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 325272,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "zipp",
+      "version": "4.1.1",
+      "sha256": "e59403adbda1bba20d8e4b3058a937a0c14ada77ece0b52b32bb48ee05f34b1a",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 24567,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "zstandard",
+      "version": "0.25.0",
+      "sha256": "d82bbd37184e2230125552569ab43290d7926c26acbc7c5b5d7f29b3a7e2c1e4",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 13,
+      "delivered_bytes": 1377519,
+      "file_hash_reference": "runtime-manifest.json#files"
+    }
+  ]
+}

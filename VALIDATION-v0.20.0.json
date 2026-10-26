@@ -1,0 +1,53 @@
+{
+  "version": "0.20.0",
+  "date_utc": "2026-10-24",
+  "baseline": {
+    "version": "0.19.0",
+    "archive_sha256": "8c8e762b2c312d0de2802c9c82a3ac836b0f8d1d2991f527732d315906153f68",
+    "pytest_passed": 1226,
+    "pytest_skipped": 8
+  },
+  "final": {
+    "pytest_passed": 1373,
+    "pytest_skipped": 8,
+    "pytest_warnings": 2,
+    "pytest_seconds": 392.25,
+    "ui_jsdom_suites_passed": 11,
+    "source_hashes_unchanged_during_final_run": 229,
+    "python_compileall": "passed",
+    "all_static_javascript_syntax": "passed",
+    "evidence_directory": "verification/current-final"
+  },
+  "new_checks": {
+    "gateway": 61,
+    "isolated_deployment_and_process": 51,
+    "workflow_authority": 35,
+    "ui_account_transition": "included in 11 jsdom suites"
+  },
+  "verified_scope": [
+    "real HTTP through gateway and two independent Atlas API processes",
+    "independent JWT verification with test-only public JWKS retrieval",
+    "same-ID different-content and cross-resource denial",
+    "gateway authority cancellation/revocation/rotation/expiry/deadline checks",
+    "UI same-ID account switch and delayed response regressions (jsdom)"
+  ],
+  "not_verified": [
+    "Docker image build and network enforcement",
+    "native Windows deployment",
+    "real browser visual interaction (sandbox blocked Chromium launch)",
+    "real PostgreSQL",
+    "restic backup restoration",
+    "live IdP and public TLS",
+    "real LLM business quality",
+    "production load, failure recovery and HA",
+    "complete SSO authorization-code/PKCE/refresh flow"
+  ],
+  "deployed": false,
+  "production_accepted": false,
+  "notes": [
+    "Independent workspace deployment is not shared-process multi-tenancy.",
+    "Multiple subjects mapped to one workspace intentionally share all of that workspace.",
+    "Original single-workspace quickstart remains available.",
+    "All tests use synthetic data; no production credentials or real external agent calls."
+  ]
+}

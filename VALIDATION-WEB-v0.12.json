@@ -1,0 +1,40 @@
+{
+  "version": "0.12.0",
+  "deployment_id": "a6396ff7-5590-4a83-b1f6-9c149530a759",
+  "deployment_status": "SUCCESS",
+  "service_url": "https://atlas-trial.up.railway.app",
+  "bundle_sha256": "fe142e37b8909890db1f077c424beaf39504bbb2890f35bb919edad604bbd027",
+  "tests": {
+    "full_regression_passed_before_final_small_changes": 138,
+    "final_web_lifecycle_passed": 21,
+    "related_backup_regression_passed": 28,
+    "ui_scroll_dom": true,
+    "ui_lifecycle_controller_and_actual_app": true,
+    "service_worker_policy_dedup_navigation": true,
+    "complete_backup_restore_to_fresh_workspace": true
+  },
+  "cloud_acceptance": {
+    "ok": true,
+    "version": "0.12.0",
+    "encrypted_view_roundtrip": true,
+    "activity_api": true,
+    "idempotency_lookup": true,
+    "push_configured": true,
+    "desktop_permission_requested": false,
+    "real_os_notification_evaluated": false,
+    "agent_healthy": true,
+    "worker_healthy": true,
+    "existing_sample_data_preserved": true,
+    "real_model_retested_this_release": false,
+    "previous_opencode_2_0_32_smoke_reused": true,
+    "commercial_comparison_evaluated": false
+  },
+  "limitations": [
+    "single-owner workspace token",
+    "single-instance trial, not HA",
+    "browser and OS permission required for desktop delivery",
+    "browser exit, network restrictions and focus modes can prevent timely notifications",
+    "unsynced input and interrupted file uploads are not guaranteed to recover",
+    "background work can continue incurring model and compute charges"
+  ]
+}

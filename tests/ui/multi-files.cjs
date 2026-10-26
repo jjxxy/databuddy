@@ -1,0 +1,23 @@
+const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../../agent_service/static');
+const wait=async f=>{const until=Date.now()+4000;while(!f()){if(Date.now()>until)throw Error('UI condition timed out');await new Promise(r=>setTimeout(r,5))}};
+async function scenario(){const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;try{
+ w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','fixture-owner');const uploads=[],posts=[];let failFile=true,failMessage=true,releaseRetry;
+ w.fetch=async(url,o={})=>{const route=new URL(url,'https://atlas.test').pathname;let v;
+  if(route==='/api/models')v={models:[{id:'business',name:'业务模型'}],default_model_id:'business'};
+  else if(route==='/api/projects')v=[{id:'p',name:'复杂底稿'}];
+  else if(route.endsWith('/conversation'))v={project:{id:'p',name:'复杂底稿'},session_id:'c',sessions:[{id:'c',name:'本月'}],sources:[],turns:[],applications:[],mode:'llm'};
+  else if(route.endsWith('/attachments')){const file=o.body.get('file'),rid=o.body.get('request_id');uploads.push({file:file.name,size:file.size,id:rid});if(file.size===2&&failFile)return {ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'第二份文件暂未上传'})};if(file.size===2&&uploads.length===3)await new Promise(r=>releaseRetry=r);v={id:file.size===1?'s_first':'s_second',name:file.name}}
+  else if(route.endsWith('/messages')){const body=JSON.parse(o.body);posts.push(body);if(failMessage)return {ok:false,status:503,headers:{get:()=>null},json:async()=>({detail:'响应未确认'})};v={id:'t'}}
+  else throw Error('unexpected route '+route);
+  return {ok:true,status:200,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(v))};
+ };
+ w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testUi={attach,send,state:()=>({projectId,sessionId,attached,pending,sending})};');await wait(()=>w.testUi.state().sessionId==='c');assert.equal(d.querySelector('#file').multiple,true);
+ const a=new w.File(['1'],'同名底稿.csv'),b=new w.File(['22'],'同名底稿.csv');w.testUi.attach([a,b]);assert.equal(d.querySelectorAll('.attachment-chip').length,2,'distinct same-name files retained');d.querySelector('#message').value='结合这两份资料核对金额';await w.testUi.send();assert.equal(uploads.length,2);assert.equal(posts.length,0,'no silent partial message');assert.equal(w.testUi.state().attached[0].source_id,'s_first');assert.equal(w.testUi.state().attached[1].status,'failed');assert.notEqual(uploads[0].id,uploads[1].id);assert(d.querySelector('#connection-error').textContent.includes('部分文件上传失败'));
+ failFile=false;d.querySelector('[data-retry-attachment="1"]').click();await wait(()=>uploads.length===3);await w.testUi.send();assert.equal(posts.length,0,'cannot send while individual retry is uploading');releaseRetry();await wait(()=>!w.testUi.state().sending);assert.equal(uploads[2].id,uploads[1].id,'same upload receipt id on retry');await w.testUi.send();assert.equal(uploads.length,3,'successful file is not uploaded again');assert.deepEqual(posts[0].source_ids,['s_first','s_second']);assert(w.testUi.state().pending);const acceptedId=posts[0].request_id;
+ w.testUi.attach([new w.File(['x'],'unexpected.csv')]);assert.equal(w.testUi.state().attached.length,2,'uncertain accepted payload is immutable');assert.equal(d.querySelector('#message').readOnly,true);assert(d.querySelector('[data-mode=chat]').disabled,'uncertain work mode cannot change while payload remains frozen');assert(d.querySelectorAll('[data-remove-attachment]:disabled').length===2);
+ failMessage=false;await w.testUi.send();assert.equal(posts.length,2);assert.equal(posts[1].request_id,acceptedId);assert.deepEqual(posts[1].source_ids,posts[0].source_ids);assert.equal(w.testUi.state().attached.length,0);assert.equal(d.querySelector('#message').readOnly,false);
+ const drop=new w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:{files:[a,b],types:['Files']}});d.querySelector('#main').dispatchEvent(drop);assert.equal(w.testUi.state().attached.length,2,'drop consumes all files');d.querySelector('[data-remove-attachment="0"]').click();assert.equal(w.testUi.state().attached.length,1);
+ console.log(JSON.stringify({multiple_same_name_files:true,all_dropped_files:true,partial_upload_never_submits:true,retry_only_failed_file:true,individual_retry_blocks_send:true,pending_freezes_all_sources_and_uuid:true,successful_sources_not_reuploaded:true}));
+ }finally{dom.window.close()}}
+scenario().catch(e=>{console.error(e);process.exitCode=1});

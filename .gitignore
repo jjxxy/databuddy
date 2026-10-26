@@ -1,0 +1,15 @@
+.env
+llm.json
+.venv/
+data/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+*.log
+.atlas-local-folder
+tests/ui/node_modules/
+.atlas-native/
+runtime/
+dist/
+node_modules/
+ui/dist/

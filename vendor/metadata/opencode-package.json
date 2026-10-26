@@ -1,0 +1,62 @@
+{
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bugs": {
+    "url": "https://github.com/anomalyco/opencode/issues"
+  },
+  "dist": {
+    "shasum": "da597629b478dfef9270458c92261ad5bb4e6437",
+    "tarball": "https://registry.npmjs.org/@opencode/cli-windows-x64/-/cli-windows-x64-2.1.2.tgz",
+    "fileCount": 2,
+    "integrity": "sha512-r2DUwYbPe++6y4vWRuHX7slVCMIHyLyC8YAgJO7YAKX7dMgfXe4RDlJK7eZ6KHNBdpIY62Nxd6DPzKiCOP8uMg==",
+    "signatures": [
+      {
+        "sig": "MEQCIB54wXE7DJm5qIx6KFuU7UjkI6lZWsCZZGPKUVhuRGjQAiAd2cQCKDL2DXcv305MgMBuT0Ksrn6K2A/WWDv5zt8bbg==",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      },
+      {
+        "sig": "MEYCIQD4bulanQYnobpCW35vcW3JRui3/9OgLwBow/omtZfmaAIhAM4LjXLD90DGuU7yPQ5W+TSAhn7evhqJzdyutC9WhUSa",
+        "keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U"
+      }
+    ],
+    "unpackedSize": 218990197
+  },
+  "name": "@opencode/cli-windows-x64",
+  "_from": "file:opencode-cli-windows-x64-2.1.2.tgz",
+  "license": "MIT",
+  "_npmUser": {
+    "name": "GitHub Actions",
+    "email": "npm-oidc-no-reply@github.com",
+    "trustedPublisher": {
+      "id": "github",
+      "oidcConfigId": "c4ac0d0f-667c-43e0-847c-dd1476b47180"
+    }
+  },
+  "homepage": "https://github.com/anomalyco/opencode#readme",
+  "_resolved": "/home/runner/_work/opencode/opencode/packages/cli/dist/cli-windows-x64/opencode-cli-windows-x64-2.1.2.tgz",
+  "_integrity": "sha512-r2DUwYbPe++6y4vWRuHX7slVCMIHyLyC8YAgJO7YAKX7dMgfXe4RDlJK7eZ6KHNBdpIY62Nxd6DPzKiCOP8uMg==",
+  "repository": {
+    "url": "git+https://github.com/anomalyco/opencode.git",
+    "type": "git"
+  },
+  "_npmVersion": "11.17.0",
+  "directories": {},
+  "maintainers": [
+    {
+      "name": "thdxr",
+      "email": "d@ironbay.co"
+    }
+  ],
+  "_nodeVersion": "24.19.0",
+  "_hasShrinkwrap": false,
+  "_npmOperationalInternal": {
+    "tmp": "tmp/cli-windows-x64_2.1.2_1792554118515_0.03870723895068795",
+    "host": "s3://npm-registry-packages-npm-production"
+  },
+  "_id": "@opencode/cli-windows-x64@2.1.2",
+  "version": "2.1.2"
+}

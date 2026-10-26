@@ -1,0 +1,66 @@
+name: verify
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        metadata: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: ci_only_disposable_password
+          POSTGRES_DB: atlas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.lock && pip install -e . --no-deps && pip install pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --prefix tests/ui --no-audit --no-fund
+      - run: npm test --prefix tests/ui
+      - run: node --check agent_service/static/app.js
+      - run: node --check agent_service/static/lifecycle.js
+      - run: node --check agent_service/static/sw.js
+      - run: node --check agent_service/static/data-app.js
+      - name: OpenCode 2 binary protocol integration
+        if: matrix.metadata == 'sqlite'
+        run: |
+          npm install --prefix /tmp/opencode-verified @opencode/cli@2.0.32 --no-audit --no-fund
+          python scripts/verify_agent_protocol.py --opencode-binary /tmp/opencode-verified/node_modules/.bin/opencode
+      - name: Tests against SQLite
+        if: matrix.metadata == 'sqlite'
+        run: python -m pytest tests -q
+      - name: Conversation API and worker acceptance
+        if: matrix.metadata == 'sqlite'
+        run: python scripts/verify_conversation_service.py
+      - name: Agent protocol integration with a simulated model
+        if: matrix.metadata == 'sqlite'
+        run: python scripts/verify_agent_protocol.py
+      - name: Native tool protocol and company retrieval integration
+        if: matrix.metadata == 'sqlite'
+        run: |
+          python scripts/verify_agent_protocol.py --native --check-evaluator
+          python scripts/verify_company_protocol.py
+          python scripts/evaluate_agent.py
+      - name: Tests against PostgreSQL
+        if: matrix.metadata == 'postgres'
+        env:
+          DATABASE_URL: postgresql+psycopg2://atlas:ci_only_disposable_password@localhost:5432/atlas
+        run: python -m pytest tests -q
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 bootstrap.py
+      - run: docker compose config --quiet
+      - run: docker compose build api worker

@@ -1,0 +1,12 @@
+# Optional overlay; the manifest can contain managed credentials. Keep it private.
+services:
+  atlas:
+    environment:
+      ATLAS_EXTENSION_PRESETS_FILE: /run/atlas/presets.json
+    volumes:
+      - type: bind
+        source: "${ATLAS_EXTENSION_PRESETS_HOST:?Set the administrator preset JSON file path}"
+        target: /run/atlas/presets.json
+        read_only: true
+        bind:
+          create_host_path: false

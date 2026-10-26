@@ -1,0 +1,22 @@
+// DOM regression only. jsdom does not test native wheel input or CSS layout.
+const {JSDOM}=require('jsdom');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');const path=require('node:path');
+const root=path.resolve(__dirname,'../../agent_service/static');
+const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'});
+const w=dom.window;w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;
+w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testExports={updateMessages,jumpLatest,stableHTML,openSidebar,closeSidebar,renderThread};');Object.assign(w,w.testExports);
+const el=w.document.querySelector('#thread-scroll'),messages=w.document.querySelector('#messages');
+Object.defineProperties(el,{clientHeight:{get:()=>300},scrollHeight:{get:()=>1200}});el.scrollTop=120;
+const turn=(id,answer)=>`<section data-turn="${id}"><p>${answer}</p><details><summary>记录</summary>内容</details><button>下载</button></section>`;
+w.updateMessages(turn('one','原回答')+turn('two','处理中'),false);
+const one=messages.firstChild;one.querySelector('details').open=true;one.querySelector('button').focus();
+w.updateMessages(turn('one','原回答')+turn('two','完成'),false);
+assert.equal(messages.firstChild,one);assert.equal(one.querySelector('details').open,true);assert.equal(w.document.activeElement,one.querySelector('button'));assert.equal(el.scrollTop,120);
+w.updateMessages(turn('one','更正后的回答')+turn('two','完成'),false);assert.equal(messages.firstChild,one);assert.equal(one.querySelector('details').open,true);const changedChild=one.firstChild;w.updateMessages(turn('one','更正后的回答')+turn('two','完成'),false);assert.equal(one.firstChild,changedChild);
+w.updateMessages(turn('older','更早记录')+turn('one','更正后的回答')+turn('two','完成'),false);assert.equal(messages.children[1],one);
+w.jumpLatest();assert.equal(el.scrollTop,1200);assert.equal(w.document.querySelector('#jump-latest').hidden,true);
+const nav=w.document.querySelector('#project-list');w.stableHTML(nav,'<button>项目</button>');const b=nav.firstChild;nav.scrollTop=81;w.stableHTML(nav,'<button>项目</button>');assert.equal(nav.firstChild,b);assert.equal(nav.scrollTop,81);
+w.openSidebar();assert.equal(w.document.querySelector('#main').inert,true);assert.equal(w.document.querySelector('#toggle-sidebar').getAttribute('aria-expanded'),'true');w.closeSidebar(true);assert.equal(w.document.querySelector('#main').inert,false);
+const data={project:{id:'p',name:'测试项目'},turns:[{id:'t',text:'消息',answer:'回答',state:'done',created_at:'2026-10-18',interaction_mode:'work'}],sources:[],sessions:[],applications:[],mode:'llm',has_more:false};w.renderThread(data);assert.equal(messages.querySelectorAll('[data-turn]').length,1);assert.equal(messages.querySelectorAll('.message-row').length,2);
+console.log(JSON.stringify({ok:true,unchanged_turn_identity:true,details_preserved:true,nav_position:true,drawer_focus:true,native_wheel_verified:false,css_layout_verified:false}));dom.window.close();

@@ -1,0 +1,1547 @@
+[
+  {
+    "name": "agate",
+    "version": "1.9.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/agate-1.9.1.dist-info/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/agate-1.9.1.dist-info/METADATA"
+  },
+  {
+    "name": "aiohappyeyeballs",
+    "version": "2.7.1",
+    "declared_license": "PSF-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/aiohappyeyeballs-2.7.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/aiohappyeyeballs-2.7.1.dist-info/METADATA"
+  },
+  {
+    "name": "aiohttp",
+    "version": "3.14.5",
+    "declared_license": "Apache-2.0 AND MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/aiohttp-3.14.5.dist-info/licenses/LICENSE.txt",
+      "runtime/python/Lib/site-packages/aiohttp-3.14.5.dist-info/licenses/vendor/llhttp/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/aiohttp-3.14.5.dist-info/METADATA"
+  },
+  {
+    "name": "aiosignal",
+    "version": "1.4.0",
+    "declared_license": "Apache 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/aiosignal-1.4.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/aiosignal-1.4.0.dist-info/METADATA"
+  },
+  {
+    "name": "alembic",
+    "version": "1.20.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/alembic-1.20.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/alembic-1.20.0.dist-info/METADATA"
+  },
+  {
+    "name": "annotated-doc",
+    "version": "0.0.5",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/annotated_doc-0.0.5.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/annotated_doc-0.0.5.dist-info/METADATA"
+  },
+  {
+    "name": "annotated-types",
+    "version": "0.8.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/annotated_types-0.8.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/annotated_types-0.8.0.dist-info/METADATA"
+  },
+  {
+    "name": "antlr4-python3-runtime",
+    "version": "4.13.2",
+    "declared_license": "BSD",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/antlr4_python3_runtime-4.13.2.dist-info/METADATA"
+  },
+  {
+    "name": "anyio",
+    "version": "4.15.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/anyio-4.15.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/anyio-4.15.1.dist-info/METADATA"
+  },
+  {
+    "name": "attrs",
+    "version": "26.1.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/attrs-26.1.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/attrs-26.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "babel",
+    "version": "2.18.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/babel-2.18.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/babel-2.18.0.dist-info/METADATA"
+  },
+  {
+    "name": "backoff",
+    "version": "2.2.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/backoff-2.2.1.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/backoff-2.2.1.dist-info/METADATA"
+  },
+  {
+    "name": "certifi",
+    "version": "2026.7.22",
+    "declared_license": "MPL-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/certifi-2026.7.22.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/certifi-2026.7.22.dist-info/METADATA"
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "declared_license": "MIT-0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/cffi-2.1.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/cffi-2.1.1.dist-info/METADATA"
+  },
+  {
+    "name": "charset-normalizer",
+    "version": "3.5.2",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/charset_normalizer-3.5.2.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/charset_normalizer-3.5.2.dist-info/METADATA"
+  },
+  {
+    "name": "click",
+    "version": "8.5.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/click-8.5.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/click-8.5.0.dist-info/METADATA"
+  },
+  {
+    "name": "colorama",
+    "version": "0.4.6",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/colorama-0.4.6.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/colorama-0.4.6.dist-info/METADATA"
+  },
+  {
+    "name": "coloredlogs",
+    "version": "14.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/coloredlogs-14.0.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/coloredlogs-14.0.dist-info/METADATA"
+  },
+  {
+    "name": "croniter",
+    "version": "6.2.4",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/croniter-6.2.4.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/croniter-6.2.4.dist-info/METADATA"
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.2",
+    "declared_license": "Apache-2.0 OR BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+      "runtime/python/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/cryptography-50.0.2.dist-info/METADATA"
+  },
+  {
+    "name": "daff",
+    "version": "1.4.2",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/daff-1.4.2.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/daff-1.4.2.dist-info/METADATA"
+  },
+  {
+    "name": "dagster",
+    "version": "1.13.26",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dagster-1.13.26.dist-info/licenses/COPYING",
+      "runtime/python/Lib/site-packages/dagster-1.13.26.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dagster-1.13.26.dist-info/METADATA"
+  },
+  {
+    "name": "dagster-graphql",
+    "version": "1.13.26",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dagster_graphql-1.13.26.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dagster_graphql-1.13.26.dist-info/METADATA"
+  },
+  {
+    "name": "dagster-pipes",
+    "version": "1.13.26",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dagster_pipes-1.13.26.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dagster_pipes-1.13.26.dist-info/METADATA"
+  },
+  {
+    "name": "dagster-shared",
+    "version": "1.13.26",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dagster_shared-1.13.26.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dagster_shared-1.13.26.dist-info/METADATA"
+  },
+  {
+    "name": "dagster-webserver",
+    "version": "1.13.26",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dagster_webserver-1.13.26.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dagster_webserver-1.13.26.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-adapters",
+    "version": "1.24.5",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_adapters-1.24.5.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_adapters-1.24.5.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-common",
+    "version": "1.39.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_common-1.39.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_common-1.39.0.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-core",
+    "version": "1.11.16",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_core-1.11.16.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_core-1.11.16.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-duckdb",
+    "version": "1.11.0",
+    "declared_license": "Apache-2",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_duckdb-1.11.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_duckdb-1.11.0.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-extractor",
+    "version": "0.6.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_extractor-0.6.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_extractor-0.6.0.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-protos",
+    "version": "1.0.594",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_protos-1.0.594.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_protos-1.0.594.dist-info/METADATA"
+  },
+  {
+    "name": "dbt-semantic-interfaces",
+    "version": "0.9.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dbt_semantic_interfaces-0.9.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dbt_semantic_interfaces-0.9.0.dist-info/METADATA"
+  },
+  {
+    "name": "deepdiff",
+    "version": "8.6.2",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/deepdiff-8.6.2.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/deepdiff-8.6.2.dist-info/METADATA"
+  },
+  {
+    "name": "distro",
+    "version": "1.9.0",
+    "declared_license": "Apache License, Version 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/distro-1.9.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/distro-1.9.0.dist-info/METADATA"
+  },
+  {
+    "name": "dlt",
+    "version": "1.31.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/dlt-1.31.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/dlt-1.31.0.dist-info/METADATA"
+  },
+  {
+    "name": "docstring_parser",
+    "version": "0.18.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/docstring_parser-0.18.0.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/docstring_parser-0.18.0.dist-info/METADATA"
+  },
+  {
+    "name": "duckdb",
+    "version": "1.5.6",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/duckdb-1.5.6.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/duckdb-1.5.6.dist-info/METADATA"
+  },
+  {
+    "name": "et_xmlfile",
+    "version": "2.0.0",
+    "declared_license": "MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/et_xmlfile-2.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "fastapi",
+    "version": "0.143.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/fastapi-0.143.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/fastapi-0.143.0.dist-info/METADATA"
+  },
+  {
+    "name": "filelock",
+    "version": "4.1.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/filelock-4.1.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/filelock-4.1.1.dist-info/METADATA"
+  },
+  {
+    "name": "frozenlist",
+    "version": "1.8.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/frozenlist-1.8.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/frozenlist-1.8.0.dist-info/METADATA"
+  },
+  {
+    "name": "fsspec",
+    "version": "2026.9.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/fsspec-2026.9.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/fsspec-2026.9.0.dist-info/METADATA"
+  },
+  {
+    "name": "gitdb",
+    "version": "4.0.12",
+    "declared_license": "BSD License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/gitdb-4.0.12.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/gitdb-4.0.12.dist-info/METADATA"
+  },
+  {
+    "name": "GitPython",
+    "version": "3.2.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/gitpython-3.2.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/gitpython-3.2.0.dist-info/METADATA"
+  },
+  {
+    "name": "giturlparse",
+    "version": "0.15.0",
+    "declared_license": "Apache v2",
+    "license_files": [
+      "runtime/python/Lib/site-packages/giturlparse-0.15.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/giturlparse-0.15.0.dist-info/METADATA"
+  },
+  {
+    "name": "gql",
+    "version": "4.0.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/gql-4.0.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/gql-4.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "graphene",
+    "version": "3.4.3",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/graphene-3.4.3.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/graphene-3.4.3.dist-info/METADATA"
+  },
+  {
+    "name": "graphql-core",
+    "version": "3.2.13",
+    "declared_license": "MIT license",
+    "license_files": [
+      "runtime/python/Lib/site-packages/graphql_core-3.2.13.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/graphql_core-3.2.13.dist-info/METADATA"
+  },
+  {
+    "name": "graphql-relay",
+    "version": "3.2.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/graphql_relay-3.2.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/graphql_relay-3.2.0.dist-info/METADATA"
+  },
+  {
+    "name": "grpcio",
+    "version": "1.84.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/grpcio-1.84.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/grpcio-1.84.0.dist-info/METADATA"
+  },
+  {
+    "name": "grpcio-health-checking",
+    "version": "1.81.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/grpcio_health_checking-1.81.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/grpcio_health_checking-1.81.1.dist-info/METADATA"
+  },
+  {
+    "name": "h11",
+    "version": "0.16.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/h11-0.16.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/h11-0.16.0.dist-info/METADATA"
+  },
+  {
+    "name": "http_ece",
+    "version": "1.2.1",
+    "declared_license": "MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/http_ece-1.2.1.dist-info/METADATA"
+  },
+  {
+    "name": "httpcore",
+    "version": "1.0.9",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/httpcore-1.0.9.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/httpcore-1.0.9.dist-info/METADATA"
+  },
+  {
+    "name": "httpcore2",
+    "version": "2.13.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/httpcore2-2.13.1.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/httpcore2-2.13.1.dist-info/METADATA"
+  },
+  {
+    "name": "httptools",
+    "version": "0.9.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/httptools-0.9.0.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/httptools-0.9.0.dist-info/licenses/vendor/http-parser/LICENSE-MIT",
+      "runtime/python/Lib/site-packages/httptools-0.9.0.dist-info/licenses/vendor/llhttp/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/httptools-0.9.0.dist-info/METADATA"
+  },
+  {
+    "name": "httpx",
+    "version": "0.28.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/httpx-0.28.1.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/httpx-0.28.1.dist-info/METADATA"
+  },
+  {
+    "name": "httpx2",
+    "version": "2.13.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/httpx2-2.13.1.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/httpx2-2.13.1.dist-info/METADATA"
+  },
+  {
+    "name": "humanfriendly",
+    "version": "10.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/humanfriendly-10.0.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/humanfriendly-10.0.dist-info/METADATA"
+  },
+  {
+    "name": "humanize",
+    "version": "4.16.0",
+    "declared_license": "MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/humanize-4.16.0.dist-info/METADATA"
+  },
+  {
+    "name": "idna",
+    "version": "3.20",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/idna-3.20.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/idna-3.20.dist-info/METADATA"
+  },
+  {
+    "name": "importlib_metadata",
+    "version": "8.9.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/importlib_metadata-8.9.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/importlib_metadata-8.9.0.dist-info/METADATA"
+  },
+  {
+    "name": "isodate",
+    "version": "0.7.2",
+    "declared_license": "Copyright (c) 2021, Hugo van Kemenade and contributors\n        Copyright (c) 2009-2018, Gerhard Weis and contributors\n        Copyright (c) 2009, Gerhard Weis\n        All rights reserved.\n        \n        Redistribution and use in source and binary forms, with or without\n        modification, are permitted provided that the following conditions are met:\n            * Redistributions of source code must retain the above copyright\n              notice, this list of conditions and the following disclaimer.\n            * Redistributions in binary form must reproduce the above copyright\n              notice, this list of conditions and the following disclaimer in the\n              documentation and/or other materials provided with the distribution.\n            * Neither the name of the <organization> nor the\n              names of its contributors may be used to endorse or promote products\n              derived from this software without specific prior written permission.\n        \n        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\n        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n        DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY\n        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\n        ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n        ",
+    "license_files": [
+      "runtime/python/Lib/site-packages/isodate-0.7.2.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/isodate-0.7.2.dist-info/METADATA"
+  },
+  {
+    "name": "Jinja2",
+    "version": "3.1.6",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/jinja2-3.1.6.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jinja2-3.1.6.dist-info/METADATA"
+  },
+  {
+    "name": "jsonpatch",
+    "version": "1.35",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/jsonpatch-1.35.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jsonpatch-1.35.dist-info/METADATA"
+  },
+  {
+    "name": "jsonpath-ng",
+    "version": "1.10.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/jsonpath_ng-1.10.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jsonpath_ng-1.10.1.dist-info/METADATA"
+  },
+  {
+    "name": "jsonpointer",
+    "version": "3.2.1",
+    "declared_license": "Modified BSD License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/jsonpointer-3.2.1.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jsonpointer-3.2.1.dist-info/METADATA"
+  },
+  {
+    "name": "jsonschema",
+    "version": "4.26.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/jsonschema-4.26.0.dist-info/licenses/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jsonschema-4.26.0.dist-info/METADATA"
+  },
+  {
+    "name": "jsonschema-specifications",
+    "version": "2025.9.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/jsonschema_specifications-2025.9.1.dist-info/licenses/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/jsonschema_specifications-2025.9.1.dist-info/METADATA"
+  },
+  {
+    "name": "langchain-core",
+    "version": "1.6.10",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langchain_core-1.6.10.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langchain_core-1.6.10.dist-info/METADATA"
+  },
+  {
+    "name": "langchain-protocol",
+    "version": "0.0.19",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langchain_protocol-0.0.19.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langchain_protocol-0.0.19.dist-info/METADATA"
+  },
+  {
+    "name": "langgraph",
+    "version": "1.2.15",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langgraph-1.2.15.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langgraph-1.2.15.dist-info/METADATA"
+  },
+  {
+    "name": "langgraph-checkpoint",
+    "version": "4.3.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langgraph_checkpoint-4.3.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langgraph_checkpoint-4.3.0.dist-info/METADATA"
+  },
+  {
+    "name": "langgraph-prebuilt",
+    "version": "1.1.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langgraph_prebuilt-1.1.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langgraph_prebuilt-1.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "langgraph-sdk",
+    "version": "0.4.7",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/langgraph_sdk-0.4.7.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/langgraph_sdk-0.4.7.dist-info/METADATA"
+  },
+  {
+    "name": "langsmith",
+    "version": "0.14.8",
+    "declared_license": "MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/langsmith-0.14.8.dist-info/METADATA"
+  },
+  {
+    "name": "leather",
+    "version": "0.4.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/leather-0.4.1.dist-info/licenses/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/leather-0.4.1.dist-info/METADATA"
+  },
+  {
+    "name": "lxml",
+    "version": "6.1.3",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/lxml-6.1.3.dist-info/licenses/LICENSE.txt",
+      "runtime/python/Lib/site-packages/lxml-6.1.3.dist-info/licenses/LICENSES.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/lxml-6.1.3.dist-info/METADATA"
+  },
+  {
+    "name": "Mako",
+    "version": "1.4.3",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/mako-1.4.3.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/mako-1.4.3.dist-info/METADATA"
+  },
+  {
+    "name": "markdown-it-py",
+    "version": "4.2.0",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/markdown_it_py-4.2.0.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/markdown_it_py-4.2.0.dist-info/licenses/LICENSE.markdown-it"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/markdown_it_py-4.2.0.dist-info/METADATA"
+  },
+  {
+    "name": "MarkupSafe",
+    "version": "3.0.4",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/markupsafe-3.0.4.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/markupsafe-3.0.4.dist-info/METADATA"
+  },
+  {
+    "name": "mashumaro",
+    "version": "3.14",
+    "declared_license": "Apache License, Version 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/mashumaro-3.14.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/mashumaro-3.14.dist-info/METADATA"
+  },
+  {
+    "name": "mdurl",
+    "version": "0.1.2",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/mdurl-0.1.2.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/mdurl-0.1.2.dist-info/METADATA"
+  },
+  {
+    "name": "more-itertools",
+    "version": "10.8.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/more_itertools-10.8.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/more_itertools-10.8.0.dist-info/METADATA"
+  },
+  {
+    "name": "msgpack",
+    "version": "1.2.3",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/msgpack-1.2.3.dist-info/licenses/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/msgpack-1.2.3.dist-info/METADATA"
+  },
+  {
+    "name": "multidict",
+    "version": "7.1.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/multidict-7.1.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/multidict-7.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "networkx",
+    "version": "3.7",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/networkx-3.7.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/networkx-3.7.dist-info/METADATA"
+  },
+  {
+    "name": "openpyxl",
+    "version": "3.1.5",
+    "declared_license": "MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/openpyxl-3.1.5.dist-info/METADATA"
+  },
+  {
+    "name": "opentelemetry-api",
+    "version": "1.45.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/opentelemetry_api-1.45.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/opentelemetry_api-1.45.1.dist-info/METADATA"
+  },
+  {
+    "name": "orderly-set",
+    "version": "5.5.0",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/orderly_set-5.5.0.dist-info/licenses/MIT-LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/orderly_set-5.5.0.dist-info/METADATA"
+  },
+  {
+    "name": "orjson",
+    "version": "3.13.0",
+    "declared_license": "MPL-2.0 AND (Apache-2.0 OR MIT)",
+    "license_files": [
+      "runtime/python/Lib/site-packages/orjson-3.13.0.dist-info/licenses/LICENSE-APACHE",
+      "runtime/python/Lib/site-packages/orjson-3.13.0.dist-info/licenses/LICENSE-MIT",
+      "runtime/python/Lib/site-packages/orjson-3.13.0.dist-info/licenses/LICENSE-MPL-2.0"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/orjson-3.13.0.dist-info/METADATA"
+  },
+  {
+    "name": "ormsgpack",
+    "version": "1.12.2",
+    "declared_license": "Apache-2.0 OR MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/ormsgpack-1.12.2.dist-info/licenses/LICENSE-APACHE",
+      "runtime/python/Lib/site-packages/ormsgpack-1.12.2.dist-info/licenses/LICENSE-MIT"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/ormsgpack-1.12.2.dist-info/METADATA"
+  },
+  {
+    "name": "packaging",
+    "version": "26.3",
+    "declared_license": "Apache-2.0 OR BSD-2-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/packaging-26.3.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/packaging-26.3.dist-info/licenses/LICENSE.APACHE",
+      "runtime/python/Lib/site-packages/packaging-26.3.dist-info/licenses/LICENSE.BSD"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/packaging-26.3.dist-info/METADATA"
+  },
+  {
+    "name": "parsedatetime",
+    "version": "2.6",
+    "declared_license": "Apache License 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/parsedatetime-2.6.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/parsedatetime-2.6.dist-info/METADATA"
+  },
+  {
+    "name": "pathlib_abc",
+    "version": "0.5.2",
+    "declared_license": "1. This LICENSE AGREEMENT is between the Python Software Foundation\n        (\"PSF\"), and the Individual or Organization (\"Licensee\") accessing and\n        otherwise using this software (\"Python\") in source or binary form and\n        its associated documentation.\n        \n        2. Subject to the terms and conditions of this License Agreement, PSF hereby\n        grants Licensee a nonexclusive, royalty-free, world-wide license to reproduce,\n        analyze, test, perform and/or display publicly, prepare derivative works,\n        distribute, and otherwise use Python alone or in any derivative version,\n        provided, however, that PSF's License Agreement and PSF's notice of copyright,\n        i.e., \"Copyright (c) 2001-2024 Python Software Foundation; All Rights Reserved\"\n        are retained in Python alone or in any derivative version prepared by Licensee.\n        \n        3. In the event Licensee prepares a derivative work that is based on\n        or incorporates Python or any part thereof, and wants to make\n        the derivative work available to others as provided herein, then\n        Licensee hereby agrees to include in any such work a brief summary of\n        the changes made to Python.\n        \n        4. PSF is making Python available to Licensee on an \"AS IS\"\n        basis.  PSF MAKES NO REPRESENTATIONS OR WARRANTIES, EXPRESS OR\n        IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND\n        DISCLAIMS ANY REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS\n        FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON WILL NOT\n        INFRINGE ANY THIRD PARTY RIGHTS.\n        \n        5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON\n        FOR ANY INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES OR LOSS AS\n        A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON,\n        OR ANY DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.\n        \n        6. This License Agreement will automatically terminate upon a material\n        breach of its terms and conditions.\n        \n        7. Nothing in this License Agreement shall be deemed to create any\n        relationship of agency, partnership, or joint venture between PSF and\n        Licensee.  This License Agreement does not grant permission to use PSF\n        trademarks or trade name in a trademark sense to endorse or promote\n        products or services of Licensee, or any third party.\n        \n        8. By copying, installing or otherwise using Python, Licensee\n        agrees to be bound by the terms and conditions of this License\n        Agreement.\n        ",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pathlib_abc-0.5.2.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pathlib_abc-0.5.2.dist-info/METADATA"
+  },
+  {
+    "name": "pathspec",
+    "version": "0.12.1",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/pathspec-0.12.1.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pathspec-0.12.1.dist-info/METADATA"
+  },
+  {
+    "name": "pathvalidate",
+    "version": "3.3.1",
+    "declared_license": "MIT License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pathvalidate-3.3.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pathvalidate-3.3.1.dist-info/METADATA"
+  },
+  {
+    "name": "pendulum",
+    "version": "3.3.0",
+    "declared_license": "MIT License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pendulum-3.3.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pendulum-3.3.0.dist-info/METADATA"
+  },
+  {
+    "name": "pillow",
+    "version": "12.3.0",
+    "declared_license": "MIT-CMU",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pillow-12.3.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pillow-12.3.0.dist-info/METADATA"
+  },
+  {
+    "name": "platformdirs",
+    "version": "4.13.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/platformdirs-4.13.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/platformdirs-4.13.0.dist-info/METADATA"
+  },
+  {
+    "name": "pluggy",
+    "version": "1.6.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pluggy-1.6.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pluggy-1.6.0.dist-info/METADATA"
+  },
+  {
+    "name": "propcache",
+    "version": "0.5.4",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/propcache-0.5.4.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/propcache-0.5.4.dist-info/licenses/NOTICE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/propcache-0.5.4.dist-info/METADATA"
+  },
+  {
+    "name": "protobuf",
+    "version": "6.33.6",
+    "declared_license": "3-Clause BSD License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/protobuf-6.33.6.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/protobuf-6.33.6.dist-info/METADATA"
+  },
+  {
+    "name": "psutil",
+    "version": "7.2.2",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/psutil-7.2.2.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/psutil-7.2.2.dist-info/METADATA"
+  },
+  {
+    "name": "psycopg2-binary",
+    "version": "2.9.13",
+    "declared_license": "LGPL with exceptions",
+    "license_files": [
+      "runtime/python/Lib/site-packages/psycopg2_binary-2.9.13.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/psycopg2_binary-2.9.13.dist-info/METADATA"
+  },
+  {
+    "name": "py-vapid",
+    "version": "1.9.6",
+    "declared_license": "MPL-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/py_vapid-1.9.6.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/py_vapid-1.9.6.dist-info/METADATA"
+  },
+  {
+    "name": "pyarrow",
+    "version": "26.0.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pyarrow-26.0.0.dist-info/licenses/LICENSE.txt",
+      "runtime/python/Lib/site-packages/pyarrow-26.0.0.dist-info/licenses/NOTICE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pyarrow-26.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "pycparser",
+    "version": "3.11",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pycparser-3.11.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pycparser-3.11.dist-info/METADATA"
+  },
+  {
+    "name": "pydantic",
+    "version": "2.14.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pydantic-2.14.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pydantic-2.14.1.dist-info/METADATA"
+  },
+  {
+    "name": "pydantic_core",
+    "version": "2.50.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pydantic_core-2.50.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pydantic_core-2.50.1.dist-info/METADATA"
+  },
+  {
+    "name": "Pygments",
+    "version": "2.21.0",
+    "declared_license": "BSD-2-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pygments-2.21.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pygments-2.21.0.dist-info/METADATA"
+  },
+  {
+    "name": "PyJWT",
+    "version": "2.15.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pyjwt-2.15.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pyjwt-2.15.1.dist-info/METADATA"
+  },
+  {
+    "name": "PyMySQL",
+    "version": "1.2.3",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pymysql-1.2.3.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pymysql-1.2.3.dist-info/METADATA"
+  },
+  {
+    "name": "pypdf",
+    "version": "6.20.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pypdf-6.20.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pypdf-6.20.1.dist-info/METADATA"
+  },
+  {
+    "name": "pyreadline3",
+    "version": "3.5.6",
+    "declared_license": "BSD",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pyreadline3-3.5.6.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pyreadline3-3.5.6.dist-info/METADATA"
+  },
+  {
+    "name": "python-dateutil",
+    "version": "2.9.0.post0",
+    "declared_license": "Dual License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_dateutil-2.9.0.post0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_dateutil-2.9.0.post0.dist-info/METADATA"
+  },
+  {
+    "name": "python-docx",
+    "version": "1.2.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_docx-1.2.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_docx-1.2.0.dist-info/METADATA"
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_dotenv-1.2.4.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_dotenv-1.2.4.dist-info/METADATA"
+  },
+  {
+    "name": "python-multipart",
+    "version": "0.0.32",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_multipart-0.0.32.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_multipart-0.0.32.dist-info/METADATA"
+  },
+  {
+    "name": "python-pptx",
+    "version": "1.0.2",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_pptx-1.0.2.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_pptx-1.0.2.dist-info/METADATA"
+  },
+  {
+    "name": "python-slugify",
+    "version": "9.1.3",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/python_slugify-9.1.3.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/python_slugify-9.1.3.dist-info/METADATA"
+  },
+  {
+    "name": "pytimeparse",
+    "version": "1.1.9",
+    "declared_license": "License :: OSI Approved :: MIT License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pytimeparse-1.1.9.dist-info/licenses/LICENSE.rst"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pytimeparse-1.1.9.dist-info/METADATA"
+  },
+  {
+    "name": "pytz",
+    "version": "2026.5",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pytz-2026.5.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pytz-2026.5.dist-info/METADATA"
+  },
+  {
+    "name": "pywebpush",
+    "version": "2.5.0",
+    "declared_license": "MPL-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pywebpush-2.5.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pywebpush-2.5.0.dist-info/METADATA"
+  },
+  {
+    "name": "pywin32",
+    "version": "312",
+    "declared_license": "PSF",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/adodbapi/license.txt",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/com/License.txt",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/License.txt",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/win32/License.txt",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt",
+      "runtime/python/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pywin32-312.dist-info/METADATA"
+  },
+  {
+    "name": "PyYAML",
+    "version": "6.0.3",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/pyyaml-6.0.3.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/pyyaml-6.0.3.dist-info/METADATA"
+  },
+  {
+    "name": "referencing",
+    "version": "0.37.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/referencing-0.37.0.dist-info/licenses/COPYING"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/referencing-0.37.0.dist-info/METADATA"
+  },
+  {
+    "name": "requests",
+    "version": "2.34.2",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/requests-2.34.2.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/requests-2.34.2.dist-info/licenses/NOTICE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/requests-2.34.2.dist-info/METADATA"
+  },
+  {
+    "name": "requests-toolbelt",
+    "version": "1.0.0",
+    "declared_license": "Apache 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/requests_toolbelt-1.0.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/requests_toolbelt-1.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "requirements-parser",
+    "version": "0.13.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/requirements_parser-0.13.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/requirements_parser-0.13.1.dist-info/METADATA"
+  },
+  {
+    "name": "rich",
+    "version": "15.0.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/rich-15.0.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/rich-15.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "rich-argparse",
+    "version": "1.8.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/rich_argparse-1.8.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/rich_argparse-1.8.0.dist-info/METADATA"
+  },
+  {
+    "name": "rpds-py",
+    "version": "2026.9.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/rpds_py-2026.9.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/rpds_py-2026.9.1.dist-info/METADATA"
+  },
+  {
+    "name": "semver",
+    "version": "3.1.0",
+    "declared_license": "Copyright (c) 2013, Konstantine Rybnikov\n        All rights reserved.\n        \n        Redistribution and use in source and binary forms, with or without modification,\n        are permitted provided that the following conditions are met:\n        \n          Redistributions of source code must retain the above copyright notice, this\n          list of conditions and the following disclaimer.\n        \n          Redistributions in binary form must reproduce the above copyright notice, this\n          list of conditions and the following disclaimer in the documentation and/or\n          other materials provided with the distribution.\n        \n          Neither the name of the python-semver org nor the names of its\n          contributors may be used to endorse or promote products derived from\n          this software without specific prior written permission.\n        \n        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\n        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n        DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR\n        ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON\n        ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n        ",
+    "license_files": [
+      "runtime/python/Lib/site-packages/semver-3.1.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/semver-3.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "setuptools",
+    "version": "84.0.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/setuptools-84.0.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/setuptools-84.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "simplejson",
+    "version": "4.2.0",
+    "declared_license": "MIT OR AFL-2.1",
+    "license_files": [
+      "runtime/python/Lib/site-packages/simplejson-4.2.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/simplejson-4.2.0.dist-info/METADATA"
+  },
+  {
+    "name": "six",
+    "version": "1.17.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/six-1.17.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/six-1.17.0.dist-info/METADATA"
+  },
+  {
+    "name": "smmap",
+    "version": "5.0.3",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/smmap-5.0.3.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/smmap-5.0.3.dist-info/METADATA"
+  },
+  {
+    "name": "sniffio",
+    "version": "1.3.1",
+    "declared_license": "MIT OR Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/sniffio-1.3.1.dist-info/LICENSE",
+      "runtime/python/Lib/site-packages/sniffio-1.3.1.dist-info/LICENSE.APACHE2",
+      "runtime/python/Lib/site-packages/sniffio-1.3.1.dist-info/LICENSE.MIT"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/sniffio-1.3.1.dist-info/METADATA"
+  },
+  {
+    "name": "snowplow-tracker",
+    "version": "1.1.0",
+    "declared_license": "Apache License 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/snowplow_tracker-1.1.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/snowplow_tracker-1.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "SQLAlchemy",
+    "version": "2.1.4",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/sqlalchemy-2.1.4.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/sqlalchemy-2.1.4.dist-info/METADATA"
+  },
+  {
+    "name": "sqlglot",
+    "version": "30.22.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/sqlglot-30.22.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/sqlglot-30.22.0.dist-info/METADATA"
+  },
+  {
+    "name": "sqlparse",
+    "version": "0.5.5",
+    "declared_license": null,
+    "license_files": [
+      "runtime/python/Lib/site-packages/sqlparse-0.5.5.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/sqlparse-0.5.5.dist-info/METADATA"
+  },
+  {
+    "name": "starlette",
+    "version": "1.7.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/starlette-1.7.0.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/starlette-1.7.0.dist-info/METADATA"
+  },
+  {
+    "name": "structlog",
+    "version": "26.1.0",
+    "declared_license": "MIT OR Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/structlog-26.1.0.dist-info/licenses/LICENSE-APACHE",
+      "runtime/python/Lib/site-packages/structlog-26.1.0.dist-info/licenses/LICENSE-MIT",
+      "runtime/python/Lib/site-packages/structlog-26.1.0.dist-info/licenses/NOTICE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/structlog-26.1.0.dist-info/METADATA"
+  },
+  {
+    "name": "tabulate",
+    "version": "0.10.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/tabulate-0.10.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/tabulate-0.10.0.dist-info/METADATA"
+  },
+  {
+    "name": "tenacity",
+    "version": "9.2.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/tenacity-9.2.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/tenacity-9.2.1.dist-info/METADATA"
+  },
+  {
+    "name": "text-unidecode",
+    "version": "1.3",
+    "declared_license": "Artistic License",
+    "license_files": [
+      "runtime/python/Lib/site-packages/text_unidecode-1.3.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/text_unidecode-1.3.dist-info/METADATA"
+  },
+  {
+    "name": "tomli",
+    "version": "2.5.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/tomli-2.5.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/tomli-2.5.0.dist-info/METADATA"
+  },
+  {
+    "name": "tomlkit",
+    "version": "0.15.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/tomlkit-0.15.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/tomlkit-0.15.1.dist-info/METADATA"
+  },
+  {
+    "name": "toposort",
+    "version": "1.10",
+    "declared_license": "Apache License Version 2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/toposort-1.10.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/toposort-1.10.dist-info/METADATA"
+  },
+  {
+    "name": "tqdm",
+    "version": "4.70.1",
+    "declared_license": "MPL-2.0 AND MIT",
+    "license_files": [],
+    "metadata": "runtime/python/Lib/site-packages/tqdm-4.70.1.dist-info/METADATA"
+  },
+  {
+    "name": "truststore",
+    "version": "0.10.5",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/truststore-0.10.5.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/truststore-0.10.5.dist-info/METADATA"
+  },
+  {
+    "name": "typing_extensions",
+    "version": "4.16.0",
+    "declared_license": "PSF-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/typing_extensions-4.16.0.dist-info/METADATA"
+  },
+  {
+    "name": "typing-inspection",
+    "version": "0.4.4",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/typing_inspection-0.4.4.dist-info/METADATA"
+  },
+  {
+    "name": "tzdata",
+    "version": "2026.5",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/tzdata-2026.5.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/tzdata-2026.5.dist-info/licenses/licenses/LICENSE_APACHE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/tzdata-2026.5.dist-info/METADATA"
+  },
+  {
+    "name": "universal_pathlib",
+    "version": "0.3.10",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/universal_pathlib-0.3.10.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/universal_pathlib-0.3.10.dist-info/METADATA"
+  },
+  {
+    "name": "urllib3",
+    "version": "2.8.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/urllib3-2.8.0.dist-info/licenses/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/urllib3-2.8.0.dist-info/METADATA"
+  },
+  {
+    "name": "uuid_utils",
+    "version": "0.17.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/uuid_utils-0.17.1.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/uuid_utils-0.17.1.dist-info/METADATA"
+  },
+  {
+    "name": "uvicorn",
+    "version": "0.54.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/uvicorn-0.54.0.dist-info/licenses/LICENSE.md"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/uvicorn-0.54.0.dist-info/METADATA"
+  },
+  {
+    "name": "watchdog",
+    "version": "6.0.0",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/watchdog-6.0.0.dist-info/COPYING",
+      "runtime/python/Lib/site-packages/watchdog-6.0.0.dist-info/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/watchdog-6.0.0.dist-info/METADATA"
+  },
+  {
+    "name": "watchfiles",
+    "version": "1.3.0",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/watchfiles-1.3.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/watchfiles-1.3.0.dist-info/METADATA"
+  },
+  {
+    "name": "websockets",
+    "version": "16.1.1",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/websockets-16.1.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/websockets-16.1.1.dist-info/METADATA"
+  },
+  {
+    "name": "win-precise-time",
+    "version": "1.4.2",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/win_precise_time-1.4.2.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/win_precise_time-1.4.2.dist-info/METADATA"
+  },
+  {
+    "name": "xlsxwriter",
+    "version": "3.2.9",
+    "declared_license": "BSD-2-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/xlsxwriter-3.2.9.dist-info/LICENSE.txt"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/xlsxwriter-3.2.9.dist-info/METADATA"
+  },
+  {
+    "name": "xxhash",
+    "version": "4.0.1",
+    "declared_license": "BSD-2-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/xxhash-4.0.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/xxhash-4.0.1.dist-info/METADATA"
+  },
+  {
+    "name": "yarl",
+    "version": "1.25.1",
+    "declared_license": "Apache-2.0",
+    "license_files": [
+      "runtime/python/Lib/site-packages/yarl-1.25.1.dist-info/licenses/LICENSE",
+      "runtime/python/Lib/site-packages/yarl-1.25.1.dist-info/licenses/NOTICE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/yarl-1.25.1.dist-info/METADATA"
+  },
+  {
+    "name": "zipp",
+    "version": "4.1.1",
+    "declared_license": "MIT",
+    "license_files": [
+      "runtime/python/Lib/site-packages/zipp-4.1.1.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/zipp-4.1.1.dist-info/METADATA"
+  },
+  {
+    "name": "zstandard",
+    "version": "0.25.0",
+    "declared_license": "BSD-3-Clause",
+    "license_files": [
+      "runtime/python/Lib/site-packages/zstandard-0.25.0.dist-info/licenses/LICENSE"
+    ],
+    "metadata": "runtime/python/Lib/site-packages/zstandard-0.25.0.dist-info/METADATA"
+  }
+]

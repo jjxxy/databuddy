@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "project": "atlas-isolated",
+  "public_origin": "https://atlas.example.com",
+  "gateway_port": 8080,
+  "oidc": {
+    "issuer": "https://identity.example.com",
+    "audience": "atlas-browser",
+    "jwks_url": "https://identity.example.com/.well-known/jwks.json",
+    "jwks_file": "./secrets/idp-public-jwks.json"
+  },
+  "workspaces": [
+    {"id": "alice", "subjects": ["idp-alice-exact-sub"], "model_config_file": "./secrets/alice-model.json"},
+    {"id": "bob", "subjects": ["idp-bob-exact-sub"], "model_config_file": "./secrets/bob-model.json"}
+  ]
+}

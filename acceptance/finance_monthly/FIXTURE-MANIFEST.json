@@ -1,0 +1,106 @@
+{
+  "synthetic": true,
+  "scope": "fixture integrity, not an IT signature or real LLM acceptance",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 16632,
+      "sha256": "4d5ceef0462bc15df4296cba6e8abb20d485b7369f72dd7b743c159ef91975fe"
+    },
+    {
+      "path": "SOURCE_PROVENANCE.md",
+      "bytes": 2408,
+      "sha256": "0759e2b715dd5a9f251334cc7bfd5674f92e0ac43c976cbbcadf342071bfdfa7"
+    },
+    {
+      "path": "expected/baseline_both.csv",
+      "bytes": 1165,
+      "sha256": "a45768595ff9787b749af5dda59337a4444ee942b31d4835fe2409840e660314"
+    },
+    {
+      "path": "expected/baseline_oct.csv",
+      "bytes": 671,
+      "sha256": "37f9c43c81be04582b2bcd342208f984395fe6e518e832b07f6a753051c8e19c"
+    },
+    {
+      "path": "expected/baseline_sep.csv",
+      "bytes": 679,
+      "sha256": "88b95c84c5751f02b3c6b966bca749a4f089df7a233ff7ce5bb95c8e1a5f55e8"
+    },
+    {
+      "path": "expected/corrected_oct.csv",
+      "bytes": 671,
+      "sha256": "f775b5d1156546b2c4bea2ef044f97c315bab74f9ed8824e3b5cdfccca4c656a"
+    },
+    {
+      "path": "expected/gold.json",
+      "bytes": 11323,
+      "sha256": "98782f2441ea43cdbed080587a34ec6cb0c94ce69a8f216d0f4e70a1cd3479fb"
+    },
+    {
+      "path": "expected/include_rd_sep.csv",
+      "bytes": 679,
+      "sha256": "ebfbb4acb4879e79efe36a9b8cca07c2cf952e6a6545b05f14c981c4dd37aab0"
+    },
+    {
+      "path": "fixture_definition.json",
+      "bytes": 3843,
+      "sha256": "32e8be653d08a88d63ceb7f222b49c04a92e2006dbc7005a1dfe3eb5a4b0eed7"
+    },
+    {
+      "path": "generate_gold.py",
+      "bytes": 3673,
+      "sha256": "0bbab0634c1e1d0429c51494b34ae5b5b330faa428fed1e287472c695efd23b1"
+    },
+    {
+      "path": "inputs/correction/10月单据更正.csv",
+      "bytes": 169,
+      "sha256": "b1d9b501dfd0488f009ffbacc7734e56939027c8eda03d8db96b971d4b1931bf"
+    },
+    {
+      "path": "inputs/negative/异常_公式.xlsx",
+      "bytes": 4035,
+      "sha256": "c83b7cb648e1b25de53e2408b43bf36ad57e0855faa9c9f9a8aa5426d161375d"
+    },
+    {
+      "path": "inputs/negative/异常_未映射省份.csv",
+      "bytes": 176,
+      "sha256": "8e9a06f434ad84acf31c1a25bedecd19bc8feb23d7782f53718785a5c1752cb6"
+    },
+    {
+      "path": "inputs/negative/异常_格式歧义.csv",
+      "bytes": 403,
+      "sha256": "e9e8f21339ed4103e8fe82a87f4aff22b3995c063e04f7a76464d7c5739f46e2"
+    },
+    {
+      "path": "inputs/negative/异常_重复单据.csv",
+      "bytes": 240,
+      "sha256": "3fdd06d590f4461ab273f5b6cf99a056c3b962d713228d433c9de75e60b01499"
+    },
+    {
+      "path": "inputs/phase1/2026-09_业务源表.xlsx",
+      "bytes": 8919,
+      "sha256": "b8bf64dca71217b0a08f10303cee44f3c023436ac96feb6d2c2b7648f87d11d6"
+    },
+    {
+      "path": "inputs/phase1/业务口径.txt",
+      "bytes": 2622,
+      "sha256": "052da4de842ae637125076d4899f5620fb2db735c522eaf59c24638fe106ca96"
+    },
+    {
+      "path": "inputs/phase2/2026-10_业务源表.xlsx",
+      "bytes": 8923,
+      "sha256": "71ba4807da89d8ecbc67df0372b5844a2ece7078e971d981d8b965fce6aa0781"
+    },
+    {
+      "path": "verify_export.py",
+      "bytes": 7877,
+      "sha256": "c7ee174205f06972e107ba7de05ba5ceb19b447df86eff89d62ae58c00c3db28"
+    },
+    {
+      "path": "验收记录模板.csv",
+      "bytes": 604,
+      "sha256": "c2df4c9b9fb265143ef5756a583aab4b5ea3aa3810c440783050aabee3e28519"
+    }
+  ]
+}

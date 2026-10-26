@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>我的业务工作空间 · Atlas</title>
+  <link rel="stylesheet" href="/data-workbench.css?v=20">
+  <script src="/data-workbench.js?v=20" defer></script>
+</head>
+<body>
+<section id="workbench-login" class="login" hidden>
+  <form id="workbench-login-form">
+    <span class="brand-mark" aria-hidden="true">A</span>
+    <h1>打开我的业务任务</h1>
+    <p>使用工作空间访问口令查看任务与结果。</p>
+    <label for="workbench-token">访问口令</label>
+    <input id="workbench-token" type="password" autocomplete="current-password" required>
+    <button type="submit" class="primary">进入项目</button>
+    <p id="workbench-login-error" role="alert"></p>
+  </form>
+</section>
+<section id="workbench-missing" class="missing" hidden>
+  <h1>请从项目对话打开</h1>
+  <p>当前链接缺少项目标识。</p>
+  <a href="/">返回工作空间</a>
+</section>
+<div id="workbench-shell" hidden>
+  <aside class="sidebar" aria-label="业务任务导航">
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>Atlas</span></a>
+    <a id="workbench-back" class="back-link" href="/">返回项目对话</a>
+    <div class="sidebar-heading">我的可复用任务</div>
+    <nav id="workbench-workflows" class="workflow-list" aria-label="选择业务任务"></nav>
+    <p id="workbench-workflows-empty" class="sidebar-empty" hidden>还没有保存的任务。回到对话，告诉 Agent 你想完成哪项业务工作。</p>
+    <a id="workbench-chat" class="sidebar-footer" href="/">让 Agent 调整任务</a>
+  </aside>
+  <main id="workbench-main">
+    <header class="page-header">
+      <div>
+        <div class="eyebrow">我的业务工作空间</div>
+        <h1 id="workbench-title">我的业务任务</h1>
+        <p id="workbench-description" class="description">把常做的核对、汇总与报表保存成任务，需要时继续运行。</p>
+      </div>
+      <div class="header-actions">
+        <button id="workbench-refresh" type="button">刷新状态</button>
+        <button id="workbench-run" type="button" class="primary" disabled>运行任务</button>
+      </div>
+    </header>
+    <div id="workbench-notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <section id="workbench-overview" class="overview" aria-label="任务、来源和结果状态">
+      <div><span>任务状态</span><strong id="workbench-task-state">尚未选择任务</strong><small id="workbench-latest-run">从左侧选择已保存的任务</small></div>
+      <div><span>本页来源</span><strong id="workbench-source-count">—</strong><small>点击“运行任务”时使用</small></div>
+      <div><span>保留结果</span><strong id="workbench-result-state">尚无结果</strong><small><span id="workbench-record-count">—</span><span id="workbench-version">运行后可以查看</span></small></div>
+      <div><span>重复执行</span><strong id="workbench-schedule">按需运行</strong><small id="workbench-schedule-note">也可以回到对话安排定时执行</small></div>
+    </section>
+    <div class="tabs" role="tablist" aria-label="任务内容">
+      <button id="workbench-tab-task" type="button" role="tab" aria-selected="true" aria-controls="workbench-panel-task" data-tab="task">任务概况</button>
+      <button id="workbench-tab-result" type="button" role="tab" aria-selected="false" aria-controls="workbench-panel-result" data-tab="result">查看结果</button>
+      <button id="workbench-tab-rules" type="button" role="tab" aria-selected="false" aria-controls="workbench-panel-rules" data-tab="rules">任务做法</button>
+      <button id="workbench-tab-semantics" type="button" role="tab" aria-selected="false" aria-controls="workbench-panel-semantics" data-tab="semantics">字段与数值核对 <span id="workbench-proposal-count"></span></button>
+    </div>
+    <section id="workbench-panel-task" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-task">
+      <section class="task-next" aria-labelledby="workbench-next-title">
+        <div><span class="task-kicker">接下来</span><h2 id="workbench-next-title">选择一项常做的工作</h2><p id="workbench-next-text">任务会保留来源和做法，方便下次继续使用。</p></div>
+        <div class="task-actions"><button id="workbench-open-result" type="button" disabled>查看结果</button><a id="workbench-task-chat" class="text-action" href="/">回到对话继续</a></div>
+      </section>
+      <section id="workbench-failure" class="run-failure" aria-labelledby="workbench-failure-title" hidden>
+        <span class="task-kicker">最近一次运行</span><h2 id="workbench-failure-title">这次任务没有完成</h2><p id="workbench-failure-reason"></p><p id="workbench-failure-next" class="failure-next"></p><p id="workbench-failure-stage" class="muted"></p>
+        <a id="workbench-failure-chat" class="text-action" href="/">回到对话让 Agent 检查</a>
+        <details><summary>查看运行详情</summary><pre id="workbench-failure-details"></pre></details>
+      </section>
+      <div class="task-grid">
+        <section class="panel"><div class="panel-heading"><div><h2>这项任务会做什么</h2><p id="workbench-task-summary">选择任务后查看已保存的做法。</p></div></div><div class="panel-body"><ol id="workbench-task-steps" class="task-steps"></ol><button id="workbench-open-rules" type="button" disabled>查看或修改做法</button></div></section>
+        <section class="panel"><div class="panel-heading"><div><h2>本页做法使用的来源</h2><p>点击“运行任务”时使用。重复执行沿用已采用的做法；结果实际使用的来源保存在“查看结果”中。</p></div></div><div id="workbench-planned-sources" class="panel-body muted">尚未选择任务。</div></section>
+      </div>
+      <p class="task-reuse-note">想改口径、换资料或安排重复执行，可以直接在对话中告诉 Agent。已保存的做法可以继续修改和复用。</p>
+    </section>
+    <section id="workbench-panel-result" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-result" hidden>
+      <section id="workbench-candidate" class="candidate" hidden>
+        <div><strong>新结果待你确认</strong><p>核对数值与来源后，可以将它作为以后继续使用的结果。</p></div>
+        <button id="workbench-publish" type="button" disabled>确认采用此结果</button>
+      </section>
+      <section class="panel">
+        <div class="panel-heading"><div><h2>结果明细</h2><p id="workbench-result-help">结果按页展示，下载可获取完整数据。</p></div><div class="download-actions"><button id="workbench-download-xlsx" type="button" disabled>下载 Excel</button><button id="workbench-download-csv" type="button" disabled>下载 CSV</button><button id="workbench-download-handoff" type="button" disabled>下载完整结果与依据</button></div></div>
+        <div id="workbench-table-scroll" class="table-scroll" tabindex="0" aria-label="结果数据表">
+          <table><thead id="workbench-table-head"></thead><tbody id="workbench-table-body"></tbody></table>
+          <p id="workbench-result-empty" class="empty">尚无可查看的结果，运行后可在这里核对。</p>
+        </div>
+        <div class="pagination"><span id="workbench-page-info">尚无结果</span><button id="workbench-prev" type="button" disabled>上一页</button><button id="workbench-next" type="button" disabled>下一页</button></div>
+      </section>
+      <div class="context-grid">
+        <section class="panel"><div class="panel-heading"><h2>来源与范围</h2></div><div id="workbench-sources" class="panel-body muted">尚未选择任务。</div></section>
+        <section class="panel"><div class="panel-heading"><h2>处理记录与校验</h2></div><div id="workbench-stages" class="panel-body muted">运行后显示各步处理记录。</div></section>
+      </div>
+      <section class="panel"><div class="panel-heading"><h2>字段含义</h2><span>单位、期间和粒度随结果保留</span></div><div id="workbench-fields" class="field-list panel-body"></div></section>
+    </section>
+    <section id="workbench-panel-rules" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-rules" hidden>
+      <section class="panel"><div class="panel-heading"><h2>已保存的任务做法</h2></div><ol id="workbench-steps" class="steps panel-body"></ol><p id="workbench-steps-empty" class="empty" hidden>尚未定义处理步骤。</p></section>
+      <section class="panel">
+        <div class="panel-heading"><div><h2>调整这项任务</h2><p>可以回到对话说明要改哪里，让 Agent 修改后再运行核对。</p></div><a id="workbench-rules-chat" class="text-action" href="/">在对话中修改</a></div>
+        <details id="workbench-editor-details" class="editor-details"><summary>自行编辑完整规则</summary><p class="muted">这里使用 JSON 格式，可以调整来源、字段、处理顺序和校验条件。保存后需要重新运行，核对新结果后再采用。</p><label for="workbench-plan">完整处理规则</label><textarea id="workbench-plan" spellcheck="false" rows="20" aria-describedby="workbench-editor-state"></textarea><div class="editor-actions"><span id="workbench-editor-state" class="muted">尚未选择任务</span><button id="workbench-reset" type="button" disabled>放弃本页修改并重新载入</button><button id="workbench-save" type="button" class="primary" disabled>保存规则</button></div></details>
+      </section>
+    </section>
+    <section id="workbench-panel-semantics" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-semantics" hidden>
+      <section id="workbench-catalogs-panel" class="panel" aria-labelledby="workbench-catalogs-title">
+        <div class="panel-heading"><div><h2 id="workbench-catalogs-title">我的业务语义包</h2><p>保存有原件依据的字段口径和有效期，让后续任务引用明确版本。</p></div><div class="catalog-heading-actions"><button id="workbench-refresh-catalogs" type="button">刷新语义包</button><a id="workbench-catalog-chat" class="text-action" href="/">在对话中整理新语义包</a></div></div>
+        <div class="panel-body catalog-intro"><p>由当前工作空间负责人（owner）核阅，不代表 IT 签名或组织审批。Agent 可以提出草稿，批准和退休由你核对后明确操作。</p><p class="muted">上传口径文档，在对话中告诉 Agent 要整理哪些业务定义。跨月期间变化时保留旧版本，再核对新版本。</p></div>
+        <p id="workbench-catalog-message" class="catalog-message" role="status" aria-live="polite" hidden></p>
+        <div id="workbench-catalogs" class="catalog-list panel-body" aria-busy="false"></div>
+        <p id="workbench-catalogs-empty" class="empty">打开“字段与数值核对”后读取语义包。</p>
+        <div class="catalog-pagination"><span id="workbench-catalog-page-info" class="muted"></span><button id="workbench-more-catalogs" type="button" hidden>加载更多语义包</button></div>
+      </section>
+      <section class="panel"><div class="panel-heading"><div><h2>核对字段含义与值映射</h2><p>同名字段不一定有相同含义。请核对定义、单位、期间和粒度后作出选择。</p></div><button id="workbench-refresh-proposals" type="button">刷新待核对项</button></div><div id="workbench-proposals" class="proposal-list panel-body"></div><p id="workbench-proposals-empty" class="empty" hidden>暂无待核对项。</p><div class="proposal-pagination"><button id="workbench-more-proposals" type="button" hidden>加载更多</button></div></section>
+      <section class="panel"><div class="panel-heading"><div><h2>非结构化来源的数值核对</h2><p>查看原文与提取数值，核对金额、含义、单位和期间后再用于后续加工。</p></div><button id="workbench-refresh-facts" type="button">刷新来源数值</button></div><div id="workbench-facts" class="facts-list panel-body"></div><p id="workbench-facts-empty" class="empty">打开本页后读取待核对的来源数值。</p></section>
+    </section>
+  </main>
+</div>
+</body>
+</html>

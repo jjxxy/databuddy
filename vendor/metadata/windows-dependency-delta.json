@@ -1,0 +1,40 @@
+{
+  "reason": "Preserve original locks except required Windows wheels/dbt1.11 compatibility; include dlt parquet support",
+  "differences": [
+    {
+      "name": "dbt-core",
+      "linux_lock": "1.12.5",
+      "windows": "1.11.16"
+    },
+    {
+      "name": "dbt-semantic-interfaces",
+      "linux_lock": null,
+      "windows": "0.9.0"
+    },
+    {
+      "name": "importlib_metadata",
+      "linux_lock": "9.0.1",
+      "windows": "8.9.0"
+    },
+    {
+      "name": "mashumaro",
+      "linux_lock": "3.17",
+      "windows": "3.14"
+    },
+    {
+      "name": "pathspec",
+      "linux_lock": "1.0.4",
+      "windows": "0.12.1"
+    },
+    {
+      "name": "pyarrow",
+      "linux_lock": null,
+      "windows": "26.0.0"
+    },
+    {
+      "name": "sqlparse",
+      "linux_lock": "0.6.0",
+      "windows": "0.5.5"
+    }
+  ]
+}

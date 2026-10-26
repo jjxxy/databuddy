@@ -1,0 +1,228 @@
+{
+  "version": "0.18.0",
+  "generated_at": "2026-10-23T09:51:31.709327+00:00",
+  "full_regression": {
+    "tests": 1039,
+    "passed": 1031,
+    "skipped": 8
+  },
+  "supplemental_regression": {
+    "v18-final-integration-supplement.xml": {
+      "tests": 107,
+      "passed": 107
+    },
+    "v18-final-local-backup.xml": {
+      "tests": 40,
+      "passed": 39,
+      "skipped": 1
+    },
+    "v18-verifier-final.xml": {
+      "tests": 7,
+      "passed": 7
+    }
+  },
+  "distinct_test_cases_across_final_runs": {
+    "passed": 1037,
+    "skipped": 8
+  },
+  "explicit_full_suite_skips": [
+    {
+      "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+      "reason": "Restic binary is installed in deployment images"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+      "reason": "requires real PostgreSQL"
+    }
+  ],
+  "ui_tests": {
+    "suites": 8,
+    "passed": true,
+    "scope": "Actual app state and API interactions in jsdom; real-browser layout not verified"
+  },
+  "dependency_lock": "uv lock --check --offline passed; direct PyYAML dependency pinned to existing locked 6.0.3",
+  "syntax_checks": "Python compileall, Bash syntax, JavaScript and OpenCode plugin syntax passed",
+  "opencode_native_workspace_processes_with_simulated_llm": {
+    "ok": true,
+    "version": "0.18.0",
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "opencode_runtime_executed": true,
+    "opencode_version": "2.1.2",
+    "opencode_native_tool_loop_calls": 41,
+    "opencode_native_compaction_calls": 0,
+    "quickstart_cli_executed": true,
+    "quickstart_setup_idempotent": true,
+    "cloud_supervisor": true,
+    "container_health_command_verified": true,
+    "api_worker_agent_healthy": true,
+    "model_configured_share_data": true,
+    "managed_model_selection": true,
+    "business_cannot_configure_models": true,
+    "selected_model_routed_to_upstream": true,
+    "company_configuration_operator_only": true,
+    "catalog_owner_restart_update": true,
+    "agent_authored_versioned_files": true,
+    "complete_csv_workflow": true,
+    "full_rows": 2,
+    "exact_total": "300.000000000002",
+    "complete_excel": true,
+    "docx_pptx_exact_assertions": true,
+    "restart_persistence": true,
+    "model_credentials_survive_restart": true,
+    "model_calls": {
+      "connection": 4,
+      "source_planning": 2,
+      "agent": 41
+    },
+    "native_tool_capability_probes": 4,
+    "workspace_features_executed": true,
+    "workspace_features": {
+      "local_folder_import": true,
+      "local_import_retry_same_snapshots": true,
+      "local_private_files_excluded": true,
+      "multifile_input_order_and_versions": true,
+      "agent_authored_code_visible_locally": true,
+      "complete_cross_file_lookup": true,
+      "installed_skill_loaded_by_agent": true,
+      "actual_stdio_mcp_called_by_agent": true,
+      "explicit_personal_memory_saved": true,
+      "memory_injected_into_model": true,
+      "context_checkpoint_and_original_recovered": true,
+      "critical_constraints_retained": true,
+      "local_export_complete_hashes": true,
+      "local_originals_preserved": true,
+      "memory_survives_restart": true,
+      "forgotten_memory_not_reinjected_after_restart": true,
+      "installed_skill_survives_restart": true,
+      "context_checkpoint_persists_restart": true
+    },
+    "offline_evaluated": false,
+    "network_mode": "connected"
+  },
+  "opencode_native_compaction_with_simulated_llm": {
+    "ok": true,
+    "actual_opencode_binary": true,
+    "opencode_version": "2.1.2",
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "original_native_messages_verified_after_compaction": true,
+    "memory_forget_rotates_native_session": true,
+    "forgotten_content_absent_from_new_context": true,
+    "native_compaction_receipt": {
+      "requested": true,
+      "completed": true,
+      "request_id": "msg_42bf8f4eee825a4ddb2fa233e8a90e8b296fa932",
+      "summary_message_id": "msg_42bf8f4eee825a4ddb2fa233e8a90e8b296fa932",
+      "method": "opencode_summary",
+      "model_pinned": true,
+      "originals_retained": true,
+      "history_messages_before": 3,
+      "context_messages_after": 2
+    },
+    "budgeted_model_calls": 4,
+    "model_requests": [
+      {
+        "kind": "primary",
+        "model": "quickstart-simulated-model",
+        "tools": [
+          "atlas_step"
+        ]
+      },
+      {
+        "kind": "compaction",
+        "model": "quickstart-simulated-model",
+        "tools": [
+          "atlas_step"
+        ]
+      },
+      {
+        "kind": "primary",
+        "model": "quickstart-simulated-model",
+        "tools": [
+          "atlas_step"
+        ]
+      },
+      {
+        "kind": "primary",
+        "model": "quickstart-simulated-model",
+        "tools": [
+          "atlas_step"
+        ]
+      }
+    ],
+    "before_types": [
+      "user",
+      "assistant",
+      "idle"
+    ],
+    "after_types": [
+      "compaction",
+      "idle",
+      "user",
+      "assistant",
+      "idle"
+    ],
+    "critical_preserved": true,
+    "evidence_dir": "verification/v0.18.0"
+  },
+  "deployment_profiles": {
+    "quickstart": "one owner/common-authorized space, native OpenCode session, API/Agent/Worker and SQLite persistent volume",
+    "local": "Docker, explicitly selected folder, immutable imports, visible live code, verified immutable exports",
+    "legacy_split_services": "Atlas legacy loop; native OpenCode HA not qualified"
+  },
+  "personal_identity": "APP_TOKEN is one owner; OIDC scopes personal Skill/MCP/memory, while projects/data/history/results remain shared",
+  "network_policy": "local_only is an application destination policy, not an OS firewall; custom stdio is disabled in this mode",
+  "local_backup": "Legacy format2 backup/restore deliberately rejected; stop services and back up entire chosen folder plus deployment configuration",
+  "business_acceptance": {
+    "base": "acceptance/finance_monthly/README.md",
+    "additional": "acceptance/finance_monthly/V18-WORKSPACE-ACCEPTANCE.md",
+    "additional_cases": 26,
+    "real_llm_status": "not_executed"
+  },
+  "start_here": "QUICKSTART.md",
+  "local_instructions": "LOCAL-MODE.md",
+  "extensions": "EXTENSIONS.md",
+  "memory": "MEMORY-AND-CONTEXT.md",
+  "product_review": "docs/v18-review.md",
+  "docker_image_built_here": false,
+  "docker_container_executed_here": false,
+  "windows_powershell_executed_here": false,
+  "native_macos_picker_executed_here": false,
+  "arm64_runtime_executed_here": false,
+  "offline_evaluated": false,
+  "real_model_evaluated": false,
+  "production_deployed": false,
+  "not_verified": [
+    "Actual Docker build/volume permissions and native Windows/macOS pickers",
+    "Customer LLM intelligence and manual finance acceptance",
+    "Real report website login/iframe exports, OCR and Excel formula recalculation",
+    "Strict disconnected operation with a local model",
+    "Per-task operating-system file/network isolation, independent tenant ACL, production load and native OpenCode HA"
+  ]
+}

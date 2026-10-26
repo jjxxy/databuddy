@@ -1,0 +1,14 @@
+{
+  "namespace": "atlas-production",
+  "image": "YOUR_REGISTRY/atlas@sha256:REPLACE_WITH_BUILT_IMAGE_DIGEST",
+  "gatewayImage": "quay.io/oauth2-proxy/oauth2-proxy@sha256:REPLACE_WITH_APPROVED_DIGEST",
+  "rwxClaim": "existing-ha-rwx-filesystem",
+  "storageId": "REPLACE_WITH_UNIQUE_WORKSPACE_STORAGE_ID",
+  "secretName": "atlas-production-secrets",
+  "hostname": "atlas.example.com",
+  "tlsSecret": "atlas-tls",
+  "ingressClass": "nginx",
+  "provisionPostgres": true,
+  "databaseStorageClass": "REPLACE_WITH_HA_RWO_CSI_CLASS",
+  "databaseSize": "10Gi"
+}

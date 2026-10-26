@@ -1,0 +1,13 @@
+# Optional override. Run: docker compose -f compose.yaml -f compose.multimodal.yaml up -d --build
+services:
+  worker:
+    build:
+      context: .
+      args:
+        WITH_DOCLING: "1"
+    environment:
+      USE_DOCLING: "1"
+    mem_limit: 6g
+  api:
+    environment:
+      USE_DOCLING: "1"

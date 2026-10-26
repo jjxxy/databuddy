@@ -1,0 +1,109 @@
+{
+  "version": "0.17.0",
+  "generated_at": "2026-10-21T09:45:40.609450+00:00",
+  "full_regression": {
+    "tests": 911,
+    "passed": 903,
+    "skipped": 8,
+    "failures": 0,
+    "errors": 0
+  },
+  "explicit_skips": [
+    {
+      "test": "tests.test_backup_cloud.test_real_restic_encrypted_repository_roundtrip_and_wrong_password",
+      "reason": "Restic binary is installed in deployment images"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_deploy.test_database_session_loss_fences_late_writes",
+      "reason": "requires real PostgreSQL"
+    },
+    {
+      "test": "tests.test_enterprise_migration.test_atomic_sqlite_migration_keeps_key_audit_rows_and_reuses_marker",
+      "reason": "requires real PostgreSQL"
+    }
+  ],
+  "ui_tests": "All six jsdom suites passed, actual app API interactions; no real-browser layout claim",
+  "dependency_lock": "uv lock --check --offline passed",
+  "syntax_checks": "Python compileall and Bash syntax passed",
+  "opencode_native_processes_with_simulated_llm": {
+    "ok": true,
+    "version": "0.17.0",
+    "simulated_model": true,
+    "real_model_evaluated": false,
+    "docker_executed": false,
+    "opencode_runtime_executed": true,
+    "opencode_version": "2.1.2",
+    "opencode_native_tool_loop_calls": 9,
+    "quickstart_cli_executed": true,
+    "quickstart_setup_idempotent": true,
+    "cloud_supervisor": true,
+    "container_health_command_verified": true,
+    "api_worker_agent_healthy": true,
+    "model_configured_share_data": true,
+    "managed_model_selection": true,
+    "business_cannot_configure_models": true,
+    "selected_model_routed_to_upstream": true,
+    "company_configuration_operator_only": true,
+    "catalog_owner_restart_update": true,
+    "agent_authored_versioned_files": true,
+    "complete_csv_workflow": true,
+    "full_rows": 2,
+    "exact_total": "300.000000000002",
+    "complete_excel": true,
+    "docx_pptx_exact_assertions": true,
+    "restart_persistence": true,
+    "model_credentials_survive_restart": true,
+    "model_calls": {
+      "connection": 4,
+      "source_planning": 1,
+      "agent": 9
+    },
+    "native_tool_capability_probes": 4
+  },
+  "opencode_release_provenance": "deploy/opencode-release-v17.json",
+  "business_acceptance_kit": {
+    "path": "acceptance/finance_monthly/README.md",
+    "manual_cases": 18,
+    "gold_scenarios": 5,
+    "fixture_tests": 22,
+    "real_llm_status": "not_executed"
+  },
+  "deployment_profile": "Default quickstart/cloud: one common-owned space, OpenCode native session loop, API/Agent/Worker, SQLite persistent volume",
+  "legacy_profiles": "Old split-role compose and generated Kubernetes explicitly retain Atlas legacy loop; no native OpenCode HA claim",
+  "configuration": "Owner file model catalog; user sees named models only; separate operator credential; no end-user model engine/config form",
+  "docker_image_built_here": false,
+  "docker_container_executed_here": false,
+  "windows_powershell_executed_here": false,
+  "arm64_runtime_executed_here": false,
+  "real_model_evaluated": false,
+  "production_deployed": false,
+  "not_verified": [
+    "Final Docker build and capabilities/volume permissions",
+    "Native Windows Docker Desktop/PowerShell",
+    "Real provider business intelligence and full manual finance scenario",
+    "Real company websites/OCR/formula recalculation",
+    "Production load, backup recovery, independent-user multitenancy and native OpenCode HA"
+  ],
+  "product_review": "PRODUCTION-REVIEW-v0.17.md",
+  "start_here": "QUICKSTART.md"
+}

@@ -1,0 +1,13 @@
+{
+  "default_model_id": "finance",
+  "models": [
+    {
+      "id": "finance",
+      "name": "业务分析",
+      "base_url": "https://your-llm.example.com/v1",
+      "model": "YOUR_MODEL",
+      "api_key": "YOUR_API_KEY",
+      "share_data": true
+    }
+  ]
+}
