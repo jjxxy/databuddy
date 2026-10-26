@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="26" skipped="0" tests="42" time="1.262" timestamp="2026-10-26T20:51:12.376433+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw-9007199254740993]" time="0.088"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '9007199254740993'
+sql = 'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw-99999999999999.99]" time="0.014"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '99999999999999.99'
+sql = 'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw-460001.30]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '460001.30'
+sql = 'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw-0.13]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '0.13'
+sql = 'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw-None]" time="0.013"><failure message="Failed: DID NOT RAISE WorkflowError">amount = None
+sql = 'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw-9007199254740993]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '9007199254740993'
+sql = 'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw-99999999999999.99]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '99999999999999.99'
+sql = 'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw-460001.30]" time="0.014"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '460001.30'
+sql = 'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw-0.13]" time="0.019"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '0.13'
+sql = 'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw-None]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">amount = None
+sql = 'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate-9007199254740993]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '9007199254740993'
+sql = 'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate-99999999999999.99]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '99999999999999.99'
+sql = 'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate-460001.30]" time="0.017"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '460001.30'
+sql = 'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate-0.13]" time="0.014"><failure message="Failed: DID NOT RAISE WorkflowError">amount = '0.13'
+sql = 'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss[WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate-None]" time="0.013"><failure message="Failed: DID NOT RAISE WorkflowError">amount = None
+sql = 'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate'
+
+    @pytest.mark.parametrize('amount',['9007199254740993','99999999999999.99','460001.30','0.13',None])
+    @pytest.mark.parametrize('sql',[
+        'SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'SELECT id, CAST(amount // 1 AS DECIMAL(38,12)) AS amount FROM raw',
+        'WITH intermediate AS (SELECT id, amount / 1 AS amount FROM raw) '
+        'SELECT id, CAST(amount AS DECIMAL(38,12)) AS amount FROM intermediate',
+    ])
+    def test_sql_division_is_rejected_before_decimal_cast_can_hide_precision_loss(amount,sql):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:34: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(CAST(amount AS REAL) AS DECIMAL(38,12))]" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))]" time="0.013"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))]" time="0.013"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))]" time="0.012"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(amount * 1e0 AS DECIMAL(38,12))]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(amount * 1e0 AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(amount + 0.0E0 AS DECIMAL(38,12))]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(amount + 0.0E0 AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float[CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">expression = 'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))'
+
+    @pytest.mark.parametrize('expression',[
+        'CAST(CAST(amount AS DOUBLE) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS REAL) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT4) AS DECIMAL(38,12))',
+        'CAST(CAST(amount AS FLOAT8) AS DECIMAL(38,12))',
+        'TRY_CAST(CAST(amount AS DOUBLE PRECISION) AS DECIMAL(38,12))',
+        'CAST(amount * 1e0 AS DECIMAL(38,12))',
+        'CAST(amount + 0.0E0 AS DECIMAL(38,12))',
+        'CAST(AVG(amount) OVER (ORDER BY id) AS DECIMAL(38,12))',
+    ])
+    def test_cast_aliases_scientific_literals_and_average_cannot_smuggle_float(expression):
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:52: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_float_returning_date_extract_cannot_promote_financial_arithmetic[EPOCH]" time="0.016"><failure message="Failed: DID NOT RAISE WorkflowError">part = 'EPOCH'
+
+    @pytest.mark.parametrize('part',['EPOCH','JULIAN'])
+    def test_float_returning_date_extract_cannot_promote_financial_arithmetic(part):
+        sql="SELECT id, CAST(amount + EXTRACT("+part+" FROM DATE '2026-09-01') AS DECIMAL(38,12)) AS amount FROM raw"
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:61: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_float_returning_date_extract_cannot_promote_financial_arithmetic[JULIAN]" time="0.017"><failure message="Failed: DID NOT RAISE WorkflowError">part = 'JULIAN'
+
+    @pytest.mark.parametrize('part',['EPOCH','JULIAN'])
+    def test_float_returning_date_extract_cannot_promote_financial_arithmetic(part):
+        sql="SELECT id, CAST(amount + EXTRACT("+part+" FROM DATE '2026-09-01') AS DECIMAL(38,12)) AS amount FROM raw"
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:61: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[amount-9007199254740993]" time="0.019" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[CAST(amount AS DECIMAL(38,12))-9007199254740993]" time="0.014" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[amount + CAST(1 AS DECIMAL(38,12))-9007199254740994]" time="0.014" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[amount - 1-9007199254740992]" time="0.013" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[amount * 0.5-4503599627370496.5]" time="0.015" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[ROUND(amount,2)-9007199254740993]" time="0.016" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_fixed_point_sql_is_still_exact[amount + EXTRACT(YEAR FROM DATE '2026-09-01')-9007199254743019]" time="0.015" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_sql_null_identity_remains_null_without_a_float_repair" time="0.015" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_existing_compute_decimal_division_is_an_exact_available_alternative[9007199254740993]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_existing_compute_decimal_division_is_an_exact_available_alternative[99999999999999.99]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_existing_compute_decimal_division_is_an_exact_available_alternative[460001.30]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_existing_compute_decimal_division_is_an_exact_available_alternative[0.13]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_exact_compute_zero_and_null_guards_are_preserved[12-0-DIVIDE_BY_ZERO]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_exact_compute_zero_and_null_guards_are_preserved[12-None-NULL_VALUE]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_exact_compute_zero_and_null_guards_are_preserved[None-1-NULL_VALUE]" time="0.001" /><testcase classname="tests.test_sql_decimal_intermediates" name="test_sql_zero_division_is_rejected_instead_of_becoming_a_cast_null_or_infinity" time="0.015"><failure message="Failed: DID NOT RAISE WorkflowError">def test_sql_zero_division_is_rejected_instead_of_becoming_a_cast_null_or_infinity():
+&gt;       with pytest.raises(WorkflowError) as error:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE WorkflowError
+
+tests\test_sql_decimal_intermediates.py:113: Failed</failure></testcase><testcase classname="tests.test_sql_decimal_intermediates" name="test_safe_sql_sum_count_min_max_remain_available" time="0.019" /></testsuite></testsuites>

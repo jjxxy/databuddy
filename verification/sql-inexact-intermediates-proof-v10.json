@@ -1,0 +1,32 @@
+{
+  "synthetic_only": true,
+  "paid_model_calls": 0,
+  "user_data_accessed": false,
+  "production_artifacts_modified": false,
+  "duckdb_version": "1.5.6",
+  "backend_demo_is_not_an_accepted_workflow_result": true,
+  "query": "SELECT id, CAST(amount / 1 AS DECIMAL(38,12)) AS amount FROM raw",
+  "cases": [
+    {
+      "input_amount": "9007199254740993",
+      "unguarded_backend_cast_result": "9007199254740992.000000000000",
+      "unguarded_exact_equal": false,
+      "guarded_workflow": {
+        "code": "SQL_INEXACT_NUMERIC",
+        "stage_id": "sql",
+        "message": "SQL中的该数值运算可能经过二进制浮点，CAST回DECIMAL也不能恢复精度；请用精确十进制字面量，均值先aggregate求和与计数，比率或除法改用compute并明确舍入位数"
+      }
+    },
+    {
+      "input_amount": "99999999999999.99",
+      "unguarded_backend_cast_result": "99999999999999.987584860160",
+      "unguarded_exact_equal": false,
+      "guarded_workflow": {
+        "code": "SQL_INEXACT_NUMERIC",
+        "stage_id": "sql",
+        "message": "SQL中的该数值运算可能经过二进制浮点，CAST回DECIMAL也不能恢复精度；请用精确十进制字面量，均值先aggregate求和与计数，比率或除法改用compute并明确舍入位数"
+      }
+    }
+  ],
+  "full_finance_G1_passed": false
+}

@@ -8,9 +8,21 @@ from agent_service.config import DATA
 from agent_service.execution import process_once
 from agent_service.jobs import get_job,save
 from agent_service.sources import revision
-from agent_service.store import get,put,uid,seal,now
+from agent_service.store import get,put,patch,all_items,uid,seal,now
 from test_mixed_percentage_source import workbook
 from test_project_data import project,registered
+
+
+@pytest.fixture(autouse=True)
+def finish_only_this_test_diagnostic_turns():
+    # tick() is a real global worker. Preserve receipts/logs, but do not let an
+    # unfinished synthetic diagnostic consume a later test's mocked model.
+    assert DATA.resolve().name.startswith('atlas-tests-')
+    previous={value['id'] for value in all_items('turn')}
+    yield
+    for value in all_items('turn'):
+        if value['id'] not in previous and value.get('state') not in ('done','failed'):
+            patch('turn',value['id'],state='done')
 
 
 def source(pid,path):
@@ -124,3 +136,16 @@ def test_waiting_tool_cannot_claim_another_workflow_failure(failed_case):
     waiting=copy.deepcopy(turn);waiting['state']='waiting_data_workflow';waiting['data_workflow_job']=run['id']
     waiting['agent_trace'][-1]['arguments']['workflow_id']='wf_another_flow'
     with pytest.raises(ValueError,match='当前待处理步骤不一致'):data_tools.resume(waiting)
+
+
+def test_inexact_sql_failure_preserves_static_safe_decimal_repair_guidance(failed_case):
+    pid,wid,turn,run=failed_case
+    marker='SYNTHETIC_PRIVATE_SQL_AND_CELL'
+    save(dict(get_job(run['id']),error=marker,workflow_failure={
+        'stage_id':'kept','code':'SQL_INEXACT_NUMERIC','message':marker,'details':{'sql':marker}}))
+    result=data.workflow_run_diagnostic(pid,wid,run['id'])
+    assert not result['result_available'] and result['repairable']
+    assert result['workflow_failure']['code']=='SQL_INEXACT_NUMERIC'
+    assert '二进制浮点' in result['workflow_failure']['message']
+    assert all(term in result['next_step'] for term in ('aggregate','compute','rounding_scale','分母为零'))
+    assert marker not in json.dumps(result) and get('data_workflow',wid)['published_run'] is None

@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "test": "real_model_cross_turn_history_recovery",
+  "artifact": "r17",
+  "synthetic_data_only": true,
+  "user_workspace_accessed": false,
+  "full_finance_G1_passed": false,
+  "model_configuration_contents_logged": false,
+  "real_model_evaluated": true,
+  "task_contract_kind": "file",
+  "required_evidence": [
+    "file"
+  ],
+  "outcome": "verified_complete",
+  "state": "done",
+  "model_calls": 5,
+  "tool_counts": {
+    "read_context_original:done": 1,
+    "read_tool_result:done": 2,
+    "write_file:done": 1
+  },
+  "explicit_scoped_prior_receipt_recovered": true,
+  "actual_file_contains_original_case_code": true,
+  "actual_file_contains_confirmed_rate": true,
+  "output_sha256": "bec0eed76b2eb343382902070da40d796cd52e1cf7c97e1aff6d0476ec840904",
+  "did_not_run_data_workflow": true,
+  "did_not_publish": true,
+  "task_verified": true,
+  "history_recovery_mechanism_passed": true,
+  "completion_outcome_passed": true
+}

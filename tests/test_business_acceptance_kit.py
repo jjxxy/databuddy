@@ -143,9 +143,9 @@ def test_export_checker_reads_real_xlsx_strings_and_formula_failure(verifier):
 
 
 def test_cli_works_without_project_imports(tmp_path):
-    result=subprocess.run([sys.executable,'-I',str(KIT/'verify_export.py'),
+    result=subprocess.run([sys.executable,'-I','-X','utf8',str(KIT/'verify_export.py'),
                            str(KIT/'expected'/'baseline_sep.csv'),'--scenario','baseline_sep'],
-                          text=True,capture_output=True,cwd=tmp_path,timeout=10)
+                          text=True,encoding='utf-8',capture_output=True,cwd=tmp_path,timeout=10)
     assert result.returncode==0,result.stdout+result.stderr
     assert json.loads(result.stdout)['passed'] is True
 

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="6" time="2.327" timestamp="2026-10-26T20:55:48.870362+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_owner_stop_async_jobs" name="test_owner_stop_cancels_queued_workflow_by_exact_origin_even_before_link[linked_job]" time="0.607"><failure message="AssertionError: assert False is True&#10; +  where False = &lt;built-in method get of dict object at 0x000001FF50C14640&gt;('cancel_requested')&#10; +    where &lt;built-in method get of dict object at 0x000001FF50C14640&gt; = {'project_id': 'p_e868730f4a80c95befb95730', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...CcETnPaMLjYZIHCeyI1ra9MDqYAYMFa595GBOEyvGbt21gDtwvlQ', ...}}, 'originating_turn_id': 't_69ecacd938b5e0fbf8991a27', ...}.get">link = True
+
+    @pytest.mark.parametrize('link',[True,False],ids=['linked_job','admitted_before_turn_link'])
+    def test_owner_stop_cancels_queued_workflow_by_exact_origin_even_before_link(link):
+        pid=project();src=source(pid);wid=registered(pid,document(src['id']));value=task(pid)
+        run=data.enqueue_workflow(pid,wid,originating_turn_id=value['id'])
+        assert run['originating_turn_id']==value['id']
+        if link:patch('turn',value['id'],state='waiting_data_workflow',data_workflow_job=run['id'])
+        stop(pid)
+        assert get('turn',value['id'])['outcome']=='cancelled'
+        cancelled=get_job(run['id'])
+&gt;       assert cancelled.get('cancel_requested') is True
+E       AssertionError: assert False is True
+E        +  where False = &lt;built-in method get of dict object at 0x000001FF50C14640&gt;('cancel_requested')
+E        +    where &lt;built-in method get of dict object at 0x000001FF50C14640&gt; = {'project_id': 'p_e868730f4a80c95befb95730', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...CcETnPaMLjYZIHCeyI1ra9MDqYAYMFa595GBOEyvGbt21gDtwvlQ', ...}}, 'originating_turn_id': 't_69ecacd938b5e0fbf8991a27', ...}.get
+
+tests\test_owner_stop_async_jobs.py:49: AssertionError</failure></testcase><testcase classname="tests.test_owner_stop_async_jobs" name="test_owner_stop_cancels_queued_workflow_by_exact_origin_even_before_link[admitted_before_turn_link]" time="0.141"><failure message="AssertionError: assert False is True&#10; +  where False = &lt;built-in method get of dict object at 0x000001FF4CAF9000&gt;('cancel_requested')&#10; +    where &lt;built-in method get of dict object at 0x000001FF4CAF9000&gt; = {'project_id': 'p_3a5f543964a972f3195ec62c', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...YmU0a3q4fjUnZZm8GWhAWBbo0sBcvS6Zks1ivn-um78_3cfZaAns', ...}}, 'originating_turn_id': 't_e8f1f33ccd5f15c61fc557af', ...}.get">link = False
+
+    @pytest.mark.parametrize('link',[True,False],ids=['linked_job','admitted_before_turn_link'])
+    def test_owner_stop_cancels_queued_workflow_by_exact_origin_even_before_link(link):
+        pid=project();src=source(pid);wid=registered(pid,document(src['id']));value=task(pid)
+        run=data.enqueue_workflow(pid,wid,originating_turn_id=value['id'])
+        assert run['originating_turn_id']==value['id']
+        if link:patch('turn',value['id'],state='waiting_data_workflow',data_workflow_job=run['id'])
+        stop(pid)
+        assert get('turn',value['id'])['outcome']=='cancelled'
+        cancelled=get_job(run['id'])
+&gt;       assert cancelled.get('cancel_requested') is True
+E       AssertionError: assert False is True
+E        +  where False = &lt;built-in method get of dict object at 0x000001FF4CAF9000&gt;('cancel_requested')
+E        +    where &lt;built-in method get of dict object at 0x000001FF4CAF9000&gt; = {'project_id': 'p_3a5f543964a972f3195ec62c', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...YmU0a3q4fjUnZZm8GWhAWBbo0sBcvS6Zks1ivn-um78_3cfZaAns', ...}}, 'originating_turn_id': 't_e8f1f33ccd5f15c61fc557af', ...}.get
+
+tests\test_owner_stop_async_jobs.py:49: AssertionError</failure></testcase><testcase classname="tests.test_owner_stop_async_jobs" name="test_owner_cancel_before_final_enqueue_rejects_late_workflow_admission" time="0.118"><failure message="Failed: DID NOT RAISE any of (Cancelled, ValueError)">def test_owner_cancel_before_final_enqueue_rejects_late_workflow_admission():
+        pid=project();src=source(pid);wid=registered(pid,document(src['id']));value=task(pid)
+        stop(pid)
+        assert get('turn',value['id'])['outcome']=='cancelled'
+&gt;       with pytest.raises((Cancelled,ValueError)):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE any of (Cancelled, ValueError)
+
+tests\test_owner_stop_async_jobs.py:57: Failed</failure></testcase><testcase classname="tests.test_owner_stop_async_jobs" name="test_owner_stop_cancels_linked_report_fetch_without_contacting_connector" time="0.034"><failure message="ValueError: 缺少此报告要求的筛选参数：office">monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000001FF50A69E80&gt;
+
+    def test_owner_stop_cancels_linked_report_fetch_without_contacting_connector(monkeypatch):
+        pid=project();configured=connector(monkeypatch,pid);value=task(pid)
+&gt;       run=reports.enqueue_fetch(pid,configured['id'],operation_id='audit_'+uid())
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_owner_stop_async_jobs.py:64: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+agent_service\project_reports.py:160: in enqueue_fetch
+    cfg,request=_frozen_request(pid,connector,filters,context,'queued_request')
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+pid = 'p_f11d8adc5cbd08f927f96192'
+connector = {'project_id': 'p_f11d8adc5cbd08f927f96192', 'name': '办事处收入报告', 'format': 'csv', 'enabled': True, ...}
+filters = None, context = None, run_id = 'queued_request'
+
+    def _frozen_request(pid,connector,filters,context,run_id):
+        cfg=unseal(connector['secret_config'])
+        requested_filters=dict(cfg.get('default_filters',{}));requested_filters.update(filters or {})
+        if set(requested_filters)-set(cfg.get('allowed_filter_keys',[])):
+            raise ValueError('获取请求包含未在此连接中批准的筛选参数')
+        declared_context=dict(cfg.get('default_context',{}))
+        for key,value in (context or {}).items():
+            if key in declared_context and declared_context[key]!=value:
+                raise ValueError('固定报告的语义上下文不能由获取请求修改')
+            declared_context[key]=value
+        scope_id='report_'+_digest([pid,connector['id'],connector['revision']])[:48]
+        try:
+            request=ReportRequest(scope_id=scope_id,request_id=run_id,url=cfg['url'],format=cfg['format'],
+                                  filters=requested_filters,context=declared_context,**cfg.get('verification',{}))
+        except Exception:
+            missing=(set(cfg.get('verification',{}).get('filter_columns',{}))|
+                     set(cfg.get('verification',{}).get('filter_echo_paths',{})))-set(requested_filters)
+&gt;           if missing:raise ValueError('缺少此报告要求的筛选参数：'+', '.join(sorted(missing))) from None
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           ValueError: 缺少此报告要求的筛选参数：office
+
+agent_service\project_reports.py:151: ValueError</failure></testcase><testcase classname="tests.test_owner_stop_async_jobs" name="test_stop_does_not_cancel_workflow_owned_by_another_conversation" time="0.185"><failure message="AssertionError: assert False is True&#10; +  where False = &lt;built-in method get of dict object at 0x000001FF50CE7580&gt;('cancel_requested')&#10; +    where &lt;built-in method get of dict object at 0x000001FF50CE7580&gt; = {'project_id': 'p_bdd9482ec70d9f92a2441fca', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...RwTxpiyveWkEtzu3FEBYvS3tp1hfs8d_ddz1pSmk3pyUpjftusNb', ...}}, 'originating_turn_id': 't_77e94b1e51b0de6d4e02b989', ...}.get&#10; +      where {'project_id': 'p_bdd9482ec70d9f92a2441fca', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...RwTxpiyveWkEtzu3FEBYvS3tp1hfs8d_ddz1pSmk3pyUpjftusNb', ...}}, 'originating_turn_id': 't_77e94b1e51b0de6d4e02b989', ...} = get_job('e3ede63047ee3eafa6105aa6')">def test_stop_does_not_cancel_workflow_owned_by_another_conversation():
+        pid=project();src=source(pid)
+        mine=registered(pid,document(src['id']),path='workflows/mine.json')
+        other=registered(pid,document(src['id']),path='workflows/other.json')
+        other_session=conversation.create_session(pid,conversation.SessionInput(request_id='other_'+uid()))['id']
+        first=task(pid);second=task(pid,other_session)
+        own=data.enqueue_workflow(pid,mine,originating_turn_id=first['id'])
+        foreign=data.enqueue_workflow(pid,other,originating_turn_id=second['id'])
+        patch('turn',first['id'],state='waiting_data_workflow',data_workflow_job=own['id'])
+        patch('turn',second['id'],state='waiting_data_workflow',data_workflow_job=foreign['id'])
+        stop(pid)
+        assert get('turn',second['id'])['state']=='waiting_data_workflow'
+        assert get_job(foreign['id'])['status']=='queued' and not get_job(foreign['id']).get('cancel_requested')
+&gt;       assert get_job(own['id']).get('cancel_requested') is True
+E       AssertionError: assert False is True
+E        +  where False = &lt;built-in method get of dict object at 0x000001FF50CE7580&gt;('cancel_requested')
+E        +    where &lt;built-in method get of dict object at 0x000001FF50CE7580&gt; = {'project_id': 'p_bdd9482ec70d9f92a2441fca', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...RwTxpiyveWkEtzu3FEBYvS3tp1hfs8d_ddz1pSmk3pyUpjftusNb', ...}}, 'originating_turn_id': 't_77e94b1e51b0de6d4e02b989', ...}.get
+E        +      where {'project_id': 'p_bdd9482ec70d9f92a2441fca', 'workflow_document': {'version': 1, 'plan': {'version': 1, 'name': 'Compl...RwTxpiyveWkEtzu3FEBYvS3tp1hfs8d_ddz1pSmk3pyUpjftusNb', ...}}, 'originating_turn_id': 't_77e94b1e51b0de6d4e02b989', ...} = get_job('e3ede63047ee3eafa6105aa6')
+
+tests\test_owner_stop_async_jobs.py:86: AssertionError</failure></testcase><testcase classname="tests.test_owner_stop_async_jobs" name="test_stop_does_not_cancel_another_conversations_active_run_borrowed_by_this_turn" time="0.159" /></testsuite></testsuites>

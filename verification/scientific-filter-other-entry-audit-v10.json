@@ -1,0 +1,14 @@
+{
+  "synthetic_only": true,
+  "paid_model_calls": 0,
+  "user_database_accessed": false,
+  "production_modified": false,
+  "expected_matching_rows": 2,
+  "pipeline_status": "validated",
+  "pipeline_validated": true,
+  "actual_matching_rows": 1,
+  "actual_selected_amounts": [
+    "1000000000000001.00"
+  ],
+  "actual_generated_predicate": "{{ config(materialized='table') }}\nselect * from {{ ref('prepared_objects') }} where (cast(replace(cast(\"c_3\" as varchar),',','') as decimal(38,12)) > 1E+15)"
+}

@@ -1,0 +1,67 @@
+{
+  "synthetic_data_only": true,
+  "private_profile_accessed": false,
+  "real_model_calls": 0,
+  "visual_rendering_performed": false,
+  "numeric_roundtrips": [
+    {
+      "spec_numeric_token": "9007199254740993",
+      "xlsx_stored_value": "9007199254740992",
+      "equal_exact_decimal": false,
+      "structural_validation": true
+    },
+    {
+      "spec_numeric_token": "9007199254740.000001",
+      "xlsx_stored_value": "9007199254740",
+      "equal_exact_decimal": false,
+      "structural_validation": true
+    },
+    {
+      "spec_numeric_token": "118.150000000001",
+      "xlsx_stored_value": "118.150000000001",
+      "equal_exact_decimal": true,
+      "structural_validation": true
+    },
+    {
+      "spec_numeric_token": "1e309",
+      "xlsx_stored_value": null,
+      "equal_exact_decimal": false,
+      "structural_validation": true
+    }
+  ],
+  "cache_integrity_rebound": {
+    "tamper_initially_rejected": true,
+    "same_artifact_id": true,
+    "later_render_returns_success": true,
+    "trusted_sha_changed": true,
+    "corrupt_file_now_downloadable": true,
+    "zip_valid": false,
+    "claimed_structural_validation": true
+  },
+  "business_report_ppt_layout": {
+    "validator_accepts_label": true,
+    "office_numeric_readback_passed": true,
+    "measurements": [
+      {
+        "paragraphs": 41,
+        "font_sizes_pt": [
+          17.0
+        ],
+        "text_font_height_sum_pt": 697.0,
+        "serialized_row_height_pt": 146.15992125984252,
+        "line_height_sum_exceeds_row": true,
+        "table_bottom_pt": 308.1599212598425,
+        "slide_height_pt": 540.0,
+        "auto_fit_modes": [
+          "None"
+        ],
+        "exact_label_preserved": true
+      }
+    ],
+    "rendered_visual_outcome": "not evaluated; serialized row has less height than sum of explicit paragraph font heights"
+  },
+  "business_report_concurrent_export": {
+    "same_path": true,
+    "saved_hash_matches": true
+  }
+}

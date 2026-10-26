@@ -1,0 +1,48 @@
+{
+  "synthetic_only": true,
+  "paid_model_calls": 0,
+  "user_database_accessed": false,
+  "production_modified": false,
+  "pipeline_status": "validated",
+  "pipeline_validated": true,
+  "prior_user_results_touched": false,
+  "actual_generated_division_present": true,
+  "pipeline_rows": [
+    {
+      "synthetic_id": "A",
+      "original_amount": "9007199254740993",
+      "computed_amount": "9007199254740992.0",
+      "computed_storage_type": "DOUBLE",
+      "exact_equal": false
+    },
+    {
+      "synthetic_id": "B",
+      "original_amount": "99999999999999.99",
+      "computed_amount": "99999999999999.98",
+      "computed_storage_type": "DOUBLE",
+      "exact_equal": false
+    }
+  ],
+  "actual_authenticated_query_status": 200,
+  "query_rows": [
+    [
+      "A",
+      "9007199254740992.000000000000"
+    ],
+    [
+      "B",
+      "99999999999999.987584860160"
+    ]
+  ],
+  "fixture_adopted_explicitly": true,
+  "legacy_stored_double_cast_without_division_in_query": [
+    [
+      "A",
+      "9007199254740992.000000000000"
+    ],
+    [
+      "B",
+      "99999999999999.987584860160"
+    ]
+  ]
+}

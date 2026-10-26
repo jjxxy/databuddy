@@ -9,7 +9,8 @@ const NATIVE_COUNTS=new Set(['source_schema','source_preview','read_source_table
 const META=new Set(['source_id','source_ids','source_revision','source_revisions','revision','revision_id','content_hash','content_sha256',
  'run_id','result_id','workflow_id','pipeline_id','plan_sha256','commit','sha256','path','status','complete','records','total','offset','next_offset',
  'sample_only','complete_source_read','evidence','source_refs','input_refs','inputs','validation','error','code','semantic_status','metric_status',
- 'reading_boundary_required','verified','integrity_verified','verification_scope','download_url','preview_url']);
+ 'reading_boundary_required','verified','integrity_verified','verification_scope','download_url','preview_url',
+ 'recovery','source_turn_id','draft_sha256','latest_run']);
 
 function receipt(text){
  if(typeof text!=='string')return null;
@@ -55,8 +56,11 @@ function metadata(value,tool){
 function compact(value){
  const {reply,step}=value.parsed,observation=step.observation;
  const recovered=step.tool==='read_tool_result'&&/^[-\w]{1,64}$/.test(step.arguments?.step_id||'');
- const recovery={tool:'read_tool_result',step_id:recovered?step.arguments.step_id:step.step_id,
+ let recovery={tool:'read_tool_result',step_id:recovered?step.arguments.step_id:step.step_id,
   offset:recovered&&Number.isInteger(step.arguments.offset)?step.arguments.offset:0};
+ if(recovered&&step.arguments.source_turn_id)recovery.source_turn_id=step.arguments.source_turn_id;
+ else if(observation?.source_turn_id)recovery.source_turn_id=observation.source_turn_id;
+ if(['read_context_original','read_context_checkpoint'].includes(step.tool))recovery={tool:step.tool,...step.arguments};
  const record={...step,observation:{...metadata(observation,step.tool),not_full_result:true,
   context_receipt_sha256:createHash('sha256').update(JSON.stringify(observation)??'null').digest('hex'),
   evidence_scope:'receipt_metadata_only; recover original values or schemas before relying on them',
@@ -99,6 +103,17 @@ function referenceTo(value,original){
   context_reference:{step_id:original.parsed.step.step_id,in_current_context:true,
    scope:'same durable original result; returned values, formats and source metadata are already present, not a financial approval'},
   duplicate_result_view:true}}});
+}
+function pageIdentity(value){
+ const step=value.parsed.step,r=step.observation?.recovery;
+ if(step.status!=='done'||step.observation?.executed===false)return null;
+ return r?.kind&&r?.resource_id&&r?.version_sha256?JSON.stringify([
+  r.kind,r.resource_id,r.version_sha256,r.offset_unit,r.offset,r.returned_characters]):null;
+}
+function resourceIdentity(value){
+ const step=value.parsed.step,r=step.observation?.recovery;
+ if(step.status!=='done'||step.observation?.executed===false)return null;
+ return r?.kind&&r?.resource_id?JSON.stringify([r.kind,r.resource_id]):null;
 }
 
 function canonical(value){
@@ -173,14 +188,48 @@ function shareLayoutCandidates(messages){
  return {messages:rewritten,count};
 }
 
+function shareWorkflowDocuments(messages){
+ const rewritten=messages.slice();let count=0;
+ for(const value of slots(messages)){
+  const {reply,step}=value.parsed,observation=step.observation,document=observation?.document;
+  if(!['register_data_workflow','inspect_data_workflow'].includes(step.tool)||!document||typeof document!=='object')continue;
+  const plan=document.plan,inputs=observation.inputs,shared={...observation};
+  const equal=(a,b)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+  if(inputs&&plan?.inputs&&document.bindings&&equal(Object.keys(inputs).sort(),Object.keys(plan.inputs).sort())
+    &&equal(Object.keys(inputs).sort(),Object.keys(document.bindings).sort())
+    &&Object.entries(inputs).every(([key,item])=>item&&equal(Object.keys(item).sort(),['binding','schema'])
+      &&equal(item.binding,document.bindings[key])&&equal(item.schema,plan.inputs[key]))){
+   delete shared.inputs;shared.inputs_reference={binding:'#/document/bindings/<alias>',schema:'#/document/plan/inputs/<alias>',exact_values_already_present:true};
+  }
+  if(Array.isArray(observation.steps)&&equal(observation.steps,plan?.stages)){
+   delete shared.steps;shared.steps_reference='#/document/plan/stages';
+  }
+  if(JSON.stringify(shared).length>=JSON.stringify(observation).length)continue;
+  const message={...rewritten[value.index]},text=value.parsed.encode({...reply,observation:{...step,observation:shared}});
+  if(value.partIndex===undefined)message.content=text;
+  else{message.content=message.content.slice();message.content[value.partIndex]={...message.content[value.partIndex],[value.field]:text};}
+  rewritten[value.index]=message;count++;
+ }
+ return {messages:rewritten,count};
+}
+
 export function projectRequest(body){
- const layouts=shareLayoutCandidates(Array.isArray(body.messages)?body.messages:[]),messages=layouts.messages;
- const references=slots(messages),rewritten=messages.slice(),byId=new Map(),latestTables=new Map();
+ const workflows=shareWorkflowDocuments(Array.isArray(body.messages)?body.messages:[]),layouts=shareLayoutCandidates(workflows.messages),messages=layouts.messages;
+ const references=slots(messages),rewritten=messages.slice(),byId=new Map(),latestTables=new Map(),working=new Map(),versions=new Map(),pages=new Map();
  let compacted=0,duplicateResults=0;
  for(const value of references){
   byId.set(value.parsed.step.step_id,value);
   const key=tableKey(value);if(key)latestTables.set(key,value);
+   const step=value.parsed.step,r=step.observation?.recovery,resource=resourceIdentity(value);
+   if(resource)versions.set(resource,r.version_sha256);
+   if(['register_data_workflow','inspect_data_workflow'].includes(step.tool)&&step.observation?.workflow_id)
+    working.set(JSON.stringify(['workflow',step.observation.workflow_id]),value);
  }
+ for(const value of references){
+  const resource=resourceIdentity(value),r=value.parsed.step.observation?.recovery,identity=pageIdentity(value);
+  if(identity&&r.version_sha256===versions.get(resource)&&!pages.has(identity))pages.set(identity,value);
+ }
+ const retainedPages=new Set(pages.values());
  const keptTables=new Set();let workingCharacters=0;
  for(const value of [...latestTables.values()].reverse()){
   const size=observationCharacters(value);
@@ -192,15 +241,20 @@ export function projectRequest(body){
  for(let index=0;index<references.length;index++){
   const value=references[index],step=value.parsed.step;
   let text=value.text,reply=value.parsed.reply;
+  const resource=resourceIdentity(value),r=step.observation?.recovery,identity=pageIdentity(value);
   // Recovery pages are duplicate slices when their complete original table is
   // still available in this request. Point to that table, not back to a tool
   // read: three small sources must not evict one another in a latest-two loop.
   const originalId=step.tool==='read_tool_result'?(step.original_result?.step_id??step.observation?.step_id??step.arguments?.step_id):null;
   const original=originalId?byId.get(originalId):null;
-  if(original&&completeTable(original)&&keptTables.has(original)){
+  if(resource&&r.version_sha256!==versions.get(resource)){
+   text=compact(value);compacted++;
+  }else if(identity&&pages.get(identity)!==value){
+   text=referenceTo(value,pages.get(identity));duplicateResults++;
+  }else if(original&&completeTable(original)&&keptTables.has(original)){
    const duplicate=referenceTo({...value,parsed:{...value.parsed,reply}},original);
    if(duplicate.length<text.length){text=duplicate;duplicateResults++;}
-  }else if(index<references.length-2&&observationCharacters(value)>6000&&!PRESERVE.has(step.tool)&&!keptTables.has(value)){
+  }else if(index<references.length-2&&observationCharacters(value)>6000&&!PRESERVE.has(step.tool)&&!keptTables.has(value)&&!retainedPages.has(value)&&![...working.values()].includes(value)){
   // Saving a generic file or plan does not finish a guide's purpose. Keep
   // requested canonical reference material until native token-window
   // compaction, rather than forcing it into repeated recovery string pages.
@@ -227,7 +281,7 @@ export function projectRequest(body){
   else{message.content=message.content.slice();message.content[value.partIndex]={...message.content[value.partIndex],[value.field]:text};}
   rewritten[value.index]=message;
  }
- const changed=compacted||schemaMetrics.deduplicated_tool_definitions||duplicateResults||layouts.count;
+ const changed=compacted||schemaMetrics.deduplicated_tool_definitions||duplicateResults||layouts.count||workflows.count;
  const projected=changed?{...body,messages:rewritten}:body;
  const roles={system:0,user:0,assistant:0,tool:0,other:0};
  for(const message of projected.messages||[])roles[Object.hasOwn(roles,message.role)?message.role:'other']+=JSON.stringify(message).length;
@@ -235,6 +289,7 @@ export function projectRequest(body){
  return {body:projected,metrics:{original_characters:original,projected_characters:characters,
   saved_characters:original-characters,compacted_receipts:compacted,duplicate_result_views:duplicateResults,
   deduplicated_layout_candidates:layouts.count,
+   deduplicated_workflow_views:workflows.count,
   ...schemaMetrics,retained_table_views:keptTables.size,
   recognized_receipts:references.length,system_characters:roles.system,
   user_characters:roles.user,assistant_characters:roles.assistant,tool_characters:roles.tool,

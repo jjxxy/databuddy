@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="6" time="9.009" timestamp="2026-10-26T20:56:13.146866+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_artifact_recovery" name="test_killed_export_recovers_verified_bytes_from_independent_pending_receipt[before_rename-docx]" time="2.447"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 18, in &lt;module&gt;&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 293, in report_file&#10;      return _office_file(pid,report_id,root,format)&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 317, in _office_file&#10;      manifest=json.loads(manifest_path.read_text())&#10;                          ^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py&quot;, line 1028, in read_text&#10;      return f.read()&#10;             ^^^^^^^^&#10;  UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence&#10;  &#10;assert 1 == 73&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode">format = 'docx', boundary = 'before_rename'
+
+    @pytest.mark.parametrize('format', ['xlsx', 'handoff', 'docx', 'pptx'])
+    @pytest.mark.parametrize('boundary', ['before_rename', 'before_commit'])
+    def test_killed_export_recovers_verified_bytes_from_independent_pending_receipt(format, boundary):
+        pid, rid = real_result()
+        report_id = None
+        if format in ('docx', 'pptx'):
+            current = recipe()
+            current['expected_schema_sha256'] = reports.inspect_result(pid, rid)['schema_sha256']
+            report_id = reports.render(pid, rid, current)['id']
+            target = reports.report_file(pid, report_id, 'manifest').parent / ('report.' + format)
+        else:
+            folder, _ = project_data.result_folder(pid, rid)
+            target = folder / ('result-text_exact.xlsx' if format == 'xlsx' else 'handoff.zip')
+        # os._exit bypasses exception handlers and cleanup. Both the DB receipt and
+        # fsynced filesystem state must survive the abruptly terminated interpreter.
+        script = '''
+    import os, sys
+    from pathlib import Path
+    from agent_service import business_reports as reports, project_data, result_delivery
+    pid,rid,report_id,fmt,boundary,target=sys.argv[1:]
+    module=reports if fmt in ('docx','pptx') else project_data
+    original_put=module.put
+    def fault_put(kind,value,item_id=None):
+        committed=(kind=='data_export' and value.get('state')=='committed') or (kind=='business_report' and fmt in value.get('office_exports',{}))
+        if boundary=='before_commit' and committed:os._exit(73)
+        return original_put(kind,value,item_id)
+    module.put=fault_put
+    original_replace=result_delivery.os.replace
+    def fault_replace(source,destination):
+        if boundary=='before_rename' and Path(destination)==Path(target):os._exit(73)
+        return original_replace(source,destination)
+    result_delivery.os.replace=fault_replace
+    if fmt in ('docx','pptx'):reports.report_file(pid,report_id,fmt)
+    else:project_data.result_download(pid,rid,fmt)
+    raise SystemExit('fault boundary was not reached')
+    '''
+        killed = subprocess.run([sys.executable, '-c', script, pid, rid, report_id or '', format,
+                                 boundary, str(target)], env=dict(os.environ), capture_output=True,
+                                text=True, timeout=30)
+&gt;       assert killed.returncode == 73, killed.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 18, in &lt;module&gt;
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 293, in report_file
+E             return _office_file(pid,report_id,root,format)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 317, in _office_file
+E             manifest=json.loads(manifest_path.read_text())
+E                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1028, in read_text
+E             return f.read()
+E                    ^^^^^^^^
+E         UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence
+E         
+E       assert 1 == 73
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode
+
+tests\test_artifact_recovery.py:57: AssertionError</failure></testcase><testcase classname="tests.test_artifact_recovery" name="test_killed_export_recovers_verified_bytes_from_independent_pending_receipt[before_rename-pptx]" time="1.764"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 18, in &lt;module&gt;&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 293, in report_file&#10;      return _office_file(pid,report_id,root,format)&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 317, in _office_file&#10;      manifest=json.loads(manifest_path.read_text())&#10;                          ^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py&quot;, line 1028, in read_text&#10;      return f.read()&#10;             ^^^^^^^^&#10;  UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence&#10;  &#10;assert 1 == 73&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode">format = 'pptx', boundary = 'before_rename'
+
+    @pytest.mark.parametrize('format', ['xlsx', 'handoff', 'docx', 'pptx'])
+    @pytest.mark.parametrize('boundary', ['before_rename', 'before_commit'])
+    def test_killed_export_recovers_verified_bytes_from_independent_pending_receipt(format, boundary):
+        pid, rid = real_result()
+        report_id = None
+        if format in ('docx', 'pptx'):
+            current = recipe()
+            current['expected_schema_sha256'] = reports.inspect_result(pid, rid)['schema_sha256']
+            report_id = reports.render(pid, rid, current)['id']
+            target = reports.report_file(pid, report_id, 'manifest').parent / ('report.' + format)
+        else:
+            folder, _ = project_data.result_folder(pid, rid)
+            target = folder / ('result-text_exact.xlsx' if format == 'xlsx' else 'handoff.zip')
+        # os._exit bypasses exception handlers and cleanup. Both the DB receipt and
+        # fsynced filesystem state must survive the abruptly terminated interpreter.
+        script = '''
+    import os, sys
+    from pathlib import Path
+    from agent_service import business_reports as reports, project_data, result_delivery
+    pid,rid,report_id,fmt,boundary,target=sys.argv[1:]
+    module=reports if fmt in ('docx','pptx') else project_data
+    original_put=module.put
+    def fault_put(kind,value,item_id=None):
+        committed=(kind=='data_export' and value.get('state')=='committed') or (kind=='business_report' and fmt in value.get('office_exports',{}))
+        if boundary=='before_commit' and committed:os._exit(73)
+        return original_put(kind,value,item_id)
+    module.put=fault_put
+    original_replace=result_delivery.os.replace
+    def fault_replace(source,destination):
+        if boundary=='before_rename' and Path(destination)==Path(target):os._exit(73)
+        return original_replace(source,destination)
+    result_delivery.os.replace=fault_replace
+    if fmt in ('docx','pptx'):reports.report_file(pid,report_id,fmt)
+    else:project_data.result_download(pid,rid,fmt)
+    raise SystemExit('fault boundary was not reached')
+    '''
+        killed = subprocess.run([sys.executable, '-c', script, pid, rid, report_id or '', format,
+                                 boundary, str(target)], env=dict(os.environ), capture_output=True,
+                                text=True, timeout=30)
+&gt;       assert killed.returncode == 73, killed.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 18, in &lt;module&gt;
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 293, in report_file
+E             return _office_file(pid,report_id,root,format)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 317, in _office_file
+E             manifest=json.loads(manifest_path.read_text())
+E                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1028, in read_text
+E             return f.read()
+E                    ^^^^^^^^
+E         UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence
+E         
+E       assert 1 == 73
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode
+
+tests\test_artifact_recovery.py:57: AssertionError</failure></testcase><testcase classname="tests.test_artifact_recovery" name="test_killed_export_recovers_verified_bytes_from_independent_pending_receipt[before_commit-docx]" time="1.806"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 18, in &lt;module&gt;&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 293, in report_file&#10;      return _office_file(pid,report_id,root,format)&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 317, in _office_file&#10;      manifest=json.loads(manifest_path.read_text())&#10;                          ^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py&quot;, line 1028, in read_text&#10;      return f.read()&#10;             ^^^^^^^^&#10;  UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence&#10;  &#10;assert 1 == 73&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode">format = 'docx', boundary = 'before_commit'
+
+    @pytest.mark.parametrize('format', ['xlsx', 'handoff', 'docx', 'pptx'])
+    @pytest.mark.parametrize('boundary', ['before_rename', 'before_commit'])
+    def test_killed_export_recovers_verified_bytes_from_independent_pending_receipt(format, boundary):
+        pid, rid = real_result()
+        report_id = None
+        if format in ('docx', 'pptx'):
+            current = recipe()
+            current['expected_schema_sha256'] = reports.inspect_result(pid, rid)['schema_sha256']
+            report_id = reports.render(pid, rid, current)['id']
+            target = reports.report_file(pid, report_id, 'manifest').parent / ('report.' + format)
+        else:
+            folder, _ = project_data.result_folder(pid, rid)
+            target = folder / ('result-text_exact.xlsx' if format == 'xlsx' else 'handoff.zip')
+        # os._exit bypasses exception handlers and cleanup. Both the DB receipt and
+        # fsynced filesystem state must survive the abruptly terminated interpreter.
+        script = '''
+    import os, sys
+    from pathlib import Path
+    from agent_service import business_reports as reports, project_data, result_delivery
+    pid,rid,report_id,fmt,boundary,target=sys.argv[1:]
+    module=reports if fmt in ('docx','pptx') else project_data
+    original_put=module.put
+    def fault_put(kind,value,item_id=None):
+        committed=(kind=='data_export' and value.get('state')=='committed') or (kind=='business_report' and fmt in value.get('office_exports',{}))
+        if boundary=='before_commit' and committed:os._exit(73)
+        return original_put(kind,value,item_id)
+    module.put=fault_put
+    original_replace=result_delivery.os.replace
+    def fault_replace(source,destination):
+        if boundary=='before_rename' and Path(destination)==Path(target):os._exit(73)
+        return original_replace(source,destination)
+    result_delivery.os.replace=fault_replace
+    if fmt in ('docx','pptx'):reports.report_file(pid,report_id,fmt)
+    else:project_data.result_download(pid,rid,fmt)
+    raise SystemExit('fault boundary was not reached')
+    '''
+        killed = subprocess.run([sys.executable, '-c', script, pid, rid, report_id or '', format,
+                                 boundary, str(target)], env=dict(os.environ), capture_output=True,
+                                text=True, timeout=30)
+&gt;       assert killed.returncode == 73, killed.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 18, in &lt;module&gt;
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 293, in report_file
+E             return _office_file(pid,report_id,root,format)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 317, in _office_file
+E             manifest=json.loads(manifest_path.read_text())
+E                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1028, in read_text
+E             return f.read()
+E                    ^^^^^^^^
+E         UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence
+E         
+E       assert 1 == 73
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode
+
+tests\test_artifact_recovery.py:57: AssertionError</failure></testcase><testcase classname="tests.test_artifact_recovery" name="test_killed_export_recovers_verified_bytes_from_independent_pending_receipt[before_commit-pptx]" time="1.859"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 18, in &lt;module&gt;&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 293, in report_file&#10;      return _office_file(pid,report_id,root,format)&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py&quot;, line 317, in _office_file&#10;      manifest=json.loads(manifest_path.read_text())&#10;                          ^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py&quot;, line 1028, in read_text&#10;      return f.read()&#10;             ^^^^^^^^&#10;  UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence&#10;  &#10;assert 1 == 73&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode">format = 'pptx', boundary = 'before_commit'
+
+    @pytest.mark.parametrize('format', ['xlsx', 'handoff', 'docx', 'pptx'])
+    @pytest.mark.parametrize('boundary', ['before_rename', 'before_commit'])
+    def test_killed_export_recovers_verified_bytes_from_independent_pending_receipt(format, boundary):
+        pid, rid = real_result()
+        report_id = None
+        if format in ('docx', 'pptx'):
+            current = recipe()
+            current['expected_schema_sha256'] = reports.inspect_result(pid, rid)['schema_sha256']
+            report_id = reports.render(pid, rid, current)['id']
+            target = reports.report_file(pid, report_id, 'manifest').parent / ('report.' + format)
+        else:
+            folder, _ = project_data.result_folder(pid, rid)
+            target = folder / ('result-text_exact.xlsx' if format == 'xlsx' else 'handoff.zip')
+        # os._exit bypasses exception handlers and cleanup. Both the DB receipt and
+        # fsynced filesystem state must survive the abruptly terminated interpreter.
+        script = '''
+    import os, sys
+    from pathlib import Path
+    from agent_service import business_reports as reports, project_data, result_delivery
+    pid,rid,report_id,fmt,boundary,target=sys.argv[1:]
+    module=reports if fmt in ('docx','pptx') else project_data
+    original_put=module.put
+    def fault_put(kind,value,item_id=None):
+        committed=(kind=='data_export' and value.get('state')=='committed') or (kind=='business_report' and fmt in value.get('office_exports',{}))
+        if boundary=='before_commit' and committed:os._exit(73)
+        return original_put(kind,value,item_id)
+    module.put=fault_put
+    original_replace=result_delivery.os.replace
+    def fault_replace(source,destination):
+        if boundary=='before_rename' and Path(destination)==Path(target):os._exit(73)
+        return original_replace(source,destination)
+    result_delivery.os.replace=fault_replace
+    if fmt in ('docx','pptx'):reports.report_file(pid,report_id,fmt)
+    else:project_data.result_download(pid,rid,fmt)
+    raise SystemExit('fault boundary was not reached')
+    '''
+        killed = subprocess.run([sys.executable, '-c', script, pid, rid, report_id or '', format,
+                                 boundary, str(target)], env=dict(os.environ), capture_output=True,
+                                text=True, timeout=30)
+&gt;       assert killed.returncode == 73, killed.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "&lt;string&gt;", line 18, in &lt;module&gt;
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 293, in report_file
+E             return _office_file(pid,report_id,root,format)
+E                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\Documents\ChatGPT\New project\personal-data-agent\agent_service\business_reports.py", line 317, in _office_file
+E             manifest=json.loads(manifest_path.read_text())
+E                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+E           File "C:\Users\001\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 1028, in read_text
+E             return f.read()
+E                    ^^^^^^^^
+E         UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 327: illegal multibyte sequence
+E         
+E       assert 1 == 73
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...    ^^^^^^^^\nUnicodeDecodeError: \'gbk\' codec can\'t decode byte 0x80 in position 327: illegal multibyte sequence\n').returncode
+
+tests\test_artifact_recovery.py:57: AssertionError</failure></testcase><testcase classname="tests.test_browser_reports" name="test_target_symlinks_are_rejected" time="0.006"><failure message="OSError: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\001\\AppData\\Local\\Temp\\pytest-of-001\\pytest-104\\test_target_symlinks_are_rejec0\\actual' -&gt; 'C:\\Users\\001\\AppData\\Local\\Temp\\pytest-of-001\\pytest-104\\test_target_symlinks_are_rejec0\\alias'">tmp_path = WindowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-104/test_target_symlinks_are_rejec0')
+
+    def test_target_symlinks_are_rejected(tmp_path):
+&gt;       actual=tmp_path/'actual';actual.mkdir();alias=tmp_path/'alias';alias.symlink_to(actual,target_is_directory=True)
+                                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_browser_reports.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-104/test_target_symlinks_are_rejec0/alias')
+target = WindowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-104/test_target_symlinks_are_rejec0/actual')
+target_is_directory = True
+
+    def symlink_to(self, target, target_is_directory=False):
+        """
+        Make this path a symlink pointing to the target path.
+        Note the order of arguments (link, target) is the reverse of os.symlink.
+        """
+        if not hasattr(os, "symlink"):
+            raise NotImplementedError("os.symlink() not available on this system")
+&gt;       os.symlink(target, self, target_is_directory)
+E       OSError: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\001\\AppData\\Local\\Temp\\pytest-of-001\\pytest-104\\test_target_symlinks_are_rejec0\\actual' -&gt; 'C:\\Users\\001\\AppData\\Local\\Temp\\pytest-of-001\\pytest-104\\test_target_symlinks_are_rejec0\\alias'
+
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\pathlib.py:1386: OSError</failure></testcase><testcase classname="tests.test_business_acceptance_kit" name="test_cli_works_without_project_imports" time="0.111"><failure message="TypeError: the JSON object must be str, bytes or bytearray, not NoneType">tmp_path = WindowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-104/test_cli_works_without_project0')
+
+    def test_cli_works_without_project_imports(tmp_path):
+        result=subprocess.run([sys.executable,'-I',str(KIT/'verify_export.py'),
+                               str(KIT/'expected'/'baseline_sep.csv'),'--scenario','baseline_sep'],
+                              text=True,capture_output=True,cwd=tmp_path,timeout=10)
+        assert result.returncode==0,result.stdout+result.stderr
+&gt;       assert json.loads(result.stdout)['passed'] is True
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_business_acceptance_kit.py:150: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+s = None, cls = None, object_hook = None, parse_float = None, parse_int = None
+parse_constant = None, object_pairs_hook = None, kw = {}
+
+    def loads(s, *, cls=None, object_hook=None, parse_float=None,
+            parse_int=None, parse_constant=None, object_pairs_hook=None, **kw):
+        """Deserialize ``s`` (a ``str``, ``bytes`` or ``bytearray`` instance
+        containing a JSON document) to a Python object.
+    
+        ``object_hook`` is an optional function that will be called with the
+        result of any object literal decode (a ``dict``). The return value of
+        ``object_hook`` will be used instead of the ``dict``. This feature
+        can be used to implement custom decoders (e.g. JSON-RPC class hinting).
+    
+        ``object_pairs_hook`` is an optional function that will be called with the
+        result of any object literal decoded with an ordered list of pairs.  The
+        return value of ``object_pairs_hook`` will be used instead of the ``dict``.
+        This feature can be used to implement custom decoders.  If ``object_hook``
+        is also defined, the ``object_pairs_hook`` takes priority.
+    
+        ``parse_float``, if specified, will be called with the string
+        of every JSON float to be decoded. By default this is equivalent to
+        float(num_str). This can be used to use another datatype or parser
+        for JSON floats (e.g. decimal.Decimal).
+    
+        ``parse_int``, if specified, will be called with the string
+        of every JSON int to be decoded. By default this is equivalent to
+        int(num_str). This can be used to use another datatype or parser
+        for JSON integers (e.g. float).
+    
+        ``parse_constant``, if specified, will be called with one of the
+        following strings: -Infinity, Infinity, NaN.
+        This can be used to raise an exception if invalid JSON numbers
+        are encountered.
+    
+        To use a custom ``JSONDecoder`` subclass, specify it with the ``cls``
+        kwarg; otherwise ``JSONDecoder`` is used.
+        """
+        if isinstance(s, str):
+            if s.startswith('\ufeff'):
+                raise JSONDecodeError("Unexpected UTF-8 BOM (decode using utf-8-sig)",
+                                      s, 0)
+        else:
+            if not isinstance(s, (bytes, bytearray)):
+&gt;               raise TypeError(f'the JSON object must be str, bytes or bytearray, '
+                                f'not {s.__class__.__name__}')
+E               TypeError: the JSON object must be str, bytes or bytearray, not NoneType
+
+..\..\..\..\AppData\Local\Programs\Python\Python312\Lib\json\__init__.py:339: TypeError</failure></testcase></testsuite></testsuites>

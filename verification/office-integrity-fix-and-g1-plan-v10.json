@@ -1,0 +1,151 @@
+{
+  "scope": "Office atomic export precision and cache integrity; financial report UTF-8 manifest read only. No G4 visual redesign.",
+  "verified_at": "2026-10-26T13:20:15.512620+00:00",
+  "production_frozen": true,
+  "model_calls_made_in_this_audit": 0,
+  "private_model_configuration_opened": false,
+  "user_profile_accessed": false,
+  "source_sha256": {
+    "agent_service/office.py": "a54ce6f8dae1176dbed59d77c5042099f31ddc34c5e8cc39238056a04f56cbe8",
+    "agent_service/business_reports.py": "385f25b9b4fe45cac296b7a87c4bf2f87406ff3c5c3121e1e8ac962cc9a5068e",
+    "tests/test_office_integrity_regressions.py": "c7b7ee83a34fee9d5debea08a0c983b0bf5a897019f08aaf6f7249ca21e6954b"
+  },
+  "evidence": {
+    "baseline_counterexamples": "verification/office-report-isolated-audit-v10.json",
+    "baseline_10_red": "verification/office-integrity-red-v10.xml",
+    "introduced_note_size_red_then_fixed": "verification/office-precision-note-size-red-v10.xml",
+    "final_related_regression": "verification/office-integrity-regression-v10.xml",
+    "final_result": "115 passed, 1 existing deliberate duplicate-ZIP-name warning in 58.18s"
+  },
+  "findings": [
+    {
+      "id": "O1",
+      "risk": "P1 financial atomic precision",
+      "status": "fixed in source office-v2",
+      "baseline": "9007199254740993 -> 9007199254740992; 9007199254740.000001 -> 9007199254740; 1e309 -> empty cell, all previously claimed structural_validation",
+      "fix": "Parse raw JSON decimal tokens with Decimal; reject nonfinite constants; safe numeric cells remain numeric, unsafe precision/range uses text_exact with grouped per-cell precision notes; verify actual saved cell values.",
+      "compatibility": "OfficeArgs outer fields unchanged; Decimal replaces binary float in specification row values. precision_policy, precision_notes and precision_notes_format are additive receipt fields; ordinary values, booleans, blanks and formula-text protection retained."
+    },
+    {
+      "id": "O2",
+      "risk": "P1 cached artifact integrity",
+      "status": "fixed in source office-v2",
+      "baseline": "Repeating render previously replaced the authoritative hash of corrupted existing bytes and claimed a non-ZIP file was structurally validated.",
+      "fix": "Versioned source/spec/name/policy identity; project lock; independent pending/committed DB hashes; original hash and real OOXML checks before cache reuse; orphan bytes refused. Both os._exit publication boundaries recover the independently registered hash.",
+      "compatibility": "New office-v2 IDs leave historical artifacts untouched. Existing legacy files retain their hashes and now require real structural checks; old incorrect numeric content is not silently rewritten."
+    },
+    {
+      "id": "O3",
+      "risk": "P2 serialized PPT layout conflict; visual impact unverified",
+      "status": "not changed, real visual rendering still required",
+      "baseline": "A valid 120-character multiline metric label produces 41 paragraphs at 17pt (697pt font-height sum) inside a serialized 146.16pt table row without autofit. Frozen numeric readback still passes.",
+      "boundary": "This proves incompatible serialized geometry, not an observed screenshot of clipping. Professional visual G4 is not implemented or claimed."
+    }
+  ],
+  "additional_checks": {
+    "business_report_parallel_export": "two threads returned the same registered bytes/hash",
+    "business_report_financial_values": "frozen assertion string readback retained; existing exactness/period/grain/privacy and export-recovery tests passed",
+    "business_report_production_change": "manifest_path.read_text(encoding=utf-8) only",
+    "maximum_5000_high_precision_rows": "all 5000 coordinates retained, compact manifest fits the workspace file budget",
+    "generic_office_financial_verification_boundary": "The generic writer verifies fidelity to its saved specification; it does not certify that model-authored prose is a correct financial assertion from a full source result."
+  },
+  "G1": {
+    "harness": "acceptance/depth/verify_agent_depth.py",
+    "case": "acceptance/depth/cases/finance_monthly.py",
+    "official_inputs_only": "acceptance/finance_monthly/inputs/phase1/2026-09_业务源表.xlsx and 业务口径.txt",
+    "isolated_r17_powershell_command": "& '.\\dist\\Atlas-DataBuddy-win32-x64-r17\\resources\\app\\runtime\\python\\python.exe' -X utf8 '.\\acceptance\\depth\\verify_agent_depth.py' --case finance_monthly --app-root '.\\dist\\Atlas-DataBuddy-win32-x64-r17\\resources\\app' --model-config '.\\llm.json' --evidence-dir '.\\verification\\finance-monthly-r17-full-v11' --timeout 600",
+    "command_executed": false,
+    "r17_scope_note": "r17 is the pre-fix candidate. For repaired acceptance, substitute the frozen r18 or later candidate and a new evidence directory.",
+    "gates": [
+      "Only source files are uploaded; expected/gold/readme/verifier stay in the independent controller.",
+      "A04 checks real complete CSV/XLSX with the official oracle before a confirmation bound to run_id and plan_sha256.",
+      "A05 currently cannot pass automatically: verify_reports hardcodes word_one_page_independently_verified=False (line 375) and A05 requires it (line 462). Add independently rendered page-count/visibility evidence; do not mark DOCX Pages cache as proof or remove the gate.",
+      "PPT slide count is real OOXML count, but native_layout_verified remains false; no clipping claim is justified without rendering."
+    ],
+    "historical_real_model_evidence": [
+      {
+        "path": "verification/finance-monthly-v02/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      },
+      {
+        "path": "verification/finance-monthly-v03/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      },
+      {
+        "path": "verification/finance-monthly-v04/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      },
+      {
+        "path": "verification/finance-monthly-v08/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      },
+      {
+        "path": "verification/finance-monthly-v09/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      },
+      {
+        "path": "verification/finance-monthly-v10/verification.json",
+        "passed": false,
+        "ok": false,
+        "real_model_evaluated": true,
+        "cases": {
+          "A02": false,
+          "A03": false,
+          "A04": false,
+          "A05": false
+        },
+        "A05_not_attempted_reason": "A04 has no independently checked and user-confirmed saved result"
+      }
+    ],
+    "latest_full_business_case_passed": false,
+    "not_substitutes": [
+      "scripts/verify_desktop_model.py only checks a synthetic 118.15 three-Office smoke case; it is not official A02-A05.",
+      "Deterministic code regressions and source inventory do not prove real-model G1 completion."
+    ]
+  }
+}

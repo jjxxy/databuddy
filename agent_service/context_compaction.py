@@ -13,6 +13,7 @@ from .memory_service import actor,generation,revoked_turn_ids,sensitive
 RECENT_TURNS=6
 SUMMARY_BUDGET=7000
 CRITICAL_BUDGET=14000
+_RECOVERY_TRAVERSAL=frozenset({'read_tool_result','read_context_original','read_context_checkpoint','compact_work_context'})
 
 class ReadOriginal(StrictModel):
     turn_id:str=Field(min_length=1,max_length=64)
@@ -77,11 +78,13 @@ def _refs(value):
     fields={key:value[key] for key in ('source_id','source_ids','attached_sources','application_id','run_id','model_id','model_catalog_revision','work_version') if value.get(key) is not None}
     refs=[]
     for step in value.get('agent_trace',[]):
+        if step.get('tool') in _RECOVERY_TRAVERSAL:continue
         obs=step.get('observation') or {}
         if not isinstance(obs,dict):continue
         identity={k:obs[k] for k in ('run_id','result_id','artifact_id','workflow_id','report_id','plan_sha256','manifest_sha256','sha256','commit') if obs.get(k) is not None}
         refs.append({'step_id':step.get('id'),'tool':step.get('tool'),'status':step.get('status'),
-                     'result_refs':identity,'recover_with':{'tool':'read_context_original','turn_id':value['id']}})
+                     'result_refs':identity,'recover_with':{'tool':'read_tool_result','source_turn_id':value['id'],
+                                                           'step_id':step.get('id'),'offset':0}})
     return {'turn_id':value['id'],'input_and_versions':fields,'tool_receipts':refs}
 
 def _critical(history,visible):
@@ -180,8 +183,11 @@ def context_for_turn(turn,recent_turns=None,*,force=False):
                 'lossy':compress,'originals_retained':True,'content_allowed':allowed},
             'scope_note':'当前项目会话；个人偏好按当前用户隔离。摘要不是财务证据，原文和完整结果可回查'}
 
-def read_original(turn,turn_id,offset=0,limit=4000):
-    target=get('turn',turn_id)
+def authorized_history_turn(turn,turn_id):
+    try:target=get('turn',turn_id)
+    except KeyError:
+        from .agent_context import InvalidRecoveryReference
+        raise InvalidRecoveryReference('历史上下文不存在或已删除，不能恢复该引用') from None
     if target.get('project_id')!=turn['project_id']:raise ValueError('不能读取其他项目的上下文')
     from .workspace_lifecycle import assert_turn_live,visible_turn
     assert_turn_live(turn);assert_turn_live(target)
@@ -192,13 +198,31 @@ def read_original(turn,turn_id,offset=0,limit=4000):
     # Manual/API users can retrieve originals even after memory withdrawal;
     # agent recovery preserves the withdrawal and never restores old preference.
     active=not item.get('revoked_memory') and not item.get('personal_other_actor') and not item.get('stale_memory_context')
+    return target,item,active
+
+def _original_snapshot(turn,turn_id):
+    target,item,active=authorized_history_turn(turn,turn_id)
     from .agent_context import trace_context
     from .agent import public_observation
+    # Reading an original is traversal, not a new business fact. Including the
+    # read's own new step ID/page would make a self-read expand forever and
+    # manufacture a new resource version on every request.
+    business=dict(target,agent_trace=[step for step in target.get('agent_trace',[])
+                                    if step.get('tool') not in _RECOVERY_TRAVERSAL])
     text=json.dumps({'turn':item,'references':_refs(target),'task_contract':target.get('task_contract') if active else None,
-                     'task_plan':target.get('task_plan') if active else None,'agent_trace':trace_for_model(target,trace_context(target,public_observation)) if active else []},ensure_ascii=False,default=str)
+                     'task_plan':target.get('task_plan') if active else None,'agent_trace':trace_for_model(business,trace_context(business,public_observation),rehydrate_recovery=False) if active else []},ensure_ascii=False,default=str)
+    return text,bool(item.get('revoked_memory'))
+
+def _original_page(turn_id,text,withdrawn,offset,limit):
+    from .agent_context import recovery_page
     return {'turn_id':turn_id,'content':text[offset:offset+limit],'offset':offset,
             'next_offset':offset+limit if offset+limit<len(text) else None,'total_characters':len(text),
-            'scope':'original_turn_and_receipt_references','memory_withdrawal_applied':bool(item.get('revoked_memory'))}
+            'recovery':recovery_page('context_original','turn:'+turn_id,text,offset,limit),
+            'scope':'original_turn_and_receipt_references','memory_withdrawal_applied':withdrawn}
+
+def read_original(turn,turn_id,offset=0,limit=4000):
+    text,withdrawn=_original_snapshot(turn,turn_id)
+    return _original_page(turn_id,text,withdrawn,offset,limit)
 
 def status(pid,session_id=None,force=False):
     from .conversation import default_session
@@ -239,13 +263,53 @@ def filter_history_matches(pid,entries):
     return result
 
 
-def trace_for_model(turn,values):
+def trace_for_model(turn,values,*,rehydrate_recovery=True):
     """A receipt remains stored, but stale personal content is not re-injected."""
     current_generation=generation(turn['project_id'])
-    revised=[]
+    revised=[];snapshots={};seen_pages={}
+    def recovery_key(item):
+        tool=item.get('tool');args=item.get('arguments',{})
+        raw=next((step.get('observation') for step in turn.get('agent_trace',[]) if step.get('id')==item.get('step_id')),{}) or {}
+        if item.get('status')!='done' or isinstance(raw,dict) and raw.get('executed') is False:return None
+        descriptor=raw.get('recovery') if isinstance(raw,dict) else None
+        if isinstance(descriptor,dict):return (descriptor.get('kind'),descriptor.get('resource_id'))
+        if tool=='read_context_original':return ('context_original',args.get('turn_id'))
+        if tool=='read_context_checkpoint':return ('context_checkpoint',args.get('checkpoint_id'))
+        if tool=='read_tool_result' and (args.get('source_turn_id') or not rehydrate_recovery):return ('tool_result',args.get('source_turn_id'),args.get('step_id'))
+        return None
     for item in values:
         value=dict(item)
-        if value.get('tool') in ('remember_memory','forget_memory','recall_memories','compact_work_context','read_context_original','read_context_checkpoint'):
+        key=recovery_key(item)
+        if key:
+            args=dict(item.get('arguments',{}));tool=item.get('tool')
+            if rehydrate_recovery:
+                try:
+                    if tool=='read_context_original':
+                        target=args['turn_id']
+                        if target not in snapshots:snapshots[target]=_original_snapshot(turn,target)
+                        text,withdrawn=snapshots[target]
+                        page=_original_page(target,text,withdrawn,args.get('offset',0),args.get('limit',4000))
+                    elif tool=='read_context_checkpoint':page=read_checkpoint(turn,**args)
+                    else:
+                        from .agent_context import read_result,ToolResult
+                        page=read_result(turn,ToolResult.model_validate(args))
+                    r=page.get('recovery',{});identity=tuple(r.get(field) for field in
+                        ('kind','resource_id','version_sha256','offset_unit','offset','returned_characters'))
+                    if r and identity in seen_pages:
+                        value['observation']={'recovery':r,'duplicate_result_view':True,
+                            'context_reference':{'step_id':seen_pages[identity],'in_current_context':True,
+                                'scope':'exact same authorized resource version and returned range; values already present'}}
+                    else:
+                        value['observation']=page
+                        if r:seen_pages[identity]=value.get('step_id')
+                except (ValueError,KeyError):
+                    value['observation']={'recovery_unavailable':True,'notice':'历史恢复内容当前不可用；请核对来源引用、授权或已撤回内容'}
+            else:
+                if tool=='read_tool_result':args.setdefault('source_turn_id',turn['id'])
+                value['observation']={'notice':'已读取的历史页；按原资源定位回读，不恢复旧缓存',
+                    'recover_with':{'tool':tool,**args}}
+            revised.append(value);continue
+        if value.get('tool') in ('remember_memory','forget_memory','recall_memories','compact_work_context'):
             # Call arguments may themselves contain a remembered quote, even if
             # the old observation has already been replaced.
             value['arguments']={'memory_operation_recorded':True}
@@ -257,13 +321,20 @@ def trace_for_model(turn,values):
 
 
 def read_checkpoint(turn,checkpoint_id,offset=0,limit=20):
-    record=get('context_checkpoint',checkpoint_id)
+    try:record=get('context_checkpoint',checkpoint_id)
+    except KeyError:
+        from .agent_context import InvalidRecoveryReference
+        raise InvalidRecoveryReference('压缩检查点已不存在，请使用当前有效的上下文引用') from None
     if record.get('project_id')!=turn['project_id'] or record.get('actor_id')!=actor():raise ValueError('压缩检查点不属于当前项目和用户')
     if record.get('memory_generation')!=generation(turn['project_id']):raise ValueError('检查点含已变更的记忆，请重新压缩当前上下文')
     from .provider import settings
     if not settings().get('share_data'):raise ValueError('模型业务内容读取未获批准')
     summary=unseal(record['secret_summary']);coverage=summary.get('coverage',[])
     page=coverage[offset:offset+limit]
+    from .agent_context import recovery_page
+    lines=[json.dumps(item,ensure_ascii=False,sort_keys=True,default=str)+'\n' for item in coverage]
+    text=''.join(lines);start=sum(map(len,lines[:offset]));length=sum(map(len,lines[offset:offset+limit]))
     return {'checkpoint_id':checkpoint_id,'coverage_sha256':record['coverage_sha256'],'total':len(coverage),
+            'recovery':dict(recovery_page('context_checkpoint','checkpoint:'+checkpoint_id,text,start,length),pagination_unit='items'),
             'items':[dict(item,recover_with={'tool':'read_context_original','turn_id':item['turn_id']}) for item in page],
             'next_offset':offset+limit if offset+limit<len(coverage) else None,'summary_is_financial_evidence':False}

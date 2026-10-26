@@ -69,6 +69,17 @@ def operation(turn,name):
     return stable('dataop_',turn.get('agent_origin',turn['id']),step)
 
 
+def _workflow_receipt(pid,r,meta,*,reused=False):
+    receipt={'run_id':r['id'],'workflow_id':r['target'],'plan_sha256':r['commit'],'records':meta['records'],'technical_validation':True,
+        'executed':not reused,'reused_existing_run':reused,
+        'executed_at':r.get('started_at'),'execution_finished_at':r.get('finished_at'),
+        'requires_semantic_review':meta.get('requires_semantic_review',False),'stage_receipts':'完整交接包中保存每步回执',
+        'review_url':'/data-workbench.html?project='+pid+'&workflow='+r['target'],
+        'download':{'label':'完整数据交接包.zip','url':'/api/projects/'+pid+'/data-results/'+r['id']+'/download?format=handoff'}}
+    if reused:receipt['next_step']='本任务已有此方案和来源版本的完整已验证结果；需要时读取该run_id、导出或交由用户明确确认采用，不必再次运行相同方案。'
+    return receipt
+
+
 def execute(turn,name,args):
     pid=turn['project_id']
     from . import provider
@@ -124,6 +135,9 @@ def execute(turn,name,args):
         from .intents import require
         require(turn,'analyze');require(turn,'refresh')
         r=data.enqueue_workflow(pid,args['workflow_id'],scheduled_key=operation(turn,name),originating_turn_id=turn['id'])
+        if r.get('reused_verified_result') is True:
+            _,meta=data.result_folder(pid,r['id'])
+            return _workflow_receipt(pid,r,meta,reused=True)
         patch('turn',turn['id'],state='waiting_data_workflow',data_workflow_job=r['id'],progress='正在读取完整来源并逐步校验加工结果')
         return None
     if name=='read_data_workflow_result':
@@ -183,10 +197,7 @@ def resume(turn):
         diagnostic=data.workflow_run_diagnostic(turn['project_id'],expected,r['id'])
         observe(turn,dict(diagnostic,error='数据加工未完成验收，之前正式结果保留',error_code=diagnostic['workflow_failure']['code']),True);return True
     folder,meta=data.result_folder(turn['project_id'],r['id'])
-    observe(turn,{'run_id':r['id'],'workflow_id':r['target'],'plan_sha256':r['commit'],'records':meta['records'],'technical_validation':True,
-                  'requires_semantic_review':meta.get('requires_semantic_review',False),'stage_receipts':'完整交接包中保存每步回执',
-                  'review_url':'/data-workbench.html?project='+turn['project_id']+'&workflow='+r['target'],
-                  'download':{'label':'完整数据交接包.zip','url':'/api/projects/'+turn['project_id']+'/data-results/'+r['id']+'/download?format=handoff'}})
+    observe(turn,_workflow_receipt(turn['project_id'],r,meta))
     return True
 
 from .project_reports import FetchReportInput,ReportFetchTarget

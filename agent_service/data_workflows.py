@@ -583,6 +583,36 @@ SQL_FUNCTIONS = {
 }
 
 
+def _validate_exact_sql_numeric(tree):
+    """Reject known DuckDB floating intermediates before CAST can hide them.
+
+    This is a conservative operation gate, not a general SQL type inference
+    engine. Decimal inputs alone do not make division/AVG exact in DuckDB.
+    """
+    integer_date_parts={'YEAR','MONTH','DAY','DAYOFMONTH','DAYOFWEEK','DAYOFYEAR','DOW','DOY','ISODOW',
+        'WEEK','WEEKOFYEAR','ISOYEAR','YEARWEEK','QUARTER','DECADE','CENTURY','MILLENNIUM','ERA',
+        'HOUR','MINUTE','SECOND','MILLISECOND','MILLISECONDS','MICROSECOND','MICROSECONDS',
+        'TIMEZONE','TIMEZONE_HOUR','TIMEZONE_MINUTE'}
+    floating_types={'FLOAT','DOUBLE','REAL','FLOAT32','FLOAT64','BINARY_FLOAT','BINARY_DOUBLE','DECFLOAT'}
+    for node in tree.walk():
+        unsafe=isinstance(node,(exp.Div,exp.IntDiv,exp.Avg))
+        if isinstance(node,(exp.Cast,exp.TryCast)):
+            target=node.args.get('to')
+            unsafe=unsafe or isinstance(target,exp.DataType) and any(
+                str(data_type.this.value).upper() in floating_types for data_type in target.find_all(exp.DataType))
+        if isinstance(node,exp.Literal) and not node.is_string:
+            literal=str(node.this)
+            # Excessively long fixed-point literals also become DOUBLE in
+            # DuckDB, even when they contain no scientific-notation marker.
+            unsafe=unsafe or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?',literal) or len(literal.replace('.',''))>38
+        if isinstance(node,exp.Extract):
+            unsafe=unsafe or node.this.name.upper() not in integer_date_parts
+        if unsafe:
+            raise WorkflowError('SQL_INEXACT_NUMERIC',
+                'SQL中的该数值运算可能经过二进制浮点，CAST回DECIMAL也不能恢复精度；'
+                '请用精确十进制字面量，均值先aggregate求和与计数，比率或除法改用compute并明确舍入位数')
+
+
 def validate_sql(sql: str, allowed_tables: set[str]) -> str:
     try:
         trees = sqlglot.parse(sql, read='duckdb')
@@ -611,6 +641,7 @@ def validate_sql(sql: str, allowed_tables: set[str]) -> str:
         name = function.name.upper() if isinstance(function, exp.Anonymous) else function.sql_name().upper()
         if name not in SQL_FUNCTIONS:
             raise WorkflowError('UNSAFE_SQL', 'SQL contains a function outside the approved deterministic set')
+    _validate_exact_sql_numeric(tree)
     for window in tree.find_all(exp.Window):
         if not window.args.get('order'):
             raise WorkflowError('NONDETERMINISTIC_SQL', 'Window functions require explicit ordering')

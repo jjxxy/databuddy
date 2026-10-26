@@ -5,6 +5,7 @@ and pipeline origins make retries/restarts resume the same work. Model output is
 restricted to validated tool arguments; it never runs generated arbitrary code.
 """
 import hashlib
+import copy
 import json
 import logging
 import re
@@ -351,6 +352,9 @@ def public_turn(turn):
     value={k:v for k,v in turn.items() if k in {'id','project_id','text','source_id','state','progress','created_at','finished_at','answer','result','download','plan','mode','session_id','interaction_mode','work_version','agent_trace','application_id','resume_available','outcome','resumed_from','suggestions','task_contract','verification','model_usage','knowledge_usage','context_metrics','task_plan','execution_node','model_id','model_name'}}
     value['source_ids']=attachment_ids(turn)
     value['attached_sources']=attachment_details(turn)
+    if turn.get('resumed_from'):
+        inherited=turn.get('agent_budget_base',0)
+        value['inherited_step_count']=max(0,min(inherited,len(turn.get('agent_trace',[])))) if type(inherited) is int else 0
     if 'answer' in value:value['answer']=visible_answer(turn)
     sources=public_sources(turn)
     if sources:value['knowledge_sources']=sources
@@ -797,7 +801,7 @@ def handle(turn):
             if old.get('interaction_mode','work')!=turn.get('interaction_mode','work'):finish(turn,'请切换到原任务的'+('工作' if old.get('interaction_mode','work')=='work' else '聊天')+'模式后继续。');return
             if turn.get('application_id') and old.get('application_id') and turn['application_id']!=old['application_id']:finish(turn,'当前应用与暂停的任务不同，请先回到原应用再继续。');return
             trace=[s for s in old.get('agent_trace',[]) if s['status'] in ('done','failed')]
-            turn=patch('turn',turn['id'],resumed_from=old['id'],agent_origin=old.get('agent_origin',old['id']),work_request=old.get('work_request',old['text']),discovered_tools=old.get('discovered_tools',[]),knowledge_refs=old.get('knowledge_refs',[]),knowledge_read_refs=old.get('knowledge_read_refs',[]),knowledge_slices=old.get('knowledge_slices',{}),knowledge_basis=old.get('knowledge_basis',[]),task_contract=old.get('task_contract'),run_id=old.get('run_id'),agent_trace=trace,agent_budget_base=len(trace),source_id=old.get('source_id'),source_ids=attachment_ids(old),attached_sources=old.get('attached_sources',[]),application_id=old.get('application_id'),candidate_run=old.get('candidate_run'),agent_result=old.get('agent_result'),agent_download=old.get('agent_download'),state='agent',**selection)
+            turn=patch('turn',turn['id'],resumed_from=old['id'],agent_origin=old.get('agent_origin',old['id']),work_request=old.get('work_request',old['text']),discovered_tools=old.get('discovered_tools',[]),knowledge_refs=old.get('knowledge_refs',[]),knowledge_read_refs=old.get('knowledge_read_refs',[]),knowledge_slices=old.get('knowledge_slices',{}),knowledge_basis=old.get('knowledge_basis',[]),task_contract=old.get('task_contract'),task_plan=copy.deepcopy(old.get('task_plan')),run_id=old.get('run_id'),agent_trace=trace,agent_budget_base=len(trace),source_id=old.get('source_id'),source_ids=attachment_ids(old),attached_sources=old.get('attached_sources',[]),application_id=old.get('application_id'),candidate_run=old.get('candidate_run'),agent_result=old.get('agent_result'),agent_download=old.get('agent_download'),state='agent',**selection)
             patch('turn',old['id'],resume_available=False)
         else:finish(turn,'当前没有等待继续的中断任务。你可以直接说明新的需求；重跑已有应用请说“重跑这个应用”。');return
     if turn['state'] in ('queued','agent','agent_tool','waiting_source') and not prepare_attachments(turn):return

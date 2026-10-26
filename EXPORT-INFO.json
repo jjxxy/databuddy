@@ -1,12 +1,34 @@
 {
   "project": "Atlas DataBuddy",
   "version": "0.20.0",
-  "portable_baseline": "r14",
   "export_date": "2026-10-26",
   "kind": "source_with_tests_and_dependency_locks",
+  "source_state": "work_in_progress_after_r17",
+  "branch": "codex/agent-recovery-wip-20261026",
+  "last_verified_portable": "r17",
+  "r18_delivered": false,
+  "current_source_differs_from_verified_portable": true,
+  "unverified_production_files_since_r17": [
+    "agent_service/business_reports.py",
+    "agent_service/data_workflows.py",
+    "agent_service/office.py",
+    "agent_service/project_data.py"
+  ],
+  "current_full_suite_passed": false,
+  "full_finance_G1_passed": false,
+  "report_visual_G4_passed": false,
+  "known_pending_async_stop_regression": {
+    "failed": 5,
+    "passed": 1
+  },
   "bundled_runtime_included": false,
   "credentials_included": false,
   "personal_workspace_data_included": false,
-  "full_finance_G1_passed": false,
-  "r14_backend_source_files_verified": 133
+  "source_implementation_or_deployment_performed_by_this_export": false,
+  "documentation_generated_for_repository": [
+    "README.md notice",
+    "REPOSITORY-STATUS.md",
+    "EXPORT-INFO.json",
+    "下载说明.txt"
+  ]
 }

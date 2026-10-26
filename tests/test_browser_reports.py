@@ -173,5 +173,12 @@ def test_recipe_rejects_malformed_scope_controls_and_context():
 
 
 def test_target_symlinks_are_rejected(tmp_path):
-    actual=tmp_path/'actual';actual.mkdir();alias=tmp_path/'alias';alias.symlink_to(actual,target_is_directory=True)
+    actual=tmp_path/'actual';actual.mkdir();alias=tmp_path/'alias'
+    try:alias.symlink_to(actual,target_is_directory=True)
+    except OSError as error:
+        if getattr(error,'winerror',None)==1314:
+            pytest.skip('测试环境缺少创建符号链接权限（WinError 1314）；未更改系统权限')
+        if isinstance(error,PermissionError):
+            pytest.skip('测试环境缺少创建符号链接权限；未更改系统权限')
+        raise
     with pytest.raises(ValueError,match='符号链接'):export(Page(),alias/'report.csv')

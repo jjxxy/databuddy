@@ -79,7 +79,9 @@ def test_execute_node_pauses_no_progress_and_preserves_prior_evidence(turn,monke
     agent._execute_node({'turn_id':turn['id'],'step':step().model_dump()})
     warned=get('turn',turn['id'])
     assert warned['state']=='agent' and warned['loop_attempts']==1
-    assert warned['agent_trace']==trace and not executed
+    assert warned['agent_trace'][:len(trace)]==trace and not executed
+    assert warned['agent_trace'][-1]['observation']['executed'] is False
+    assert warned['agent_trace'][-1]['observation']['code']=='TOOL_NO_PROGRESS'
     assert '未变化的工具说明' in warned['verification_feedback']['error']
     # One more description lookup must not reset the protected boundary.
     agent._execute_node({'turn_id':turn['id'],'step':{'kind':'tool','tool':'discover_tools',
@@ -88,7 +90,7 @@ def test_execute_node_pauses_no_progress_and_preserves_prior_evidence(turn,monke
     stopped=get('turn',turn['id'])
     assert stopped['state']=='done' and stopped['outcome']=='paused' and stopped['resume_available']
     assert stopped['agent_trace'][:len(trace)]==trace
-    assert executed==['discover_tools'] and len(stopped['agent_trace'])==len(trace)+1
+    assert executed==['discover_tools'] and len(stopped['agent_trace'])==len(trace)+3
     assert workspace.read_file(turn['project_id'],'workflows/saved.json')=='{"saved":"evidence"}'
 
 

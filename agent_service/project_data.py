@@ -4,6 +4,7 @@ Only the queue executes a frozen plan. Draft changes cannot alter the published
 plan, and a failed refresh never replaces the last verified result.
 """
 import hashlib,json,re,threading,time,zipfile
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated,Literal
 from pydantic import Field,field_validator,model_serializer
@@ -15,6 +16,17 @@ from . import workspace
 from .data_workflows import WorkflowError,WorkflowPlan,execute,digest
 
 _TEXT_PROJECTION_MAX_BYTES=20*1024*1024
+
+
+@lru_cache(maxsize=1)
+def processing_fingerprint():
+    """Conservative process build identity; unknown older engines cannot reuse."""
+    import importlib.metadata,platform,sys
+    root=Path(__file__).resolve().parent
+    return digest({'version':1,'python':sys.version,'platform':platform.platform(),
+        'max_rows':MAX_ROWS,
+        'code':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.glob('*.py'))},
+        'packages':sorted((d.metadata.get('Name',''),d.version) for d in importlib.metadata.distributions())})
 
 
 class ReadOptions(StrictModel):
@@ -304,6 +316,8 @@ def inspect_workflow(pid,wid):
 
 
 _FAILURE_MESSAGES={
+ 'SQL_INEXACT_NUMERIC':'SQL中的数值运算可能经过二进制浮点，CAST回DECIMAL不能恢复精度；本次未返回未验证结果',
+ 'PROCESSING_ENGINE_CHANGED':'运行引擎版本已变化，本次没有混用版本执行；请重新发起加工',
  'MIXED_PERCENTAGE_REPRESENTATION':'同一列混合百分比与其他表示法，需明确逐类转换规则后再执行，不能统一当作比例',
  'INPUT_SCHEMA_MISMATCH':'输入字段与冻结计划不一致，请修改方案后重新运行',
  'INPUT_PERCENTAGE_FORMAT_MISMATCH':'输入百分比的数值类型或value_format与来源已明确的表示不一致',
@@ -389,6 +403,8 @@ def workflow_run_diagnostic(pid,wid,rid=None,*,draft_sha256=None):
     elif (code=='TYPE_MISMATCH' and alias and details.get('expected_data_type')=='text'
             and details.get('actual_type') in ('Decimal','int')):
         next_step='先核对该输入列的来源类型与单位。若它是后续需要normalize的混合原始金额，可在bindings.'+alias+'.options.text_columns显式列出原始c_N列，仅将精确Decimal/整数无损投影为文本；原字符串和空值保持，保留来源单位并显式normalize。不得投影比例/百分比、float或bool，也不得自动猜测单位；否则修正输入类型声明。保存后重新登记运行。'
+    elif code=='SQL_INEXACT_NUMERIC':
+        next_step='不要仅将SQL结果CAST回DECIMAL或重复运行原SQL。均值先用aggregate求和与计数，除法和比率改用compute的精确Decimal运算并明确rounding_scale；使用不含科学计数的精确十进制字面量，核对单位和分母为零的业务处理后重新登记运行。'
     elif code in ('TASK_FAILED','WORKFLOW_FAILED'):
         next_step='此运行没有保存可核对的具体失败阶段。保留run_id并核对输入声明或服务状态；不要盲目重跑、分页读取失败结果，或声称已经完成。'
     else:next_step='查看本流程输入与步骤的完整声明，按失败阶段修复草稿，再register_data_workflow、run_data_workflow；失败运行不能用read_data_workflow_result分页读取，不能发布或当成完成。'
@@ -406,10 +422,78 @@ def enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,originatin
     with client_guard(authority["client_id"]) if authority else nullcontext():
         # Re-read after locking: revoke/cancel may have won admission.
         authority=for_turn(originating_turn_id)
-        return _enqueue_workflow(pid,wid,use_published=use_published,scheduled_key=scheduled_key,authority=authority)
+        return _enqueue_workflow(pid,wid,use_published=use_published,scheduled_key=scheduled_key,authority=authority,
+                                 originating_turn_id=originating_turn_id)
 
 
-def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None):
+def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
+    """Reuse an actual receipt in this owner task, never a cross-task cache."""
+    if not turn_id or doc.reviewed_mapping_ids or any(b.result_id for b in doc.bindings.values()):return None
+    from .actor_context import current_actor
+    from .conversation import default_session,stable
+    from .jobs import get_job
+    from .result_delivery import verify_handoff,_read_json
+    from .connectors import verified_file_source
+    turn=get('turn',turn_id)
+    def eligible(value):
+        return (value.get('project_id')==pid and value.get('actor_id','owner')==current_actor()=='owner'
+            and value.get('interaction_mode','work')=='work' and value.get('outcome')!='cancelled'
+            and not any(value.get(key) for key in ('gateway_client_id','gateway_limits','collaboration_parent_turn_id',
+                                                   'collaboration_task_id','collaboration_depth')))
+    if not eligible(turn) or turn.get('state') not in ('agent','agent_tool'):return None
+    family={};member=turn;session=turn.get('session_id') or default_session(pid)
+    for _ in range(50):
+        if (member['id'] in family or not eligible(member)
+                or (member.get('session_id') or default_session(pid))!=session):return None
+        family[member['id']]=member
+        if not member.get('resumed_from'):break
+        try:member=get('turn',member['resumed_from'])
+        except KeyError:return None
+    else:return None
+    origin=turn.get('agent_origin',turn['id'])
+    if origin!=member['id']:return None
+    candidates=[step for step in reversed(turn.get('agent_trace',[]))
+        if step.get('tool')=='run_data_workflow' and step.get('status')=='done'
+        and step.get('arguments',{}).get('workflow_id')==wid and isinstance(step.get('observation'),dict)]
+    if not candidates:return None
+    # Reuse has the same current authorization boundary as a new tool effect.
+    from .agent import authorize
+    authorize(turn,'run_data_workflow',{'workflow_id':wid})
+    for source in frozen.values():
+        if (source.get('kind')!='file' or source.get('fact_review_id')
+                or type(source.get('revision')) is not int or source['revision']<1
+                or not source.get('revision_id') or not re.fullmatch(r'[a-f0-9]{64}',source.get('content_hash') or '')):return None
+        verified_file_source(source)
+    engine=processing_fingerprint();plan_hash=digest(doc.model_dump())
+    for step in candidates:
+        rid=step['observation'].get('run_id')
+        if not isinstance(rid,str) or not step.get('id'):continue
+        try:
+            run=get_job(rid)
+            if (run.get('project_id')!=pid or run.get('kind')!='data_workflow' or run.get('target')!=wid
+                    or run.get('originating_turn_id') not in family or run.get('gateway_authority')
+                    or run.get('authority_origin')!={'version':1,'kind':'workspace'}
+                    or run.get('status') not in ('validated','succeeded') or not run.get('validated')
+                    or run.get('cancel_requested') or run.get('commit')!=plan_hash
+                    or run.get('scheduled_key')!=stable('dataop_',origin,step['id'])
+                    or run.get('runtime_snapshot',{}).get('processing_fingerprint')!=engine
+                    or digest(run.get('workflow_document'))!=plan_hash
+                    or digest(run.get('source_snapshot'))!=digest(frozen)):continue
+            folder,meta=result_folder(pid,rid)
+            if meta.get('processing_fingerprint')!=engine:continue
+            verify_handoff(folder/'handoff',meta['handoff_sha256'])
+            context=_read_json(folder/'handoff'/'context.json')
+            if context.get('processing_fingerprint')!=engine:continue
+            # Check again after complete result verification, before admitting reuse.
+            from .sources import snapshot
+            if digest(snapshot(list(frozen)))!=digest(frozen):return None
+            for source in frozen.values():verified_file_source(source)
+            return dict(run,reused_verified_result=True)
+        except (KeyError,ValueError,OSError,TypeError):continue
+    return None
+
+
+def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None):
     if authority and authority['project_id']!=pid:raise ValueError('加工任务不属于原调用授权项目')
     w=owned(pid,'data_workflow',wid)
     doc=WorkflowDocument.model_validate(w['active_document']) if use_published and w.get('active_document') else load_document(pid,w['path'])
@@ -419,9 +503,14 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
     ids=[b.source_id for b in doc.bindings.values() if b.source_id]
     frozen=snapshot(ids)
     if any(s.get('project_id')!=pid for s in frozen.values()):raise ValueError('输入来源跨项目')
+    if not authority and not use_published:
+        reused=_reusable_workflow_run(pid,wid,doc,frozen,originating_turn_id)
+        if reused:return reused
     queued=enqueue('data_workflow',wid,commit=digest(doc.model_dump()),scheduled_key=scheduled_key,max_attempts=1,
         extra={**({'gateway_authority':authority} if authority else {}),'project_id':pid,'workflow_document':doc.model_dump(),'source_snapshot':frozen,
-               'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds},'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
+               'originating_turn_id':originating_turn_id,
+               'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
+               'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
     if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow' or queued.get('commit')!=digest(doc.model_dump()):raise ValueError('已有不同版本的加工任务，请等待完成后运行新方案')
     return queued
 
@@ -456,6 +545,9 @@ def execute_job(run,folder):
     from .errors import TaskError
     doc=WorkflowDocument.model_validate(run['workflow_document']);pid=run['project_id']
     if digest(doc.model_dump())!=run['commit']:raise ValueError('冻结的流程版本不一致')
+    engine=processing_fingerprint()
+    if run.get('runtime_snapshot',{}).get('processing_fingerprint') not in (None,engine):
+        raise TaskError('运行引擎版本已变化，请重新发起加工；未混用版本执行','PROCESSING_ENGINE_CHANGED')
     stop=threading.Event()
     def beat():
         while not stop.wait(3):
@@ -566,13 +658,13 @@ def execute_job(run,folder):
                 if rows:con.executemany('INSERT INTO business.business_objects VALUES ('+','.join('?' for _ in cols)+')',[[r[c['name']] for c in cols] for r in rows])
                 report=evaluate(con,doc.contract)
             if not report['passed']:raise TaskError('加工结果未通过数据验收契约，保留之前的正式结果','DATA_CONTRACT_FAILED')
-        context={'project_id':pid,'workflow_id':run['target'],'plan_sha256':run['commit'],'input_evidence':evidence,'data_contract':report,
+        context={'project_id':pid,'workflow_id':run['target'],'plan_sha256':run['commit'],'processing_fingerprint':engine,'input_evidence':evidence,'data_contract':report,
                  'lineage_scope':'input_cell_or_source_evidence_plus_stage_dependencies; output_row_lineage_not_inferred',
                  'semantic_review_reasons':sorted({reason for proof in evidence.values() for reason in proof.get('semantic_review_reasons',[])}),
                  'output_semantics':output['output']['schema'],'requires_semantic_review':bool(output.get('requires_semantic_review') or any(p.get('requires_semantic_review') for p in evidence.values()) or any(st.kind in ('reclassify','lookup') and st.id not in reviewed_stages for st in doc.plan.stages))}
         manifest=write_handoff(folder/'handoff',output['output']['rows'],output['output']['schema'],context=context,provenance=provenance,stages=stage_receipts)
         verify_handoff(folder/'handoff');checkpoint(run)
-        meta={'run_id':run['id'],'workflow_id':run['target'],'project_id':pid,'plan_sha256':run['commit'],
+        meta={'run_id':run['id'],'workflow_id':run['target'],'project_id':pid,'plan_sha256':run['commit'],'processing_fingerprint':engine,
               'handoff_sha256':hashlib.sha256((folder/'handoff'/'manifest.json').read_bytes()).hexdigest(),
               'records':output['output']['row_count'],'created_at':now(),'source_revisions':run.get('source_revisions',{}),'complete':True,'contract':report,
               'requires_semantic_review':context['requires_semantic_review'],'semantic_review_reasons':context['semantic_review_reasons']}

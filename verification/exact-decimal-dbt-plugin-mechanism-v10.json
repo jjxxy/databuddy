@@ -1,0 +1,26 @@
+{
+  "synthetic_only": true,
+  "paid_model_calls": 0,
+  "user_data_accessed": false,
+  "production_modified": false,
+  "new_dependencies_installed": false,
+  "mechanism": "installed dbt-duckdb BasePlugin.configure_connection via LocalEnvironment.handle",
+  "results": {
+    "development": {
+      "application_package_importable": true,
+      "numpy_present": false,
+      "plugin_class_loaded": true,
+      "registration_error_type": "InvalidInputException",
+      "registration_error": "Invalid Input Error: 'numpy' is required for this operation, but it wasn't installed"
+    },
+    "bundled": {
+      "application_package_importable": true,
+      "numpy_present": false,
+      "plugin_class_loaded": true,
+      "registration_error_type": "InvalidInputException",
+      "registration_error": "Invalid Input Error: 'numpy' is required for this operation, but it wasn't installed"
+    }
+  },
+  "python_udf_performance_measured": false,
+  "reason_performance_not_measured": "registration requires absent numpy"
+}

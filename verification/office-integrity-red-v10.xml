@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="10" skipped="0" tests="10" time="2.341" timestamp="2026-10-26T20:54:25.892114+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_office_integrity_regressions" name="test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly[9007199254740993]" time="0.373"><failure message="AssertionError: Export silently changed the original JSON numeric atom&#10;assert Decimal('9007199254740992') == Decimal('9007199254740993')&#10; +  where Decimal('9007199254740992') = Decimal('9007199254740992')&#10; +  and   Decimal('9007199254740993') = Decimal('9007199254740993')">isolated_office = ({'project_id': 'p_35364b9854bcbf9be561bf5c', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_xlsx_numeric_atoms_are_ex0/isolated-office'))
+number = '9007199254740993'
+
+    @pytest.mark.parametrize('number',['9007199254740993','9007199254740.000001','1e309'])
+    def test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'exact.json',numeric_spec(number))
+        try:result=office.render(turn,'exact.json','exact-values')
+        except ValueError as error:
+            # Explicit refusal is safe; silently changing a value or blanking it is not.
+            assert any(word in str(error) for word in ('精度','有限','范围','非有限','exact','finite'))
+            return
+        file,_=office.artifact(turn['project_id'],result['artifact_id'])
+        value=stored_value(file)
+        assert value is not None,'A finite original numeric atom became an empty Excel cell'
+&gt;       assert Decimal(value)==Decimal(number),'Export silently changed the original JSON numeric atom'
+E       AssertionError: Export silently changed the original JSON numeric atom
+E       assert Decimal('9007199254740992') == Decimal('9007199254740993')
+E        +  where Decimal('9007199254740992') = Decimal('9007199254740992')
+E        +  and   Decimal('9007199254740993') = Decimal('9007199254740993')
+
+tests\test_office_integrity_regressions.py:61: AssertionError</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly[9007199254740.000001]" time="0.114"><failure message="AssertionError: Export silently changed the original JSON numeric atom&#10;assert Decimal('9007199254740') == Decimal('9007199254740.000001')&#10; +  where Decimal('9007199254740') = Decimal('9007199254740')&#10; +  and   Decimal('9007199254740.000001') = Decimal('9007199254740.000001')">isolated_office = ({'project_id': 'p_1717efe53350def658006d6a', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_xlsx_numeric_atoms_are_ex1/isolated-office'))
+number = '9007199254740.000001'
+
+    @pytest.mark.parametrize('number',['9007199254740993','9007199254740.000001','1e309'])
+    def test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'exact.json',numeric_spec(number))
+        try:result=office.render(turn,'exact.json','exact-values')
+        except ValueError as error:
+            # Explicit refusal is safe; silently changing a value or blanking it is not.
+            assert any(word in str(error) for word in ('精度','有限','范围','非有限','exact','finite'))
+            return
+        file,_=office.artifact(turn['project_id'],result['artifact_id'])
+        value=stored_value(file)
+        assert value is not None,'A finite original numeric atom became an empty Excel cell'
+&gt;       assert Decimal(value)==Decimal(number),'Export silently changed the original JSON numeric atom'
+E       AssertionError: Export silently changed the original JSON numeric atom
+E       assert Decimal('9007199254740') == Decimal('9007199254740.000001')
+E        +  where Decimal('9007199254740') = Decimal('9007199254740')
+E        +  and   Decimal('9007199254740.000001') = Decimal('9007199254740.000001')
+
+tests\test_office_integrity_regressions.py:61: AssertionError</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly[1e309]" time="0.116"><failure message="AssertionError: A finite original numeric atom became an empty Excel cell&#10;assert None is not None">isolated_office = ({'project_id': 'p_2d1a50ea9e0b7203cb891ef8', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_xlsx_numeric_atoms_are_ex2/isolated-office'))
+number = '1e309'
+
+    @pytest.mark.parametrize('number',['9007199254740993','9007199254740.000001','1e309'])
+    def test_xlsx_numeric_atoms_are_exact_or_rejected_explicitly(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'exact.json',numeric_spec(number))
+        try:result=office.render(turn,'exact.json','exact-values')
+        except ValueError as error:
+            # Explicit refusal is safe; silently changing a value or blanking it is not.
+            assert any(word in str(error) for word in ('精度','有限','范围','非有限','exact','finite'))
+            return
+        file,_=office.artifact(turn['project_id'],result['artifact_id'])
+        value=stored_value(file)
+&gt;       assert value is not None,'A finite original numeric atom became an empty Excel cell'
+E       AssertionError: A finite original numeric atom became an empty Excel cell
+E       assert None is not None
+
+tests\test_office_integrity_regressions.py:60: AssertionError</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_nonfinite_numeric_constants_are_rejected[NaN]" time="0.121"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_aaa5eaf59356972cfc7fe165', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_nonfinite_numeric_constan0/isolated-office'))
+number = 'NaN'
+
+    @pytest.mark.parametrize('number',['NaN','Infinity','-Infinity'])
+    def test_nonfinite_numeric_constants_are_rejected(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'nonfinite.json',numeric_spec(number))
+&gt;       with pytest.raises(ValueError):office.render(turn,'nonfinite.json','nonfinite-values')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:68: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_nonfinite_numeric_constants_are_rejected[Infinity]" time="0.111"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_e19a663195dff8a096bcf0a5', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_nonfinite_numeric_constan1/isolated-office'))
+number = 'Infinity'
+
+    @pytest.mark.parametrize('number',['NaN','Infinity','-Infinity'])
+    def test_nonfinite_numeric_constants_are_rejected(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'nonfinite.json',numeric_spec(number))
+&gt;       with pytest.raises(ValueError):office.render(turn,'nonfinite.json','nonfinite-values')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:68: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_nonfinite_numeric_constants_are_rejected[-Infinity]" time="0.117"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_313cecab4bbdbee778658c88', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_nonfinite_numeric_constan2/isolated-office'))
+number = '-Infinity'
+
+    @pytest.mark.parametrize('number',['NaN','Infinity','-Infinity'])
+    def test_nonfinite_numeric_constants_are_rejected(isolated_office,number):
+        turn,_=isolated_office
+        workspace.write_file(turn['project_id'],'nonfinite.json',numeric_spec(number))
+&gt;       with pytest.raises(ValueError):office.render(turn,'nonfinite.json','nonfinite-values')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:68: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_repeated_render_cannot_resign_registered_corrupt_bytes" time="0.237"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_99f55a7df21730bb34ae80e7', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_repeated_render_cannot_re0/isolated-office'))
+
+    def test_repeated_render_cannot_resign_registered_corrupt_bytes(isolated_office):
+        turn,_=isolated_office
+        _,original,file,record=rendered_document(turn)
+        file.write_bytes(b'ISOLATED SYNTHETIC CORRUPT OFFICE BYTES')
+        with pytest.raises(ValueError):office.artifact(turn['project_id'],original['artifact_id'])
+&gt;       with pytest.raises(ValueError):office.render(turn,'report.json','synthetic-report')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:84: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_valid_but_unregistered_office_file_is_not_adopted_as_spec_result" time="0.185"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_8bd8a0a332e0288932114339', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_valid_but_unregistered_of0/isolated-office'))
+
+    def test_valid_but_unregistered_office_file_is_not_adopted_as_spec_result(isolated_office):
+        from docx import Document
+        turn,_=isolated_office
+        _,original,file,record=rendered_document(turn)
+        # Derive the current renderer's real ID, so this regression survives a
+        # deliberate renderer-version bump instead of planting an obsolete path.
+        store.delete('office_artifact',original['artifact_id'])
+        document=Document();document.add_paragraph('UNRELATED SYNTHETIC CONTENT');document.save(file)
+        assert zipfile.is_zipfile(file)
+&gt;       with pytest.raises(ValueError):office.render(turn,'report.json','synthetic-report')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:97: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_existing_registration_must_still_match_spec_identity" time="0.166"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_1f57e0b5581acca3ecfd14d9', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_existing_registration_mus0/isolated-office'))
+
+    def test_existing_registration_must_still_match_spec_identity(isolated_office):
+        turn,_=isolated_office
+        _,original,file,record=rendered_document(turn)
+        store.patch('office_artifact',original['artifact_id'],source_sha256='f'*64)
+&gt;       with pytest.raises(ValueError):office.render(turn,'report.json','synthetic-report')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:105: Failed</failure></testcase><testcase classname="tests.test_office_integrity_regressions" name="test_cached_structural_validation_is_not_inferred_from_a_matching_hash" time="0.164"><failure message="Failed: DID NOT RAISE ValueError">isolated_office = ({'project_id': 'p_d6e78d2a8e8b0f91268999d2', 'text': '请生成Excel和经营汇报文件', 'interaction_mode': 'work', 'state': 'agent',...indowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-102/test_cached_structural_validat0/isolated-office'))
+
+    def test_cached_structural_validation_is_not_inferred_from_a_matching_hash(isolated_office):
+        turn,_=isolated_office
+        _,original,file,record=rendered_document(turn)
+        file.write_bytes(b'SYNTHETIC LEGACY INVALID OOXML')
+        store.patch('office_artifact',original['artifact_id'],sha256=hashlib.sha256(file.read_bytes()).hexdigest(),bytes=file.stat().st_size)
+&gt;       with pytest.raises(ValueError):office.render(turn,'report.json','synthetic-report')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_office_integrity_regressions.py:114: Failed</failure></testcase></testsuite></testsuites>

@@ -1,0 +1,64 @@
+{
+  "synthetic_only": true,
+  "paid_model_calls": 0,
+  "user_data_accessed": false,
+  "production_modified": false,
+  "new_dependencies_installed": false,
+  "existing_compute_decimal_positive_cases": {
+    "development": [
+      {
+        "left": "13",
+        "right": "100",
+        "result": "0.130000000000"
+      },
+      {
+        "left": "1",
+        "right": "3",
+        "result": "0.333333333333"
+      },
+      {
+        "left": "9007199254740993",
+        "right": "1",
+        "result": "9007199254740993.000000000000"
+      },
+      {
+        "left": "1",
+        "right": "0",
+        "code": "DIVIDE_BY_ZERO"
+      },
+      {
+        "left": null,
+        "right": "1",
+        "code": "NULL_VALUE"
+      }
+    ],
+    "bundled": [
+      {
+        "left": "13",
+        "right": "100",
+        "result": "0.130000000000"
+      },
+      {
+        "left": "1",
+        "right": "3",
+        "result": "0.333333333333"
+      },
+      {
+        "left": "9007199254740993",
+        "right": "1",
+        "result": "9007199254740993.000000000000"
+      },
+      {
+        "left": "1",
+        "right": "0",
+        "code": "DIVIDE_BY_ZERO"
+      },
+      {
+        "left": null,
+        "right": "1",
+        "code": "NULL_VALUE"
+      }
+    ]
+  },
+  "full_finance_G1_passed": false
+}

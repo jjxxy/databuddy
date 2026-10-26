@@ -1,7 +1,6 @@
-Atlas DataBuddy v0.20.0 源码快照（对应 r14）
+Atlas DataBuddy v0.20.0 当前源码工作稿
 
-此包用于在 ChatGPT 网页端继续审查、修改和开发项目。包含源码、前端、测试、合成验收样本、部署模板、锁文件和运行库元数据。
-这是源码包，不包含已安装的 Python/Node 依赖及便携运行时；直接运行请使用单独的 Windows 便携 ZIP。
-真实模型密钥、个人工作空间、原始对话记录和部署账户状态未打包。需要模型配置时使用 llm.example.json，不要在聊天里粘贴密钥。
-当前完整财经月结 G1 尚未通过验收；最新状态见 CODEX-DELIVERY-v08.md，不能按历史验证记录宣称已全部通过。
-SOURCE-MANIFEST.sha256 校验本包源码；EXPORT-INFO.json 说明导出范围。
+最后验证的便携包为 r17；当前源码有后续部分修补，尚未完成合并及交付验证，不是 r18 发布包。
+请先读 REPOSITORY-STATUS.md 与 EXPORT-INFO.json。
+源码未包含密钥、个人工作空间、真实数据库、运行时与已安装依赖。
+SOURCE-MANIFEST.sha256 只校验本次源码快照；不表示业务验收通过。

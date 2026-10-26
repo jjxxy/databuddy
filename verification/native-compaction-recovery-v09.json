@@ -1,0 +1,303 @@
+{
+  "ok": true,
+  "test": "real_bundled_native_compaction_recovery_local_mock",
+  "paid_model_calls": 0,
+  "user_profile_accessed": false,
+  "financial_llm_evidence": false,
+  "test_model_context_tokens": 8192,
+  "test_output_tokens": 256,
+  "test_compaction_keep_tokens": 512,
+  "test_compaction_buffer_tokens": 1024,
+  "native_version": "2.1.2",
+  "generation_requests": 20,
+  "mock_compaction_requests": 4,
+  "admitted_compaction_requests": 4,
+  "manual_compact_api_calls": 0,
+  "native_compactions": [
+    {
+      "status": "completed",
+      "reason": "auto",
+      "summary_present": true,
+      "native_message_keys": [
+        "type",
+        "id",
+        "time",
+        "status",
+        "reason",
+        "model",
+        "summary",
+        "cost",
+        "tokens"
+      ]
+    }
+  ],
+  "state": "done",
+  "outcome": "verified_complete",
+  "verified": true,
+  "report_contents_match": true,
+  "requests": [
+    {
+      "kind": "generation",
+      "request_characters": 3529,
+      "message_count": 2,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 13151,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 18748,
+      "message_count": 6,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 24345,
+      "message_count": 8,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "compaction",
+      "request_characters": 12246,
+      "message_count": 3,
+      "tools": 1,
+      "tool_choice": null,
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 4015,
+      "message_count": 2,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 9612,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 15209,
+      "message_count": 6,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 20806,
+      "message_count": 8,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 26403,
+      "message_count": 10,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "compaction",
+      "request_characters": 14782,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": null,
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 4015,
+      "message_count": 2,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 9612,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 15209,
+      "message_count": 6,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 20808,
+      "message_count": 8,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 26407,
+      "message_count": 10,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "compaction",
+      "request_characters": 14782,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": null,
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 4015,
+      "message_count": 2,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 9612,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 15211,
+      "message_count": 6,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 20810,
+      "message_count": 8,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 26409,
+      "message_count": 10,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "compaction",
+      "request_characters": 14782,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": null,
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 4015,
+      "message_count": 2,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 9612,
+      "message_count": 4,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 13076,
+      "message_count": 6,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    },
+    {
+      "kind": "generation",
+      "request_characters": 14058,
+      "message_count": 8,
+      "tools": 1,
+      "tool_choice": "required",
+      "stream": true,
+      "summary_template_requested": false
+    }
+  ],
+  "historical_recovery_receipts": [
+    {
+      "status": "done",
+      "epoch": {
+        "session_id": "ses_e88007cc9ffehBh4sqTvCbssuW",
+        "compaction": 0
+      },
+      "same_original_marker_present": true
+    },
+    {
+      "status": "done",
+      "epoch": {
+        "session_id": "ses_e88007cc9ffehBh4sqTvCbssuW",
+        "compaction": 4
+      },
+      "same_original_marker_present": true
+    }
+  ],
+  "recovery_after_real_compaction_verified": true,
+  "native_completed_context_epoch": 4
+}

@@ -188,7 +188,11 @@ def test_identical_operation_loop_stops_before_consuming_entire_budget(project,m
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://model.invalid','model':'simulated','share_data':True})
     monkeypatch.setattr(provider,'complete',lambda *a,**k:json.dumps({'kind':'tool','tool':'project_context'}))
     result=complete(send(project,'了解项目资料','repeat-loop'))
-    assert result['outcome']=='paused' and len(result['agent_trace'])==2 and result['resume_available']
+    assert result['outcome']=='paused' and result['resume_available']
+    actual=[step for step in result['agent_trace'] if step.get('observation',{}).get('executed') is not False]
+    blocked=[step for step in result['agent_trace'] if step.get('observation',{}).get('executed') is False]
+    assert len(actual)==2 and all(step['status']=='done' for step in actual)
+    assert len(blocked)==2 and all(step['status']=='failed' and step['observation']['code']=='TOOL_NO_PROGRESS' for step in blocked)
 
 
 def test_continue_button_binds_specific_task_and_rejects_other_conversation(project,monkeypatch):

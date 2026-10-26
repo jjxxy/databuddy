@@ -195,7 +195,9 @@ def test_local_export_actual_code_and_verified_office_without_overwriting_origin
     monkeypatch.setattr(workspace,'read_file',local.read_project_file)
     monkeypatch.setattr(workspace,'path_for',lambda project,name:root/local.CODE_DIR/project/'files'/name)
     deliverable=DATA/'deliverables'/'local-fixture.docx';deliverable.parent.mkdir(exist_ok=True)
-    deliverable.write_bytes(b'fixture-only-verified-content')
+    from docx import Document
+    document=Document();document.add_paragraph('fixture-only-verified-content');document.save(deliverable)
+    original_bytes=deliverable.read_bytes()
     aid='office_'+uid();put('office_artifact',{'project_id':pid,'relative_path':str(deliverable.relative_to(DATA)),
         'sha256':hashlib.sha256(deliverable.read_bytes()).hexdigest(),'name':'monthly.docx'},aid)
     try:
@@ -212,7 +214,7 @@ def test_local_export_actual_code_and_verified_office_without_overwriting_origin
         third=local.export_project(pid)
         assert not third['complete'] and third['failures'][0]['kind']=='office'
         with pytest.raises(ValueError,match='未完成'):local.verify_export(pid,third['id'])
-        assert exported.read_bytes()==b'fixture-only-verified-content'
+        assert exported.read_bytes()==original_bytes
         exported.write_bytes(b'tampered-saved-export')
         with pytest.raises(ValueError,match='大小|摘要'):local.verify_export(pid,first['id'])
     finally:deliverable.unlink(missing_ok=True)

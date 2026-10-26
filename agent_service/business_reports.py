@@ -314,7 +314,7 @@ def _office_file(pid,report_id,root,format):
     with workspace.lock(pid):
         record=get('business_report',report_id)
         manifest_path=report_file(pid,report_id,'manifest')
-        manifest=json.loads(manifest_path.read_text())
+        manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
         path=root/('report.'+format)
         expected=record.get('office_exports',{}).get(format)
         pending=record.get('office_export_pending',{}).get(format)

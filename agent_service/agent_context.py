@@ -11,8 +11,21 @@ class DiscoverTools(StrictModel):
 
 class ToolResult(StrictModel):
     step_id:str=Field(min_length=1,max_length=64)
+    source_turn_id:str|None=Field(default=None,min_length=1,max_length=64,
+        description='历史回执所属轮次；从read_context_original提供的引用逐字使用。省略时仅查本任务恢复链，不搜索其他任务。')
     offset:int=Field(default=0,ge=0,le=2000000)
     limit:int=Field(default=6000,ge=1,le=10000)
+
+class InvalidRecoveryReference(ValueError):
+    code='RECOVERY_REFERENCE_INVALID'
+
+def recovery_page(kind,resource_id,text,offset,limit):
+    content=text[offset:offset+limit];end=offset+len(content)
+    return {'kind':kind,'resource_id':resource_id,
+            'version_sha256':hashlib.sha256(text.encode()).hexdigest(),
+            'offset_unit':'characters',
+            'offset':offset,'returned_characters':len(content),'total_characters':len(text),
+            'next_offset':end if end<len(text) else None}
 
 class FileSearch(StrictModel):
     query:str=Field(min_length=1,max_length=300)
@@ -168,6 +181,17 @@ def _same_json(left,right):
 def observation_view(value,tool):
     """Losslessly reference exactly repeated metadata; never summarize facts."""
     if not isinstance(value,dict):return value
+    if tool in ('inspect_data_workflow','register_data_workflow') and isinstance(value.get('document'),dict):
+        document=value['document'];plan=document.get('plan',{});inputs=value.get('inputs');view=dict(value)
+        if (isinstance(inputs,dict) and set(inputs)==set(document.get('bindings',{}))==set(plan.get('inputs',{}))
+                and all(isinstance(item,dict) and set(item)=={'binding','schema'}
+                        and _same_json(item['binding'],document['bindings'][key])
+                        and _same_json(item['schema'],plan['inputs'][key]) for key,item in inputs.items())):
+            view.pop('inputs');view['inputs_reference']={'binding':'#/document/bindings/<alias>','schema':'#/document/plan/inputs/<alias>',
+                'exact_values_already_present':True}
+        if isinstance(value.get('steps'),list) and _same_json(value['steps'],plan.get('stages')):
+            view.pop('steps');view['steps_reference']='#/document/plan/stages'
+        return view
     if tool=='inspect_source_tables':
         sheets=value.get('sheets');candidates=value.get('candidate_regions')
         if (isinstance(sheets,list) and isinstance(candidates,list) and candidates
@@ -192,6 +216,20 @@ def observation_view(value,tool):
 
 def trace_context(turn,clean):
     trace=turn.get('agent_trace',[]);values=[]
+    working={};versions={}
+    for step in trace:
+        raw=step.get('observation');r=raw.get('recovery') if isinstance(raw,dict) else None
+        if step.get('status')=='done' and isinstance(r,dict) and raw.get('executed') is not False:
+            versions[(r.get('kind'),r.get('resource_id'))]=r.get('version_sha256')
+    for i,step in enumerate(trace):
+        raw=step.get('observation');recovery=raw.get('recovery') if isinstance(raw,dict) else None
+        if (step.get('status')=='done' and isinstance(recovery,dict) and raw.get('executed') is not False
+                and recovery.get('version_sha256')==versions.get((recovery.get('kind'),recovery.get('resource_id')))):
+            working[('recovery',recovery.get('kind'),recovery.get('resource_id'),recovery.get('version_sha256'),
+                     recovery.get('offset'),recovery.get('returned_characters'))]=i
+        if step.get('tool') in ('inspect_data_workflow','register_data_workflow') and isinstance(raw,dict) and raw.get('workflow_id'):
+            working[('workflow',raw['workflow_id'])]=i
+    retained=set(working.values())
     for i,step in enumerate(trace):
         sid=step.get('id','index_'+str(i));raw=clean(step.get('observation'))
         view=observation_view(raw,step['tool'])
@@ -222,10 +260,14 @@ def trace_context(turn,clean):
                      and len(json.dumps(view['rows'],ensure_ascii=False,default=str))<=6000
                      and len(encoded)<=16000)
         small_observation=len(encoded)<=6000
-        limit=len(encoded) if canonical else 16000 if small_table else 6000 if small_observation else 24000 if recent and bounded_structure else 5000 if recent else 600
+        limit=len(encoded) if canonical or i in retained else 16000 if small_table else 6000 if small_observation else 24000 if recent and bounded_structure else 5000 if recent else 600
         if len(encoded)>limit:
             original=raw.get('step_id') if step['tool']=='read_tool_result' and isinstance(raw,dict) else sid
-            observation={'context_excerpt':encoded[:limit],'omitted_characters':len(encoded)-limit,'recover_with':{'tool':'read_tool_result','step_id':original or sid,'offset':0},'not_full_result':True}
+            observation={'context_excerpt':encoded[:limit],'omitted_characters':len(encoded)-limit,
+                'recover_with':{'tool':'read_tool_result','step_id':original or sid,
+                                'source_turn_id':raw.get('source_turn_id',turn['id']) if isinstance(raw,dict) else turn['id'],'offset':0},'not_full_result':True}
+            if step['tool'] in ('read_context_original','read_context_checkpoint'):
+                observation['recover_with']={'tool':step['tool'],**args}
         receipt={'step_id':sid,'tool':step['tool'],'arguments':args,'status':step['status'],'observation':observation}
         if step['tool']=='read_tool_result' and isinstance(raw,dict):
             receipt['original_result']={'step_id':raw.get('step_id') or args.get('step_id'),
@@ -239,10 +281,14 @@ def trace_context(turn,clean):
 
 def read_result(turn,value):
     from .agent import public_observation
-    target=value.step_id;aliases=[]
+    target=value.step_id;aliases=[];owner=turn
+    if value.source_turn_id:
+        from .context_compaction import authorized_history_turn
+        owner,_,active=authorized_history_turn(turn,value.source_turn_id)
+        if not active:raise ValueError('历史内容已撤回或不适用于当前用户，不能恢复旧工具回执')
     for _ in range(16):
-        if target in aliases:raise ValueError('工具结果恢复引用形成循环，请使用原始工具步骤')
-        current=turn;visited=set();step=None
+        if (owner['id'],target) in aliases:raise InvalidRecoveryReference('工具结果恢复引用形成循环，请使用原始工具步骤')
+        current=owner;visited=set();step=None
         while current['id'] not in visited:
             visited.add(current['id'])
             if current['project_id']!=turn['project_id']:raise ValueError('工具结果不属于本项目')
@@ -250,28 +296,51 @@ def read_result(turn,value):
             if step:break
             previous=current.get('resumed_from')
             if not previous or len(visited)>=50:break
-            current=get('turn',previous)
-        if not step:raise ValueError('本任务及其恢复链没有该工具结果；不能读取其他任务或项目')
+            try:current=get('turn',previous)
+            except KeyError:raise InvalidRecoveryReference('任务恢复链已不可用，请使用仍有效的来源引用') from None
+        if not step:raise InvalidRecoveryReference('本任务及其恢复链没有该工具结果；不能读取其他任务或项目，历史回执须使用附带的source_turn_id')
         if step['tool']!='read_tool_result':break
         # A page is an alias, not another serialized financial result. Offsets
         # always address the original result; the same task/project and all
         # existing privacy filters still apply at every lookup.
-        aliases.append(target)
-        reference=ToolResult(step_id=step.get('arguments',{}).get('step_id'),offset=value.offset,limit=value.limit)
-        target=reference.step_id
-    else:raise ValueError('工具结果恢复引用过深，请使用原始工具步骤')
+        aliases.append((current['id'],target))
+        reference=ToolResult(**dict(step.get('arguments',{}),offset=value.offset,limit=value.limit))
+        target=reference.step_id;owner=current
+        if reference.source_turn_id:
+            from .context_compaction import authorized_history_turn
+            owner,_,active=authorized_history_turn(turn,reference.source_turn_id)
+            if not active:raise ValueError('历史内容已撤回或不适用于当前用户，不能恢复旧工具回执')
+    else:raise InvalidRecoveryReference('工具结果恢复引用过深，请使用原始工具步骤')
+    if current['id']!=turn['id']:
+        from .context_compaction import authorized_history_turn
+        _,_,active=authorized_history_turn(turn,current['id'])
+        if not active:raise ValueError('历史内容已撤回或不适用于当前用户，不能恢复旧工具回执')
+    if step['tool']=='read_context_original':
+        from .context_compaction import read_original
+        replay=read_original(turn,**step['arguments'])
+        content=replay['content'][value.offset:value.offset+value.limit]
+        recovery=dict(replay['recovery'],offset=replay['offset']+value.offset,returned_characters=len(content))
+        end=recovery['offset']+len(content);recovery['next_offset']=end if end<recovery['total_characters'] else None
+        return dict(replay,content=content,offset=recovery['offset'],next_offset=recovery['next_offset'],recovery=recovery,
+            step_id=step.get('id'),source_turn_id=current['id'],requested_step_id=value.step_id,
+            resolved_page_steps=[sid for _,sid in aliases],tool=step['tool'],status=step['status'],scope='saved_context_page_alias')
+    if step['tool']=='read_context_checkpoint':
+        from .context_compaction import read_checkpoint
+        return dict(read_checkpoint(turn,**step['arguments']),step_id=step.get('id'),source_turn_id=current['id'],
+            requested_step_id=value.step_id,resolved_page_steps=[sid for _,sid in aliases],tool=step['tool'],status=step['status'])
     if step['tool'] in ('remember_memory','forget_memory','recall_memories'):
         from .memory_service import context_for_turn
         observation=context_for_turn(turn)
-    elif step['tool'] in ('compact_work_context','read_context_original','read_context_checkpoint'):
+    elif step['tool']=='compact_work_context':
         from .context_compaction import context_for_turn
         observation=context_for_turn(turn)
     else:observation=step.get('observation')
     text=json.dumps(public_observation(observation),ensure_ascii=False,default=str)
     end=value.offset+value.limit
-    return {'step_id':target,'requested_step_id':value.step_id,'resolved_page_steps':aliases,
+    return {'step_id':target,'requested_step_id':value.step_id,'resolved_page_steps':[sid for _,sid in aliases],
         'tool':step['tool'],'status':step['status'],'format':'json','content':text[value.offset:end],
-        'total_characters':len(text),'offset':value.offset,'next_offset':end if end<len(text) else None}
+        'source_turn_id':current['id'],'total_characters':len(text),'offset':value.offset,'next_offset':end if end<len(text) else None,
+        'recovery':recovery_page('tool_result','turn:'+current['id']+':step:'+target,text,value.offset,value.limit)}
 
 def search_files(pid,value):
     from . import workspace

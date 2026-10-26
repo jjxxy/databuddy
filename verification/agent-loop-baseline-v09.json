@@ -1,0 +1,17 @@
+{
+  "baseline": "r14",
+  "read_only": true,
+  "user_text_characters": 34,
+  "model_calls": 145,
+  "trace_steps": 140,
+  "unique_native_call_ids": 140,
+  "history_pages": 45,
+  "fully_covered_history_page_repeats": 23,
+  "covered_history_characters": 147162,
+  "failed_tool_result_reads": 74,
+  "failed_ids_present_in_other_saved_turns": 69,
+  "largest_identical_successful_recovery_body_count": 20,
+  "business_tools_executed": 0,
+  "raw_user_text_or_financial_values_included": false,
+  "model_keys_accessed": false
+}

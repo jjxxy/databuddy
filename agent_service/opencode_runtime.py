@@ -293,6 +293,46 @@ def wait_ready(timeout=30):
     raise ValueError('OpenCode运行服务未就绪，未启动业务处理')
 
 
+def _observe_completed_compactions(turn_id, session_id, messages):
+    """Advance recovery coverage only from authenticated native completion data.
+
+    Admission/failed/running summaries do not prove that old pages were evicted.
+    The native session ID and a bounded set of observed summary IDs make polling
+    idempotent and prevent a retired session from changing the current epoch.
+    """
+    from .locks import assert_owned
+    from .store import get, patch
+    assert_owned()
+    if not isinstance(messages, list):return 0
+    current=get('turn',turn_id)
+    if current.get('opencode_session_id')!=session_id or current.get('state') not in ('agent','agent_tool'):
+        return 0
+    completed=[]
+    for item in messages:
+        if (not isinstance(item,dict) or item.get('type')!='compaction'
+                or item.get('status')!='completed' or not isinstance(item.get('summary'),str)
+                or not item['summary'].strip()):continue
+        identity=item.get('id')
+        if isinstance(identity,str) and 1<=len(identity)<=160 and identity not in completed:
+            completed.append(identity)
+    state=current.get('opencode_context_compactions') or {}
+    seen=list(state.get('ids',[])) if isinstance(state,dict) and state.get('session_id')==session_id else []
+    last=state.get('last_id') if isinstance(state,dict) and state.get('session_id')==session_id else None
+    if last in completed:
+        # Native history can contain more old summaries than our recent-ID
+        # cache. Only entries after the observed boundary are new compactions.
+        fresh=completed[completed.index(last)+1:]
+    else:
+        fresh=[identity for identity in completed if identity not in seen]
+        if last is not None:fresh=fresh[-1:]
+    if not fresh:return 0
+    epoch=current.get('opencode_context_epoch',0)
+    if type(epoch) is not int or epoch<0:epoch=0
+    patch('turn',turn_id,opencode_context_epoch=epoch+len(fresh),
+          opencode_context_compactions={'session_id':session_id,'ids':(seen+fresh)[-256:],'last_id':fresh[-1]})
+    return len(fresh)
+
+
 def run_session(turn, prompt, info, callback):
     """Run a native tool loop; callback(step, durable_call_id) returns JSON.
 
@@ -319,6 +359,7 @@ def run_session(turn, prompt, info, callback):
     closing = threading.Event()
     failure = []
     context_rebuild = [False]
+    compaction_pending = [False]
     known_tools={tool['name']:hashlib.sha256(json.dumps(tool,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                  for tool in info.get('tools',[]) if isinstance(tool,dict) and tool.get('name')}
     from .memory_service import generation as memory_generation
@@ -340,6 +381,15 @@ def run_session(turn, prompt, info, callback):
     if remaining_ms is not None and remaining_ms<=0:
         raise provider.BudgetExceeded('此任务已达到配置的处理时长上限，已有成果已保存')
 
+    def sync_compaction_epoch():
+        # The next generation/step may arrive before the regular idle poll.
+        # Read native state while a summary is pending, before a recovery guard
+        # can mistake a legitimately evicted old page for a redundant read.
+        if compaction_pending[0] and session_id[0]:
+            messages=_request(value,'GET','/api/session/'+session_id[0]+'/context')['data']
+            if _observe_completed_compactions(turn['id'],session_id[0],messages):
+                compaction_pending[0]=False
+
     def dispatch(payload):
         assert_owned()
         current = get('turn', turn['id'])
@@ -348,6 +398,7 @@ def run_session(turn, prompt, info, callback):
             stop.set();return {'state': current['state'], 'terminal': True, 'outcome': current.get('outcome')}
         if payload.get('op') == 'model_request':
             if context_rebuild[0]:return {'terminal':True,'context_rebuild_required':True}
+            if payload.get('kind')!='compaction':sync_compaction_epoch()
             if memory_generation(turn['project_id'])!=starting_memory_generation:
                 raise provider.BudgetExceeded('记忆已被修改或撤回，旧模型上下文已停止发送；回复继续后使用新的上下文')
             assert_model_allowed(turn['project_id'])
@@ -388,6 +439,7 @@ def run_session(turn, prompt, info, callback):
             collaboration_budget.admit(current,size,output_allowance)
             reserve(output_allowance)
             compacting=payload.get('kind')=='compaction'
+            if compacting:compaction_pending[0]=True
             projection=payload.get('context_projection')
             if not isinstance(projection,dict) or any(type(v) is not int or v<0 or v>2000000 for v in projection.values()):projection=None
             protocol=payload.get('native_protocol')
@@ -414,6 +466,7 @@ def run_session(turn, prompt, info, callback):
         if not isinstance(call_id, str) or not 1 <= len(call_id) <= 160:raise ValueError('无效工具调用标识')
         message_id = payload.get('message_id')
         if not isinstance(message_id, str) or not 1 <= len(message_id) <= 160:raise ValueError('无效工具消息标识')
+        sync_compaction_epoch()
         # Some compatible providers reuse a call ID in another message. A call
         # is unique only inside its durable OpenCode session/message pair.
         result = callback(payload.get('step'), session_id[0] + ':' + message_id + ':' + call_id)
@@ -474,6 +527,7 @@ def run_session(turn, prompt, info, callback):
             _request(value, 'PATCH', '/api/session/' + session_id[0], {'metadata': metadata})
             _request(value, 'POST', '/api/session/' + session_id[0] + '/model', {'model': value['model_ref']})
             native_context=_request(value,'GET','/api/session/'+session_id[0]+'/context')['data']
+            _observe_completed_compactions(turn['id'],session_id[0],native_context)
             # A resumed task appends a fresh, authoritative Atlas context.
             # Count both histories before appending it; considering only the
             # old history lets two individually small contexts exceed the next
@@ -502,6 +556,9 @@ def run_session(turn, prompt, info, callback):
                 # A bridge callback may have stopped/completed the task while
                 # the context request was in flight. Preserve its real result.
                 if stop.is_set():break
+                with serial:
+                    if _observe_completed_compactions(turn['id'],session_id[0],messages):
+                        compaction_pending[0]=False
                 if messages and messages[-1].get('type') == 'idle':
                     # An unverified free-text finish is a protocol error, never
                     # a business completion or a reason to fabricate receipts.
