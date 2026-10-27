@@ -146,11 +146,11 @@ def test_real_workflow_report_is_reusable_hashed_and_project_scoped():
     value=reports.render(pid,rid,r)
     assert value['assertions'][0]['value']=='300.000002'
     assert value['recipe_commit'] and value['complete']
-    output=reports.report_file(pid,value['id']);text=output.read_text()
+    output=reports.report_file(pid,value['id']);text=output.read_text(encoding='utf-8')
     assert '300.000002' in text and '\\<script\\>' in text
     assert '业务原因和后续判断需要另附依据' in text
     assert reports.render_saved(pid,rid,'reports/month-end.json')['id']==value['id']
-    manifest=json.loads(reports.report_file(pid,value['id'],'manifest').read_text())
+    manifest=json.loads(reports.report_file(pid,value['id'],'manifest').read_text(encoding='utf-8'))
     assert manifest['handoff_sha256']==info['handoff_sha256']
     assert manifest['evaluation']['input_rows']==2
     assert '300.000002' not in workspace.read_file(pid,'reports/month-end.json')
@@ -178,7 +178,7 @@ def test_sql_result_requires_genuine_server_adoption_before_brief():
     assert info['server_adopted_result'] and info['requires_semantic_review']
     r=recipe();r['expected_schema_sha256']=info['schema_sha256']
     result=reports.render(pid,rid,r)
-    manifest=json.loads(reports.report_file(pid,result['id'],'manifest').read_text())
+    manifest=json.loads(reports.report_file(pid,result['id'],'manifest').read_text(encoding='utf-8'))
     assert manifest['requires_semantic_review'] is True and manifest['server_adopted_result'] is True
 
 
@@ -188,7 +188,7 @@ def test_office_exports_reuse_exact_frozen_assertions_and_verify_saved_hashes():
     pid,rid=real_result();r=recipe();r['expected_schema_sha256']=reports.inspect_result(pid,rid)['schema_sha256']
     # Seven main metrics plus a comparison force multi-page native slide tables.
     r['metrics']=[{'id':'m'+str(i),'label':'净收入'+str(i),'kind':'sum','column':'actual'} for i in range(7)]+r['metrics'][1:]
-    report=reports.render(pid,rid,r);manifest=json.loads(reports.report_file(pid,report['id'],'manifest').read_text())
+    report=reports.render(pid,rid,r);manifest=json.loads(reports.report_file(pid,report['id'],'manifest').read_text(encoding='utf-8'))
     expected=reports._assertion_rows(manifest)
     docx=reports.report_file(pid,report['id'],'docx');docx_bytes=docx.read_bytes()
     assert [[c.text for c in row.cells] for row in list(Document(docx).tables[0].rows)[1:]]==expected

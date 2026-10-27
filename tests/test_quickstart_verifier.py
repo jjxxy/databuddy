@@ -28,6 +28,7 @@ def test_isolated_cloud_environment_cannot_use_shell_accounts_or_real_model_keys
     assert 'ATLAS_INITIAL_MODEL' not in environment and 'LLM_API_KEY' not in environment
     assert 'API_ALLOWED_HOSTS' not in environment  # cloud derives the chosen local model host
     assert environment['ATLAS_OPENCODE_RUNTIME']=='0'
+    assert 'ATLAS_SUPERVISOR_STDIN' not in environment  # Each caller owns its own stdin lifetime.
 
 
 def test_local_model_is_an_explicit_authenticated_protocol_fixture():
@@ -48,21 +49,21 @@ def test_local_model_is_an_explicit_authenticated_protocol_fixture():
 
 
 def test_nonempty_evidence_folder_is_never_overwritten(tmp_path):
-    target = tmp_path / 'existing'; target.mkdir(); (target / 'keep.txt').write_text('keep')
-    result = subprocess.run([sys.executable, str(ROOT / 'scripts/verify_quickstart.py'),
-        '--evidence-dir', str(target)], cwd=ROOT, capture_output=True, text=True, timeout=15)
-    assert result.returncode == 2 and (target / 'keep.txt').read_text() == 'keep'
+    target = tmp_path / 'existing'; target.mkdir(); (target / 'keep.txt').write_text('keep',encoding='utf-8')
+    result = subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'scripts/verify_quickstart.py'),
+        '--evidence-dir', str(target)], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', timeout=15)
+    assert result.returncode == 2 and (target / 'keep.txt').read_text(encoding='utf-8') == 'keep'
     assert not (target / 'service.log').exists()
 
 
 def test_setup_real_cloud_agent_exact_deliveries_and_restart_with_simulated_model(tmp_path):
     target = tmp_path / 'evidence'
-    result = subprocess.run([sys.executable, str(ROOT / 'scripts/verify_quickstart.py'),
-        '--evidence-dir', str(target),'--workspace-features'], cwd=ROOT, capture_output=True, text=True, timeout=300)
-    logs = (target / 'service.log').read_text()[-4000:] if (target / 'service.log').exists() else ''
+    result = subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'scripts/verify_quickstart.py'),
+        '--evidence-dir', str(target),'--workspace-features'], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', timeout=300)
+    logs = (target / 'service.log').read_text(encoding='utf-8')[-4000:] if (target / 'service.log').exists() else ''
     assert result.returncode == 0, result.stdout + result.stderr + logs
     evidence = json.loads(result.stdout)
-    assert evidence == json.loads((target / 'verification.json').read_text())
+    assert evidence == json.loads((target / 'verification.json').read_text(encoding='utf-8'))
     for check in ('ok', 'quickstart_cli_executed', 'quickstart_setup_idempotent', 'cloud_supervisor',
                   'api_worker_agent_healthy', 'model_configured_share_data', 'container_health_command_verified',
                   'agent_authored_versioned_files', 'complete_csv_workflow', 'complete_excel',

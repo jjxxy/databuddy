@@ -10,6 +10,52 @@ from .store import get,all_items
 from .errors import Cancelled
 
 _held=ContextVar('atlas_job_authority_locks',default=frozenset())
+_turn_held=ContextVar('atlas_job_turn_locks',default=frozenset())
+
+
+@contextmanager
+def turn_guard(identity):
+    """Serialize owner-job admission/publication with that turn's Stop."""
+    from .locks import FileLock,assert_owned
+    from .config import DATA
+    import hashlib
+    if identity in _turn_held.get():
+        assert_owned();yield;return
+    path=DATA/('turn-jobs-'+hashlib.sha256(identity.encode()).hexdigest()+'.lock')
+    with FileLock(str(path),timeout=10):
+        token=_turn_held.set(_turn_held.get()|{identity})
+        try:yield
+        finally:_turn_held.reset(token)
+
+
+def _workspace_origin(run):
+    identity=run.get('originating_turn_id')
+    if identity is None:return None
+    try:
+        if not isinstance(identity,str) or not identity:raise ValueError()
+        turn=get('turn',identity)
+        if (turn.get('project_id')!=run.get('project_id') or turn.get('gateway_client_id')
+                or turn.get('state') in ('done','failed') or turn.get('outcome')=='cancelled'):
+            raise ValueError()
+        from .workspace_lifecycle import assert_turn_live
+        from .agent_team import assert_turn_allowed
+        assert_turn_live(turn);assert_turn_allowed(turn)
+        return identity
+    except (KeyError,ValueError):raise Cancelled() from None
+
+
+@contextmanager
+def admission_guard(extra):
+    value=extra or {};authority=value.get('gateway_authority')
+    if authority and isinstance(authority,dict) and isinstance(authority.get('client_id'),str):
+        with client_guard(authority['client_id']):yield
+    elif value.get('originating_turn_id') is not None:
+        identity=value['originating_turn_id']
+        if not isinstance(identity,str) or not identity:raise Cancelled()
+        with turn_guard(identity):
+            _workspace_origin(value)
+            yield
+    else:yield
 
 @contextmanager
 def client_guard(identity):
@@ -60,6 +106,7 @@ def check(run):
                 or marker['kind'] not in ('workspace','gateway')):raise Cancelled()
         if marker['kind']=='workspace':
             if 'gateway_authority' in run:raise Cancelled()
+            _workspace_origin(run)
             return
         if not authority:raise Cancelled()
     # Unmarked legacy rows remain conservative; never stamp them as trusted
@@ -67,6 +114,7 @@ def check(run):
     if 'gateway_authority' in run and not authority:raise Cancelled()
     if not authority:
         if _legacy_gateway_job(run):raise Cancelled()
+        _workspace_origin(run)
         return
     try:
         if not isinstance(authority,dict) or set(authority)!={'turn_id','client_id','client_revision','actor_id','project_id'}:raise ValueError()
@@ -82,9 +130,41 @@ def guard(run):
         with client_guard(authority['client_id']):
             check(run)
             yield
+    elif run.get('originating_turn_id') is not None:
+        identity=run['originating_turn_id']
+        if not isinstance(identity,str) or not identity:raise Cancelled()
+        with turn_guard(identity):
+            check(run)
+            yield
     else:
         check(run)
         yield
+
+
+def cancel_owned_async_jobs(turn):
+    """Use immutable origin, or an unambiguous legacy link; never a target."""
+    from sqlalchemy import select
+    from .jobs import jobs,engine,render,request_cancel,ACTIVE
+    links={'data_workflow':'data_workflow_job','report_fetch':'report_fetch_job'}
+    with engine.connect() as connection:
+        rows=connection.execute(select(jobs).where(jobs.c.kind.in_(links),jobs.c.status.in_(ACTIVE))).mappings().all()
+    others=None;cancelled=[]
+    for row in rows:
+        run=render(row)
+        if (run.get('project_id')!=turn['project_id'] or run.get('gateway_authority')
+                or (run.get('authority_origin') or {}).get('kind')=='gateway'):continue
+        origin=run.get('originating_turn_id')
+        if origin is not None:
+            if origin!=turn['id']:continue
+        else:
+            link=links[run['kind']]
+            if turn.get(link)!=run['id']:continue
+            if others is None:others=all_items('turn')
+            if any(other['id']!=turn['id'] and other.get('project_id')==turn['project_id']
+                   and other.get('state') not in ('done','failed') and other.get(link)==run['id'] for other in others):continue
+        try:request_cancel(run['id']);cancelled.append(run['id'])
+        except KeyError:pass
+    return cancelled
 
 
 def same_owner(existing,extra):

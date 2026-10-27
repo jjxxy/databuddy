@@ -1,0 +1,128 @@
+{
+  "scope": "Authorized Windows test prerequisite corrections only; no production changes.",
+  "source_and_test_frozen": true,
+  "production_files_changed": false,
+  "user_profile_or_database_accessed": false,
+  "model_calls": 0,
+  "tests_sha256": {
+    "tests/test_local_launchers.py": "67a80d7aca96ac040fcd804a097aab4b27cf08fb97ff2a0dee7b26b95d660fcc",
+    "tests/test_quickstart_launchers.py": "b335b45590006f31aa4c32b1059ee45eebb9db505ba358adf8f30cd6fcff7759",
+    "tests/test_isolated_workspace_processes.py": "ef667e1dde35506b03286f78d5e302a1069353519baabe18bfeadfdf05311ac9",
+    "tests/test_workspace_gateway.py": "fd45686aa0ee214cfc5f3b0e087d7c6e0dea8c0e8c4cc5914002a9c0cc4c8175"
+  },
+  "command": ".venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_local_launchers.py tests/test_quickstart_launchers.py tests/test_isolated_workspace_processes.py tests/test_workspace_gateway.py --junitxml=verification/windows-test-prerequisites-final-v13.xml",
+  "evidence": "verification\\windows-test-prerequisites-final-v13.xml",
+  "tests": 83,
+  "passed": 65,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 18,
+  "seconds": "14.601",
+  "static_and_duplicate_json_cases_verified_ran": [
+    "test_local_manifest_keeps_metadata_in_selected_folder_and_private_ui_on_loopback",
+    "test_windows_picker_has_real_folder_dialog_and_bom_but_no_execution_claim",
+    "test_windows_entry_contract_is_docker_only_and_powershell_51_utf8",
+    "test_loading_rejects_duplicate_json"
+  ],
+  "skip_cases": [
+    {
+      "module": "tests.test_local_launchers",
+      "test": "test_explicit_folder_is_one_exact_binding_and_no_host_python_needed",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_local_launchers",
+      "test": "test_reopen_and_stop_reuse_selected_folder_without_deleting_data",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_local_launchers",
+      "test": "test_offline_flag_is_application_local_only_policy_not_a_fake_network_none",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_local_launchers",
+      "test": "test_cancel_native_picker_does_not_start_or_create_state",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_local_launchers",
+      "test": "test_linked_folder_and_root_are_rejected_before_docker",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_docker_only_up_binds_directory_and_waits_before_showing_local_info",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_setup_failure_preserves_exit_two_and_does_not_start_services",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_compose_failure_does_not_claim_ready_or_print_access_token",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_management_never_bootstraps_or_deletes_volumes[down-command0]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_management_never_bootstraps_or_deletes_volumes[status-command1]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_management_never_bootstraps_or_deletes_volumes[logs-command2]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_docker_checks_fail_before_bootstrap",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ATLAS_HTTP_PORT=9234]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[export ATLAS_HTTP_PORT=\"09234\"]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ATLAS_HTTP_PORT='9234']",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ ATLAS_HTTP_PORT=9234 # local port]",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_quickstart_launchers",
+      "test": "test_invalid_port_and_unknown_action_do_not_run_commands",
+      "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
+    },
+    {
+      "module": "tests.test_workspace_gateway",
+      "test": "test_loading_rejects_symlinks",
+      "reason": "Native Windows symlink privilege is unavailable"
+    }
+  ],
+  "semantics": [
+    "Seventeen shell runtime cases require actual POSIX filesystem semantics and /bin/bash. All existing supported-platform quoting, secrets, failure, filesystem, and Docker assertions remain unchanged.",
+    "Only symlink case is skipped when link creation raises Windows error 1314; duplicate JSON and valid config loading remain independent running tests. Other OSError errors are re-raised.",
+    "The isolated multi-process test actually ran with real backends/HTTP/JWT: only non-secret SystemRoot is preserved for native Windows, while UTF-8 child/log encoding agrees. Credentials/proxy/deployment flags are not inherited."
+  ],
+  "boundaries": [
+    "This targeted result does not replace the original whole-suite baseline. Original failed XML evidence is retained.",
+    "The 17 POSIX launcher cases and one unavailable native symlink capability are explicitly unexecuted, not passed. POSIX CI remains required to verify shell runtime behavior."
+  ]
+}

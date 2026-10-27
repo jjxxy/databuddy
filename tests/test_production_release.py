@@ -173,13 +173,22 @@ def test_model_not_configured_blocks_despite_all_uploaded_evidence(campaign, mon
     assert reason(result(campaign), "real_model_connection") == "model_not_configured"
 
 
-def test_no_symlinks_or_hardlinks_in_operator_evidence(campaign, tmp_path):
+def test_no_symlinks_in_operator_evidence_when_os_can_create_them(campaign, tmp_path):
     path = campaign[1] / "artifacts" / "alias.json"
     target = tmp_path / "projectfiles" / "fake.json"
     save(target, {})
-    path.symlink_to(target)
+    try:path.symlink_to(target)
+    except OSError as error:
+        if os.name=='nt' and getattr(error,'winerror',None)==1314:
+            pytest.skip('Windows account lacks permission to create symbolic links')
+        raise
     assert reason(result(campaign), "operator_evidence_boundary") == "operator_evidence_alias_rejected"
-    path.unlink()
+
+
+def test_no_hardlinks_in_operator_evidence(campaign, tmp_path):
+    path = campaign[1] / "artifacts" / "alias.json"
+    target = tmp_path / "projectfiles" / "fake.json"
+    save(target, {})
     os.link(target, path)
     assert reason(result(campaign), "operator_evidence_boundary") == "operator_evidence_alias_rejected"
 

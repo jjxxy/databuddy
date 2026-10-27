@@ -330,7 +330,10 @@ class WindowsOS:
             kernel.CloseHandle(handle)
 
     def descriptor_path(self, directory):
-        return _parent(directory).path
+        value = str(_parent(directory).path)
+        if value.startswith('\\\\?\\'):
+            return Path(value)
+        return Path('\\\\?\\UNC\\' + value[2:] if value.startswith('\\\\') else '\\\\?\\' + value)
 
     def publish_directory(self, directory, name, parent):
         directory = _parent(directory)

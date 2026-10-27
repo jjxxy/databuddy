@@ -5,10 +5,10 @@ from .locks import FileLock
 from .config import DATA
 from .models import TransformSpec,RuntimePolicy
 from .store import now,put,uid,patch,get
-from .rules import filter_sql,computation_sql,numeric
+from .rules import filter_sql,computation_sql,numeric,validate_legacy_numeric,NUMERIC_POLICY
 from .process_control import executable
 
-def git(repo,*args):return subprocess.run([executable('git'),'-C',str(repo),*args],check=True,capture_output=True,text=True,timeout=30).stdout.strip()
+def git(repo,*args):return subprocess.run([executable('git'),'-C',str(repo),*args],check=True,capture_output=True,text=True,encoding='utf-8',timeout=30).stdout.strip()
 
 def merged_fields(source,spec):
     fields=[dict(f,source_id=source['id']) for f in source['profile']['fields']]
@@ -41,6 +41,7 @@ def generate(source,name,spec,existing=None,release_mode='manual',runtime=None, 
     project_id=project_id or (existing or {}).get('project_id') or source.get('project_id')
     runtime=RuntimePolicy.model_validate(runtime if runtime is not None else (existing or {}).get('runtime',{})).model_dump()
     spec=TransformSpec.model_validate(spec).model_dump()
+    validate_legacy_numeric(spec)
     knowledge_basis=knowledge_basis if knowledge_basis is not None else (existing or {}).get('knowledge_basis',[])
     from .company_search import validate_basis
     validate_basis(project_id or (existing or {}).get('project_id') or source.get('project_id'),knowledge_basis)
@@ -55,38 +56,38 @@ def generate(source,name,spec,existing=None,release_mode='manual',runtime=None, 
         # Only files owned by this generator are recreated. User-added files are not executed as entrypoints.
         for stale in (repo/'dbt'/'tests').glob('generated_*.sql'):stale.unlink()
         for stale in ['dbt/models/summary.sql','dbt/tests/blank_primary.sql','dbt/tests/valid_amount.sql']:(repo/stale).unlink(missing_ok=True)
-        plan={'source_id':source['id'],'source_revision':source.get('revision',1),'spec':spec,'fields':fields,'joins':joins,'schema_names':[f['name'] for f in source['profile']['fields']],'schema_labels':[f['label'] for f in source['profile']['fields']],'strategy':'full_refresh','runtime':runtime,'created_at':now(),'generator_version':'0.3.0'}
+        plan={'source_id':source['id'],'source_revision':source.get('revision',1),'spec':spec,'fields':fields,'joins':joins,'schema_names':[f['name'] for f in source['profile']['fields']],'schema_labels':[f['label'] for f in source['profile']['fields']],'strategy':'full_refresh','runtime':runtime,'created_at':now(),'generator_version':'0.3.0','numeric_policy':NUMERIC_POLICY}
         write_code(repo,pipeline_id,project_id or (existing or {}).get('project_id') or source.get('project_id'),name,spec,fields,app)
         plan['application']=app
         plan['knowledge_basis']=knowledge_basis
-        (repo/'knowledge-evidence.json').write_text(json.dumps({'version':1,'evidence':knowledge_basis,'policy':'frozen_per_code_version; rerun does not regenerate business rules'},ensure_ascii=False,indent=2)+'\n')
+        (repo/'knowledge-evidence.json').write_text(json.dumps({'version':1,'evidence':knowledge_basis,'policy':'frozen_per_code_version; rerun does not regenerate business rules'},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
         # Application rules override project defaults; freeze the chosen document in Git.
         contract_pid=project_id or (existing or {}).get('project_id') or source.get('project_id')
         if contract_pid:
             from .data_contracts import select_contract
             contract=select_contract(contract_pid,pipeline_id)
             if contract is not None:
-                (repo/'data-contract.json').write_text(json.dumps(contract,ensure_ascii=False,indent=2))
+                (repo/'data-contract.json').write_text(json.dumps(contract,ensure_ascii=False,indent=2),encoding='utf-8')
             else:(repo/'data-contract.json').unlink(missing_ok=True)
         from .column_lineage import build
         lineage=build(source,fields,spec,joins)
-        (repo/'column-lineage.json').write_text(json.dumps(lineage,ensure_ascii=False,indent=2))
+        (repo/'column-lineage.json').write_text(json.dumps(lineage,ensure_ascii=False,indent=2),encoding='utf-8')
         plan['column_lineage_version']=1
         plan['metric_aggregation']='sum_decimal_38_12'
-        (repo/'plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
-        (repo/'.gitignore').write_text('target/\nlogs/\nprofiles.yml\n*.duckdb\n*.parquet\n.env\n')
+        (repo/'plan.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2),encoding='utf-8')
+        (repo/'.gitignore').write_text('target/\nlogs/\nprofiles.yml\n*.duckdb\n*.parquet\n.env\n',encoding='utf-8')
         collect='from agent_service.runner import main\nif __name__ == "__main__":\n    main()\n'
-        ast.parse(collect);(repo/'connectors'/'collect.py').write_text(collect)
+        ast.parse(collect);(repo/'connectors'/'collect.py').write_text(collect,encoding='utf-8')
         project={'name':'personal_agent','version':'1.0.0','config-version':2,'profile':'personal_agent','model-paths':['models'],'test-paths':['tests'],'models':{'personal_agent':{'+materialized':'table'}}}
-        (repo/'dbt'/'dbt_project.yml').write_text(yaml.safe_dump(project,allow_unicode=True,sort_keys=False))
+        (repo/'dbt'/'dbt_project.yml').write_text(yaml.safe_dump(project,allow_unicode=True,sort_keys=False),encoding='utf-8')
         base='select * from raw.records' if spec['primary_key'] else 'select * exclude (_rn) from (select *, row_number() over (partition by record_hash order by _dlt_id) as _rn from raw.records) where _rn=1'
         projections=['r.* exclude (_dlt_id, _dlt_load_id)'];join_sql=[]
         for i,j in enumerate(joins,1):
             projections.extend(f'j{i}."{f["name"]}" as "j{i}_{f["name"]}"' for f in j['fields'])
             join_sql.append(f'left join raw.{j["table"]} j{i} on cast(r."{j["left_field"]}" as varchar)=cast(j{i}."{j["right_field"]}" as varchar)')
-            (repo/'dbt'/'tests'/f'generated_join_{i}_unique.sql').write_text(f'select "{j["right_field"]}" from raw.{j["table"]} where "{j["right_field"]}" is not null group by 1 having count(*)>1\n')
+            (repo/'dbt'/'tests'/f'generated_join_{i}_unique.sql').write_text(f'select "{j["right_field"]}" from raw.{j["table"]} where "{j["right_field"]}" is not null group by 1 having count(*)>1\n',encoding='utf-8')
             if j['required_match']:
-                (repo/'dbt'/'tests'/f'generated_join_{i}_matched.sql').write_text('select * from '+"{{ ref('business_objects') }}"+f' where "j{i}_{j["right_field"]}" is null\n')
+                (repo/'dbt'/'tests'/f'generated_join_{i}_matched.sql').write_text('select * from '+"{{ ref('business_objects') }}"+f' where "j{i}_{j["right_field"]}" is null\n',encoding='utf-8')
         identity=f'sha256(cast(r."{spec["primary_key"]}" as varchar))' if spec['primary_key'] else 'r.record_hash'
         joined='select '+identity+' as object_id, '+', '.join(projections)+' from ('+base+') r '+' '.join(join_sql)
         if spec['trim_fields']:
@@ -96,28 +97,28 @@ def generate(source,name,spec,existing=None,release_mode='manual',runtime=None, 
             joined='select *, '+computation_sql(rule)+' as "'+rule['name']+'" from ('+joined+') computed'
             if rule['operation']=='divide':
                 # Reject zero/null denominator rather than emitting Infinity or a misleading missing result.
-                (repo/'dbt'/'tests'/('generated_divide_'+rule['name']+'.sql')).write_text("select * from {{ ref('prepared_objects') }} where "+numeric(rule['right_field'])+'=0 or "'+rule['right_field']+'" is null\n')
-        (repo/'dbt'/'models'/'prepared_objects.sql').write_text("{{ config(materialized='table') }}\n"+joined+'\n')
+                (repo/'dbt'/'tests'/('generated_divide_'+rule['name']+'.sql')).write_text("select * from {{ ref('prepared_objects') }} where "+numeric(rule['right_field'])+'=0 or "'+rule['right_field']+'" is null\n',encoding='utf-8')
+        (repo/'dbt'/'models'/'prepared_objects.sql').write_text("{{ config(materialized='table') }}\n"+joined+'\n',encoding='utf-8')
         final="select * from {{ ref('prepared_objects') }}"
         if spec['filters']:final+=' where '+' and '.join('('+filter_sql(rule)+')' for rule in spec['filters'])
-        (repo/'dbt'/'models'/'business_objects.sql').write_text("{{ config(materialized='table') }}\n"+final+'\n')
+        (repo/'dbt'/'models'/'business_objects.sql').write_text("{{ config(materialized='table') }}\n"+final+'\n',encoding='utf-8')
         tests={'version':2,'models':[{'name':'business_objects','description':spec['object_label'],'columns':[{'name':'object_id','tests':['not_null','unique']}]}]}
         required=set(spec['required_fields']+([spec['primary_key']] if spec['primary_key'] else []))
         for k in sorted(required):
             tests['models'][0]['columns'].append({'name':k,'tests':['not_null']+(['unique'] if k==spec['primary_key'] else [])})
-            (repo/'dbt'/'tests'/f'generated_required_{k}.sql').write_text("select * from {{ ref('business_objects') }} where trim(cast(\""+k+"\" as varchar))=''\n")
-        (repo/'dbt'/'models'/'schema.yml').write_text(yaml.safe_dump(tests,allow_unicode=True,sort_keys=False))
-        (repo/'dbt'/'tests'/'generated_min_rows.sql').write_text("select count(*) n from {{ ref('business_objects') }} having count(*) < "+str(spec['min_rows'])+'\n')
+            (repo/'dbt'/'tests'/f'generated_required_{k}.sql').write_text("select * from {{ ref('business_objects') }} where trim(cast(\""+k+"\" as varchar))=''\n",encoding='utf-8')
+        (repo/'dbt'/'models'/'schema.yml').write_text(yaml.safe_dump(tests,allow_unicode=True,sort_keys=False),encoding='utf-8')
+        (repo/'dbt'/'tests'/'generated_min_rows.sql').write_text("select count(*) n from {{ ref('business_objects') }} having count(*) < "+str(spec['min_rows'])+'\n',encoding='utf-8')
         for k in spec['nonnegative_fields']:
             checked=f'try_cast(replace(cast("{k}" as varchar), \',\', \'\') as decimal(38,12))'
-            (repo/'dbt'/'tests'/f'generated_nonnegative_{k}.sql').write_text("select * from {{ ref('business_objects') }} where "+checked+'<0 or ("'+k+'" is not null and '+checked+' is null)\n')
+            (repo/'dbt'/'tests'/f'generated_nonnegative_{k}.sql').write_text("select * from {{ ref('business_objects') }} where "+checked+'<0 or ("'+k+'" is not null and '+checked+' is null)\n',encoding='utf-8')
         if spec['amount_field']:
             a=spec['amount_field'];g=spec['group_by'];expression=f'try_cast(replace(cast("{a}" as varchar), \',\', \'\') as decimal(38,12))'
-            (repo/'dbt'/'models'/'summary.sql').write_text(f'select cast("{g}" as varchar) as category, count(*) as record_count, sum({expression}) as amount_total from '+"{{ ref('business_objects') }} group by 1\n")
-            (repo/'dbt'/'tests'/'generated_valid_amount.sql').write_text("select * from {{ ref('business_objects') }} where \""+a+'" is not null and (trim(cast("'+a+'" as varchar))=\'\' or '+expression+' is null)\n')
+            (repo/'dbt'/'models'/'summary.sql').write_text(f'select cast("{g}" as varchar) as category, count(*) as record_count, sum({expression}) as amount_total from '+"{{ ref('business_objects') }} group by 1\n",encoding='utf-8')
+            (repo/'dbt'/'tests'/'generated_valid_amount.sql').write_text("select * from {{ ref('business_objects') }} where \""+a+'" is not null and (trim(cast("'+a+'" as varchar))=\'\' or '+expression+' is null)\n',encoding='utf-8')
         semantics={'version':2,'object':{'label':spec['object_label'],'id':'object_id','fields':fields,'actions':['note','tag','export']},'relationships':joins,'filters':spec['filters'],'computations':spec['computations'],'metric':{'label':spec['amount_label'],'field':spec['amount_field'],'group_by':spec['group_by'],'status':spec['metric_status'],'definition':spec['metric_definition'],'currency':spec['currency']}}
-        (repo/'semantics'/'objects.yml').write_text(yaml.safe_dump(semantics,allow_unicode=True,sort_keys=False))
-        (repo/'README.md').write_text('# '+name+'\n\n来源按全量快照采集；多对一关联的右侧键必须唯一，失败不发布。凭证与原件不进入仓库。\n')
+        (repo/'semantics'/'objects.yml').write_text(yaml.safe_dump(semantics,allow_unicode=True,sort_keys=False),encoding='utf-8')
+        (repo/'README.md').write_text('# '+name+'\n\n来源按全量快照采集；多对一关联的右侧键必须唯一，失败不发布。凭证与原件不进入仓库。\n',encoding='utf-8')
         if not (repo/'.git').exists():
             git(repo,'init','-b','main');git(repo,'config','user.name','Personal Data Agent');git(repo,'config','user.email','agent@localhost')
         git(repo,'add','.');git(repo,'commit','-m','Generate release candidate with data quality and semantics')

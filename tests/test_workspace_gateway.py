@@ -297,14 +297,25 @@ def test_jwks_public_key_validation(settings, change):
         GatewayConfig.parse(config)
 
 
-def test_loading_rejects_duplicate_json_and_symlinks(settings, tmp_path):
+def test_loading_rejects_duplicate_json(settings, tmp_path):
     path = tmp_path / 'gateway.json'
     path.write_text('{"schema_version":1,"schema_version":1}')
     with pytest.raises(ConfigurationError):
         GatewayConfig.load(path)
     path.write_text(json.dumps(settings[0]))
+    assert GatewayConfig.load(path).routes['alice-sub'][0] == 'alice'
+
+
+def test_loading_rejects_symlinks(settings, tmp_path):
+    path = tmp_path / 'gateway.json'
+    path.write_text(json.dumps(settings[0]))
     link = tmp_path / 'link.json'
-    link.symlink_to(path)
+    try:
+        link.symlink_to(path)
+    except OSError as exc:
+        if getattr(exc, 'winerror', None) == 1314:
+            pytest.skip('Native Windows symlink privilege is unavailable')
+        raise
     with pytest.raises(ConfigurationError):
         GatewayConfig.load(link)
     assert GatewayConfig.load(path).routes['alice-sub'][0] == 'alice'

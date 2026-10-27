@@ -250,5 +250,20 @@ def test_preset_manifest_reader_is_bounded_redacted_and_rejects_duplicate_keys(t
         path.write_text(raw)
         with pytest.raises(ValueError) as failure:load_presets_file(path)
         assert 'private-value' not in str(failure.value)
-    link=tmp_path/'link.json';link.symlink_to(path)
+def test_preset_manifest_reader_rejects_symlinks_when_os_can_create_them(tmp_path):
+    from agent_service.preset_configuration import load_presets_file
+    path=tmp_path/'presets.json';path.write_text('{"skills":[],"mcp":[]}')
+    link=tmp_path/'link.json'
+    try:link.symlink_to(path)
+    except OSError as error:
+        if os.name=='nt' and getattr(error,'winerror',None)==1314:
+            pytest.skip('Windows account lacks permission to create symbolic links')
+        raise
+    with pytest.raises(ValueError):load_presets_file(link)
+
+
+def test_preset_manifest_reader_rejects_real_hardlinks(tmp_path):
+    from agent_service.preset_configuration import load_presets_file
+    path=tmp_path/'presets.json';path.write_text('{"skills":[],"mcp":[]}')
+    link=tmp_path/'hardlink.json';os.link(path,link)
     with pytest.raises(ValueError):load_presets_file(link)

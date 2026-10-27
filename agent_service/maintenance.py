@@ -1,5 +1,5 @@
 """Consistent application backups, offline restore, and conservative run retention."""
-import argparse,contextlib,hashlib,hmac,json,os,shutil,tempfile,time,zipfile
+import argparse,contextlib,hashlib,hmac,json,os,shutil,sys,tempfile,time,zipfile
 from pathlib import Path
 from sqlalchemy import select,func
 from .config import DATA
@@ -38,7 +38,7 @@ def backup(output):
     with guard(exclusive=True,blocking=True),tempfile.TemporaryDirectory() as temp:
         temp=Path(temp);database=temp/'metadata.jsonl'
         # The same cross-process shared lock covers API mutations and worker executions.
-        with engine.connect() as c,database.open('w') as out:
+        with engine.connect() as c,database.open('w',encoding='utf-8') as out:
             for table in BACKUP_TABLES:
                 for row in c.execution_options(stream_results=True).execute(select(table)).mappings():out.write(json.dumps({'table':table.name,'row':dict(row)},ensure_ascii=False,default=str)+'\n')
         files=[]
@@ -101,7 +101,7 @@ def restore(archive):
                 with z.open(name) as src,dest.open('wb') as out:shutil.copyfileobj(src,out)
                 if sha(dest)!=expected:raise ValueError('备份完整性校验失败：'+name)
             rows=[]
-            with (tmp/'metadata.jsonl').open() as f:
+            with (tmp/'metadata.jsonl').open(encoding='utf-8') as f:
                 for line in f:
                     value=json.loads(line)
                     if value['table'] not in tuple(t.name for t in BACKUP_TABLES):raise ValueError('备份包含未知表')
@@ -212,6 +212,8 @@ def retention(days=30,keep_success=20,apply=False):
     with guard(exclusive=apply,blocking=False):return _retention(days,keep_success,apply)
 
 if __name__=='__main__':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser=argparse.ArgumentParser();sub=parser.add_subparsers(dest='action',required=True)
     b=sub.add_parser('backup');b.add_argument('output')
     r=sub.add_parser('restore');r.add_argument('archive')

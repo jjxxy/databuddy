@@ -13,7 +13,7 @@ def artifact_folder(run):
 
 def manifest_for(run):
     folder=artifact_folder(run)
-    return folder,json.loads((folder/'output.json').read_text())
+    return folder,json.loads((folder/'output.json').read_text(encoding='utf-8'))
 
 def verify_semantics(pipeline,run,manifest,folder):
     """Metadata used for governance must match the immutable Git revision."""
@@ -28,7 +28,7 @@ def verify_semantics(pipeline,run,manifest,folder):
         lineage=json.loads(git(pipeline['repository'],'show',run['commit']+':column-lineage.json'))
         path=folder/'code'/'column-lineage.json'
         if not path.is_file():raise ValueError('字段血缘产物缺失，禁止发布')
-        if json.loads(path.read_text())!=lineage or manifest.get('column_lineage')!=lineage or manifest.get('column_lineage_sha256')!=digest(lineage):
+        if json.loads(path.read_text(encoding='utf-8'))!=lineage or manifest.get('column_lineage')!=lineage or manifest.get('column_lineage_sha256')!=digest(lineage):
             raise ValueError('字段血缘与冻结代码版本不一致')
     return plan
 
@@ -55,14 +55,14 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False):
         import subprocess
         contract_file=folder/'code'/'data-contract.json'
         from .process_control import executable
-        tracked_contract=subprocess.run([executable('git'),'-C',p['repository'],'ls-tree','--name-only',run['commit'],'--','data-contract.json'],capture_output=True,text=True,check=True,timeout=15).stdout.strip()
+        tracked_contract=subprocess.run([executable('git'),'-C',p['repository'],'ls-tree','--name-only',run['commit'],'--','data-contract.json'],capture_output=True,text=True,encoding='utf-8',check=True,timeout=15).stdout.strip()
         if tracked_contract:
             if not contract_file.is_file():raise ValueError('数据契约产物缺失，禁止发布')
             import duckdb
             from .data_contracts import evaluate
-            frozen=subprocess.run([executable('git'),'-C',p['repository'],'show',run['commit']+':data-contract.json'],capture_output=True,text=True,check=True,timeout=15).stdout
+            frozen=subprocess.run([executable('git'),'-C',p['repository'],'show',run['commit']+':data-contract.json'],capture_output=True,text=True,encoding='utf-8',check=True,timeout=15).stdout
             contract=json.loads(frozen)
-            if json.loads(contract_file.read_text())!=contract:raise ValueError('数据契约与代码版本不一致')
+            if json.loads(contract_file.read_text(encoding='utf-8'))!=contract:raise ValueError('数据契约与代码版本不一致')
             with duckdb.connect() as validation_db:
                 validation_db.execute('CREATE SCHEMA business')
                 validation_db.read_parquet(str(folder/'business_objects.parquet')).create_view('contract_input')

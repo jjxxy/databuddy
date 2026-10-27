@@ -56,8 +56,10 @@ def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,extra=None
     # then either cancel this admitted row or reject this later admission;
     # restoring a project cannot replay a job that arrived after its sweep.
     from .workspace_lifecycle import enqueue_guard
+    from .job_authority import admission_guard
     with enqueue_guard(target,extra):
-        return _enqueue(kind,target,commit,scheduled_key,max_attempts,extra)
+        with admission_guard(extra):
+            return _enqueue(kind,target,commit,scheduled_key,max_attempts,extra)
 
 def _enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,extra=None):
     # A DB row lock serializes creation with release/revision updates, across API and scheduler processes.

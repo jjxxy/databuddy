@@ -11,6 +11,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_SECRET = 'fixture-model-key-never-print-3984'
+requires_posix_shell = pytest.mark.skipif(os.name != 'posix' or not Path('/bin/bash').is_file(),
+    reason='POSIX launcher runtime requires POSIX filesystem names and /bin/bash')
 
 
 def launcher(tmp_path, env_text=None):
@@ -74,6 +76,7 @@ def recorded(path):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+@requires_posix_shell
 def test_docker_only_up_binds_directory_and_waits_before_showing_local_info(tmp_path):
     bundle, calls, env = launcher(tmp_path)
     result = run(bundle, env)
@@ -98,6 +101,7 @@ def test_docker_only_up_binds_directory_and_waits_before_showing_local_info(tmp_
     assert 'docker.sock' not in calls.read_text()
 
 
+@requires_posix_shell
 def test_setup_failure_preserves_exit_two_and_does_not_start_services(tmp_path):
     bundle, calls, env = launcher(tmp_path); env['LAUNCHER_SETUP_EXIT'] = '2'
     result = run(bundle, env, 'up', '--no-open')
@@ -107,6 +111,7 @@ def test_setup_failure_preserves_exit_two_and_does_not_start_services(tmp_path):
     assert not any(call[-1] == 'info' for call in recorded(calls))
 
 
+@requires_posix_shell
 def test_compose_failure_does_not_claim_ready_or_print_access_token(tmp_path):
     bundle, calls, env = launcher(tmp_path); env['LAUNCHER_COMPOSE_EXIT'] = '7'
     result = run(bundle, env, 'up')
@@ -118,6 +123,7 @@ def test_compose_failure_does_not_claim_ready_or_print_access_token(tmp_path):
 
 @pytest.mark.parametrize('action,command', [('down', ['down']), ('status', ['ps', '--all']),
                                            ('logs', ['logs', '--tail', '100', '--follow'])])
+@requires_posix_shell
 def test_management_never_bootstraps_or_deletes_volumes(tmp_path, action, command):
     content = 'APP_TOKEN=unchanged-existing-token\nATLAS_HTTP_PORT=9234\n'
     bundle, calls, env = launcher(tmp_path, content)
@@ -130,6 +136,7 @@ def test_management_never_bootstraps_or_deletes_volumes(tmp_path, action, comman
     assert (bundle / '.env').read_text() == content
 
 
+@requires_posix_shell
 def test_docker_checks_fail_before_bootstrap(tmp_path):
     bundle, calls, env = launcher(tmp_path); env['LAUNCHER_INFO_EXIT'] = '1'
     result = run(bundle, env, 'up')
@@ -143,6 +150,7 @@ def test_docker_checks_fail_before_bootstrap(tmp_path):
 
 @pytest.mark.parametrize('port_line', ['ATLAS_HTTP_PORT=9234', 'export ATLAS_HTTP_PORT="09234"',
                                       "ATLAS_HTTP_PORT='9234'", ' ATLAS_HTTP_PORT=9234 # local port'])
+@requires_posix_shell
 def test_open_reads_only_numeric_port_and_never_sources_env(tmp_path, port_line):
     marker = tmp_path / 'must-not-execute'
     content = f'APP_TOKEN=$(touch "{marker}")\n{port_line}\n'
@@ -154,6 +162,7 @@ def test_open_reads_only_numeric_port_and_never_sources_env(tmp_path, port_line)
     assert recorded(calls) == []
 
 
+@requires_posix_shell
 def test_invalid_port_and_unknown_action_do_not_run_commands(tmp_path):
     marker = tmp_path / 'must-not-execute'
     bundle, calls, env = launcher(tmp_path, f'ATLAS_HTTP_PORT=$(touch "{marker}")\n')

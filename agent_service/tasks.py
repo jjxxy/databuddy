@@ -137,7 +137,7 @@ def verify(turn):
             folder=(DATA/job.get('artifact_dir','')).resolve()
             manifest=folder/'output.json'
             if folder.is_relative_to((DATA/'runs').resolve()) and manifest.is_file():
-                data=json.loads(manifest.read_text())
+                data=json.loads(manifest.read_text(encoding='utf-8'))
                 if data.get('commit')==job.get('commit') and data.get('run_id')==run_id:
                     receipts.append({'kind':'run','run_id':run_id,'application_id':job['target'],'commit':job.get('commit')})
                     p=get('pipeline',job['target']);pending=p.get('pending_schedule') or {}

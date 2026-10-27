@@ -163,6 +163,78 @@ def test_maximum_high_precision_rows_fit_the_manifest_without_truncating_notes(i
     assert len(manifest.encode())<=256*1024
 
 
+def test_wide_finite_scientific_values_keep_manifest_within_declared_input_budget(isolated_office):
+    import json
+    turn,_=isolated_office
+    row='['+','.join(['1e309']*8)+']'
+    text=('{"kind":"spreadsheet","title":"Finite wide exact values","sheets":['
+        '{"name":"Values","columns":'+json.dumps(['amount'+str(i) for i in range(8)])+
+        ',"rows":['+','.join([row]*5000)+']}]}')
+    assert len(text.encode())<=256*1024
+    workspace.write_file(turn['project_id'],'wide-exact.json',text)
+    result=office.render(turn,'wide-exact.json','wide-exact')
+    manifest=workspace.read_file(turn['project_id'],'deliverables/wide-exact.manifest.json')
+    assert len(manifest.encode())<=256*1024
+    assert result['precision_policy']=='text_exact'
+    assert result['precision_notes_format']=='grouped_cells_or_column_rows_v1'
+    assert result['precision_notes']==[{'sheet':'Values','reason':'exact_numeric_text',
+        'column_rows':{column:[[2,5001]] for column in 'ABCDEFGH'}}]
+    file,_=office.artifact(turn['project_id'],result['artifact_id'])
+    assert Decimal(stored_value(file))==Decimal('1e309')
+
+
+def test_large_precision_coordinate_ranges_preserve_holes_and_every_cell():
+    original=[column+str(row) for row in range(2,4202) for index,column in enumerate('ABCDEFGHIJKL')
+        if (row+index)%4!=0]
+    notes=[{'sheet':'Values','reason':'exact_numeric_text','cells':list(original)}]
+    office._compact_precision_notes(notes)
+    assert 'cells' not in notes[0]
+    restored=[]
+    for column,rows in notes[0]['column_rows'].items():
+        for item in rows:
+            selected=range(item[0],item[1]+1) if isinstance(item,list) else [item]
+            restored.extend(column+str(row) for row in selected)
+    assert len(restored)==len(original) and set(restored)==set(original)
+
+
+def test_manifest_budget_is_checked_before_independent_receipt_or_publication(isolated_office,monkeypatch):
+    turn,data=isolated_office
+    workspace.write_file(turn['project_id'],'budget.json','{"kind":"document","title":"Synthetic manifest budget"}')
+    monkeypatch.setattr(office,'MANIFEST_MAX_BYTES',128)
+    with pytest.raises(ValueError,match='未发布'):
+        office.render(turn,'budget.json','budget-proof')
+    assert store.all_items('office_artifact')==[]
+    assert not [file for file in (data/'deliverables').rglob('*.docx') if not file.name.startswith('.')]
+
+
+def test_git_report_checkpoint_preserves_chinese_under_windows_default_encoding(isolated_office):
+    import json,os,subprocess,sys
+    from agent_service.process_control import executable
+    turn,data=isolated_office
+    repository=data/'chinese-git';repository.mkdir()
+    script='''
+import json,sys
+from pathlib import Path
+from agent_service.codegen import git
+repo=Path(sys.argv[1])
+git(repo,'init','-b','main')
+git(repo,'config','user.name','Synthetic Office audit')
+git(repo,'config','user.email','fixture@example.invalid')
+message='保存可复用业务简报方案'
+output=git(repo,'commit','--allow-empty','-m',message)
+print(json.dumps({'utf8_mode':sys.flags.utf8_mode,'chinese_message_preserved':message in output}))
+'''
+    env={key:os.environ[key] for key in ('SystemRoot','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','PATHEXT') if key in os.environ}
+    env.update(DATA_DIR=str(data),DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'),
+        APP_TOKEN='isolated-office-test-only-token',LLM_BASE_URL='',LLM_MODEL='',
+        ATLAS_GIT_BINARY=executable('git'),PYTHONIOENCODING='utf-8',
+        GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL=str(data/'empty-global.gitconfig'))
+    result=subprocess.run([sys.executable,'-X','utf8=0','-c',script,str(repository)],env=env,
+        capture_output=True,text=True,encoding='utf-8',timeout=30)
+    assert result.returncode==0,result.stderr
+    assert json.loads(result.stdout)=={'utf8_mode':0,'chinese_message_preserved':True}
+
+
 def test_concurrent_identical_render_has_one_registered_result(isolated_office):
     from concurrent.futures import ThreadPoolExecutor
     turn,_=isolated_office

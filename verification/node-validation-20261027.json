@@ -1,0 +1,140 @@
+{
+  "ok": true,
+  "desktop_passed": 40,
+  "ui_script_count": 21,
+  "real_browser_layout_verified": false,
+  "commands": [
+    {
+      "name": "desktop",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/desktop.log",
+      "log_sha256": "fad3ad4e5ff1c0084fcb99beef381d76ef90be4aacb5fa5d2431bdb90dda95bf"
+    },
+    {
+      "name": "auth-transition.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/auth-transition.cjs.log",
+      "log_sha256": "111c13ed85a7a04322b1e1b4258240854b0bdf3346e57d277b918ac9d6bec98a"
+    },
+    {
+      "name": "collaboration.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/collaboration.cjs.log",
+      "log_sha256": "7e0c6c783b05f15680ee0cc3e82c3bde8e888abbce2569d368c3084e72eade12"
+    },
+    {
+      "name": "data-app-navigation.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/data-app-navigation.cjs.log",
+      "log_sha256": "841330899de35e6dc8c444c81684fb50b7994f43c9cea5221d6951480bf6e56a"
+    },
+    {
+      "name": "data-workbench.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/data-workbench.cjs.log",
+      "log_sha256": "49bf63581c3312d6fb5e54b9e779822b58713e0e813899f58f958114dd11f6aa"
+    },
+    {
+      "name": "desktop-business-actions.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/desktop-business-actions.cjs.log",
+      "log_sha256": "827daba16e558792fde29fa7401b85046d461245756d209ad0fcc72339ff394d"
+    },
+    {
+      "name": "facts-pagination.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/facts-pagination.cjs.log",
+      "log_sha256": "caf9654af7af749c12649049b317a726d00b9444d532b09cbf249be800968cd3"
+    },
+    {
+      "name": "lifecycle.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/lifecycle.cjs.log",
+      "log_sha256": "3c02906be3726a6731bd96ed234534187da8836f8fb9baf8f5839e250685f623"
+    },
+    {
+      "name": "lineage-render.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/lineage-render.cjs.log",
+      "log_sha256": "eeff20649cb07b67e43f1147876d23ab5532e3963b23c646127d495e94e288e2"
+    },
+    {
+      "name": "local-data.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/local-data.cjs.log",
+      "log_sha256": "ca24284a6f5112873b27be39234bd47f56673a87e4c318e1cae05b482899fea3"
+    },
+    {
+      "name": "local-workspace-context.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/local-workspace-context.cjs.log",
+      "log_sha256": "352c6eb8b710b5694a29d45be956170eaeafff6254dfdbaa23ced4886c014e64"
+    },
+    {
+      "name": "models.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/models.cjs.log",
+      "log_sha256": "2bb0a7ba9ade4c93947e540bf52fc49638aa44af27f9103358e45affc9e9c922"
+    },
+    {
+      "name": "multi-files.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/multi-files.cjs.log",
+      "log_sha256": "14bf1ac061e45d37b2bfc1ebeac956cf507044cec89228dbc356688f3233a9fc"
+    },
+    {
+      "name": "project-navigation.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/project-navigation.cjs.log",
+      "log_sha256": "541d10429f332ecbe4d1018cfc9c1425bb3230603d63d3be8fd84f97aa88a730"
+    },
+    {
+      "name": "resume-message.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/resume-message.cjs.log",
+      "log_sha256": "5321cd596e36e3504b4a2e4998232df3e442bb0e6d50f39dd6870d888a2feaa0"
+    },
+    {
+      "name": "scroll.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/scroll.cjs.log",
+      "log_sha256": "baf9e701f3d0b6e90cfee37e50ad9155976a1c176ed910e11051448484405990"
+    },
+    {
+      "name": "service-worker.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/service-worker.cjs.log",
+      "log_sha256": "3488cc66de27e2cec927767e539964af5339e2c5b991889024fd9de1901a7a48"
+    },
+    {
+      "name": "source-buttons.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/source-buttons.cjs.log",
+      "log_sha256": "4b063b5c68377a7d17cdfd5a48786182ad2d63774c012a0d262e366e81920581"
+    },
+    {
+      "name": "source-preview.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/source-preview.cjs.log",
+      "log_sha256": "eb051da08f4a1d0858bd5db4b15e0ef079a9e38a3698eb3d0203e9c124e645b5"
+    },
+    {
+      "name": "work.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/work.cjs.log",
+      "log_sha256": "f12701a08940696f98b3a16fc3c69f94ede5577881445eb771ec0ef8141ec75c"
+    },
+    {
+      "name": "workspace-features.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/workspace-features.cjs.log",
+      "log_sha256": "8d95e7d085181d55c3e35bb5429b0324eaaa7064cd09ece508e056a897e69fa6"
+    },
+    {
+      "name": "workspace-shell.cjs",
+      "exit_code": 0,
+      "log": "verification/node-final-20261027/workspace-shell.cjs.log",
+      "log_sha256": "1461ae16862e16200717f9d1db12b5092f9f58f9ae37a85997b835ab2f470fe2"
+    }
+  ]
+}

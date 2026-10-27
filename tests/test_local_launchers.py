@@ -10,6 +10,8 @@ import pytest
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
+requires_posix_shell=pytest.mark.skipif(os.name!='posix' or not Path('/bin/bash').is_file(),
+    reason='POSIX launcher runtime requires POSIX filesystem names and /bin/bash')
 
 
 def prepare(tmp_path):
@@ -52,6 +54,7 @@ def run(bundle,env,*arguments):
 def records(log):return [json.loads(line) for line in log.read_text().splitlines()]
 
 
+@requires_posix_shell
 def test_explicit_folder_is_one_exact_binding_and_no_host_python_needed(tmp_path):
     bundle,chosen,log,env=prepare(tmp_path)
     result=run(bundle,env,'up','--folder',str(chosen),'--no-open')
@@ -66,6 +69,7 @@ def test_explicit_folder_is_one_exact_binding_and_no_host_python_needed(tmp_path
     assert list(chosen.iterdir())==[] # Launcher does not alter original files.
 
 
+@requires_posix_shell
 def test_reopen_and_stop_reuse_selected_folder_without_deleting_data(tmp_path):
     bundle,chosen,log,env=prepare(tmp_path)
     assert run(bundle,env,'up','--folder',str(chosen),'--no-open').returncode==0
@@ -78,6 +82,7 @@ def test_reopen_and_stop_reuse_selected_folder_without_deleting_data(tmp_path):
     assert all(item['folder']==str(chosen) for item in commands)
 
 
+@requires_posix_shell
 def test_offline_flag_is_application_local_only_policy_not_a_fake_network_none(tmp_path):
     bundle,chosen,log,env=prepare(tmp_path)
     result=run(bundle,env,'up','--folder',str(chosen),'--offline','--no-open')
@@ -85,6 +90,7 @@ def test_offline_flag_is_application_local_only_policy_not_a_fake_network_none(t
     assert all(item['network']=='local_only' for item in records(log))
 
 
+@requires_posix_shell
 def test_cancel_native_picker_does_not_start_or_create_state(tmp_path):
     bundle,chosen,log,env=prepare(tmp_path)
     chooser=Path(env['PATH'].split(os.pathsep)[0])/'osascript'
@@ -94,6 +100,7 @@ def test_cancel_native_picker_does_not_start_or_create_state(tmp_path):
     assert not (bundle/'.atlas-local-folder').exists()
 
 
+@requires_posix_shell
 def test_linked_folder_and_root_are_rejected_before_docker(tmp_path):
     bundle,chosen,log,env=prepare(tmp_path)
     link=tmp_path/'linked';link.symlink_to(chosen,target_is_directory=True)

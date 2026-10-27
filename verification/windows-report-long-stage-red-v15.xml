@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.778" timestamp="2026-10-27T21:08:43.354180+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_windows_local_workspace" name="test_long_report_staging_exports_verified_formats_and_still_refuses_tampering" time="0.951"><failure message="AssertionError: {'id': 'export_2f3479af0f1b149696dd9056', 'relative_path': 'Atlas成果/p_2edc8eebe29902f65c841f0e/export_2f3479af0f1b149696dd9056', 'files': 0, 'bytes': 69141, ...}&#10;assert (False)">local_folder = (WindowsPath('C:/Users/001/AppData/Local/Temp/pytest-of-001/pytest-147/test_long_report_staging_expor0/个人 业务文件夹'), 'p_2edc8eebe29902f65c841f0e')
+monkeypatch = &lt;_pytest.monkeypatch.MonkeyPatch object at 0x000002176D4FA210&gt;
+
+    def test_long_report_staging_exports_verified_formats_and_still_refuses_tampering(local_folder,monkeypatch):
+        import shutil
+        import tempfile
+        from agent_service import business_reports
+        from agent_service.config import DATA
+        from agent_service.store import now,put,uid
+        _,pid=local_folder
+        rid='brief_'+uid()+uid()[:16]
+        folder=DATA/'business-reports'/pid/rid;folder.mkdir(parents=True)
+        payload={'recipe':{'title':'深层文件夹月结','period':'2026-09','assumptions':[]},
+            'evaluation':{'assertions':[{'label':'净收入','value':'300.000002','unit':'CNY','rows':2}],
+                          'input_rows':2,'selected_rows':2},
+            'run_id':'synthetic-long-path','handoff_sha256':'a'*64,'plan_sha256':'b'*64}
+        manifest=json.dumps(payload,ensure_ascii=False).encode('utf-8');markdown='净收入300.000002'.encode('utf-8')
+        (folder/'manifest.json').write_bytes(manifest);(folder/'report.md').write_bytes(markdown)
+        put('business_report',{'project_id':pid,'artifact_dir':str(folder.relative_to(DATA)),
+            'manifest_sha256':hashlib.sha256(manifest).hexdigest(),
+            'markdown_sha256':hashlib.sha256(markdown).hexdigest(),'office_exports':{},'created_at':now()},rid)
+        try:
+            docx=business_reports.report_file(pid,rid,'docx');pptx=business_reports.report_file(pid,rid,'pptx')
+            originals={'report.md':markdown,'manifest.json':manifest,'report.docx':docx.read_bytes(),'report.pptx':pptx.read_bytes()}
+            with tempfile.TemporaryDirectory(prefix='atlas-report-export-') as temporary:
+                # The final visible paths fit MAX_PATH; the immutable publication
+                # stage adds its own suffix and crosses 260, as in real quickstart.
+                base=Path(temporary);padding=120-len(str(base))-1
+                assert padding&gt;0
+                root=base/('d'*padding);root.mkdir()
+                monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root))
+                original=root/'原件.csv';original.write_bytes(b'id,amount\n1,300.000002\n')
+                exported=local.export_project(pid)
+                stage=root/local.OUTPUT_DIR/pid/('.'+exported['id']+'.partial')/'reports'/rid/'manifest.json'
+                assert len(str(stage))&gt;260
+&gt;               assert exported['complete'] and not exported['failures'] and exported['files']==4,exported
+E               AssertionError: {'id': 'export_2f3479af0f1b149696dd9056', 'relative_path': 'Atlas成果/p_2edc8eebe29902f65c841f0e/export_2f3479af0f1b149696dd9056', 'files': 0, 'bytes': 69141, ...}
+E               assert (False)
+
+tests\test_windows_local_workspace.py:180: AssertionError</failure></testcase></testsuite></testsuites>

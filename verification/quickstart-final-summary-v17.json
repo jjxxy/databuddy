@@ -1,0 +1,16 @@
+{
+  "scope": "Fresh isolated source-tree quickstart verifier; real services with simulated local model, not financial G1 or paid-model validation",
+  "module_result": {
+    "passed": 92,
+    "failed": 0,
+    "elapsed_seconds": 71.91,
+    "xml": "verification/quickstart-isolation-actual-v17.xml",
+    "log": "verification/quickstart-isolation-actual-v17.log"
+  },
+  "actual_complete_verifier": "verification/quickstart-complete-features-v17.json",
+  "fresh_case": "pytest-152",
+  "shared_helper_stdin_flag": false,
+  "stdin_flag_only_on_quickstart_owned_pipe": true,
+  "production_r20_changed": false,
+  "later_full_suite_result": "owned by root; not claimed here"
+}

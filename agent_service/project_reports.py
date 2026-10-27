@@ -153,7 +153,7 @@ def _frozen_request(pid,connector,filters,context,run_id):
     return cfg,request
 
 
-def enqueue_fetch(pid,connector_id,filters=None,context=None,*,operation_id=None):
+def enqueue_fetch(pid,connector_id,filters=None,context=None,*,operation_id=None,originating_turn_id=None):
     get('project',pid);connector=owned(pid,connector_id)
     if filters is not None and not isinstance(filters,dict):raise ValueError('报告筛选必须为对象')
     if context is not None and not isinstance(context,dict):raise ValueError('报告上下文必须为对象')
@@ -164,7 +164,14 @@ def enqueue_fetch(pid,connector_id,filters=None,context=None,*,operation_id=None
               'name':connector['name'],'config':cfg,'filters':request.filters,'context':request.context}
     duration=min(3600,math.ceil(request.total_timeout_seconds+request.timeout_seconds+30))
     key='report:'+_digest([pid,operation_id]) if operation_id is not None else None
-    extra={'project_id':pid,'report_connector_revision':connector['revision'],
+    from .job_authority import for_turn
+    if originating_turn_id is None:
+        from .provider import current_turn_id
+        originating_turn_id=current_turn_id()
+    authority=for_turn(originating_turn_id)
+    extra={**({'gateway_authority':authority} if authority else {}),
+           'project_id':pid,'report_connector_revision':connector['revision'],
+           'originating_turn_id':originating_turn_id,
            'report_request_sha256':fingerprint,'secret_report_snapshot':seal(snapshot),
            'runtime_snapshot':{'timeout_seconds':duration,'max_attempts':2}}
     job=jobs.enqueue('report_fetch',connector_id,commit=connector['revision'],scheduled_key=key,max_attempts=2,extra=extra)
@@ -218,6 +225,12 @@ def _copy_verified(source,destination,expected_hash,checkpoint):
 
 def _register_and_complete(run,snapshot,receipt,stored_name,checkpoint):
     """Lease-fenced source, source revision, probe queue and completion in one txn."""
+    from .job_authority import guard
+    with guard(run):
+        return _register_and_complete_locked(run,snapshot,receipt,stored_name,checkpoint)
+
+
+def _register_and_complete_locked(run,snapshot,receipt,stored_name,checkpoint):
     from .errors import Cancelled
     source_id='rs_'+_digest([run['project_id'],run['id']])[:30]
     revision_id='rv_'+_digest([source_id,run['id']])[:30]

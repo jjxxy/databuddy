@@ -207,6 +207,7 @@ def isolated_environment(folder: Path, port: int, token: str) -> dict:
         ATLAS_DEPLOYMENT_PROFILE='single', ATLAS_AUTH_MODE='token',
         ATLAS_OPERATOR_TOKEN=FIXTURE_OPERATOR_TOKEN,
         APP_TIMEZONE='Asia/Shanghai',
+        PYTHONUTF8='1',PYTHONIOENCODING='utf-8',
         DO_NOT_TRACK='1', DLT_TELEMETRY='false')
     return env
 
@@ -215,18 +216,18 @@ def prepare_quickstart(folder: Path, configuration: dict) -> str:
     """Exercise the shipped stdlib setup command, without a Docker dependency."""
     path = folder / 'llm.json'
     original = json.dumps(configuration, ensure_ascii=False, indent=2) + '\n'
-    path.write_text(original)
+    path.write_text(original,encoding='utf-8')
     token = None
     for _ in range(2):
-        setup = subprocess.run([sys.executable, str(ROOT / 'quickstart.py'), 'setup',
-            '--directory', str(folder)], cwd=ROOT, capture_output=True, text=True, timeout=15)
+        setup = subprocess.run([sys.executable, '-X', 'utf8', str(ROOT / 'quickstart.py'), 'setup',
+            '--directory', str(folder)], cwd=ROOT, capture_output=True, text=True, encoding='utf-8', timeout=15)
         if setup.returncode:
             raise RuntimeError('Quickstart setup failed')
         if FIXTURE_KEY in setup.stdout + setup.stderr:
             raise AssertionError('Quickstart setup reflected a model credential')
-        assert path.read_text() == original
+        assert path.read_text(encoding='utf-8') == original
         values = {}
-        for line in (folder / '.env').read_text().splitlines():
+        for line in (folder / '.env').read_text(encoding='utf-8-sig').splitlines():
             if line.strip() and not line.lstrip().startswith('#'):
                 key, separator, value = line.partition('=')
                 if separator: values[key.strip()] = value.strip().strip('"').strip("'")
@@ -274,6 +275,9 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
         assert not any(fixture.calls.values()), 'Setup must not contact a model endpoint'
         original_configuration = (folder / 'llm.json').read_bytes()
         env = isolated_environment(folder, port, token)
+        # Only this verifier supplies a PIPE and sends the Stop command.
+        # Other users of isolated_environment must not exit on inherited EOF.
+        env['ATLAS_SUPERVISOR_STDIN']='1'
         selected_folder=folder/'业务资料'
         if workspace_features:
             selected_folder.mkdir()
@@ -282,13 +286,13 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                        DATA_DIR=str(data),DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'))
         if opencode_binary:
             binary=opencode_binary.resolve(strict=True)
-            checked=subprocess.run([str(binary),'--version'],capture_output=True,text=True,timeout=15)
+            checked=subprocess.run([str(binary),'--version'],capture_output=True,text=True,encoding='utf-8',timeout=15)
             if checked.returncode or checked.stdout.strip() not in ('2.1.2','opencode v2.1.2'):
                 raise ValueError('The optional OpenCode integration requires verified version 2.1.2')
             env.update(ATLAS_OPENCODE_RUNTIME='1',ATLAS_OPENCODE_BINARY=str(binary))
         process = None
         log_path = folder / 'service.log'
-        with log_path.open('w') as log, httpx.Client(base_url=f'http://127.0.0.1:{port}',
+        with log_path.open('w',encoding='utf-8') as log, httpx.Client(base_url=f'http://127.0.0.1:{port}',
                 headers={'Authorization': 'Bearer ' + env['APP_TOKEN']}, trust_env=False, timeout=20) as client:
             def response(method, path, **kwargs):
                 value = client.request(method, path, **kwargs); value.raise_for_status(); return value
@@ -311,21 +315,23 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
 
             def start(previous=None):
                 nonlocal process
-                process = subprocess.Popen([sys.executable, '-m', 'agent_service.cloud'],
-                    cwd=ROOT, env=env, stdout=log, stderr=log)
+                process = subprocess.Popen([sys.executable, '-X', 'utf8', '-m', 'agent_service.cloud'],
+                    cwd=ROOT, env=env, stdin=subprocess.PIPE, stdout=log, stderr=log)
                 wait(lambda: call('GET', '/health'), 'API health')
                 wait(lambda: (lambda state: state['worker']['healthy'] and state['agent']['healthy'] and
                     (previous is None or all(state[role].get('pid') != previous[role].get('pid')
                                              for role in ('worker', 'agent'))))(
                     call('GET', '/api/status')), 'worker and agent heartbeats')
-                health = subprocess.run([sys.executable, '-m', 'agent_service.quickstart_health'],
+                health = subprocess.run([sys.executable, '-X', 'utf8', '-m', 'agent_service.quickstart_health'],
                     cwd=ROOT, env=env, capture_output=True, timeout=10)
                 assert health.returncode == 0, 'The actual container health command did not pass'
 
             def stop():
                 nonlocal process
                 if process and process.poll() is None:
-                    process.terminate()
+                    # Use the supervisor's existing cross-platform shutdown
+                    # command. Windows terminate() is a hard kill, not SIGTERM.
+                    process.stdin.write(b'stop\n');process.stdin.flush();process.stdin.close()
                     try: process.wait(timeout=15)
                     except subprocess.TimeoutExpired:
                         process.kill(); process.wait(timeout=5)
@@ -385,7 +391,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                     budget=b'office,budget\nWest,200\nEast,100\n'
                     (selected_folder/'实际.csv').write_bytes(actual)
                     (selected_folder/'预算.csv').write_bytes(budget)
-                    (selected_folder/'llm.json').write_text('{"private":"fixture-only"}')
+                    (selected_folder/'llm.json').write_text('{"private":"fixture-only"}',encoding='utf-8')
                     local=call('GET','/api/local-workspace')
                     assert local['enabled'] and local['imports_are_snapshots'] and not local['originals_overwritten']
                     listed=call('GET','/api/local-workspace/files')
@@ -479,7 +485,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                         action('write_file',path='notes/skill-proof.md',content=proof),final_step()],
                         text='请读取已安装技能及参考文件，生成 notes/skill-proof.md。'+marker,expected='verified_complete')
                     assert all(step['status']=='done' for step in skill_turn['agent_trace'])
-                    assert (selected_folder/'Atlas工作区'/project['id']/'files/notes/skill-proof.md').read_text()==proof
+                    assert (selected_folder/'Atlas工作区'/project['id']/'files/notes/skill-proof.md').read_text(encoding='utf-8')==proof
                     reference_step=next(step for step in skill_turn['agent_trace'] if step['tool']=='read_skill_file')
                     assert 'FIXTURE-SKILL-REFERENCE' in json.dumps(reference_step['observation'],ensure_ascii=False)
                     feature_checks['installed_skill_loaded_by_agent']=True
@@ -535,7 +541,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                     export=next(step['observation'] for step in exported['agent_trace'] if step['tool']=='export_local_workspace')
                     assert export['complete'] and not export['failures']
                     snapshot=selected_folder/export['relative_path']
-                    manifest=json.loads((snapshot/'manifest.json').read_text())
+                    manifest=json.loads((snapshot/'manifest.json').read_text(encoding='utf-8'))
                     assert manifest['complete'] and any(item['path'].startswith('data/') and item['path'].endswith('.xlsx') for item in manifest['files'])
                     for item in manifest['files']:
                         assert hashlib.sha256((snapshot/item['path']).read_bytes()).hexdigest()==item['sha256']
@@ -547,7 +553,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                 # Catalogs are owner-authoritative: a backend-only name update
                 # creates a revision; historical artifacts retain their bytes.
                 configuration['models'][1]['name']='快速处理（已更新）'
-                (folder / 'llm.json').write_text(json.dumps(configuration))
+                (folder / 'llm.json').write_text(json.dumps(configuration),encoding='utf-8')
                 start(first)
                 restored = call('GET', '/api/model',headers=operator_headers)
                 assert restored['configured'] and restored['share_data'] and restored['model'] == FIXTURE_MODEL
@@ -625,7 +631,7 @@ def main(argv=None):
     def execute(folder):
         try:
             result = verify(folder,opencode_binary=options.opencode_binary,workspace_features=options.workspace_features)
-            (folder / 'verification.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
+            (folder / 'verification.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',encoding='utf-8')
             print(json.dumps(result, ensure_ascii=False)); return 0
         except Exception as error:
             # Never echo process environment, connection JSON, or request bodies.
@@ -633,7 +639,7 @@ def main(argv=None):
             diagnostic={'ok':False,'simulated_model':True,'error_type':type(error).__name__,
                         'location':{'file':Path(frames[-1].filename).name,'line':frames[-1].lineno,
                                     'function':frames[-1].name} if frames else None}
-            (folder/'verification.failure.json').write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2)+'\n')
+            (folder/'verification.failure.json').write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
             print('Quickstart simulated-model verification failed: ' + type(error).__name__, file=sys.stderr)
             return 1
     if options.evidence_dir:

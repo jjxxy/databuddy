@@ -4,20 +4,74 @@ import duckdb,httpx,sqlglot
 from sqlglot import exp
 from .config import LLM_BASE,LLM_MODEL,LLM_KEY
 
+def _exact_query_value(value):
+    if isinstance(value,Decimal):return str(value)
+    if type(value) is int and abs(value)>2**53-1:return str(value)
+    if isinstance(value,dict):return {key:_exact_query_value(item) for key,item in value.items()}
+    if isinstance(value,(list,tuple)):return [_exact_query_value(item) for item in value]
+    return value
+
+
+def _reject_historical_float_inputs(con,tree):
+    """Conservative column-name check, not a SQL lineage/type inference engine."""
+    ctes={c.alias_or_name for c in tree.find_all(exp.CTE)};floating=set();row_fields={}
+    if any(table.name=='summary' and table.name not in ctes for table in tree.find_all(exp.Table)):
+        # Older summaries may already have cast an inexact source metric to
+        # DECIMAL. The summary's own result type cannot restore that precision.
+        source_fields=con.execute('DESCRIBE SELECT * FROM business.business_objects').fetchall()
+        if any(re.search(r'\b(?:FLOAT|DOUBLE|REAL)\b',field[1].upper()) for field in source_fields):
+            raise ValueError('该历史汇总的业务来源含FLOAT/DOUBLE浮点列，汇总结果即使显示DECIMAL也无法证明精度；'
+                             '请从原件用精确Decimal工作流重算并核对采用，当前不执行此查询')
+    for table in tree.find_all(exp.Table):
+        if table.name in ctes:continue
+        qualified='.'.join('"'+part.replace('"','""')+'"' for part in (table.db,table.name) if part)
+        fields=con.execute('DESCRIBE SELECT * FROM '+qualified).fetchall()
+        table_float=False
+        for name,kind,*_ in fields:
+            if re.search(r'\b(?:FLOAT|DOUBLE|REAL)\b',kind.upper()):
+                floating.add(name.casefold());table_float=True
+        if table_float:
+            for alias in (table.name,table.alias_or_name):
+                row_fields[alias.casefold()]={field[0].casefold() for field in fields}
+    if not floating:return
+    referenced=any(any(part.name.casefold() in floating for part in column.parts)
+                   for column in tree.find_all(exp.Column))
+    # DuckDB also exposes a whole table row as a STRUCT: t['amount'] or t.
+    # These contain no ordinary Column('amount') node. Only a literal,
+    # known exact member can project safely from such a row; do not evaluate
+    # dynamic member expressions or let a whole FLOAT-containing row escape.
+    for column in tree.find_all(exp.Column):
+        if len(column.parts)!=1 or column.name.casefold() not in row_fields:continue
+        node=column
+        while isinstance(node.parent,exp.Paren):node=node.parent
+        parent=node.parent
+        if isinstance(parent,exp.Bracket) and parent.this is node and len(parent.expressions)==1:
+            key=parent.expressions[0]
+            if isinstance(key,exp.Literal) and key.is_string:
+                member=str(key.this).casefold()
+                if member in row_fields[column.name.casefold()] and member not in floating:continue
+        referenced=True
+    for star in tree.find_all(exp.Star):
+        parent=star.parent
+        if isinstance(parent,exp.Column):parent=parent.parent
+        if not isinstance(parent,exp.Count):referenced=True
+    if referenced:
+        raise ValueError('该查询引用了历史FLOAT/DOUBLE浮点列，CAST回DECIMAL不能恢复精度；'
+                         '请从原件用精确Decimal工作流重算并核对采用，当前不执行此查询')
+
 def read_query(folder,sql):
+    from .data_workflows import validate_sql
     trees=sqlglot.parse(sql,read='duckdb')
     if len(trees)!=1 or not isinstance(trees[0],(exp.Select,exp.Union)):raise ValueError('只允许单条 SELECT 查询')
-    tree=trees[0]
-    if any(tree.find(t) for t in (exp.Insert,exp.Delete,exp.Update,exp.Create,exp.Drop,exp.Command,exp.Into,exp.Copy,exp.Attach,exp.Pragma)):raise ValueError('查询包含禁止操作')
-    ctes={c.alias_or_name for c in tree.find_all(exp.CTE)}
-    tables=list(tree.find_all(exp.Table))
-    if not tables or any(t.name not in {'business_objects','summary'}|ctes or t.db not in ('','business') or t.catalog for t in tables):raise ValueError('只能查询已发布业务表')
+    canonical=validate_sql(sql,{'business_objects','summary'},allowed_schema='business')
+    tree=sqlglot.parse_one(canonical,read='duckdb')
     with duckdb.connect(str(folder/'warehouse.duckdb'),read_only=True,config={'enable_external_access':False}) as con:
         con.execute("set memory_limit='256MB'");con.execute('set threads=1')
+        _reject_historical_float_inputs(con,tree)
         timer=threading.Timer(5,con.interrupt);timer.start()
         try:
-            cursor=con.execute('select * from ('+tree.sql(dialect='duckdb')+') query_result limit 200')
-            return {'columns':[x[0] for x in cursor.description],'rows':[[str(value) if isinstance(value,Decimal) else value for value in row] for row in cursor.fetchall()],'limit':200}
+            cursor=con.execute('select * from ('+canonical+') query_result limit 200')
+            return {'columns':[x[0] for x in cursor.description],'rows':_exact_query_value(cursor.fetchall()),'limit':200}
         finally:timer.cancel()
 
 def ask(folder,manifest,question):
@@ -44,6 +98,15 @@ def ask(folder,manifest,question):
     if re.fullmatch(r'(?:这个应用|当前应用|当前|现在|这个版本|当前版本|这里|一共|总共|总计)?(?:有)?(?:多少|几条)(?:条)?(?:业务)?(?:记录|数据|订单)?(?:数量)?|(?:记录|数据|订单)(?:总数|数量)(?:是多少)?',normalized):
         return {'answer':f"当前版本有 {manifest['records']} 条业务记录。",'mode':'grounded_rules','warning':warning,'scope':'entire_current_version','evidence':{'run_id':manifest['run_id'],'commit':manifest['commit'],'records':manifest['records']}}
     if normalized in ('查看汇总','汇总','查看排名','排名') and manifest['summary']:
+        amount_field=manifest.get('spec',{}).get('amount_field')
+        try:
+            if not isinstance(amount_field,str) or not amount_field:raise ValueError('missing metric binding')
+            # A legacy summary can already contain a DECIMAL cast of an
+            # inaccurate DOUBLE metric. Verify its actual source column too.
+            read_query(folder,'SELECT "'+amount_field.replace('"','""')+'" FROM business.business_objects WHERE FALSE')
+        except Exception:
+            return {'answer':'这份历史汇总的数值类型或指标绑定尚未通过精确核对，请从原件用精确Decimal工作流重算后再采用。',
+                    'mode':'needs_input','warning':warning,'limitations':['未将历史浮点指标或不可核对的旧汇总作为精确结果返回']}
         answer='；'.join(f"{x['category']}：{x['amount_total']}（{x['record_count']}条）" for x in manifest['summary'][:10])
         answer+='。仅展示当前已保存汇总的前10项，不代表完整排名。'
         if confirmed_status!='confirmed':answer+='口径待确认。'

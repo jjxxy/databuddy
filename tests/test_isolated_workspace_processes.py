@@ -41,7 +41,7 @@ def stop(process):
 
 
 def start(stack, tmp_path, name, port, env, bootstrap):
-    output = stack.enter_context((tmp_path / (name + '.log')).open('w+'))
+    output = stack.enter_context((tmp_path / (name + '.log')).open('w+', encoding='utf-8'))
     process = subprocess.Popen([sys.executable, '-c', bootstrap], cwd=ROOT, env=env,
                                stdout=output, stderr=subprocess.STDOUT)
     stack.callback(stop, process)
@@ -74,7 +74,9 @@ def test_two_real_backends_keep_projects_sources_artifacts_and_jobs_separate(tmp
             'iat': int(time.time()), 'exp': int(time.time()) + 600}, key, algorithm='RS256', headers={'kid': public['kid']})
     # Do not inherit production credentials, proxy variables or deployment flags.
     base_env = {'PATH': os.environ.get('PATH', ''), 'PYTHONPATH': str(ROOT),
-                'PYTHONUNBUFFERED': '1', 'DO_NOT_TRACK': '1', 'DLT_TELEMETRY': 'false'}
+                'PYTHONUNBUFFERED': '1', 'PYTHONUTF8': '1', 'DO_NOT_TRACK': '1', 'DLT_TELEMETRY': 'false'}
+    if os.name == 'nt':
+        base_env['SystemRoot'] = os.environ['SystemRoot']
     ports = {name: free_port() for name in ('alice', 'bob', 'gateway')}
     assert len(set(ports.values())) == 3
     with ExitStack() as stack:

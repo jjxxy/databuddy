@@ -75,12 +75,14 @@ def test_empty_snapshot_requires_opt_in_and_preserves_schema_on_recovery():
     job=q.list_jobs(target=strict['id'])[0];assert job['status']=='failed' and job['error_code']=='SOURCE_EMPTY'
 
 
-def test_divide_zero_is_quality_failure_and_sql_values_are_literals():
+def test_legacy_divide_is_rejected_before_queue_and_sql_values_are_literals():
     s=upload('order,customer,amount,divisor\nD1,A,10,0\nD2,B,20,2\n','rules-divide.csv')
     spec=dict(s['proposed_spec'],primary_key='c_1',group_by='c_2',amount_field='m_ratio',computations=[{'name':'m_ratio','label':'比率','operation':'divide','left_field':'c_3','right_field':'c_4'}])
-    r=client.post('/api/pipelines',headers=headers,json={'source_id':s['id'],'name':'除零防护','spec':spec,'release_mode':'auto'});assert r.status_code==200,r.text
-    assert process_once();p=get('pipeline',r.json()['id']);assert p['published_run'] is None
-    assert q.list_jobs(target=p['id'])[0]['error_code']=='QUALITY_FAILED'
+    from agent_service.store import all_items
+    before={p['id'] for p in all_items('pipeline')}
+    r=client.post('/api/pipelines',headers=headers,json={'source_id':s['id'],'name':'除零防护','spec':spec,'release_mode':'auto'})
+    assert r.status_code==400 and 'compute' in r.text
+    assert {p['id'] for p in all_items('pipeline')}==before
     from agent_service.rules import filter_sql
     rule=FilterSpec(field='c_2',value="paid' OR 1=1 --").model_dump()
     with duckdb.connect() as con:
@@ -129,7 +131,8 @@ def test_restore_invalid_audit_is_rejected_before_writing(tmp_path):
     with zipfile.ZipFile(bad,'w') as z:
         for name,data in contents.items():z.writestr(name,data)
     target=tmp_path/'target';env=dict(os.environ,DATA_DIR=str(target),DATABASE_URL='sqlite:///'+str(target/'metadata.sqlite'))
-    result=subprocess.run([sys.executable,'-m','agent_service.maintenance','restore',str(bad)],env=env,capture_output=True,text=True,timeout=30)
+    # Full-session Windows validation of >9k files takes 46s before rejection.
+    result=subprocess.run([sys.executable,'-m','agent_service.maintenance','restore',str(bad)],env=env,capture_output=True,text=True,encoding='utf-8',timeout=180)
     assert result.returncode!=0 and '审计链无效' in result.stderr
     assert not (target/'connector.key').exists() and not any((target/'uploads').glob('*'))
     script='from agent_service.store import engine,items; from agent_service.jobs import jobs; from agent_service.audit import events; from sqlalchemy import select,func; print([engine.connect().execute(select(func.count()).select_from(t)).scalar() for t in (items,jobs,events)])'

@@ -9,10 +9,12 @@ from .store import get,put,now
 from . import workspace
 
 RENDERER='office-v2'
+PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
+MANIFEST_MAX_BYTES=256*1024
 
 class OfficeArgs(StrictModel):
     spec_path:str=Field(min_length=1,max_length=200,
-        description='项目Office规格JSON路径。Excel采用text_exact：超安全精度或范围的有限数值无损存文本，precision_notes逐格披露；非有限数字拒绝。')
+        description='项目Office规格JSON路径。Excel采用text_exact：超安全精度或范围的有限数值无损存文本，precision_notes按cells或column_rows（含闭区间）完整披露；非有限数字拒绝。')
     name:str=Field(min_length=1,max_length=91,
         pattern=r'^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff _-]{0,90}$',
         description='不含路径和扩展名的文件基名，例如净收入明细；扩展名由规格kind决定，不能传report.xlsx')
@@ -152,6 +154,34 @@ def _build_file(spec,tmp,precision_notes):
     _verify_structure(tmp,ext,spec)
 
 
+def _compact_precision_notes(notes):
+    """Lossless coordinates: large notes use column row numbers/ranges."""
+    if len(json.dumps(notes,ensure_ascii=False,separators=(',',':')).encode())<=192*1024:return
+    for note in notes:
+        columns={}
+        for cell in note.get('cells',[]):
+            match=re.fullmatch(r'([A-Z]+)([1-9][0-9]*)',cell)
+            if match is None:raise ValueError('精度说明坐标无效，未发布产物')
+            columns.setdefault(match[1],[]).append(int(match[2]))
+        compact={}
+        for column,rows in columns.items():
+            result=[];rows=sorted(rows);start=end=rows[0]
+            for row in [*rows[1:],None]:
+                if row is not None and row==end+1:end=row;continue
+                if end-start>=2:result.append([start,end])
+                else:result.extend(range(start,end+1))
+                start=end=row
+            compact[column]=result
+        note.pop('cells',None);note['column_rows']=compact
+
+
+def _manifest_text(record,aid):
+    value=json.dumps({key:item for key,item in dict(record,id=aid).items() if key!='relative_path'},
+        ensure_ascii=False,separators=(',',':'))
+    if len(value.encode())>MANIFEST_MAX_BYTES:raise ValueError('精度清单超过256KB，请拆分交付文件；未发布新产物')
+    return value
+
+
 def render(turn,spec_path,name):
     from .intents import require
     from .result_delivery import durable_cached_artifact
@@ -166,7 +196,7 @@ def render(turn,spec_path,name):
         text=workspace.read_file(pid,spec_path);spec=_load_spec(text)
         ext={'document':'docx','spreadsheet':'xlsx','presentation':'pptx'}[spec.kind]
         identity={'project_id':pid,'source_spec':spec_path,'source_sha256':hashlib.sha256(text.encode()).hexdigest(),
-                  'renderer':RENDERER,'name':name+'.'+ext,'precision_policy':'text_exact','precision_notes_format':'grouped_cells_v1'}
+                  'renderer':RENDERER,'name':name+'.'+ext,'precision_policy':'text_exact','precision_notes_format':PRECISION_NOTES_FORMAT}
         digest=hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
         aid='of_'+digest[:40];folder=DATA/'deliverables'/aid;file=folder/(name+'.'+ext)
         identity['relative_path']=str(file.relative_to(DATA))
@@ -186,10 +216,13 @@ def render(turn,spec_path,name):
         precision_notes=list(record.get('precision_notes',[]));built_bytes=[None]
         def build(temporary):
             precision_notes.clear();_build_file(spec,temporary,precision_notes)
+            _compact_precision_notes(precision_notes)
             built_bytes[0]=temporary.stat().st_size
         def save_pending(checksum):
-            record.update(put('office_artifact',dict(identity,sha256=checksum,bytes=built_bytes[0],
-                precision_notes=precision_notes,created_at=record.get('created_at') or now(),state='pending'),aid))
+            pending=dict(identity,sha256=checksum,bytes=built_bytes[0],
+                precision_notes=precision_notes,created_at=record.get('created_at') or now(),state='pending')
+            _manifest_text(dict(pending,state='committed'),aid)  # Before registration or publication.
+            record.update(put('office_artifact',pending,aid))
         def save_committed(checksum):
             if record.get('sha256')!=checksum:raise ValueError('交付物发布回执不一致')
             record.update(put('office_artifact',dict(record,state='committed'),aid))
@@ -197,11 +230,10 @@ def render(turn,spec_path,name):
             pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,
             build=build,save_pending=save_pending,save_committed=save_committed,before_publish=assert_owned)
         _verify_structure(file,ext,spec)
-        workspace.write_file(pid,'deliverables/'+name+'.manifest.json',json.dumps(
-            {key:value for key,value in dict(record,id=aid).items() if key!='relative_path'},ensure_ascii=False,separators=(',',':')))
+        workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
         return {'artifact_id':aid,'sha256':record['sha256'],'format':ext,'structural_validation':True,
             'precision_policy':'text_exact','precision_notes':record.get('precision_notes',[]),
-            'precision_notes_format':'grouped_cells_v1',
+            'precision_notes_format':PRECISION_NOTES_FORMAT,
             'visual_validation':False,'formula_recalculation':False,
             'download':{'label':name+'.'+ext,'url':'/api/projects/'+pid+'/deliverables/'+aid}}
 

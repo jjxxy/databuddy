@@ -6,6 +6,17 @@ from .models import StrictModel
 from . import project_data as data
 from .store import get,patch,all_items
 
+
+def _wait_for_job(turn,**values):
+    from .job_authority import turn_guard
+    # Admission releases its lock before this link is saved. Stop may win in
+    # between; never resurrect its cancelled turn as a waiting task.
+    with turn_guard(turn['id']):
+        current=get('turn',turn['id'])
+        if current.get('state') in ('done','failed') or current.get('outcome')=='cancelled':return
+        patch('turn',turn['id'],**values)
+
+
 class SourceId(StrictModel):source_id:str=Field(min_length=1,max_length=64)
 class ResultPage(data.RunTarget):
     offset:int=Field(default=0,ge=0)
@@ -138,7 +149,7 @@ def execute(turn,name,args):
         if r.get('reused_verified_result') is True:
             _,meta=data.result_folder(pid,r['id'])
             return _workflow_receipt(pid,r,meta,reused=True)
-        patch('turn',turn['id'],state='waiting_data_workflow',data_workflow_job=r['id'],progress='正在读取完整来源并逐步校验加工结果')
+        _wait_for_job(turn,state='waiting_data_workflow',data_workflow_job=r['id'],progress='正在读取完整来源并逐步校验加工结果')
         return None
     if name=='read_data_workflow_result':
         if not provider.settings().get('share_data'):raise ValueError('需要启用模型读取项目内容才能向模型传递结果行值')
@@ -216,8 +227,9 @@ def execute(turn,name,args):
         from .project_reports import enqueue_fetch
         from .intents import require
         require(turn,'connect');require(turn,'refresh')
-        result=enqueue_fetch(turn['project_id'],args['connector_id'],args['filters'],args['context'],operation_id=operation(turn,name))
-        patch('turn',turn['id'],state='waiting_report_fetch',report_fetch_job=result['id'],progress='正在获取并校验完整报表导出')
+        result=enqueue_fetch(turn['project_id'],args['connector_id'],args['filters'],args['context'],
+            operation_id=operation(turn,name),originating_turn_id=turn['id'])
+        _wait_for_job(turn,state='waiting_report_fetch',report_fetch_job=result['id'],progress='正在获取并校验完整报表导出')
         return None
     if name=='read_report_acquisition':
         from .project_reports import read_fetch

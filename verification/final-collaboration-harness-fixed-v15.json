@@ -1,0 +1,50 @@
+{
+  "ok": true,
+  "version": "0.20.0",
+  "checks": {
+    "real_A_to_B": true,
+    "complete_40_row_handoff": true,
+    "exact_result_and_manifest": true,
+    "service_token_not_business_token": true,
+    "cross_project_denied": true,
+    "source_bytes_exact": true,
+    "cross_client_task_denied": true,
+    "real_B_to_A": true,
+    "mcp_agent_adapter": true,
+    "real_readonly_child_agents": true,
+    "parallel_model_calls": true,
+    "shared_durable_model_budget": true,
+    "child_model_pinned": true,
+    "idempotent_submit": true,
+    "changed_request_rejected": true,
+    "needs_input_not_success": true,
+    "cancel_inflight_late_reply_no_tool": true,
+    "ambiguous_submit_no_replay": true,
+    "unknown_survives_restart": true,
+    "completed_result_receipt_survives_restart": true,
+    "revoked_client_denied": true,
+    "credentials_not_in_model_or_plain_db": true
+  },
+  "rows": 40,
+  "exact_total": "300.000000000002",
+  "result_receipts": [
+    {
+      "rows": 40,
+      "exact_total": "300.000000000002",
+      "sha256": "26b584ee95a95bf990091ff7aa8178a986bfdf2b1f955ac1a08d4215ba79b5fa"
+    }
+  ],
+  "instances": 2,
+  "real_api_agent_worker": true,
+  "opencode_runtime_executed": false,
+  "opencode_version": null,
+  "native_tool_loop_calls": 0,
+  "native_compaction_calls": 0,
+  "model_requests": 41,
+  "max_parallel_specialist_requests": 2,
+  "simulated_model": true,
+  "real_model_evaluated": false,
+  "docker_executed": false,
+  "production_ha_evaluated": false,
+  "offline_evaluated": false
+}

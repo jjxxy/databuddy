@@ -1,4 +1,4 @@
-import json
+import json,os
 from pathlib import Path
 import subprocess
 import sys
@@ -47,7 +47,8 @@ def test_legacy_three_variable_env_is_migrated_without_enabling_content_reading(
 def test_bad_model_file_is_not_echoed_and_short_existing_token_is_not_replaced(tmp_path):
     (tmp_path / 'llm.json').write_text('{"api_key":"FIXTURE-PRIVATE-KEY", BAD JSON')
     result = subprocess.run([sys.executable, str(quickstart.ROOT / 'quickstart.py'),
-        'setup', '--directory', str(tmp_path)], text=True, capture_output=True)
+        'setup', '--directory', str(tmp_path)], text=True, capture_output=True,encoding='utf-8',
+        env=dict(os.environ,PYTHONUTF8='1',PYTHONIOENCODING='utf-8'))
     assert result.returncode == 2 and 'FIXTURE-PRIVATE-KEY' not in result.stdout + result.stderr
     configured(tmp_path)
     path = tmp_path / '.env';path.write_text('APP_TOKEN=short\n');original = path.read_bytes()

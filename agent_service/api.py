@@ -341,7 +341,7 @@ def published(pipeline_id):
     p=get('pipeline',pipeline_id)
     if not p.get('published_run'):raise HTTPException(409,'该任务还没有通过测试的发布结果')
     folder=artifact_folder(get_job(p['published_run']))
-    return p,folder,json.loads((folder/'output.json').read_text())
+    return p,folder,json.loads((folder/'output.json').read_text(encoding='utf-8'))
 
 @app.get('/api/pipelines/{pipeline_id}/result',dependencies=[Depends(auth)])
 def result(pipeline_id:str,offset:int=0,limit:int=50,search:str="",sort:str="object_id",descending:bool=False):
@@ -489,8 +489,8 @@ def archive_pipeline(pipeline_id:str):return patch('pipeline',pipeline_id,archiv
 def run_detail(run_id:str):
     r=get_job(run_id);folder=artifact_folder(r)
     result={'run':public_run(r)}
-    if (folder/'input.json').exists():result['inputs']=json.loads((folder/'input.json').read_text())
-    if (folder/'output.json').exists():result['manifest']=json.loads((folder/'output.json').read_text())
+    if (folder/'input.json').exists():result['inputs']=json.loads((folder/'input.json').read_text(encoding='utf-8'))
+    if (folder/'output.json').exists():result['manifest']=json.loads((folder/'output.json').read_text(encoding='utf-8'))
     return result
 
 @app.post('/api/runs/{run_id}/cancel',dependencies=[Depends(auth)])

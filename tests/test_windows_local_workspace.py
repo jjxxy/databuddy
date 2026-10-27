@@ -143,3 +143,71 @@ def test_failed_stage_cleanup_removes_junction_leaf_without_visiting_target(loca
         local.os.remove_tree('.partial-stage',dir_fd=parent)
         assert not (parent.path/'.partial-stage').exists()
     assert (outside/'original').read_bytes()==b'original'
+
+
+def test_long_report_staging_exports_verified_formats_and_still_refuses_tampering(local_folder,monkeypatch):
+    import shutil
+    import tempfile
+    from agent_service import business_reports
+    from agent_service.config import DATA
+    from agent_service.store import now,put,uid
+    _,pid=local_folder
+    rid='brief_'+uid()+uid()[:16]
+    folder=DATA/'business-reports'/pid/rid;folder.mkdir(parents=True)
+    payload={'recipe':{'title':'深层文件夹月结','period':'2026-09','assumptions':[]},
+        'evaluation':{'assertions':[{'label':'净收入','value':'300.000002','unit':'CNY','rows':2}],
+                      'input_rows':2,'selected_rows':2},
+        'run_id':'synthetic-long-path','handoff_sha256':'a'*64,'plan_sha256':'b'*64}
+    manifest=json.dumps(payload,ensure_ascii=False).encode('utf-8');markdown='净收入300.000002'.encode('utf-8')
+    (folder/'manifest.json').write_bytes(manifest);(folder/'report.md').write_bytes(markdown)
+    put('business_report',{'project_id':pid,'artifact_dir':str(folder.relative_to(DATA)),
+        'manifest_sha256':hashlib.sha256(manifest).hexdigest(),
+        'markdown_sha256':hashlib.sha256(markdown).hexdigest(),'office_exports':{},'created_at':now()},rid)
+    try:
+        docx=business_reports.report_file(pid,rid,'docx');pptx=business_reports.report_file(pid,rid,'pptx')
+        originals={'report.md':markdown,'manifest.json':manifest,'report.docx':docx.read_bytes(),'report.pptx':pptx.read_bytes()}
+        with tempfile.TemporaryDirectory(prefix='atlas-report-export-') as temporary:
+            # The final visible paths fit MAX_PATH; the immutable publication
+            # stage adds its own suffix and crosses 260, as in real quickstart.
+            base=Path(temporary);padding=120-len(str(base))-1
+            assert padding>0
+            root=base/('d'*padding);root.mkdir()
+            monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root))
+            original=root/'原件.csv';original.write_bytes(b'id,amount\n1,300.000002\n')
+            exported=local.export_project(pid)
+            stage=root/local.OUTPUT_DIR/pid/('.'+exported['id']+'.partial')/'reports'/rid/'manifest.json'
+            assert len(str(stage))>260
+            assert exported['complete'] and not exported['failures'] and exported['files']==4,exported
+            destination=root/exported['relative_path']/'reports'/rid
+            for name,content in originals.items():assert (destination/name).read_bytes()==content
+            assert local.verify_export(pid,exported['id'])['complete']
+            docx.write_bytes(b'tampered-cache')
+            partial=local.export_project(pid)
+            assert not partial['complete'] and partial['failures']==[{
+                'kind':'report','id':rid,'format':'docx','error':'该报告未通过完整性核验，未导出'}]
+            assert (destination/'report.docx').read_bytes()==originals['report.docx']
+            assert original.read_bytes()==b'id,amount\n1,300.000002\n'
+    finally:shutil.rmtree(folder.parent)
+
+
+@pytest.mark.parametrize('source,expected',[
+    (r'C:\synthetic\folder',r'\\?\C:\synthetic\folder'),
+    (r'\\server\share\folder',r'\\?\UNC\server\share\folder'),
+    (r'\\?\C:\synthetic\folder',r'\\?\C:\synthetic\folder'),
+    (r'\\?\UNC\server\share\folder',r'\\?\UNC\server\share\folder'),
+])
+def test_held_directory_visible_path_preserves_extended_drive_and_unc_forms(local_folder,source,expected):
+    # The real local handle remains open; only the lexical path representation
+    # is varied. This checks UNC mapping without accessing a network share.
+    with local._directory() as descriptor:
+        original=descriptor.path
+        try:
+            descriptor.path=Path(source)
+            assert str(local.os.descriptor_path(descriptor))==expected
+        finally:descriptor.path=original
+
+
+def test_visible_path_does_not_revive_a_closed_directory_handle(local_folder):
+    with local._directory() as descriptor:pass
+    with pytest.raises(OSError,match='live parent directory handle'):
+        local.os.descriptor_path(descriptor)

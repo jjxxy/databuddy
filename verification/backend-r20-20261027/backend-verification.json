@@ -1,0 +1,52 @@
+{
+  "ok": true,
+  "platform": "native Windows",
+  "app_root": "C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\dist\\Atlas-DataBuddy-win32-x64-r20\\resources\\app",
+  "synthetic_data_only": true,
+  "real_ai_evaluated": false,
+  "os_firewall_or_disconnected_vm_evaluated": false,
+  "cases": {
+    "fresh_local_workflow": {
+      "project": "p_bb483190e96cf2155166ff4d4abfa348cd5779cd",
+      "pipeline": "25cd88c670a5a532e8120bf7",
+      "rows": 2,
+      "exact_total": "118.150000000000",
+      "csv_sha256": "876dd55a481602ace87f51a8d8a68e036e0e1e8491ec057995dea7e2877244c4",
+      "auth_required": true,
+      "empty_input_rejected": true,
+      "long_input_rejected": true,
+      "empty_file_rejected": true,
+      "manual_publish_required": true,
+      "audit_verified": true
+    },
+    "restart": {
+      "data_preserved": true,
+      "credentials_preserved": true,
+      "port_preserved": true,
+      "audit_verified": true
+    },
+    "bad_model_local_workflow": {
+      "project": "p_81d1b1fa4d6c75a92a0e7b03b5bb8bb5a3147cfd",
+      "pipeline": "2af455cde4caa1eb7049c959",
+      "rows": 2,
+      "exact_total": "118.150000000000",
+      "csv_sha256": "876dd55a481602ace87f51a8d8a68e036e0e1e8491ec057995dea7e2877244c4",
+      "auth_required": true,
+      "empty_input_rejected": true,
+      "long_input_rejected": true,
+      "empty_file_rejected": true,
+      "manual_publish_required": true,
+      "audit_verified": true
+    },
+    "missing_runtime": {
+      "ok": true,
+      "method": "imported startup validation with an empty fixture root",
+      "human_message": "交付包缺少 Git 运行文件，请重新解压完整交付包。",
+      "real_runtime_modified": false
+    }
+  },
+  "offline_policy": "local_only",
+  "inherited_path_empty": true,
+  "app_directory_used_for_state": false,
+  "startup_does_not_require_reachable_model": true
+}

@@ -36,8 +36,8 @@ def write_code(repo,pipeline_id,project_id,name,spec,fields,value=None):
         # The generated, versioned app uses the same reviewed renderer as hosting.
         (target/filename).write_bytes((static/filename).read_bytes())
     payload={'application_id':pipeline_id,'project_id':project_id,'renderer_version':1,'config':config,'fields':[{'name':f['name'],'label':f['label'],'numeric':bool(f.get('numeric'))} for f in fields]}
-    (target/'application.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2))
-    (target/'README.md').write_text('# '+config['title']+'\n\n本应用的采集入口、dbt规则、语义和页面由同一个Git版本管理。\n\n在Atlas同源运行 data-app.html?project='+str(project_id or '')+'&app='+pipeline_id+'。也可通过application.json读取标识。重跑和调整由Atlas任务队列及Agent执行；凭证需在目标环境单独配置，代码包不包含数据或密钥。此应用代码依赖Atlas运行时，不是脱离后端的独立安装包。\n')
+    (target/'application.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+    (target/'README.md').write_text('# '+config['title']+'\n\n本应用的采集入口、dbt规则、语义和页面由同一个Git版本管理。\n\n在Atlas同源运行 data-app.html?project='+str(project_id or '')+'&app='+pipeline_id+'。也可通过application.json读取标识。重跑和调整由Atlas任务队列及Agent执行；凭证需在目标环境单独配置，代码包不包含数据或密钥。此应用代码依赖Atlas运行时，不是脱离后端的独立安装包。\n',encoding='utf-8')
     return config
 
 

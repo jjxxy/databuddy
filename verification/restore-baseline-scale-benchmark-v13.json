@@ -1,0 +1,30 @@
+{
+  "synthetic_baseline_only": true,
+  "work_directory": "C:\\Users\\001\\AppData\\Local\\Temp\\atlas-restore-benchmark-b_5jgn5n",
+  "source_creation_time_matched_baseline": true,
+  "backup_seconds": 35.015,
+  "backup_returncode": 0,
+  "restores": [
+    {
+      "case": "good",
+      "elapsed_seconds": 72.094,
+      "returncode": 0,
+      "timed_out": false,
+      "file_capture_avoids_inherited_pipe_wait": true,
+      "stdout_bytes": 28,
+      "stderr_bytes": 2494
+    },
+    {
+      "case": "tampered",
+      "elapsed_seconds": 45.875,
+      "returncode": 1,
+      "timed_out": false,
+      "file_capture_avoids_inherited_pipe_wait": true,
+      "stdout_bytes": 0,
+      "stderr_bytes": 3463
+    }
+  ],
+  "entries": 9384,
+  "uncompressed_bytes": 167054652,
+  "archive_bytes": 15980303
+}

@@ -6,8 +6,11 @@ from .store import get,now
 from .errors import TaskError
 
 def ingest(run_dir,code_dir):
-    run_dir=Path(run_dir);plan=json.loads((Path(code_dir)/'plan.json').read_text())
-    frozen=json.loads((run_dir/'sources.json').read_text()) if (run_dir/'sources.json').exists() else {}
+    run_dir=Path(run_dir);plan=json.loads((Path(code_dir)/'plan.json').read_text(encoding='utf-8'))
+    from .rules import validate_legacy_numeric,NUMERIC_POLICY
+    try:validate_legacy_numeric(plan['spec'],current_policy=plan.get('numeric_policy')==NUMERIC_POLICY)
+    except ValueError as error:raise TaskError(str(error),'SQL_INEXACT_NUMERIC') from None
+    frozen=json.loads((run_dir/'sources.json').read_text(encoding='utf-8')) if (run_dir/'sources.json').exists() else {}
     resources=[];inputs=[]
     all_sources=[{'source_id':plan['source_id'],'table':'records','schema_labels':plan['schema_labels'],'fields':[{'name':x} for x in plan['schema_names']]}]+plan.get('joins',[])
     for entry in all_sources:
@@ -39,7 +42,7 @@ def ingest(run_dir,code_dir):
     pipe.run(resources)
     with duckdb.connect(str(run_dir/'warehouse.duckdb')) as con:
         con.execute('create schema if not exists raw')
-        previous=json.loads((run_dir/'previous_schema.json').read_text()) if (run_dir/'previous_schema.json').exists() else {}
+        previous=json.loads((run_dir/'previous_schema.json').read_text(encoding='utf-8')) if (run_dir/'previous_schema.json').exists() else {}
         for entry,info in zip(all_sources,inputs):
             if info['records']==0:
                 columns=[f'"{f["name"]}" varchar' for f in entry['fields']]+['record_hash varchar','_source_index bigint','_dlt_id varchar','_dlt_load_id varchar']
@@ -47,13 +50,13 @@ def ingest(run_dir,code_dir):
                     columns=['"'+c['name']+'" '+c['type'] for c in previous[entry['source_id']]]
                 con.execute('drop table if exists raw.'+entry['table'])
                 con.execute('create table raw.'+entry['table']+' ('+', '.join(columns)+')')
-    (run_dir/'input.json').write_text(json.dumps({'sources':inputs,'source_id':plan['source_id'],'input_hash':hashlib.sha256(json.dumps(inputs,sort_keys=True,ensure_ascii=False).encode()).hexdigest(),'strategy':'full_refresh'},ensure_ascii=False,indent=2))
+    (run_dir/'input.json').write_text(json.dumps({'sources':inputs,'source_id':plan['source_id'],'input_hash':hashlib.sha256(json.dumps(inputs,sort_keys=True,ensure_ascii=False).encode()).hexdigest(),'strategy':'full_refresh'},ensure_ascii=False,indent=2),encoding='utf-8')
 
 def main():
     folder=Path(os.environ['RUN_DIR'])
     try:ingest(folder,os.environ['CODE_DIR'])
     except Exception as e:
         error={'message':str(e) if isinstance(e,(SourceError,TaskError)) else '采集失败，请检查只读连接和来源格式','code':getattr(e,'code','SOURCE_FAILED'),'retryable':getattr(e,'retryable',False)}
-        (folder/'error.json').write_text(json.dumps(error,ensure_ascii=False));sys.exit(3)
+        (folder/'error.json').write_text(json.dumps(error,ensure_ascii=False),encoding='utf-8');sys.exit(3)
 
 if __name__=='__main__':main()

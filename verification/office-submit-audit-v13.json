@@ -1,0 +1,144 @@
+{
+  "scope": "Independent Office numeric/cache integrity review, a proven legal precision-note size fix, generated UTF-8 read/write pairing, and read-only G1 controller audit.",
+  "verified_at": "2026-10-27T12:37:45.567626+00:00",
+  "production_frozen": true,
+  "model_calls_in_this_audit": 0,
+  "private_model_configuration_opened": false,
+  "user_profile_or_database_accessed": false,
+  "source_sha256": {
+    "agent_service/office.py": "7d711d70614273ba1d8509b310eb7855a4502c8953c638dd431131c927a1595d",
+    "agent_service/business_reports.py": "385f25b9b4fe45cac296b7a87c4bf2f87406ff3c5c3121e1e8ac962cc9a5068e",
+    "agent_service/applications.py": "8d6d14f689490e3c4984cc44902668b13ed7dc2bc732697a0cc86ce428c06e26",
+    "agent_service/execution.py": "afa1a26129f5fc2f0e204c30a4d47b37a7ff25b43a9e2e56a598ce71af83dbd8",
+    "agent_service/releases.py": "6ffdc76bbbb12a92e72839a1fdd5b50aafc80e9faba3a29a25742a6b9d579df1",
+    "agent_service/tasks.py": "cdc7cff0af821dbd1cec01d4feb2914e8f119d32de8b7d82e411eb0fd5ad808d",
+    "agent_service/api.py": "d3547d15d50e25a610bcdf0e2a50254c616111e2613717d206d9ea3fba3248cd",
+    "tests/test_office_integrity_regressions.py": "adc4f1ec4a260f22782ab5f917585489d3e9fb0f33f39c5d9c54b89f58c1e68c",
+    "tests/test_business_reports.py": "9ea80a8281119cfb660ef0f591bd4bd4d2e796b2c1118957f85db192afef5d74"
+  },
+  "listed_python_ast_valid": true,
+  "test_suites": [
+    {
+      "evidence": "verification/office-submit-final-regression-v13.xml",
+      "modules": [
+        "tests/test_office_integrity_regressions.py",
+        "tests/test_business_reports.py",
+        "tests/test_artifact_recovery.py",
+        "tests/test_workspace_artifacts.py",
+        "tests/test_agent_handoff.py",
+        "tests/test_bounded_planning_context.py",
+        "tests/test_local_workspace.py::test_local_export_actual_code_and_verified_office_without_overwriting_originals"
+      ],
+      "python_mode": "-X utf8",
+      "tests": "119",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "80.099"
+    },
+    {
+      "evidence": "verification/office-default-locale-green-v13.xml",
+      "modules": [
+        "tests/test_office_integrity_regressions.py",
+        "tests/test_business_reports.py",
+        "tests/test_artifact_recovery.py"
+      ],
+      "python_mode": "-X utf8=0",
+      "tests": "46",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "37.324"
+    },
+    {
+      "evidence": "verification/g1-controller-boundaries-v13.xml",
+      "modules": [
+        "tests/test_finance_depth_harness.py",
+        "tests/test_finance_negative_harness.py"
+      ],
+      "python_mode": "-X utf8",
+      "tests": "56",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.449"
+    },
+    {
+      "evidence": "verification/legacy-default-locale-green-v13.xml",
+      "modules": [
+        "tests/test_conversation.py::test_conversation_real_processing_confirmation_schedule_and_revision"
+      ],
+      "python_mode": "-X utf8=0",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "31.627"
+    }
+  ],
+  "test_counts_overlap_do_not_sum": true,
+  "proved_and_fixed": [
+    {
+      "id": "OFFICE-MANIFEST-BUDGET",
+      "red_evidence": "verification/office-wide-note-size-red-v13.xml",
+      "legal_fixture": "5000 rows x 8 columns of finite raw numeric token 1e309; input specification below 256 KiB",
+      "previous_failure": "Per-cell precision coordinates made manifest exceed workspace file limit after output publication and registration.",
+      "fix": "Lossless column-row inclusive ranges when grouped notes exceed 192 KiB; budget preflight before authoritative registration or publication; small notes retain cells format.",
+      "green_evidence": "verification/office-wide-note-size-green-v13.xml"
+    },
+    {
+      "id": "WINDOWS-GENERATED-UTF8",
+      "red_evidence": [
+        "verification/office-default-locale-regression-v13.xml",
+        "verification/legacy-default-locale-probe-v13.xml",
+        "verification/legacy-default-locale-after-writers-red-v13.xml",
+        "verification/legacy-default-locale-after-release-red-v13.xml"
+      ],
+      "diagnostic_evidence": [
+        "verification/legacy-default-locale-diagnostics-v13.json",
+        "verification/legacy-default-locale-stack-v13.json"
+      ],
+      "our_pairing_files": [
+        "agent_service/applications.py",
+        "agent_service/execution.py",
+        "agent_service/releases.py",
+        "agent_service/tasks.py",
+        "agent_service/api.py"
+      ],
+      "coordinated_files_owned_by_other_agent": [
+        "agent_service/codegen.py",
+        "agent_service/runner.py"
+      ],
+      "fix": "Explicit strict UTF-8 for service-generated JSON/YAML/SQL/README and frozen Git text. No changes to user-file encoding inference or authorization.",
+      "actual_positive_chain": "Real source probe, dlt ingestion, dbt builds and quality, post-generation restart reuses commit/job, exact Decimal 118.15 candidate, no publish before confirmation, explicit publish/schedule/export/pause, revision preserves previous published result.",
+      "green_evidence": "verification/legacy-default-locale-green-v13.xml"
+    }
+  ],
+  "office_compatibility": [
+    "Default outer OfficeArgs serialization remains unchanged; safe ordinary numbers remain native numeric cells, booleans/nulls and literal formula-like strings retain their types.",
+    "Raw JSON decimal tokens parsed as Decimal; nonfinite constants refused. Unsafe precision/range uses declared text_exact with exact cell disclosure.",
+    "New grouped_cells_or_column_rows_v1 metadata keeps small cells lists and uses inclusive ranges only when needed. Artifact identity includes metadata format; historical output is not overwritten.",
+    "Registered cache requires original independent hash, frozen spec identity, and real OOXML structure; orphan bytes are not adopted. Both pending_saved and file_published os._exit boundaries recover trusted hashes.",
+    "No claim of formula recalculation or independent visual validation."
+  ],
+  "g1_audit": {
+    "harness": "acceptance/depth/verify_agent_depth.py --case finance_monthly",
+    "case": "acceptance/depth/cases/finance_monthly.py",
+    "A02_A04_controller_capable": true,
+    "A02_A04_not_real_model_pass_in_this_audit": true,
+    "strict_sql_constraints_preserved": "Division/IntDiv/AVG, floating casts, scientific/oversized decimal literals, and floating date extraction are rejected; harness does not bypass validators or author answers.",
+    "A05_word_one_page_independently_verified": false,
+    "A05_false_is_intentional": "No independent rendered page count and clipping proof. No constants changed to produce a pass.",
+    "PPT_OOXML_slide_count_is_checked": true,
+    "native_layout_verified": false,
+    "controller_limit": "A02-A04 aggregate results are persisted after the A05 model call; an A05 timeout can prevent final summary checkpoint although raw validation/approval evidence remains. No harness change made.",
+    "next_actual_run_requirement": "Use a newly frozen/current packaged app-root and new evidence directory, not historical r17. Model configuration is passed by path only. No paid run executed here."
+  },
+  "unverified_boundaries": [
+    "This is related regression coverage, not a full-repository pass. Parent owns the final whole-suite run.",
+    "No new real-model A02-A05 run; historical G1 failures are not relabeled.",
+    "G4 professional visual design and rendered DOCX/PPT clipping/page count remain unverified; only saved content/structure, serialized geometry, and native readers were checked.",
+    "No physical clean-machine/disconnected Windows acceptance or final new package validation performed by this audit."
+  ],
+  "coverage_timing": "Office 119, default-locale Office 46 and G1-controller 56 runs precede the final generated-file UTF-8 read/write pairing. Office production source and its tests were unchanged afterward. The final native-default-locale real conversation/dbt test covers that subsequent encoding patch; parent must run the final whole-repository suite."
+}

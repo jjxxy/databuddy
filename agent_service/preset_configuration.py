@@ -1,12 +1,13 @@
 """Bounded stdlib-only reader for the operator's optional preset manifest."""
 import json,os,stat
+from .platform_files import open_regular_read
 
 MAX_PRESET_BYTES=8*1024*1024
 
 def load_presets_file(path):
     descriptor=None
     try:
-        descriptor=os.open(path,os.O_RDONLY|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_NONBLOCK',0))
+        descriptor=open_regular_read(path)
         info=os.fstat(descriptor)
         if not stat.S_ISREG(info.st_mode) or info.st_size>MAX_PRESET_BYTES:raise ValueError('预置配置须为不超过8MB的普通JSON文件')
         with os.fdopen(descriptor,'rb') as stream:

@@ -137,7 +137,7 @@ def test_runtime_rejects_weakened_boundary(monkeypatch, name, value):
     for key, setting in {'DATA_DIR': '/data', 'HOME': '/data/home',
                          'ATLAS_AUTH_MODE': 'oidc', 'OIDC_ACCEPT_PROXY_HEADER': '0'}.items():
         monkeypatch.setenv(key, setting)
-    monkeypatch.setattr(isolated_runtime.os, 'geteuid', lambda: 10001)
+    monkeypatch.setattr(isolated_runtime.os, 'geteuid', lambda: 10001, raising=False)
     monkeypatch.setenv(name, value)
     with pytest.raises(ValueError):
         isolated_runtime.main()
@@ -145,6 +145,6 @@ def test_runtime_rejects_weakened_boundary(monkeypatch, name, value):
 
 def test_runtime_rejects_root(monkeypatch):
     from agent_service import isolated_runtime
-    monkeypatch.setattr(isolated_runtime.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(isolated_runtime.os, 'geteuid', lambda: 0, raising=False)
     with pytest.raises(ValueError):
         isolated_runtime.main()

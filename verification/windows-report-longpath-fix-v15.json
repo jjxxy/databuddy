@@ -1,0 +1,55 @@
+{
+  "scope": "True native-Windows local report export integration failure; minimal held-directory extended-path representation fix.",
+  "production_frozen": true,
+  "user_profile_accessed": false,
+  "private_model_configuration_opened": false,
+  "model_calls": 0,
+  "root_cause": {
+    "file": "agent_service/windows_dirfd.py",
+    "line": 332,
+    "before": "descriptor_path returned a normal visible Windows path. The immutable .export_*.partial stage pushed a legitimate report destination beyond MAX_PATH. Path.mkdir/write raised native path-length OSError, caught as a generic report integrity failure.",
+    "proof": "All four report source hashes matched independent registered hashes in the synthetic actual verifier database. A separate real report-native-export regression then reproduced complete:false/zero copied report files before the patch. No integrity validator or receipt schema mismatch was found.",
+    "original_actual_failure": "verification/quickstart-verifier-actual-v15.xml",
+    "hash_and_native_path_probe": "verification/quickstart-report-export-triage-v15.json",
+    "independent_red": "verification/windows-report-long-stage-red-v15.xml"
+  },
+  "minimal_fix": "descriptor_path first checks the live held Directory, preserves an existing extended prefix, maps drive paths to extended drive form and UNC paths to extended UNC form. Directory.path, handle ancestry, no-SHARE_DELETE protection, no-reparse NT relative operations and atomic publication are unchanged. No registry/environment configuration is required.",
+  "changed_files": [
+    "agent_service/windows_dirfd.py",
+    "tests/test_windows_local_workspace.py"
+  ],
+  "source_sha256": {
+    "agent_service/windows_dirfd.py": "49866cf7035e23984b75ba8c149cbdae60353b118c8d1186d45be6b7fffb354a",
+    "tests/test_windows_local_workspace.py": "6903c59c9fd961eb074027caf96ba726e3d33a9b6dc1e8511ff7b37f87b746be"
+  },
+  "related_test_command": ".venv/Scripts/python.exe -X utf8 -m pytest -q tests/test_windows_local_workspace.py tests/test_local_workspace.py tests/test_business_reports.py tests/test_office_integrity_regressions.py tests/test_artifact_recovery.py --junitxml=verification/windows-report-long-stage-regression-v15.xml",
+  "evidence": [
+    {
+      "path": "verification/windows-report-long-stage-regression-v15.xml",
+      "tests": "86",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "46.567"
+    },
+    {
+      "path": "verification/windows-longpath-independent-review-v15.xml",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "2.514"
+    }
+  ],
+  "proved_boundaries": [
+    "A real saved business-report manifest and independent registered hashes feed native DOCX/PPTX generation, then four formats are copied through a greater-than-260-character stage and verified.",
+    "Tampered cached DOCX is still rejected; prior exported bytes and original source file remain unchanged.",
+    "Real parent-handle pinning, atomic same-handle rename without overwrite and junction-leaf cleanup tests still pass.",
+    "Drive/UNC prefix mapping and idempotence are tested lexically with a held local handle; closed handles are refused."
+  ],
+  "not_claimed": [
+    "Real SMB network share behavior was not exercised.",
+    "The 86 related tests and independent 9-test review overlap; do not sum or substitute for the final whole suite.",
+    "The full actual quickstart rerun with fresh temporary state and the r20 package/full suite are parent and peer-owned pending checks."
+  ]
+}

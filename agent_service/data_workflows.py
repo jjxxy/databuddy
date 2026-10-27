@@ -613,7 +613,7 @@ def _validate_exact_sql_numeric(tree):
                 '请用精确十进制字面量，均值先aggregate求和与计数，比率或除法改用compute并明确舍入位数')
 
 
-def validate_sql(sql: str, allowed_tables: set[str]) -> str:
+def validate_sql(sql: str, allowed_tables: set[str], *, allowed_schema: str | None = None) -> str:
     try:
         trees = sqlglot.parse(sql, read='duckdb')
     except sqlglot.errors.ParseError:
@@ -631,7 +631,8 @@ def validate_sql(sql: str, allowed_tables: set[str]) -> str:
     tables = list(tree.find_all(exp.Table))
     base_tables = []
     for table in tables:
-        if not isinstance(table.this, exp.Identifier) or table.db or table.catalog or table.name not in allowed_tables | ctes:
+        if (not isinstance(table.this, exp.Identifier) or table.db not in ('',allowed_schema)
+                or table.catalog or table.name not in allowed_tables | ctes):
             raise WorkflowError('UNSAFE_SQL', 'SQL can read only explicitly supplied workflow tables')
         if table.name in allowed_tables and table.name not in ctes:
             base_tables.append(table.name)

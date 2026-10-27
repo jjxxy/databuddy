@@ -1,6 +1,5 @@
-Atlas DataBuddy v0.20.0 当前源码工作稿
+Atlas DataBuddy v0.20.0 源码快照，2026-10-27
 
-最后验证的便携包为 r17；当前源码有后续部分修补，尚未完成合并及交付验证，不是 r18 发布包。
-请先读 REPOSITORY-STATUS.md 与 EXPORT-INFO.json。
-源码未包含密钥、个人工作空间、真实数据库、运行时与已安装依赖。
-SOURCE-MANIFEST.sha256 只校验本次源码快照；不表示业务验收通过。
+本轮修补与r20包本体已验证；完整财经G1和报告/PPT视觉G4仍未放行。
+请先读REPOSITORY-STATUS.md和CODEX-VALIDATION-20261027.md。
+源码不含密钥、个人资料、运行时及安装依赖；SOURCE-MANIFEST.sha256校验源码快照。

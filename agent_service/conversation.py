@@ -292,12 +292,19 @@ def submit(project_id, value, *, trusted_fields=None):
         if value.application_id:owned('pipeline',value.application_id,project_id)
         turn=put('turn',{'project_id':project_id,'session_id':session_id,'actor_id':actor_id,'interaction_mode':'work','text':value.text.strip(),'state':'queued','created_at':now()},tid)
         from .work_tools import cancel_actions
+        from .job_authority import turn_guard,cancel_owned_async_jobs
         cancel_actions(project_id,session_id)
         for old in all_items('turn'):
             if old['id']==tid or old['project_id']!=project_id or old['state'] in TERMINAL or old.get('session_id',default_session(project_id))!=session_id:continue
             if value.application_id and old.get('application_id')!=value.application_id:continue
-            if old.get('run_id'):request_cancel(old['run_id'])
-            patch('turn',old['id'],state='done',answer='已停止这项需求，已完成的变更和正式结果保留。',finished_at=now(),secret_text=None,outcome='cancelled',resume_available=False)
+            with turn_guard(old['id']):
+                current=get('turn',old['id'])
+                if current['state'] in TERMINAL:continue
+                patch('turn',old['id'],state='done',answer='已停止这项需求，已完成的变更和正式结果保留。',finished_at=now(),secret_text=None,outcome='cancelled',resume_available=False)
+                if current.get('run_id'):
+                    try:request_cancel(current['run_id'])
+                    except KeyError:pass
+                cancel_owned_async_jobs(current)
         if project.get('pending_connection_session',default_session(project_id))==session_id:patch('project',project_id,pending_connection=None)
         finish(turn,'已停止本对话的当前处理，其他对话及已发布结果保留。')
         return public_turn(get('turn',tid))

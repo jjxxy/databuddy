@@ -27,7 +27,8 @@ def test_configuration_loader_has_no_runtime_imports_and_safe_defaults(tmp_path)
     assert value['share_data'] is False and value['tool_protocol'] == 'json'
     assert value['base_url'] == 'https://model.test/v1'
     script = "import sys;from agent_service.quickstart_model import load_configuration;load_configuration(sys.argv[1]);assert 'agent_service.config' not in sys.modules;assert 'agent_service.provider' not in sys.modules"
-    result = subprocess.run([sys.executable, '-c', script, str(path)], capture_output=True, text=True, timeout=10)
+    result = subprocess.run([sys.executable, '-X', 'utf8', '-c', script, str(path)],
+                            capture_output=True, text=True, encoding='utf-8', timeout=10)
     assert result.returncode == 0, result.stderr
 
 
@@ -94,10 +95,13 @@ def test_explicit_model_endpoint_never_grants_metadata_or_url_credentials(tmp_pa
 
 def subprocess_environment(tmp_path, path):
     data = tmp_path / 'workspace-data'
-    return {'PATH': os.environ.get('PATH', ''), 'DATA_DIR': str(data),
+    environment={'PATH': os.environ.get('PATH', ''), 'DATA_DIR': str(data),
             'DATABASE_URL': 'sqlite:///' + str(data / 'metadata.sqlite'),
             'APP_TOKEN': 'fixture-only-access-token-123456789',
-            'ATLAS_LLM_CONFIG_FILE': str(path)}
+            'ATLAS_LLM_CONFIG_FILE': str(path), 'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'}
+    for key in ('SystemRoot','SYSTEMROOT','WINDIR'):
+        if os.environ.get(key):environment[key]=os.environ[key]
+    return environment
 
 
 def test_cloud_file_provisioning_is_once_only_encrypted_and_drops_bootstrap_environment(tmp_path):
@@ -132,8 +136,8 @@ assert calls==['http://host.docker.internal:11434/v1']
 assert 'FIXTURE-QUICKSTART-SECRET' not in get('system','model-provider')['secret_config']
 print('BOOTSTRAP_ONCE_AND_RESTART_OK')
 '''
-    result = subprocess.run([sys.executable, '-c', script, str(path)], env=environment,
-                            capture_output=True, text=True, timeout=20)
+    result = subprocess.run([sys.executable, '-X', 'utf8', '-c', script, str(path)], env=environment,
+                            capture_output=True, text=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == 'BOOTSTRAP_ONCE_AND_RESTART_OK'
     assert 'FIXTURE-' not in result.stdout + result.stderr
@@ -169,8 +173,8 @@ assert cloud.prepare()==8000
 assert provider.status()['configured'] is True
 print('READ_BEFORE_IDENTITY_SWITCH_OK')
 '''
-    result = subprocess.run([sys.executable, '-c', script, str(path)], env=environment,
-                            capture_output=True, text=True, timeout=20)
+    result = subprocess.run([sys.executable, '-X', 'utf8', '-c', script, str(path)], env=environment,
+                            capture_output=True, text=True, encoding='utf-8', timeout=20)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == 'READ_BEFORE_IDENTITY_SWITCH_OK'
     assert 'FIXTURE-' not in result.stdout + result.stderr
@@ -180,10 +184,10 @@ print('READ_BEFORE_IDENTITY_SWITCH_OK')
 def test_cloud_model_read_errors_do_not_log_private_configuration(tmp_path, failure):
     path = write_configuration(tmp_path)
     environment = subprocess_environment(tmp_path, path)
-    if failure == 'invalid-file':path.write_text('invalid JSON FIXTURE-QUICKSTART-SECRET')
+    if failure == 'invalid-file':path.write_text('invalid JSON FIXTURE-QUICKSTART-SECRET',encoding='utf-8')
     else:environment['ATLAS_INITIAL_MODEL'] = json.dumps(configuration())
-    result = subprocess.run([sys.executable, '-m', 'agent_service.cloud'], env=environment,
-                            capture_output=True, text=True, timeout=10)
+    result = subprocess.run([sys.executable, '-X', 'utf8', '-m', 'agent_service.cloud'], env=environment,
+                            capture_output=True, text=True, encoding='utf-8', timeout=10)
     assert result.returncode == 2
     assert 'FIXTURE-' not in result.stdout + result.stderr
     assert 'Cloud configuration or storage initialization failed' in result.stderr

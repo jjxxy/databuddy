@@ -1,0 +1,1 @@
+{"named_model_selection":true,"no_business_configuration":true,"model_frozen_on_send":true,"uncertain_retry_reuses_model_and_request":true,"conversation_choice_preserved":true,"no_model_blocks_send":true,"rejected_unaccepted_message_unlocks_choice":true}
