@@ -50,7 +50,13 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False):
         folder,manifest=manifest_for(run)
         actual=hashlib.sha256((folder/'business_objects.parquet').read_bytes()).hexdigest()
         if actual!=manifest['parquet_hash'] or manifest['commit']!=run['commit']:raise ValueError('运行产物完整性校验失败')
-        verify_semantics(p,run,manifest,folder)
+        frozen_plan=verify_semantics(p,run,manifest,folder)
+        from .rules import validate_legacy_numeric,NUMERIC_POLICY
+        from .data_contracts import ExactDataContractError
+        try:
+            validate_legacy_numeric(frozen_plan['spec'],current_policy=frozen_plan.get('numeric_policy')==NUMERIC_POLICY)
+        except ValueError:
+            raise ExactDataContractError('历史结果包含无法确保精度的除法或数值筛选，请从原始资料重新运行并核对') from None
         # Re-evaluate frozen contract at publication, including manual publish/rollback.
         import subprocess
         contract_file=folder/'code'/'data-contract.json'
@@ -59,15 +65,27 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False):
         if tracked_contract:
             if not contract_file.is_file():raise ValueError('数据契约产物缺失，禁止发布')
             import duckdb
-            from .data_contracts import evaluate
+            from .data_contracts import evaluate,evaluate_verified_parquet,require_exact_numeric_evidence,ExactDataContractError
             frozen=subprocess.run([executable('git'),'-C',p['repository'],'show',run['commit']+':data-contract.json'],capture_output=True,text=True,encoding='utf-8',check=True,timeout=15).stdout
             contract=json.loads(frozen)
             if json.loads(contract_file.read_text(encoding='utf-8'))!=contract:raise ValueError('数据契约与代码版本不一致')
-            with duckdb.connect() as validation_db:
-                validation_db.execute('CREATE SCHEMA business')
-                validation_db.read_parquet(str(folder/'business_objects.parquet')).create_view('contract_input')
-                validation_db.execute('CREATE VIEW business.business_objects AS SELECT * FROM contract_input')
-                result=evaluate(validation_db,contract)
+            if contract.get('ranges') or contract.get('totals'):
+                previous_report=run.get('data_contract')
+                if manifest.get('data_contract')!=previous_report:
+                    raise ExactDataContractError('数值校验记录与运行结果不一致，请从原始资料重新运行并核对')
+                expected_rows=manifest.get('records')
+                if type(expected_rows) is not int or type(run.get('records')) is not int or run['records']!=expected_rows:
+                    raise ExactDataContractError('数值校验记录与完整结果行数不一致，请从原始资料重新运行并核对')
+                require_exact_numeric_evidence(previous_report,contract,expected_rows=expected_rows)
+                result=evaluate_verified_parquet(contract,folder/'business_objects.parquet',manifest['parquet_hash'])
+                if result.get('rows')!=expected_rows:
+                    raise ExactDataContractError('数值校验记录与完整结果行数不一致，请从原始资料重新运行并核对')
+            else:
+                with duckdb.connect() as validation_db:
+                    validation_db.execute('CREATE SCHEMA business')
+                    validation_db.read_parquet(str(folder/'business_objects.parquet')).create_view('contract_input')
+                    validation_db.execute('CREATE VIEW business.business_objects AS SELECT * FROM contract_input')
+                    result=evaluate(validation_db,contract)
             if not result['passed']:raise ValueError('数据验收契约未通过，禁止发布')
         p.update(published_run=run_id,active_commit=run['commit'],status='published',last_success=now(),data_as_of=manifest.get('data_as_of',manifest['published_at']),active_runtime=manifest.get('runtime',{}))
         if p.get('candidate_run')==run_id:p['candidate_run']=None

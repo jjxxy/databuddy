@@ -175,7 +175,10 @@ def execute(run):
     except Exception as e:
         current=get_job(run['id'])
         if current.get('lease_token')!=run['lease_token']:return
-        error=Cancelled() if current.get('cancel_requested') else e if isinstance(e,TaskError) else TaskError('执行失败，检查来源、字段及处理规则','TASK_FAILED')
+        from .data_contracts import ExactDataContractError
+        error=(Cancelled() if current.get('cancel_requested') else e if isinstance(e,TaskError)
+               else TaskError(str(e),'DATA_CONTRACT_EXACTNESS') if isinstance(e,ExactDataContractError)
+               else TaskError('执行失败，检查来源、字段及处理规则','TASK_FAILED'))
         status='cancelled' if isinstance(error,Cancelled) else 'retrying' if error.retryable and run['attempts']<run['max_attempts'] else 'failed'
         try:patch_run(run,status=status,finished_at=now(),stage='等待重试' if status=='retrying' else '已取消' if status=='cancelled' else '失败',error=str(error),error_code=error.code,available_at=time.time()+min(300,2**run['attempts']),quality=quality_report(folder))
         except RuntimeError:return

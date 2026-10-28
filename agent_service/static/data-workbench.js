@@ -131,10 +131,14 @@ function wbFailure(job) {
     NONDETERMINISTIC_SQL:['查询中的顺序没有明确，无法稳定复用结果。','让 Agent 补全明确的排序规则后再运行。'],
     SQL_FAILED:['保存的查询规则没有通过检查或执行。','让 Agent 检查字段和查询规则，再生成可核对的新结果。'],
     DATA_CONTRACT_FAILED:['结果没有通过保存的数值或完整性核对。','检查汇总数、记录数和原始数据，查明差异后再运行。'],
+    DATA_CONTRACT_EXACTNESS:['保存的数值检查无法保证精确，已停止本次结果。','请让 Agent 从原始底稿重新读取，保留原始金额文本，并用整数或明确的小数字符串核对范围与对账规则后再运行。'],
   };
-  const [reason,next] = job.status === 'cancelled' ? ['这次运行已取消。','需要继续时，可以重新运行这项任务。'] :
+  const [genericReason,next] = job.status === 'cancelled' ? ['这次运行已取消。','需要继续时，可以重新运行这项任务。'] :
     messages[code] || ['这次任务没有完成。','回到对话，让 Agent 根据下方运行详情检查来源与任务做法。'];
-  return {code,reason,next,stage_id:failure.stage_id || null,message:failure.message || (typeof job.error === 'string' ? job.error : '')};
+  const detail=failure.message || (typeof job.error === 'string' ? job.error : '');
+  // This specific server code is emitted only for controlled, redacted Chinese messages.
+  const reason=job.status!=='cancelled'&&code==='DATA_CONTRACT_EXACTNESS'&&typeof detail==='string'&&detail.length<=300&&/[\u3400-\u9fff]/.test(detail)&&!/[\u0000-\u001f]/.test(detail)?detail:genericReason;
+  return {code,reason,next,stage_id:failure.stage_id || null,message:detail};
 }
 function wbRenderTask() {
   const workflow = wbState.workflow, result = wbState.result, job = wbState.latestJob;
@@ -259,7 +263,9 @@ function wbRenderSources() {
     if (!target.children.length) target.append(wbNode('p','本结果未提供可展示的来源说明，可以下载完整结果与依据查看。','muted'));
     if (context && Object.keys(context).length) {
       const details = document.createElement('details');details.append(wbNode('summary','查看本结果的范围与依据'));
-      details.append(wbNode('pre',JSON.stringify(context,null,2)));target.append(details);
+      const contextEvidence={...context};delete contextEvidence.data_contract;
+      if(context.data_contract)details.append(wbNode('p','验收检查状态请看结果提示；原始记录保留在完整结果与依据中。','muted'));
+      details.append(wbNode('pre',JSON.stringify(contextEvidence,null,2)));target.append(details);
     }
     return;
   }
@@ -277,8 +283,12 @@ function wbRenderStages() {
   const target = wbEl('#workbench-stages');target.replaceChildren();
   const stages = wbState.result?.stages || [];
   for (const stage of stages) {
-    const definition = wbPlanSteps().find(step => step.id === (stage.stage_id || stage.id));
-    const item = wbNode('div', '', 'stage-item');item.append(wbNode('strong', stage.label || stage.name || (definition && wbStageName(definition)) || '处理步骤'));
+    // A result belongs to the frozen run, not to the currently edited draft.
+    // Old receipts may not include an operation; do not guess from the draft.
+    const recorded = stage.lineage && typeof stage.lineage === 'object' && !Array.isArray(stage.lineage) ? stage.lineage : {};
+    const kind = recorded.kind || stage.kind;
+    const label = stage.label || stage.name || recorded.label || recorded.name || (kind ? wbStageName({kind}) : '步骤类型未记录');
+    const item = wbNode('div', '', 'stage-item');item.append(wbNode('strong', label));
     item.append(wbDefinition(stage, [['状态','status'],['输入记录','input_rows'],['输出记录','output_rows'],['处理说明','description']]));
     const more = document.createElement('details');more.append(wbNode('summary', '查看校验与处理记录'));
     more.append(wbNode('pre', JSON.stringify(stage, null, 2)));item.append(more);target.append(item);
@@ -334,6 +344,23 @@ function wbRenderResult() {
   wbEl('#workbench-page-info').textContent = !result ? '尚无结果' : total === 0 ? '共 0 条' :
     '当前第 ' + (wbState.offset + 1) + '–' + (wbState.offset + (result.rows?.length || 0)) + ' 条，共 ' + wbValue(total) + ' 条';
   wbEl('#workbench-result-help').textContent = result ? '当前仅展示这一页，完整数据与依据可通过下载获取。' + (result.context?.requires_semantic_review ? ' 部分字段含义或映射仍待核对。' : '') : '结果按页展示，下载可获取完整数据。';
+  const contract=result?.context?.data_contract,checks=Array.isArray(contract?.checks)?contract.checks:[];
+  const numericEvidence=contract?.numeric_policy==='exact_decimal_v1'&&Number.isSafeInteger(contract?.rows)&&contract.rows>=0&&Number.isSafeInteger(result?.total)&&result.total>=0&&contract.rows===result.total;
+  const legacyNumeric=checks.some(check=>typeof check?.name==='string'&&/^(range|total):/.test(check.name))&&!numericEvidence;
+  const failedCheck=checks.some(check=>check?.status==='fail'),substantive=checks.filter(check=>typeof check?.name==='string'&&check.name.trim()&&check.name!=='row_count');
+  const notice=wbEl('#workbench-trust-notice');notice.hidden=!result;
+  notice.textContent=!result?'':legacyNumeric?'数值范围或对账检查的精度或记录范围未确认，请从原始资料重新运行并复核；范围检查本身不检查缺失值。':
+    !checks.length?'未记录可验证的业务验收规则；请核对缺失值、来源、计算口径与结果。':failedCheck?'保存记录显示部分检查未通过，请先核对来源、计算口径与结果。':
+    !substantive.length?'未记录可核对的行数范围或其他业务验收规则；请核对缺失值、来源、计算口径与结果。':'已记录的检查不代表来源齐全或财务口径正确；范围检查本身不检查缺失值，请确认是否另有缺失值检查。';
+  const details=wbEl('#workbench-trust-checks'),list=wbEl('#workbench-trust-check-list');list.replaceChildren();details.hidden=!result||!checks.length;
+  for(const check of checks){
+    const name=typeof check?.name==='string'?check.name:'名称未记录',numeric=/^(range|total):/.test(name);
+    const label=name.startsWith('range:')?'数值范围：'+name.slice(6):name.startsWith('total:')?'对账总额：'+name.slice(6):name;
+    const status=name==='row_count'?'未记录行数范围，需核对':numeric&&!numericEvidence?'待重新复核':check?.status==='pass'?'已记录通过':check?.status==='fail'?'未通过':'状态未记录';
+    list.append(wbNode('li',label+'：'+status));
+  }
+
+
   wbEl('#workbench-prev').disabled = !result || wbState.offset === 0 || wbState.busy;
   wbEl('#workbench-next').disabled = !result || result.next_offset == null || wbState.busy;
   wbRenderSources();wbRenderStages();wbRenderFields();wbRenderTask();wbRenderButtons();

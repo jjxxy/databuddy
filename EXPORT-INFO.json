@@ -1,23 +1,14 @@
 {
   "project": "Atlas DataBuddy",
   "version": "0.20.0",
-  "export_date": "2026-10-27",
+  "export_date": "2026-10-28",
   "kind": "source_with_tests_and_dependency_locks",
   "branch": "codex/agent-recovery-wip-20261026",
-  "source_state": "patch_validation_passed_product_acceptance_pending",
+  "source_state": "finance_trust_targeted_tests_passed_product_acceptance_pending",
   "last_verified_portable": "r20",
   "r20_built_and_locally_verified": true,
-  "current_source_differs_from_verified_portable": false,
-  "current_full_suite_passed": true,
-  "full_suite": {
-    "tests": 1942,
-    "failures": 0,
-    "errors": 0,
-    "skipped": 31,
-    "passed": 1911
-  },
-  "desktop_passed": 40,
-  "ui_script_count": 21,
+  "current_source_differs_from_verified_portable": true,
+  "current_full_suite_passed": false,
   "database_evaluated": "SQLite",
   "host_evaluated": "native Windows",
   "full_finance_G1_passed": false,
@@ -26,5 +17,17 @@
   "credentials_included": false,
   "personal_workspace_data_included": false,
   "user_workspace_modified": false,
-  "paid_model_calls_this_validation": 0
+  "paid_model_calls_this_validation": 0,
+  "last_full_suite_before_this_change": {
+    "tests": 1942,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 31,
+    "passed": 1911,
+    "commit": "9ebc25ee3dba553b25752428c6b2e582a28f5fb8"
+  },
+  "last_baseline_desktop_passed": 40,
+  "current_targeted_python_passed": 299,
+  "current_ui_script_count": 21,
+  "current_browser_synthetic_flow_passed": true
 }

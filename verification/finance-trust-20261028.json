@@ -1,0 +1,135 @@
+{
+  "date": "2026-10-28",
+  "scope": "synthetic fixtures, not real model finance acceptance",
+  "python_tests": {
+    "modules": [
+      "test_data_contracts.py",
+      "test_data_contract_numeric_evidence.py",
+      "test_data_contract_release.py",
+      "test_numeric_lineage_history.py",
+      "test_project_data.py",
+      "test_data_workflows.py",
+      "test_business_reports.py",
+      "test_business_explanation.py",
+      "test_workspace_artifacts.py",
+      "test_localized_workflow.py",
+      "test_finance_delivery_boundaries.py",
+      "test_finance_depth_harness.py",
+      "test_finance_negative_harness.py",
+      "test_owner_stop_async_jobs.py",
+      "test_quickstart_verifier.py"
+    ],
+    "passed": 299,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 155.15
+  },
+  "ui_scripts": [
+    {
+      "name": "auth-transition.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "collaboration.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-app-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-workbench.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "desktop-business-actions.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "facts-pagination.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lifecycle.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lineage-render.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-data.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-workspace-context.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "models.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "multi-files.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "project-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "resume-message.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "scroll.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "service-worker.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-buttons.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-preview.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "work.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-features.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-shell.cjs",
+      "exit_code": 0
+    }
+  ],
+  "browser": {
+    "engine": "Chrome headless",
+    "passed": true,
+    "checks": [
+      "report explanation",
+      "saved result preview",
+      "exact source version and hash preview",
+      "metric 300.000002",
+      "visible sticky title"
+    ],
+    "synthetic_data": true,
+    "model_calls": 0
+  },
+  "concurrent_run_note": "A prior simultaneous test and browser attempt failed; its cause was not established. Both final checks passed when run separately.",
+  "limitations": [
+    "no full current-source test suite",
+    "full real-model finance monthly G1 not verified",
+    "report template visual G4 not verified",
+    "million-row performance not verified",
+    "r20 portable package predates these changes"
+  ]
+}

@@ -190,6 +190,7 @@ def read_input(pid,binding,*,frozen_source=None):
         folder,meta=result_folder(pid,binding.result_id)
         from .result_delivery import read_all_handoff
         page=read_all_handoff(folder/'handoff',expected_manifest_sha256=meta['handoff_sha256'],max_rows=MAX_ROWS)
+        require_safe_numeric_lineage(pid,binding.result_id,root_meta=meta,root_page=page)
         rows=page['rows'];fields=page['schema']
         evidence={'result_id':binding.result_id,'manifest_sha256':meta['handoff_sha256'],'complete':True,
                   'requires_semantic_review':meta.get('requires_semantic_review',False),
@@ -333,6 +334,7 @@ _FAILURE_MESSAGES={
  'NULL_VALUE':'非空字段存在缺失值，未自动补零',
  'DIVIDE_BY_ZERO':'存在零分母，需明确业务处理规则',
  'DATA_CONTRACT_FAILED':'结果未通过数据验收契约，之前正式结果保留',
+ 'DATA_CONTRACT_EXACTNESS':'数值校验精度需要核对：检查原始资料和阈值，使用整数或固定十进制字符串后重新运行',
  'TEXT_PROJECTION_INVALID':'显式文本投影列不属于当前XLSX读取范围，未转换',
  'TEXT_PROJECTION_NOT_XLSX':'显式文本投影只支持XLSX来源，不适用于其他来源或已验证结果',
  'TEXT_PROJECTION_PERCENTAGE_CONFLICT':'百分比数值与表示不能通过文本投影隐藏，需保留显式百分比语义',
@@ -405,6 +407,8 @@ def workflow_run_diagnostic(pid,wid,rid=None,*,draft_sha256=None):
         next_step='先核对该输入列的来源类型与单位。若它是后续需要normalize的混合原始金额，可在bindings.'+alias+'.options.text_columns显式列出原始c_N列，仅将精确Decimal/整数无损投影为文本；原字符串和空值保持，保留来源单位并显式normalize。不得投影比例/百分比、float或bool，也不得自动猜测单位；否则修正输入类型声明。保存后重新登记运行。'
     elif code=='SQL_INEXACT_NUMERIC':
         next_step='不要仅将SQL结果CAST回DECIMAL或重复运行原SQL。均值先用aggregate求和与计数，除法和比率改用compute的精确Decimal运算并明确rounding_scale；使用不含科学计数的精确十进制字面量，核对单位和分母为零的业务处理后重新登记运行。'
+    elif code=='DATA_CONTRACT_EXACTNESS':
+        next_step='历史数值范围或对账记录需要从原始资料重新加工；新契约的范围阈值使用安全整数或固定十进制字符串（最多26位整数、12位小数），不要用浮点数、科学计数或将浮点结果CAST回十进制。核对口径后重新运行，再确认采用。'
     elif code in ('TASK_FAILED','WORKFLOW_FAILED'):
         next_step='此运行没有保存可核对的具体失败阶段。保留run_id并核对输入声明或服务状态；不要盲目重跑、分页读取失败结果，或声称已经完成。'
     else:next_step='查看本流程输入与步骤的完整声明，按失败阶段修复草稿，再register_data_workflow、run_data_workflow；失败运行不能用read_data_workflow_result分页读取，不能发布或当成完成。'
@@ -481,9 +485,10 @@ def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
                     or digest(run.get('source_snapshot'))!=digest(frozen)):continue
             folder,meta=result_folder(pid,rid)
             if meta.get('processing_fingerprint')!=engine:continue
-            verify_handoff(folder/'handoff',meta['handoff_sha256'])
+            verified=verify_handoff(folder/'handoff',meta['handoff_sha256'])
             context=_read_json(folder/'handoff'/'context.json')
             if context.get('processing_fingerprint')!=engine:continue
+            require_safe_numeric_lineage(pid,rid,root_meta=meta,root_page={'context':context,'total':verified.get('row_count')})
             # Check again after complete result verification, before admitting reuse.
             from .sources import snapshot
             if digest(snapshot(list(frozen)))!=digest(frozen):return None
@@ -531,6 +536,105 @@ def result_folder(pid,rid,*,lease_token=None):
     return folder,meta
 
 
+def require_current_numeric_evidence(rid,meta,context,total):
+    """Keep old results readable, but do not reuse unproven financial checks."""
+    from .data_contracts import require_exact_numeric_evidence,ExactDataContractError
+    from .jobs import get_job
+    run=get_job(rid)
+    document=run.get('workflow_document')
+    contract=document.get('contract') if isinstance(document,dict) else None
+    report=meta.get('contract')
+    checks=report.get('checks',[]) if isinstance(report,dict) else []
+    if not isinstance(checks,list):checks=[]
+    numeric_in_report=any(isinstance(item,dict) and isinstance(item.get('name'),str)
+                          and item['name'].startswith(('range:','total:')) for item in checks)
+    numeric_in_contract=isinstance(contract,dict) and bool(contract.get('ranges') or contract.get('totals'))
+    if not numeric_in_report and not numeric_in_contract:return
+    if (type(total) is not int or total < 0 or type(meta.get('records')) is not int or meta['records']!=total
+            or not isinstance(context,dict) or context.get('data_contract')!=report
+            or not isinstance(document,dict) or digest(document)!=meta['plan_sha256']):
+        raise ExactDataContractError('历史数值校验记录与冻结结果不一致，请从原始资料重新运行并核对后再采用')
+    require_exact_numeric_evidence(report,contract,expected_rows=total)
+
+
+def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_token=None):
+    """Check frozen SQL and all result-input ancestors without materializing rows.
+
+    Every ancestor's handoff is verified, not merely its declared link. An
+    iterative DFS catches cycles while allowing shared ancestors; missing or
+    unsupported evidence is not a safe result. The root parameters are for
+    internal callers which already verified that exact handoff in this request.
+    """
+    from .data_contracts import ExactDataContractError,NumericLineageError
+    from .data_workflows import validate_sql
+    from .jobs import get_job
+    from .result_delivery import read_handoff
+    unknown='历史加工链的精度依据不完整或无法核对，请从原始资料重新运行并复核'
+    unsafe='历史加工链包含可能丢失精度的数值运算，不能通过事后转换恢复；请从原始资料重新运行并复核'
+    states={};hashes={};stack=[(rid,None,False)];count=0
+    while stack:
+        current,expected,leaving=stack.pop()
+        if leaving:
+            states[current]='done'
+            continue
+        if states.get(current)=='visiting':raise NumericLineageError('unknown',unknown)
+        if states.get(current)=='done':
+            if expected is not None and hashes[current]!=expected:raise NumericLineageError('unknown',unknown)
+            continue
+        count+=1
+        if count>512:raise NumericLineageError('unknown','历史加工链记录过多，未能完整核对；请分段核对或从原始资料重新运行')
+        states[current]='visiting'
+        try:
+            run=get_job(current)
+            if current==rid and root_meta is not None and root_page is not None:
+                meta,page=root_meta,root_page
+                if (run.get('project_id')!=pid or run.get('kind')!='data_workflow'
+                        or run.get('data_result')!=meta or meta.get('run_id')!=current
+                        or run.get('commit')!=meta.get('plan_sha256')):
+                    raise NumericLineageError('unknown',unknown)
+            else:
+                folder,meta=result_folder(pid,current,lease_token=lease_token if current==rid else None)
+                page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
+            handoff=meta.get('handoff_sha256');context=page.get('context');total=page.get('total')
+            if (not isinstance(handoff,str) or not re.fullmatch(r'[a-f0-9]{64}',handoff)
+                    or expected is not None and expected!=handoff
+                    or type(total) is not int or type(meta.get('records')) is not int or total!=meta['records']
+                    or not isinstance(context,dict) or context.get('project_id')!=pid
+                    or context.get('plan_sha256')!=meta.get('plan_sha256')
+                    or meta.get('workflow_id')!=run.get('target')):
+                raise NumericLineageError('unknown',unknown)
+            hashes[current]=handoff
+            require_current_numeric_evidence(current,meta,context,total)
+            raw=run.get('workflow_document')
+            if not isinstance(raw,dict) or digest(raw)!=meta['plan_sha256']:
+                raise NumericLineageError('unknown',unknown)
+            document=WorkflowDocument.model_validate(raw)
+            for stage in document.plan.stages:
+                if stage.kind=='sql':
+                    try:validate_sql(stage.sql,set(stage.inputs))
+                    except WorkflowError as error:
+                        raise NumericLineageError('unsafe_sql' if error.code=='SQL_INEXACT_NUMERIC' else 'unknown',
+                                                  unsafe if error.code=='SQL_INEXACT_NUMERIC' else unknown) from None
+            evidence=context.get('input_evidence')
+            links=[]
+            for alias,binding in document.bindings.items():
+                if not binding.result_id:continue
+                proof=evidence.get(alias) if isinstance(evidence,dict) else None
+                checksum=proof.get('manifest_sha256') if isinstance(proof,dict) else None
+                if (not isinstance(proof,dict) or proof.get('result_id')!=binding.result_id or proof.get('complete') is not True
+                        or not isinstance(checksum,str) or not re.fullmatch(r'[a-f0-9]{64}',checksum)):
+                    raise NumericLineageError('unknown',unknown)
+                links.append((binding.result_id,checksum))
+        except NumericLineageError:
+            raise
+        except ExactDataContractError as error:
+            raise NumericLineageError('unknown',str(error)) from None
+        except (KeyError,ValueError,OSError,TypeError):
+            raise NumericLineageError('unknown',unknown) from None
+        stack.append((current,None,True))
+        for child,checksum in reversed(links):stack.append((child,checksum,False))
+
+
 def read_result(pid,rid,offset=0,limit=100):
     folder,meta=result_folder(pid,rid)
     from .result_delivery import read_handoff
@@ -562,6 +666,7 @@ def execute_job(run,folder):
             checkpoint(run)
             from .workbook_reader import WorkbookReadError
             from .connectors import SourceError
+            from .data_contracts import ExactDataContractError
             def fail_input(code,message,details=None):
                 failure={'stage_id':'input:'+alias,'code':code,'message':message}
                 safe=_safe_failure_details(details)
@@ -569,6 +674,8 @@ def execute_job(run,folder):
                 patch_run(run,workflow_failure=failure,stage='来源读取或输入声明需要核对')
                 raise TaskError(message,code) from None
             try:rows,fields,proof,prov=read_input(pid,b,frozen_source=run.get('source_snapshot',{}).get(b.source_id))
+            except ExactDataContractError as error:
+                fail_input('DATA_CONTRACT_EXACTNESS',str(error))
             except (WorkbookReadError,SourceError) as error:
                 details={};original=getattr(error,'details',{})
                 if isinstance(original,dict):
@@ -646,7 +753,7 @@ def execute_job(run,folder):
         report=None
         if doc.contract:
             import duckdb
-            from .data_contracts import evaluate
+            from .data_contracts import evaluate,ExactDataContractError
             with duckdb.connect() as con:
                 # Use the same typed values and schema as the workflow executor.
                 con.execute('CREATE SCHEMA business')
@@ -656,7 +763,8 @@ def execute_job(run,folder):
                 con.execute('CREATE TABLE business.business_objects ('+definitions+')')
                 rows=output['output']['rows']
                 if rows:con.executemany('INSERT INTO business.business_objects VALUES ('+','.join('?' for _ in cols)+')',[[r[c['name']] for c in cols] for r in rows])
-                report=evaluate(con,doc.contract)
+                try:report=evaluate(con,doc.contract)
+                except ExactDataContractError as error:raise TaskError(str(error),'DATA_CONTRACT_EXACTNESS') from None
             if not report['passed']:raise TaskError('加工结果未通过数据验收契约，保留之前的正式结果','DATA_CONTRACT_FAILED')
         context={'project_id':pid,'workflow_id':run['target'],'plan_sha256':run['commit'],'processing_fingerprint':engine,'input_evidence':evidence,'data_contract':report,
                  'lineage_scope':'input_cell_or_source_evidence_plus_stage_dependencies; output_row_lineage_not_inferred',
@@ -691,8 +799,10 @@ def publish_result(pid,rid,expected_sha256,*,lease_token=None):
 
 def _publish_result(pid,rid,expected_sha256,*,lease_token=None):
     from .jobs import get_job,jobs,render
-    from .result_delivery import verify_handoff
-    folder,meta=result_folder(pid,rid,lease_token=lease_token);verify_handoff(folder/'handoff')
+    from .result_delivery import read_handoff
+    folder,meta=result_folder(pid,rid,lease_token=lease_token)
+    page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
+    require_safe_numeric_lineage(pid,rid,root_meta=meta,root_page=page,lease_token=lease_token)
     if meta['plan_sha256']!=expected_sha256:raise ValueError('加工方案版本已变化，请重新核对')
     with transaction() as c:
         row=c.execute(select(jobs).where(jobs.c.id==rid).with_for_update()).mappings().first();run=render(row)
@@ -750,12 +860,14 @@ def queue_due():
                 if due:patch('data_workflow',w['id'],next_due=croniter(cron,datetime.now(timezone.utc)).get_next(datetime).isoformat())
 
 
-def export_result(pid,rid,precision_policy='text_exact',*,format='xlsx'):
+def export_result(pid,rid,precision_policy='text_exact',*,format='xlsx',expected_handoff_sha256=None):
     if precision_policy not in ('reject','text_exact'):raise ValueError('不支持的Excel精度策略')
     if format not in ('xlsx','csv'):raise ValueError('不支持的结果导出格式')
     from .result_delivery import read_all_handoff,export_xlsx,export_csv,durable_cached_artifact
     from .locks import FileLock,assert_owned
     folder,meta=result_folder(pid,rid)
+    if expected_handoff_sha256 is not None and meta['handoff_sha256']!=expected_handoff_sha256:
+        raise ValueError('结果版本已变化，请刷新后重新核对')
     key=('dc_'+digest([pid,rid,meta['handoff_sha256'],'csv-literal-v2'])[:40] if format=='csv'
          else 'dx_'+digest([pid,rid,meta['handoff_sha256'],precision_policy])[:40])
     target=folder/('result-csv-v2.csv' if format=='csv' else 'result-'+precision_policy+'.xlsx')
@@ -781,14 +893,16 @@ def export_result(pid,rid,precision_policy='text_exact',*,format='xlsx'):
             save_committed=lambda sha:save_receipt(sha,'committed'),before_publish=assert_owned)
 
 
-def result_download(pid,rid,kind='handoff'):
+def result_download(pid,rid,kind='handoff',*,expected_handoff_sha256=None):
     folder,meta=result_folder(pid,rid)
+    if expected_handoff_sha256 is not None and meta['handoff_sha256']!=expected_handoff_sha256:
+        raise ValueError('结果版本已变化，请刷新后重新核对')
     from .result_delivery import verify_handoff,durable_cached_artifact
     from .locks import FileLock,assert_owned
     if kind not in ('handoff','xlsx','csv'):raise ValueError('不支持的结果下载格式')
     verify_handoff(folder/'handoff',meta['handoff_sha256'])
-    if kind=='xlsx':return export_result(pid,rid)
-    if kind=='csv':return export_result(pid,rid,format='csv')
+    if kind=='xlsx':return export_result(pid,rid,expected_handoff_sha256=expected_handoff_sha256)
+    if kind=='csv':return export_result(pid,rid,format='csv',expected_handoff_sha256=expected_handoff_sha256)
     path=folder/'handoff.zip';key='dz_'+digest([pid,rid,meta['handoff_sha256']])[:40]
     with FileLock(str(folder/'handoff-zip.lock'),timeout=30):
         try:record=owned(pid,'data_export',key)

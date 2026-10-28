@@ -37,7 +37,7 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
  w.URL.createObjectURL=()=> 'blob:https://atlas.test/local-result';w.URL.revokeObjectURL=()=>{};
  const workflow={workflow_id:'wf_1',name:'<img src=x onerror=alert(1)> 收入核对',draft_sha256:sha,published_sha256:'b'.repeat(64),published_run:'old_result',candidate_run:'r_1',
  inputs:{draft:{binding:{source_id:'draft_source_that_must_not_appear_as_result_evidence'},schema:{meaning:'新的草稿来源',grain:['office']}}},
- steps:[{id:'filtered',kind:'filter',input:'orders',conditions:[]},{id:'summed',kind:'aggregate',input:'filtered',group_by:['office']}],
+ steps:[{id:'filtered',kind:'filter',input:'orders',conditions:[]},{id:'summed',kind:'aggregate',label:'当前草稿标签不得用于旧结果',input:'filtered',group_by:['office']}],
  document:{version:1,plan:{name:'收入核对',stages:[],inputs:{orders:{}},output:'summed'},bindings:{orders:{source_id:'s_1'}}},cron:schedule?.cron||null,watch_sources:schedule?.watch_sources||false,next_due:schedule?.next_due||null,refresh_error:refreshError};
  const semantic=clone(proposal);
  if(catalogBinding)semantic.catalog_binding=clone(catalogBinding);
@@ -107,7 +107,7 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
   if(u.pathname==='/api/runs')return runGetError?response({detail:'Traceback: db password and SQL should not be in the main flow'},500):response(currentJob?[clone(currentJob)]:jobStatus?[{id:'job_1',status:jobStatus}]:[]);
   throw Error('Unexpected request '+method+' '+u.pathname);
  };
- w.eval(script+';window.wbTest={ready:workbenchReady,state:wbState,save:wbSave,loadResult:wbLoadResult,loadWorkflow:wbLoadWorkflow,run:wbRun,poll:wbPoll,publish:wbPublish,loadProposals:wbLoadProposals,download:wbDownload,loadFacts:wbLoadFacts};');
+ w.eval(script+';window.wbTest={ready:workbenchReady,state:wbState,save:wbSave,loadResult:wbLoadResult,renderResult:wbRenderResult,loadWorkflow:wbLoadWorkflow,run:wbRun,poll:wbPoll,publish:wbPublish,loadProposals:wbLoadProposals,download:wbDownload,loadFacts:wbLoadFacts};');
  await w.wbTest.ready;await tick();
  return {dom,w,calls,timers,workflow,semantic,catalogs,catalogSettings,releaseCatalogAction:()=>{assert(pendingCatalogActions.length);pendingCatalogActions.shift()();},releaseSecond:()=>releaseSecond(),setJob:value=>{currentJob=value;},putBody:()=>putBody};
 }
@@ -135,6 +135,32 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  assert(d.querySelector('#workbench-result-help').textContent.includes('仅展示这一页'));
  assert(d.querySelector('#workbench-sources').textContent.includes('frozen_source'));
  assert(!d.querySelector('#workbench-sources').textContent.includes('draft_source_that_must_not_appear'));
+ assert(d.querySelector('#workbench-trust-notice').textContent.includes('未记录可验证的业务验收规则'));
+ w.wbTest.state.result.context.data_contract={passed:true,checks:[{name:'range:amount',status:'pass',failures:0}]};w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-trust-notice').textContent.includes('数值范围或对账检查的精度或记录范围未确认'),'legacy range pass is never shown as verified');
+ assert(d.querySelector('#workbench-trust-check-list').textContent.includes('待重新复核'));assert(!d.querySelector('#workbench-trust-check-list').textContent.includes('已记录通过'));
+ assert(!d.querySelector('#workbench-sources').textContent.includes('\"passed\": true'),'an old raw pass must not appear as a financial conclusion');
+ w.wbTest.state.result.context.data_contract={passed:true,numeric_policy:'unknown_v2',checks:[{name:'total:amount',status:'pass'}]};w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-trust-check-list').textContent.includes('待重新复核'),'unknown policies cannot certify legacy totals');
+
+ w.wbTest.state.result.context.data_contract={passed:true,numeric_policy:'exact_decimal_v1',rows:603,checks:[{name:'range:amount',status:'pass',failures:0}]};w.wbTest.renderResult();
+ assert(!d.querySelector('#workbench-trust-notice').textContent.includes('精度或记录范围未确认'));assert(d.querySelector('#workbench-trust-notice').textContent.includes('不代表来源齐全或财务口径正确'));assert(d.querySelector('#workbench-trust-check-list').textContent.includes('已记录通过'));
+ assert(d.querySelector('#workbench-trust-notice').textContent.includes('范围检查本身不检查缺失值'));
+ w.wbTest.state.result.context.data_contract={passed:true,numeric_policy:'exact_decimal_v1',rows:602,checks:[{name:'total:amount',status:'pass'}]};w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-trust-check-list').textContent.includes('待重新复核'),'different full-result count cannot certify a total');
+ w.wbTest.state.result.context.data_contract={passed:true,numeric_policy:'exact_decimal_v1',checks:[{name:'range:amount',status:'pass'}]};w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-trust-check-list').textContent.includes('待重新复核'),'missing receipt row count cannot certify a range');
+ w.wbTest.state.result.context.data_contract={passed:true,checks:[{name:'row_count',status:'pass'}]};w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-trust-notice').textContent.includes('未记录可核对的行数范围'));assert(d.querySelector('#workbench-trust-check-list').textContent.includes('未记录行数范围，需核对'));assert(!d.querySelector('#workbench-trust-check-list').textContent.includes('已记录通过'));
+
+ w.wbTest.state.result.context.data_contract=null;w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-stages').textContent.includes('按业务范围汇总'),'the saved result describes its own recorded operation');
+ assert(!d.querySelector('#workbench-stages').textContent.includes('当前草稿标签不得用于旧结果'),'a later draft must not relabel an earlier run');
+ const originalStages=w.wbTest.state.result.stages;
+ w.wbTest.state.result.stages=[{stage_id:'summed',output_rows:603}];w.wbTest.renderResult();
+ assert(d.querySelector('#workbench-stages').textContent.includes('步骤类型未记录'),'missing historical operation remains unknown');
+ assert(!d.querySelector('#workbench-stages').textContent.includes('当前草稿标签不得用于旧结果'));
+ w.wbTest.state.result.stages=originalStages;w.wbTest.renderResult();
  assert.equal(d.querySelector('#workbench-back').getAttribute('href'),'/?project=p_1');
  assert.equal(calls.filter(c=>c.method!=='GET').length,0,'opening the review page cannot approve, run or publish');
  const csvSaves=[];w.HTMLAnchorElement.prototype.click=function(){csvSaves.push({name:this.download,href:this.href});};
@@ -198,6 +224,7 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  for(const [code,reason,next] of [
   ['SOURCE_HASH_MISSING','旧来源缺少可核对的原件摘要','重新上传原件以建立带摘要的来源修订'],
   ['SOURCE_CONTENT_CHANGED','登记后的来源原件内容发生了变化','重新读取并登记新的来源修订'],
+  ['DATA_CONTRACT_EXACTNESS','保存的数值检查无法保证精确','从原始底稿重新读取'],
  ]){
   const sourceFailure=await boot({latestJob:{...failedJob,workflow_failure:{stage_id:null,code,message:'internal source integrity detail'}}}),sd=sourceFailure.w.document;
   assert(sd.querySelector('#workbench-failure-reason').textContent.includes(reason));
@@ -206,6 +233,14 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
   assert.equal(sourceFailure.calls.filter(c=>c.method==='POST').length,0,'restoring a source integrity failure never automatically reruns the task');
   sourceFailure.dom.window.close();
  }
+
+ const preciseError='历史数值范围检查的精度未确认，请从原始资料重新运行。';
+ const exactFailure=await boot({latestJob:{...failedJob,workflow_failure:{stage_id:null,code:'DATA_CONTRACT_EXACTNESS',message:preciseError}}});
+ assert.equal(exactFailure.w.document.querySelector('#workbench-failure-reason').textContent,preciseError,'show the controlled server reason');
+ assert(exactFailure.w.document.querySelector('#workbench-failure-next').textContent.includes('从原始底稿重新读取'));
+ assert(exactFailure.w.document.querySelector('#workbench-failure-details').textContent.includes(preciseError));exactFailure.dom.window.close();
+ const directFailure=await boot({latestJob:{...failedJob,workflow_failure:null,error_code:'DATA_CONTRACT_EXACTNESS',error:'不能使用浮点值，请从原始数据提供固定小数字符串。'}});
+ assert(directFailure.w.document.querySelector('#workbench-failure-reason').textContent.includes('不能使用浮点值'));directFailure.dom.window.close();
 
  const unknown=await boot({latestJob:{...failedJob,workflow_failure:{stage_id:null,code:'UNRECOGNIZED',message:'Raw technical engine detail'}}});
  assert(unknown.w.document.querySelector('#workbench-failure-next').textContent.includes('Agent'));

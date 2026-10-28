@@ -81,6 +81,8 @@
       </section>
       <section class="panel">
         <div class="panel-heading"><div><h2>结果明细</h2><p id="workbench-result-help">结果按页展示，下载可获取完整数据。</p></div><div class="download-actions"><button id="workbench-download-xlsx" type="button" disabled>下载 Excel</button><button id="workbench-download-csv" type="button" disabled>下载 CSV</button><button id="workbench-download-handoff" type="button" disabled>下载完整结果与依据</button></div></div>
+        <p id="workbench-trust-notice" class="workbench-trust-notice" role="status" hidden></p>
+        <details id="workbench-trust-checks" class="workbench-trust-checks" hidden><summary>查看这次记录的验收检查</summary><ul id="workbench-trust-check-list"></ul></details>
         <div id="workbench-table-scroll" class="table-scroll" tabindex="0" aria-label="结果数据表">
           <table><thead id="workbench-table-head"></thead><tbody id="workbench-table-body"></tbody></table>
           <p id="workbench-result-empty" class="empty">尚无可查看的结果，运行后可在这里核对。</p>

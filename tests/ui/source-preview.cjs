@@ -30,7 +30,7 @@ async function run(){
      if(url.pathname.endsWith('/artifacts'))return {items:[],total:0,next_offset:null};
      const parts=url.pathname.split('/');
      if(parts[4]==='sources'){
-      const id=parts[5];if(id==='s_missing')throw Error('资料原件不存在，请重新上传');
+      const id=parts[5];if(id==='s_missing')throw Object.assign(Error('资料原件不存在，请重新上传'),{status:404});
       if(id==='s_unsafe')return {...descriptor(id),preview_url:'/api/projects/other/artifacts/x/preview'};
       return descriptor(id,id==='s_excel'?'xlsx':'txt',parts[3]);
      }
@@ -91,8 +91,8 @@ async function run(){
   const logout=shell.openSource('s_logout');shell.reset();logged.resolve(descriptor('s_logout'));await logout;
   assert.equal(d.querySelector('#workspace-artifacts-panel').hidden,true);assert(!requests.some(r=>r.path.endsWith('/wa_s_logout/preview')));
 
-  await assert.rejects(shell.openSource('s_missing',1),/资料原件不存在/);assert(d.querySelector('#artifact-error').textContent.includes('重新上传'));
-  await assert.rejects(shell.openSource('s_unsafe'),/当前项目范围/);assert(!requests.some(r=>r.path.includes('/projects/other/')));
+  await assert.rejects(shell.openSource('s_missing',1),/资料原件不存在/);assert(d.querySelector('#artifact-error').textContent.includes('核对原始资料'));
+  await assert.rejects(shell.openSource('s_unsafe'),/资料原件暂不可用/);assert(!requests.some(r=>r.path.includes('/projects/other/')));
   const count=requests.length;await assert.rejects(shell.openSource('../other'),/资料标识无效/);await assert.rejects(shell.openSource('s_text',0),/资料版本无效/);
   assert.equal(requests.length,count);
   assert(requests.every(r=>r.method==='GET'),'preview never submits a message, uploads, or writes source data');

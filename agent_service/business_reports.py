@@ -80,13 +80,14 @@ def schema_fingerprint(schema):
 
 
 def _read(pid,run_id):
-    from .project_data import result_folder
+    from .project_data import result_folder,require_safe_numeric_lineage
     from .result_delivery import read_all_handoff
     folder,meta=result_folder(pid,run_id)
     adopted=get('run',run_id).get('status')=='succeeded'
     if meta.get('requires_semantic_review') and not adopted:
         raise ValueError('该结果仍有待核对的语义或SQL口径，不能生成已核实数值简报')
     table=read_all_handoff(folder/'handoff',expected_manifest_sha256=meta['handoff_sha256'],max_rows=MAX_ROWS)
+    require_safe_numeric_lineage(pid,run_id,root_meta=meta,root_page=table)
     schema=TableSchema.model_validate(table['context'].get('output_semantics') or table['schema'])
     return table,dict(meta,server_adopted_result=adopted),schema
 

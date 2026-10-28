@@ -35,7 +35,7 @@
 .artifact-provenance{margin:10px 0 18px;border-block:1px solid #e6ece8;padding:10px 0;font-size:12px;color:#6b7c71}.artifact-provenance summary{cursor:pointer;color:#52705d}.artifact-provenance p{margin:9px 0;line-height:1.7;overflow-wrap:anywhere}.artifact-provenance strong{font-weight:500}.artifact-provenance h4{font-size:12px;font-weight:500;margin:15px 0 6px}.artifact-provenance-json{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;font-size:11px;line-height:1.7;padding:10px;background:#f6f8f6;border-radius:6px}
 
 /* Keep the exit reachable when a long artifact list reveals a preview. */
-.artifact-panel-heading{position:sticky;top:0;background:#fff;z-index:3;padding-bottom:12px;border-bottom:1px solid #e9eeeb}#artifact-preview-title{scroll-margin-top:110px}
+.artifact-panel-heading{position:sticky;top:0;background:#fff;z-index:3;padding-bottom:12px;border-bottom:1px solid #e9eeeb}#artifact-preview-title,#artifact-explanation{scroll-margin-top:110px}
 
 .source-file{text-align:left;cursor:pointer;color:#486556}.source-file:hover{border-color:#9ebfae;background:#f6faf7}.source-file:focus-visible{outline:2px solid #548c70;outline-offset:3px}.source-file:disabled{cursor:progress;opacity:.7}.source-file-open{font-size:10px;white-space:nowrap;color:#4c8066}.attachment-tray button.attachment-name{font-size:11px;color:#486556;border-radius:5px;padding:2px 4px;min-width:0}.attachment-tray button.attachment-name small{display:block}.attachment-tray .source-file small{color:#819087}
 /* Work context remains readable when the results panel narrows the conversation. */
@@ -50,3 +50,5 @@
  .composer-actions>.composer-hint{order:6;flex-basis:100%}
  .atlas-work-environment>span{flex-basis:100%;max-width:none;overflow-wrap:anywhere}
 }
+
+.artifact-evidence-note{font-size:12px;line-height:1.6;color:#6b5143;margin:10px 0}.artifact-explanation{border:1px solid #d8e2db;border-radius:8px;margin:12px 0;padding:12px 14px;background:#fafcfb}.artifact-explanation summary{cursor:pointer;font-weight:600;color:#254c36}.artifact-explanation h4{font-size:13px;margin:16px 0 8px}.artifact-explanation p,.artifact-explanation li{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.artifact-explanation ul,.artifact-explanation ol{padding-left:20px}.artifact-explanation .evidence-step{margin-bottom:10px}.artifact-explanation .evidence-check{color:#515c55}.artifact-explanation .evidence-limitations{border-top:1px solid #d8e2db;margin-top:12px;padding-top:4px}

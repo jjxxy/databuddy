@@ -146,7 +146,7 @@ def _source_entry(pid,source_id,value):
         source_refs=[{'source_id':source_id,'revision':revision}])
 
 
-def source_artifact(pid,source_id,revision=None):
+def source_artifact(pid,source_id,revision=None,expected_sha256=None):
     """Resolve one exact uploaded version without scanning unrelated artifacts."""
     _live(pid)
     source=get('source',source_id)
@@ -154,6 +154,9 @@ def source_artifact(pid,source_id,revision=None):
     if _gone(source):raise ArtifactGone('来源已归档，不能继续查看或下载')
     if source.get('kind')!='file':raise ArtifactError('只有上传文件支持原件预览')
     if revision is not None and (type(revision) is not int or revision<1):raise ArtifactError('来源版本编号无效')
+    if expected_sha256 is not None and (not isinstance(expected_sha256,str) or not re.fullmatch(r'[a-f0-9]{64}',expected_sha256)):
+        raise ArtifactError('来源内容摘要无效')
+    if expected_sha256 is not None and revision is None:raise ArtifactError('按报告查看原件时必须指定准确来源版本')
     selected=source
     if revision is not None and revision!=source.get('revision',1):
         versions=[value for value in all_items('source_version')
@@ -165,6 +168,8 @@ def source_artifact(pid,source_id,revision=None):
         if _gone(selected):raise ArtifactGone('所选来源版本已归档')
         selected=dict(selected,revision_id=selected['id'])
     if not selected.get('content_hash'):raise ArtifactError('来源缺少完整性记录，暂不能预览原件')
+    if expected_sha256 is not None and selected['content_hash']!=expected_sha256:
+        raise ArtifactError('所选来源版本与报告记录的原件摘要不一致，未打开其他版本')
     record=_source_entry(pid,source_id,selected)
     if record is None:raise ArtifactGone('该来源版本已归档')
     _,metadata=file(pid,record['id'])
@@ -359,7 +364,7 @@ def file(pid,aid,format=None):
         name=record['name']+'.'+format
     elif kind=='result':
         from .project_data import result_download
-        path=result_download(pid,private['run_id'],format);name=record['name']+{'xlsx':'.xlsx','csv':'.csv','handoff':'.zip'}[format]
+        path=result_download(pid,private['run_id'],format,expected_handoff_sha256=record['sha256']);name=record['name']+{'xlsx':'.xlsx','csv':'.csv','handoff':'.zip'}[format]
     elif kind in ('application','chart'):
         if format=='parquet':path,_=_pipeline(pid,record);expected=record['sha256'];name=record['name']+'.parquet'
         else:path=_pipeline_xlsx(pid,record);name=record['name']+'.xlsx'
@@ -441,12 +446,16 @@ def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,c
     record=_record(pid,aid);kind=record['kind'];private=record['private']
     if kind=='result':
         from .project_data import read_result,result_folder
-        page=read_result(pid,private['run_id'],offset,limit);response=_table(record,page['schema'],page['rows'],page['total'],offset,limit,
+        page=read_result(pid,private['run_id'],offset,limit)
+        if page.get('manifest_sha256')!=record['sha256']:raise ArtifactError('所选结果与报告记录的版本不一致')
+        response=_table(record,page['schema'],page['rows'],page['total'],offset,limit,
             context=page['context'],fidelity_note='完整已验证结果的分页视图；本页不等于全量结果')
         if chart_x or chart_y:
             if not chart_x or not chart_y:raise ArtifactError('请同时指定图表的分类与数值字段')
             from .result_delivery import read_all_handoff
-            folder,metadata=result_folder(pid,private['run_id']);full=read_all_handoff(folder/'handoff',metadata['handoff_sha256'],native_types=True,max_rows=MAX_ROWS)
+            folder,metadata=result_folder(pid,private['run_id'])
+            if metadata.get('handoff_sha256')!=record['sha256']:raise ArtifactError('所选结果与报告记录的版本不一致')
+            full=read_all_handoff(folder/'handoff',record['sha256'],native_types=True,max_rows=MAX_ROWS)
             response['chart']=_chart(full['rows'],full['schema'],chart_x,chart_y)
         return response
     if kind in ('application','chart'):
@@ -573,12 +582,17 @@ def install(app,auth):
     def artifacts(project_id:str,kind:str='',offset:int=0,limit:int=40):return checked(catalog,project_id,kind,offset,limit)
 
     @app.get('/api/projects/{project_id}/sources/{source_id}/artifact',dependencies=[Depends(auth)])
-    def uploaded_source_artifact(project_id:str,source_id:str,revision:int|None=None):
-        return checked(source_artifact,project_id,source_id,revision)
+    def uploaded_source_artifact(project_id:str,source_id:str,revision:int|None=None,expected_sha256:str|None=None):
+        return checked(source_artifact,project_id,source_id,revision,expected_sha256)
 
     @app.get('/api/projects/{project_id}/artifacts/{artifact_id}/preview',dependencies=[Depends(auth)])
     def artifact_preview(project_id:str,artifact_id:str,offset:int=0,limit:int=50,text_limit:int=12000,sheet:str|None=None,chart_x:str|None=None,chart_y:str|None=None):
         return checked(preview,project_id,artifact_id,offset,limit,text_limit,sheet,chart_x,chart_y)
+
+    @app.get('/api/projects/{project_id}/artifacts/{artifact_id}/explanation',dependencies=[Depends(auth)])
+    def artifact_explanation(project_id:str,artifact_id:str):
+        from .business_explanation import explain_artifact
+        return checked(explain_artifact,project_id,artifact_id)
 
     @app.get('/api/projects/{project_id}/artifacts/{artifact_id}/download',dependencies=[Depends(auth)])
     def artifact_download(project_id:str,artifact_id:str,format:str|None=None):

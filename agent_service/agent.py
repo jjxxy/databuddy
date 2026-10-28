@@ -263,7 +263,7 @@ def planning_context(turn, *, native=None):
             '已有completed_steps必须复用，不要重复执行已成功的写入、构建或发布；这是中断后的继续请求时尤其如此。最终回答必须交代未解决的工具失败，不能把暂停或失败写成完成。结果卡中的来源、数据时间、质量和差异是事实，候选不等于正式。'
             '优先用create_data_application生成数据应用，用revise_data_application调整已有应用，用run_data_application重跑。当前页面类型是表格/汇总看板，配置通过application.title/description/layout/columns/chart/page_size等字段指定，不能谎称已生成任意全栈业务系统。应用运行基于Atlas后端。'
             'target_application_id是用户本轮明确指定的应用，相关工具必须优先使用它；未指定时结合历史和目录判断，遇到歧义先询问。'
-            '用户明确提出数据验收条件时，可用write_file保存项目data-contract.json：version=1，min_rows/max_rows为整数，required/not_null为字段名数组，unique为复合字段数组的数组，ranges为字段到min/max数值的映射，totals为字段到expected/tolerance十进制字符串的映射，用于金额精确对账。已有应用可将完整覆盖规则保存为contracts/<application_id>.json，避免影响其他应用。先核对字段，不能编造阈值；保存后必须构建新候选才能生效。契约随代码冻结，失败不发布；普通文件保存不代表检查通过。'
+            '用户明确提出数据验收条件时，可用write_file保存项目data-contract.json：version=1，min_rows/max_rows为整数，required/not_null为字段名数组，unique为复合字段数组的数组；ranges中min/max仅可用安全整数（绝对值不超过9007199254740991），小数或更大的整数必须用固定十进制字符串（最多26位整数、12位小数），不能用浮点数或科学计数法。totals的expected/tolerance也用固定十进制字符串进行金额精确对账。已有应用可将完整覆盖规则保存为contracts/<application_id>.json，避免影响其他应用。先核对字段，不能编造阈值；保存后必须构建新候选才能生效。契约随代码冻结，失败不发布；普通文件保存不代表检查通过。'
             '先查看字段再生成spec；build_transform使用规范字段name，过滤值必须由用户明确给出；金额口径未经确认保持draft。'
             '如果用户在创建应用时已要求每天某时更新，可在预览前调用schedule_daily记录待启用计划，确认发布后会自动启用，不要求用户重复说明。发布必须有本轮明确同意，定时/暂停/改名必须有本轮明确指令。还没发布的结果也可以view_result检查，不要自行发布。'
             '可以写Markdown报告和可复用代码。仅当run_python_file出现在tools时可以远端运行Python；未提供该工具时只能保存脚本，不能谎称已执行或测试。当前外部网络只支持已配置数据连接，没有互联网搜索工具。'
