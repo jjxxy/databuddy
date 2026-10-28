@@ -151,15 +151,24 @@ def _file_rows(source, limit, path, content):
         try:
             text=content.decode('utf-8-sig')
         except UnicodeDecodeError:
-            text=content.decode('gb18030')
-        reader=csv.DictReader(io.StringIO(text,newline=''))
-        if not reader.fieldnames or len(reader.fieldnames)!=len(set(reader.fieldnames)):
-            raise SourceError('CSV 表头为空或有重复列名')
+            try:text=content.decode('gb18030')
+            except UnicodeDecodeError as exc:raise SourceError('CSV 编码无法识别，请使用 UTF-8 或 GB18030') from exc
+        # Distinguish a missing field from an explicitly empty field: treating a
+        # short row as a legitimate null can silently alter financial totals.
+        missing=object()
+        reader=csv.DictReader(io.StringIO(text,newline=''),restval=missing,strict=True)
         rows=[]
-        for row in reader:
-            if None in row:raise SourceError('CSV 列数不一致')
-            rows.append(row)
-            if len(rows)>limit:break
+        try:
+            if (not reader.fieldnames or any(not name.strip() for name in reader.fieldnames)
+                    or len(reader.fieldnames)!=len(set(reader.fieldnames))):
+                raise SourceError('CSV 表头为空或有重复列名')
+            for row in reader:
+                if None in row or any(value is missing for value in row.values()):
+                    raise SourceError('CSV 第 %s 行列数与表头不一致，请核对原文件' % reader.line_num)
+                rows.append(row)
+                if len(rows)>limit:break
+        except csv.Error as exc:
+            raise SourceError('CSV 第 %s 行格式错误，请核对引号和分隔符' % reader.line_num) from exc
         return rows,{'parser':'csv','file':source['name'],'schema_labels':reader.fieldnames}
     if suffix == '.xlsx':
         from .workbook_reader import workbook_sheet_names,read_table,WorkbookReadError

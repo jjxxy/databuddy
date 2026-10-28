@@ -111,7 +111,7 @@ def _preview_level(format):
     return 'download_only'
 
 
-def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=None,source_refs=None,updated_at=None,status='saved',private=None,downloads=None,origin=None,sha256_scope='file',semantic_status='not_confirmed',metric_status='not_confirmed'):
+def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=None,source_refs=None,updated_at=None,status='saved',private=None,downloads=None,origin=None,sha256_scope='file',semantic_status='not_confirmed',metric_status='not_confirmed',download_blocked_reason=None,semantic_warning=None):
     fmt=format or Path(name).suffix.lower().lstrip('.') or 'bin'
     aid='wa_'+_hash(json.dumps([pid,kind,identity,fmt,checksum],ensure_ascii=False,separators=(',',':')).encode())[:44]
     base=f'/api/projects/{pid}/artifacts/{aid}'
@@ -119,8 +119,12 @@ def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=N
         'sha256_scope':sha256_scope,'bytes':bytes,'version':version or checksum,'source_refs':source_refs or [],'updated_at':updated_at or now(),'status':status,
         'verified':False,'integrity_verified':False,'verification_scope':'stored_receipt; bytes_rechecked_on_open','semantic_status':semantic_status,'metric_status':metric_status,'financial_verified':False,'preview_level':_preview_level(fmt),
         'download_url':base+'/download','preview_url':base+'/preview','origin_turn_id':origin,'archived':False,'private':private or {}}
-    record['downloads']=downloads or [{'format':fmt,'url':base+'/download'}]
-    if downloads:record['downloads']=[{'format':x,'url':base+'/download?format='+x} for x in downloads]
+    record['downloads']=([{'format':fmt,'url':base+'/download'}] if downloads is None
+                         else [{'format':x,'url':base+'/download?format='+x} for x in downloads])
+    if not record['downloads']:
+        record['download_url']=None
+        record['download_blocked_reason']=download_blocked_reason or '该候选暂不能下载完整结果'
+    if semantic_warning:record['semantic_warning']=semantic_warning
     try:old=get('workspace_artifact',aid)
     except KeyError:old=None
     if old and _gone(old):return None
@@ -228,9 +232,16 @@ def catalog(pid,kind='',offset=0,limit=40):
             try:
                 _,meta=project_data.result_folder(pid,run['id'])
                 status='adopted' if parent.get('published_run')==run['id'] else 'candidate' if parent.get('candidate_run')==run['id'] else 'needs_review' if run.get('external_agent_import') else 'historical'
+                downloads=['xlsx','csv','handoff'];blocked=None;warning=None
+                if run.get('status')=='validated':
+                    try:project_data.ensure_candidate_bulk_allowed(pid,run['id'])
+                    except ValueError as error:downloads=[];blocked=str(error)
+                elif run.get('status')=='succeeded':
+                    try:project_data.require_safe_numeric_lineage(pid,run['id'])
+                    except ValueError:warning='历史结果的来源或业务语义无法完整核对，不能据此认定财务口径已确认。'
                 add('result',run['id'],parent.get('name') or '完整加工结果 '+run['id'][:12],meta['handoff_sha256'],format='data',version=meta['plan_sha256'],
                     source_refs=[{'source_id':sid,'revision':rev} for sid,rev in meta.get('source_revisions',{}).items()],updated_at=meta.get('created_at'),status=status,
-                    private={'run_id':run['id']},downloads=['xlsx','csv','handoff'],sha256_scope='complete_result_manifest',semantic_status='requires_review' if meta.get('requires_semantic_review') or run.get('external_agent_import') else 'declared_by_workflow')
+                    private={'run_id':run['id']},downloads=downloads,download_blocked_reason=blocked,semantic_warning=warning,sha256_scope='complete_result_manifest',semantic_status='requires_review' if warning or meta.get('requires_semantic_review') or run.get('external_agent_import') else 'declared_by_workflow')
             except (ValueError,OSError,KeyError):unavailable.append({'kind':'result','id':run['id'],'reason':'完整结果回执暂不可读取'})
         elif run['kind']=='pipeline':
             parent=pipelines.get(run['target'])
@@ -240,8 +251,15 @@ def catalog(pid,kind='',offset=0,limit=40):
                 _,manifest=manifest_for(run)
                 from .metric_registry import status as metric_status
                 confirmed=metric_status(parent,run,manifest)
+                from .releases import semantic_warning
+                warning=semantic_warning(run,manifest)
+                if warning:confirmed='requires_review'
+                downloads=['xlsx','parquet'];blocked=None
+                from .releases import ensure_candidate_bulk_allowed
+                try:ensure_candidate_bulk_allowed(run,manifest,project_id=pid)
+                except ValueError as error:downloads=[];blocked=str(error)
                 options={'format':'data','version':run['commit'],'source_refs':manifest.get('inputs',[]),'updated_at':run.get('finished_at') or run.get('created_at'),
-                    'status':'adopted' if parent.get('published_run')==run['id'] else 'candidate','private':{'run_id':run['id'],'pipeline_id':parent['id']},'downloads':['xlsx','parquet'],'sha256_scope':'complete_parquet','metric_status':confirmed,'semantic_status':'owner_confirmed_version' if confirmed=='confirmed' else 'requires_review'}
+                    'status':'adopted' if parent.get('published_run')==run['id'] else 'candidate','private':{'run_id':run['id'],'pipeline_id':parent['id']},'downloads':downloads,'download_blocked_reason':blocked,'semantic_warning':warning,'sha256_scope':'complete_parquet','metric_status':confirmed,'semantic_status':'owner_confirmed_version' if confirmed=='confirmed' else 'requires_review'}
                 add('application',run['id'],parent.get('name','业务应用')+' · 完整结果',manifest['parquet_hash'],**options)
                 application=manifest.get('application') or {}
                 if application.get('chart')=='bar' and manifest.get('metric_aggregation')=='sum_decimal_38_12' and manifest.get('spec',{}).get('group_by') and manifest.get('spec',{}).get('amount_field'):
@@ -348,6 +366,7 @@ def _pipeline_xlsx(pid,record):
 def file(pid,aid,format=None):
     record=_record(pid,aid);kind=record['kind'];private=record['private']
     allowed={item['format'] for item in record['downloads']}
+    if not allowed:raise ArtifactError(record.get('download_blocked_reason') or '该候选暂不能下载完整结果')
     format=format or record['downloads'][0]['format']
     if format not in allowed:raise ArtifactError('该成果没有此下载格式')
     expected=record['sha256'] if record['sha256_scope']=='file' else None
@@ -366,6 +385,9 @@ def file(pid,aid,format=None):
         from .project_data import result_download
         path=result_download(pid,private['run_id'],format,expected_handoff_sha256=record['sha256']);name=record['name']+{'xlsx':'.xlsx','csv':'.csv','handoff':'.zip'}[format]
     elif kind in ('application','chart'):
+        from .releases import ensure_candidate_bulk_allowed
+        run=get('run',private['run_id']);_,manifest=_pipeline(pid,record)
+        ensure_candidate_bulk_allowed(run,manifest,project_id=pid)
         if format=='parquet':path,_=_pipeline(pid,record);expected=record['sha256'];name=record['name']+'.parquet'
         else:path=_pipeline_xlsx(pid,record);name=record['name']+'.xlsx'
     elif kind=='source':
@@ -448,10 +470,15 @@ def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,c
         from .project_data import read_result,result_folder
         page=read_result(pid,private['run_id'],offset,limit)
         if page.get('manifest_sha256')!=record['sha256']:raise ArtifactError('所选结果与报告记录的版本不一致')
+        note='完整已验证结果的分页视图；本页不等于全量结果'
+        if record.get('download_blocked_reason'):note+='；'+record['download_blocked_reason']
         response=_table(record,page['schema'],page['rows'],page['total'],offset,limit,
-            context=page['context'],fidelity_note='完整已验证结果的分页视图；本页不等于全量结果')
+            context=page['context'],fidelity_note=note)
         if chart_x or chart_y:
             if not chart_x or not chart_y:raise ArtifactError('请同时指定图表的分类与数值字段')
+            if record.get('semantic_warning'):raise ArtifactError('历史结果的来源或业务语义尚未核对，不能计算图表；可继续查看明细')
+            from .project_data import ensure_candidate_bulk_allowed
+            ensure_candidate_bulk_allowed(pid,private['run_id'])
             from .result_delivery import read_all_handoff
             folder,metadata=result_folder(pid,private['run_id'])
             if metadata.get('handoff_sha256')!=record['sha256']:raise ArtifactError('所选结果与报告记录的版本不一致')
@@ -467,8 +494,13 @@ def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,c
             rows=[dict(zip(names,row)) for row in cursor.fetchall()]
             fields={field['name']:field for field in manifest['fields']};columns=[{'name':name,'label':fields.get(name,{}).get('label',name),'data_type':str(cursor.description[i][1])} for i,name in enumerate(names) if not name.startswith('_dlt')]
             rows=[{field['name']:row[field['name']] for field in columns} for row in rows]
-            response=_table(record,columns,rows,total,offset,limit,fidelity_note='直接读取当前固定版本的完整Parquet结果；预览按行分页')
+            note='直接读取当前固定版本的完整Parquet结果；预览按行分页'
+            if record.get('download_blocked_reason'):note+='；'+record['download_blocked_reason']
+            response=_table(record,columns,rows,total,offset,limit,fidelity_note=note)
             if kind=='chart':
+                if record.get('semantic_warning'):raise ArtifactError('历史结果的来源或业务语义尚未核对，不能计算图表；可继续查看明细')
+                from .releases import ensure_candidate_bulk_allowed
+                ensure_candidate_bulk_allowed(get('run',private['run_id']),manifest,project_id=pid)
                 spec=manifest['spec'];x=spec['group_by'];y=spec['amount_field']
                 if manifest.get('metric_aggregation')!='sum_decimal_38_12':raise ArtifactError('冻结版本没有明确的精确求和规则')
                 if x not in names or y not in names:raise ArtifactError('已保存图表字段不存在')

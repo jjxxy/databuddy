@@ -721,7 +721,13 @@ def legacy_handle(turn):
     if d.action == 'publish':
         if not pipeline.get('candidate_run'): finish(turn, '当前没有等待确认的新结果。'); return
         if turn.get('candidate_run') != pipeline['candidate_run']: finish(turn, '这份预览已经更新，请查看最新预览，再回复“确认发布”。'); return
-        from .releases import publish
+        from .releases import publish,manifest_for,_source_review_details,_requires_fact_alignment
+        candidate=get_job(pipeline['candidate_run']);_,candidate_manifest=manifest_for(candidate)
+        if _requires_fact_alignment(candidate,candidate_manifest):
+            finish(turn, '这份结果使用的事实尚缺少逐条业务语义和可加性核对，不能发布。请先保留候选并核对来源。'); return
+        source_review,_=_source_review_details(candidate,candidate_manifest)
+        if source_review:
+            finish(turn, '这份结果使用了需要核对的来源解释。请打开候选结果，对照原始资料核对来源和业务口径，勾选确认后再发布。'); return
         publish(pipeline['id'], pipeline['candidate_run'])
         patch('turn',turn['id'],mutation_receipts=[{'kind':'publish','application_id':pipeline['id'],'run_id':pipeline['candidate_run']}])
         finish(turn, '已采用这份结果。现在可以继续提问，或告诉我什么时候更新。', result=result_card(pipeline['id'])); return

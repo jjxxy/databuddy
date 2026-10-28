@@ -30,7 +30,7 @@ await fs.cp(path.join(root,'ui/dist'),path.join(appDir,'ui/dist'),{recursive:tru
 await fs.copyFile(path.join(root,'portable_runtime.py'),path.join(appDir,'portable_runtime.py'));
 await fs.cp(path.join(root,'vendor','metadata'),path.join(appDir,'vendor','metadata'),{recursive:true});
 await fs.cp(path.join(root,'acceptance','offline'),path.join(appDir,'acceptance','offline'),{recursive:true,filter:source=>!source.includes('__pycache__')});
-for(const relative of ['llm.example.json','requirements-windows.lock','pyproject.toml'])if(await exists(path.join(root,relative)))await fs.copyFile(path.join(root,relative),path.join(appDir,relative));
+for(const relative of ['llm.example.json','requirements-windows.lock','requirements-ocr-windows.lock','pyproject.toml'])if(await exists(path.join(root,relative)))await fs.copyFile(path.join(root,relative),path.join(appDir,relative));
 await fs.writeFile(path.join(output,'使用说明.txt'),'Atlas DataBuddy v0.20.0\r\n\r\n1. 保持整个文件夹完整，双击 Atlas DataBuddy.exe。\r\n2. 在工作模式选择“本地电脑”，选取业务文件夹；在当前项目的“工作资料”内导入、画像、加工，核对候选后确认发布并导出。\r\n3. 原始文件不会被覆盖。项目数据保存在已选文件夹的 .atlas，代码与导出分别位于 Atlas工作区、Atlas成果。切换文件夹会打开该文件夹自己的项目，不自动搬移数据。\r\n4. 云端 AI 需要有效模型配置与网络；断网时本地工作台和确定性数据功能仍可使用。“云端”工作位置在后续阶段开放。\r\n\r\n无需安装 Python、Node、Git、Docker、WSL 或编译工具。运行时不会下载依赖。\r\n应用设置和诊断日志保存在当前 Windows 用户的应用数据目录，不在程序目录中。\r\n完整业务与离线验收状态以随交付的验收记录为准。\r\n','utf8');
 const files=[];
 async function walk(folder){for(const entry of await fs.readdir(folder,{withFileTypes:true})){const file=path.join(folder,entry.name);if(entry.isDirectory())await walk(file);else if(entry.isFile())files.push(file);else throw new Error('Artifact must not contain symlinks: '+file);}}

@@ -484,10 +484,18 @@ def explain_artifact(pid: str, artifact_id: str) -> dict:
     try:
         require_safe_numeric_lineage(pid,run_id,root_meta=meta,root_page=page)
     except NumericLineageError as error:
-        detail = ('本次或上游历史计算包含可能丢失精度的 SQL 数值运算；请从原始资料重新计算并核对。'
-                  if error.reason=='unsafe_sql' else
-                  '本次或上游的历史数值计算证据无法完整核对；请从原始资料重新计算并核对。')
-        checks.append({'label':'历史数值计算','status':'needs_review','detail':detail})
+        if error.reason=='source_review_unknown':
+            label='历史来源解释'
+            detail='本次或上游历史来源解释缺少完整复核记录；请从原始资料重新运行并核对。'
+        elif error.reason=='fact_semantic_alignment_missing':
+            label='事实业务口径'
+            detail='本次或上游事实缺少逐项业务语义对齐；单条文字核对不能证明不同指标可相加，请核对指标、单位、期间和可加性。'
+        else:
+            label='历史数值计算'
+            detail = ('本次或上游历史计算包含可能丢失精度的 SQL 数值运算；请从原始资料重新计算并核对。'
+                      if error.reason=='unsafe_sql' else
+                      '本次或上游的历史数值计算证据无法完整核对；请从原始资料重新计算并核对。')
+        checks.append({'label':label,'status':'needs_review','detail':detail})
     evidence_consistent = (type(meta.get('records')) is int and meta['records']==page['total']
                            and context.get('data_contract')==meta.get('contract'))
     checks.extend(_contract_checks(context.get('data_contract'),doc.get('contract'),expected_rows=page['total'],

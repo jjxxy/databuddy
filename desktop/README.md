@@ -30,6 +30,24 @@ fails rather than emitting a bundle with a missing Python or Git runtime.
 The builder refuses to overwrite an existing output. Use a new child directory
 of this checkout's `dist` via `ATLAS_DESKTOP_OUTPUT` for later comparison builds.
 
+For the optional offline image OCR capability, stage a separate `runtime/ocr`
+from a build machine using the pinned, hash-verified local wheelhouse and the
+verified CPython 3.12.10 embeddable archive:
+
+```powershell
+python packaging/prepare-ocr-runtime.py --wheelhouse <local-wheelhouse> --embedded-python-zip <verified-cpython-zip> --build-python <build-python-exe>
+python packaging/refresh-runtime-manifest.py
+python packaging/hash_ocr_inventory.py
+```
+
+The OCR lock and upstream wheel inventory are `requirements-ocr-windows.lock`
+and `vendor/metadata/ocr-wheel-inventory.json`; delivered-file hashes are recorded
+separately in `vendor/metadata/ocr-python-packages.json`. The assembly script
+does not run at startup, invokes pip with `--no-index` and verifies three model
+hashes. If the OCR worker is not included, OCR reports that it is unavailable;
+the other local capabilities remain usable. A build and synthetic OCR test do
+not establish accuracy for real financial documents or scanned PDF support.
+
 The output folder is `dist/Atlas-DataBuddy-win32-x64`. Copy or zip the **whole
 folder**. The only user entry is `Atlas DataBuddy.exe`; there is no first-run npm,
 pip, WSL, Docker, download, global PATH configuration, or compiler step.

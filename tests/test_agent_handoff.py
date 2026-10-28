@@ -51,18 +51,40 @@ def source(pid,raw=b'id,amount\n1,100.000000000001\n',name='收入.csv'):
 
 
 def result(pid,count=40):
-    rid='r_'+uid();wid='w_'+uid();folder=DATA/'runs'/rid;folder.mkdir(parents=True)
+    # Create actual source-bound workflow evidence instead of fabricating a
+    # successful run with no way to prove what inputs it came from.
+    from agent_service.data_workflows import WorkflowPlan,digest,execute
+    raw_rows=[{'id':'ID'+str(i),'amount':'7.500000000001','day':'2026-10-01','paid':True} for i in range(count)]
+    source_record=source(pid,json.dumps(raw_rows,ensure_ascii=False).encode(),'evidence.json')
+    rows=[{'id':v['id'],'amount':Decimal(v['amount']),'day':date.fromisoformat(v['day']),'paid':v['paid']} for v in raw_rows]
     schema={'columns':[{'name':'id','data_type':'text','meaning':'Unique record'},
         {'name':'amount','data_type':'decimal','meaning':'Net revenue','unit':'CNY','period':'2026-10','aggregation':'additive'},
         {'name':'day','data_type':'date','meaning':'Posting day'},
         {'name':'paid','data_type':'boolean','meaning':'Paid flag'}], 'grain':['id'],'meaning':'One invoice per id'}
-    rows=[{'id':'ID'+str(i),'amount':Decimal('7.500000000001'),'day':date(2026,10,1),'paid':True} for i in range(count)]
-    manifest=write_handoff(folder/'handoff',rows,schema,context={'output_semantics':schema,'requires_semantic_review':False},provenance={'source':'original cell reference'})
-    meta={'run_id':rid,'workflow_id':wid,'project_id':pid,'plan_sha256':'a'*64,'handoff_sha256':manifest['manifest_sha256'],
-        'records':count,'created_at':now(),'source_revisions':{},'complete':True,'requires_semantic_review':False,'semantic_review_reasons':[]}
+    mapping={'c_1':'id','c_2':'amount','c_3':'day','c_4':'paid'}
+    doc=data.WorkflowDocument.model_validate({'version':1,'plan':{'name':'Exchange source rows','inputs':{'src':schema},
+        'stages':[{'id':'keep','kind':'select','description':'Preserve verified source rows','input':'src',
+                   'columns':['id','amount','day','paid']}],'output':'keep'},
+        'bindings':{'src':{'source_id':source_record['id'],'column_map':mapping}}})
+    document=doc.model_dump();plan_sha=digest(document)
+    input_rows,_,proof,provenance=data.read_input(pid,doc.bindings['src'],frozen_source=source_record)
+    executed=execute(doc.plan,{'src':input_rows})
+    assert len(executed['output']['rows'])==len(rows)
+    assert all(actual['id']==expected['id'] and Decimal(actual['amount'])==expected['amount'] and
+               actual['day']==expected['day'].isoformat() and actual['paid']==expected['paid']
+               for actual,expected in zip(executed['output']['rows'],rows))
+    schema=executed['output']['schema'];rid='r_'+uid();wid='w_'+uid();folder=DATA/'runs'/rid;folder.mkdir(parents=True)
+    context={'project_id':pid,'plan_sha256':plan_sha,'input_evidence':{'src':proof},
+             'output_semantics':schema,'requires_semantic_review':False,'requires_source_review':False}
+    manifest=write_handoff(folder/'handoff',rows,schema,context=context,provenance=provenance,stages=executed['stages'])
+    meta={'run_id':rid,'workflow_id':wid,'project_id':pid,'plan_sha256':plan_sha,'handoff_sha256':manifest['manifest_sha256'],
+        'records':count,'created_at':now(),'source_revisions':{source_record['id']:source_record['revision']},
+        'complete':True,'requires_semantic_review':False,'semantic_review_reasons':[]}
     (folder/'data-result.json').write_text(json.dumps(meta))
-    save({'id':rid,'kind':'data_workflow','target':wid,'commit':'a'*64,'project_id':pid,'status':'validated','validated':True,
-        'records':count,'artifact_dir':str(folder.relative_to(DATA)),'data_result':meta,'created_at':now()})
+    save({'id':rid,'kind':'data_workflow','target':wid,'commit':plan_sha,'project_id':pid,'status':'validated','validated':True,
+        'records':count,'artifact_dir':str(folder.relative_to(DATA)),'data_result':meta,'created_at':now(),
+        'workflow_document':document,'source_snapshot':{source_record['id']:source_record},
+        'source_revisions':{source_record['id']:source_record['revision']}})
     return rid,rows,schema
 
 
@@ -128,9 +150,10 @@ def test_full_typed_result_retains_every_row_exact_decimal_date_and_semantics():
     assert sum(row['amount'] for row in actual['rows'])==Decimal('300.000000000040')
     assert actual['context']['output_semantics']==schema
     assert metadata['requires_semantic_review'] and 'EXTERNAL_AGENT_RESULT_REVIEW_REQUIRED' in metadata['semantic_review_reasons']
-    loaded,fields,evidence,proof=data.read_input(target,{'result_id':imported_id})
-    assert len(loaded)==40 and loaded[-1]['amount']=='7.500000000001'
-    assert evidence['requires_semantic_review'] and evidence['output_semantics']==schema
+    # Imported complete bytes remain inspectable, but the receiving project
+    # lacks the original frozen workflow and cannot launder them as verified input.
+    with pytest.raises(ValueError,match='精度依据'):
+        data.read_input(target,{'result_id':imported_id})
     assert handoff.import_bundle(target,bundle,scope_id='peer:finance',request_id='exact-result')==imported
 
 

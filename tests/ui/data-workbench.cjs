@@ -29,7 +29,7 @@ function catalogRecord(id,status='draft',version=1){
 function response(value,status=200){return {ok:status>=200&&status<300,status,json:async()=>value,blob:async()=>new Blob(['complete-result']),headers:{get:()=>null}};}
 function clone(value){return JSON.parse(JSON.stringify(value));}
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function boot({token=true,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null}={}){
+async function boot({token=true,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null,requiresSourceReview=false,factAlignmentRequired=false,missingManifest=false,deferPublish=false,publishStatus=200,publishDetail='无法确认'}={}){
  const url='https://atlas.test/data-workbench.html'+(project?'?project=p_1&workflow=wf_1'+(tab?'&tab='+tab:''):'');
  const dom=new JSDOM(html,{url,runScripts:'outside-only'}),w=dom.window,calls=[],timers=[];
  if(token)w.sessionStorage.setItem('atlas_token','test-token-that-must-not-be-logged');
@@ -44,7 +44,7 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
  const catalogSettings=catalogFixture||{},catalogs=new Map((catalogSettings.records||[]).map(record=>[record.id,clone(record)])),pendingCatalogActions=[];
  const facts={id:'facts_1',name:'来源 <img src=x onerror=alert(1)>',status:'proposed',content_sha256:'f'.repeat(64),
  facts:[{value_as_printed:'1234567890123456.123456789012元',normalized_value:'1234567890123456.123456789012',measure:'净收入<script>bad</script>',unit:'CNY',period:'2026-10',dimensions:{office:'合肥'},quote:'2026年10月，合肥净收入1234567890123456.123456789012元。<img src=x>',start:12,end:83}],approval_blockers:factsBlocked?['请补全来源单位']:[]};
- let putBody=null,jobStatus=null,currentJob=latestJob,releaseSecond=null;
+ let putBody=null,jobStatus=null,currentJob=latestJob,releaseSecond=null,releasePublish=null;
  w.fetch=async(url,options={})=>{
   const u=new URL(url,w.location.href),method=options.method||'GET';calls.push({url:u.pathname+u.search,method,options});
   assert.equal(options.headers.Authorization,'Bearer '+w.sessionStorage.getItem('atlas_token'));
@@ -82,14 +82,17 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
   if(u.pathname.endsWith('/data-workflows/wf_1'))return response(clone(workflow));
   if(u.pathname.endsWith('/data-workflows/wf_2'))return new Promise(resolve=>{releaseSecond=()=>resolve(response({...clone(workflow),workflow_id:'wf_2',name:'第二项任务'}));});
   if(u.pathname.endsWith('/data-workflows/wf_1/run')){jobStatus='queued';return response({id:'job_1',status:'queued'});}
-  if(u.pathname.endsWith('/data-results/r_1/publish')){workflow.candidate_run=null;workflow.published_run='r_1';return response({published_run:'r_1'});}
+  if(u.pathname.endsWith('/data-results/r_1/publish')){
+   const finish=()=>{if(publishStatus!==200)return response({detail:publishDetail},publishStatus);workflow.candidate_run=null;workflow.published_run='r_1';return response({published_run:'r_1'});};
+   return deferPublish?new Promise(resolve=>{releasePublish=()=>resolve(finish())}):finish();
+  }
   if(u.pathname.endsWith('/data-results/r_1/download'))return response({});
   if(u.pathname.endsWith('/data-results/r_1')){
    const offset=+(u.searchParams.get('offset')||0),limit=+(u.searchParams.get('limit')||50),count=Math.min(limit,603-offset);
-   return response({run_id:'r_1',plan_sha256:sha,total:603,next_offset:offset+count<603?offset+count:null,
+   return response({run_id:'r_1',plan_sha256:sha,manifest_sha256:missingManifest?undefined:'f'.repeat(64),total:603,next_offset:offset+count<603?offset+count:null,
     schema:[{name:'office',label:'办事处<script>bad</script>',meaning:'业务办事处',data_type:'text'},{name:'amount',label:'净收入',meaning:'收入减退款',unit:'CNY',period:'2026-10',data_type:'decimal'}],
     rows:Array.from({length:count},(_,i)=>({office:offset+i===0?'<img src=x onerror=alert(1)>':'O'+(offset+i),amount:'1234567890123456.123456789012'})),
-    context:{input_evidence:{orders:{source_id:'frozen_source',source_revision:2,rows:1200,sheet:'明细'}},output_semantics:{grain:['office']},requires_semantic_review:false},
+    context:{input_evidence:{orders:{source_id:'frozen_source',source_revision:2,rows:1200,sheet:'明细'}},output_semantics:{grain:['office']},requires_semantic_review:false,requires_source_review:requiresSourceReview,semantic_review_reasons:factAlignmentRequired?['FACT_SEMANTIC_ALIGNMENT_REQUIRED']:[]},
     stages:[{stage_id:'summed',kind:'aggregate',output_rows:603,checks:{complete_table:true},lineage:{kind:'aggregate',group_by:['office']}}]});
   }
   if(u.pathname.endsWith('/semantic-proposals/sem_1/review')){
@@ -109,7 +112,7 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
  };
  w.eval(script+';window.wbTest={ready:workbenchReady,state:wbState,save:wbSave,loadResult:wbLoadResult,renderResult:wbRenderResult,loadWorkflow:wbLoadWorkflow,run:wbRun,poll:wbPoll,publish:wbPublish,loadProposals:wbLoadProposals,download:wbDownload,loadFacts:wbLoadFacts};');
  await w.wbTest.ready;await tick();
- return {dom,w,calls,timers,workflow,semantic,catalogs,catalogSettings,releaseCatalogAction:()=>{assert(pendingCatalogActions.length);pendingCatalogActions.shift()();},releaseSecond:()=>releaseSecond(),setJob:value=>{currentJob=value;},putBody:()=>putBody};
+ return {dom,w,calls,timers,workflow,semantic,catalogs,catalogSettings,releaseCatalogAction:()=>{assert(pendingCatalogActions.length);pendingCatalogActions.shift()();},releaseSecond:()=>releaseSecond(),releasePublish:()=>releasePublish(),setJob:value=>{currentJob=value;},putBody:()=>putBody};
 }
 async function expandProposal(w){const details=w.document.querySelector('[data-proposal]');details.open=true;details.dispatchEvent(new w.Event('toggle'));await tick();await tick();return details;}
 async function expandCatalog(w,id){const details=w.document.querySelector('[data-catalog="'+id+'"]');assert(details);details.open=true;details.dispatchEvent(new w.Event('toggle'));await tick();await tick();return details;}
@@ -193,6 +196,69 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  const publishCall=calls.find(c=>c.url.endsWith('/publish'));
  assert.deepEqual(JSON.parse(publishCall.options.body),{run_id:'r_1',expected_plan_sha256:sha});
  assert.equal(d.querySelector('#workbench-candidate').hidden,true);
+ {
+ const protectedApp=await boot({requiresSourceReview:true}),protectedDoc=protectedApp.w.document;
+ const protectedAck=protectedDoc.querySelector('#workbench-source-review-ack'),protectedPublish=protectedDoc.querySelector('#workbench-publish');
+ assert.equal(protectedDoc.querySelector('#workbench-source-review').hidden,false);
+ assert(protectedDoc.querySelector('#workbench-source-review').textContent.includes('对照原件'));
+ assert.equal(protectedPublish.disabled,true,'unreviewed source cannot be adopted without explicit acknowledgement');
+ await protectedApp.w.wbTest.publish();assert(!protectedApp.calls.some(call=>call.url.endsWith('/publish')));
+ protectedAck.checked=true;protectedAck.dispatchEvent(new protectedApp.w.Event('change'));assert.equal(protectedPublish.disabled,false);
+ await protectedApp.w.wbTest.publish();
+ const protectedCall=protectedApp.calls.find(call=>call.url.endsWith('/publish'));
+ assert.deepEqual(JSON.parse(protectedCall.options.body),{run_id:'r_1',expected_plan_sha256:sha,confirm_source_review:true,expected_handoff_sha256:'f'.repeat(64)});
+ assert(protectedDoc.querySelector('#workbench-notice').textContent.includes('已采用这份结果'));protectedApp.dom.window.close();
+
+ const noManifest=await boot({requiresSourceReview:true,missingManifest:true}),nm=noManifest.w.document;
+ assert(nm.querySelector('#workbench-source-review-error').textContent.includes('依据不完整'));
+ assert.equal(nm.querySelector('#workbench-source-review-ack').disabled,true);assert.equal(nm.querySelector('#workbench-publish').disabled,true);noManifest.dom.window.close();
+
+ const mixedFacts=await boot({requiresSourceReview:true,factAlignmentRequired:true}),mf=mixedFacts.w.document;
+ assert.equal(mf.querySelector('#workbench-fact-semantic-warning').hidden,false);
+ assert(mf.querySelector('#workbench-fact-semantic-warning').textContent.includes('可加性'));
+ assert(mf.querySelector('#workbench-trust-notice').textContent.includes('不得用于正式财务计算'));
+ assert.equal(mf.querySelector('#workbench-result-state').textContent,'需业务语义对齐');
+ assert.equal(mf.querySelector('#workbench-task-state').textContent,'需业务语义对齐');
+ assert(mf.querySelector('#workbench-next-text').textContent.includes('不能采用或生成报告'));
+ assert.equal(mf.querySelector('#workbench-source-review').hidden,true,'acknowledging source must not appear to unblock mixed facts');
+ assert.equal(mf.querySelector('#workbench-publish').disabled,true);await mixedFacts.w.wbTest.publish();
+ assert(!mixedFacts.calls.some(call=>call.url.endsWith('/publish')));
+ for(const format of ['xlsx','csv','handoff']){
+  const button=mf.querySelector('#workbench-download-'+format);assert(button.disabled&&button.hidden,'unaligned candidate must not offer batch export');
+  await mixedFacts.w.wbTest.download(format);
+ }
+ assert(mf.querySelector('#workbench-result-help').textContent.includes('暂不提供批量下载'));
+ assert(!mixedFacts.calls.some(call=>call.url.includes('/download')),'calling download directly must not bypass the UI gate');
+ mixedFacts.w.wbTest.state.workflow.candidate_run=null;mixedFacts.w.wbTest.state.workflow.published_run='r_1';mixedFacts.w.wbTest.renderResult();
+ assert.equal(mf.querySelector('#workbench-download-csv').hidden,false,'existing historical results remain accessible');mixedFacts.dom.window.close();
+
+ const replaced=await boot({requiresSourceReview:true}),rd=replaced.w.document,ra=rd.querySelector('#workbench-source-review-ack');
+ ra.checked=true;ra.dispatchEvent(new replaced.w.Event('change'));assert.equal(rd.querySelector('#workbench-publish').disabled,false);
+ replaced.w.wbTest.state.workflow.candidate_run='r_2';replaced.w.wbTest.state.resultId='r_2';replaced.w.wbTest.state.result={...replaced.w.wbTest.state.result,run_id:'r_2',manifest_sha256:'e'.repeat(64)};
+ replaced.w.wbTest.renderResult();assert.equal(ra.checked,false,'a replacement candidate needs its own approval');assert.equal(rd.querySelector('#workbench-publish').disabled,true);
+ await replaced.w.wbTest.publish();assert(!replaced.calls.some(call=>call.url.endsWith('/publish')));replaced.dom.window.close();
+
+ const failedPublish=await boot({requiresSourceReview:true,publishStatus:409}),fd=failedPublish.w.document,fa=fd.querySelector('#workbench-source-review-ack');
+ fa.checked=true;fa.dispatchEvent(new failedPublish.w.Event('change'));await failedPublish.w.wbTest.publish();
+ assert(!fa.checked);assert(fd.querySelector('#workbench-notice').textContent.includes('本次请求未通过'));
+ assert.equal(fd.querySelector('#workbench-publish').disabled,true,'failure invalidates acknowledgement');failedPublish.dom.window.close();
+ const semanticStop=await boot({requiresSourceReview:true,publishStatus:400,publishDetail:'该事实数值需要业务语义对齐，请先核对指标和加总口径。'}),sd=semanticStop.w.document,sa=sd.querySelector('#workbench-source-review-ack');
+ sa.checked=true;sa.dispatchEvent(new semanticStop.w.Event('change'));await semanticStop.w.wbTest.publish();
+ assert(sd.querySelector('#workbench-notice').textContent.includes('业务语义对齐'),'a specific business semantic blocker must remain visible');assert(!sa.checked);semanticStop.dom.window.close();
+
+ const switchedProject=await boot({requiresSourceReview:true}),sp=switchedProject.w.document.querySelector('#workbench-source-review-ack');
+ sp.checked=true;sp.dispatchEvent(new switchedProject.w.Event('change'));switchedProject.w.history.replaceState({},'','?project=p_2');
+ await switchedProject.w.wbTest.publish();assert(!switchedProject.calls.some(call=>call.url.endsWith('/publish')),'project switch blocks the old approval');switchedProject.dom.window.close();
+
+ const delayed=await boot({requiresSourceReview:true,deferPublish:true}),da=delayed.w.document.querySelector('#workbench-source-review-ack');
+ da.checked=true;da.dispatchEvent(new delayed.w.Event('change'));const pendingPublish=delayed.w.wbTest.publish();await tick();
+ delayed.w.history.replaceState({},'','?project=p_2');delayed.releasePublish();await pendingPublish;
+ assert(!delayed.w.document.querySelector('#workbench-notice').textContent.includes('已采用这份结果'),'late response must not report success in another project');delayed.dom.window.close();
+ const lateCandidate=await boot({requiresSourceReview:true,deferPublish:true}),lc=lateCandidate.w.document.querySelector('#workbench-source-review-ack');
+ lc.checked=true;lc.dispatchEvent(new lateCandidate.w.Event('change'));const pendingCandidate=lateCandidate.w.wbTest.publish();await tick();
+ lateCandidate.w.wbTest.state.workflow.candidate_run='r_2';lateCandidate.releasePublish();await pendingCandidate;
+ assert(!lateCandidate.w.document.querySelector('#workbench-notice').textContent.includes('已采用这份结果'),'late response must not certify a different current candidate');lateCandidate.dom.window.close();
+ }
  assert.equal(w.localStorage.getItem('atlas_token'),null);
  app.dom.window.close();
 
@@ -302,6 +368,7 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  assert.equal(factDetails.querySelectorAll('img,script').length,0);
  assert(factDetails.querySelector('blockquote').textContent.includes('1234567890123456.123456789012'));
  assert(factDetails.textContent.includes('2026-10'));
+ assert(factDetails.textContent.includes('正式计算前还需完成业务语义对齐'));
  assert.equal(factsApp.calls.filter(c=>c.method==='POST').length,0);
  const factApprove=factDetails.querySelector('[data-facts-decision="approved"]');assert.equal(factApprove.disabled,false);
  factApprove.click();await tick();await tick();

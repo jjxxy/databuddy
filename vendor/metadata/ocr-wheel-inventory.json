@@ -1,0 +1,315 @@
+{
+  "source": "https://pypi.org/simple",
+  "upstream_hash_verified": true,
+  "wheels": [
+    {
+      "name": "certifi",
+      "version": "2026.10.23",
+      "wheel": "certifi-2026.10.23-py3-none-any.whl",
+      "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1",
+      "bytes": 135082,
+      "origin": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl",
+      "license_expression": "MPL-2.0",
+      "license_files": [
+        "certifi-2026.10.23.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "wheel": "charset_normalizer-3.5.2-cp312-cp312-win_amd64.whl",
+      "sha256": "780fbe7cab297b81dad9fb8dc5eb003c0468ffb0d9e5f65068c53a34661a96bc",
+      "bytes": 207486,
+      "origin": "https://files.pythonhosted.org/packages/eb/e6/e6e083884cbcfd49c64865af05027fe7011be7b2d9179524f099a1b611f3/charset_normalizer-3.5.2-cp312-cp312-win_amd64.whl",
+      "license_expression": "MIT",
+      "license_files": [
+        "charset_normalizer-3.5.2.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "wheel": "colorama-0.4.6-py2.py3-none-any.whl",
+      "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+      "bytes": 25335,
+      "origin": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl",
+      "license_expression": "",
+      "license_files": [
+        "colorama-0.4.6.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "colorlog",
+      "version": "6.12.0",
+      "wheel": "colorlog-6.12.0-py3-none-any.whl",
+      "sha256": "30d392604e9110045a2c2aeefc27d7a017abbab63f3a8aee594eac0801df784e",
+      "bytes": 12239,
+      "origin": "https://files.pythonhosted.org/packages/d4/19/0b6647bf5e331521e55d2b63bfbdc210bd9cd605189273f03614a05f702d/colorlog-6.12.0-py3-none-any.whl",
+      "license_expression": "MIT License",
+      "license_files": [
+        "colorlog-6.12.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "wheel": "flatbuffers-25.12.19-py2.py3-none-any.whl",
+      "sha256": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
+      "bytes": 26661,
+      "origin": "https://files.pythonhosted.org/packages/e8/2d/d2a548598be01649e2d46231d151a6c56d10b964d94043a335ae56ea2d92/flatbuffers-25.12.19-py2.py3-none-any.whl",
+      "license_expression": "Apache 2.0",
+      "license_files": [],
+      "supplemental_license": {
+        "path": "runtime/ocr/third-party-licenses/flatbuffers-v25.12.19-LICENSE.txt",
+        "upstream": "https://raw.githubusercontent.com/google/flatbuffers/v25.12.19/LICENSE",
+        "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+      }
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "wheel": "idna-3.20-py3-none-any.whl",
+      "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+      "bytes": 69583,
+      "origin": "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl",
+      "license_expression": "BSD-3-Clause",
+      "license_files": [
+        "idna-3.20.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.4",
+      "wheel": "numpy-2.5.4-cp312-cp312-win_amd64.whl",
+      "sha256": "a7b1b6353e36a7e50de2973a38d705c88ee93adcf120673cee7f45a4a3fa223a",
+      "bytes": 12573091,
+      "origin": "https://files.pythonhosted.org/packages/12/33/fefe62073dc8acfd0f2b9ed7c003af2f50aa61555e113e6db02b8f79f145/numpy-2.5.4-cp312-cp312-win_amd64.whl",
+      "license_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+      "license_files": [
+        "numpy-2.5.4.dist-info/licenses/",
+        "numpy-2.5.4.dist-info/licenses/numpy/",
+        "numpy-2.5.4.dist-info/licenses/LICENSE.txt",
+        "numpy-2.5.4.dist-info/licenses/numpy/fft/",
+        "numpy-2.5.4.dist-info/licenses/numpy/linalg/",
+        "numpy-2.5.4.dist-info/licenses/numpy/ma/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/",
+        "numpy-2.5.4.dist-info/licenses/numpy/fft/pocketfft/",
+        "numpy-2.5.4.dist-info/licenses/numpy/fft/pocketfft/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/linalg/lapack_lite/",
+        "numpy-2.5.4.dist-info/licenses/numpy/linalg/lapack_lite/LICENSE.txt",
+        "numpy-2.5.4.dist-info/licenses/numpy/ma/LICENSE",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/distributions/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/mt19937/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/pcg64/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/philox/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/sfc64/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/splitmix64/",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/distributions/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/mt19937/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/philox/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/sfc64/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/random/src/splitmix64/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/include/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/multiarray/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/npysort/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/umath/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/highway/LICENSE",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/multiarray/dragon4_LICENSE.txt",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/npysort/x86-simd-sort/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/npysort/x86-simd-sort/LICENSE.md",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/umath/svml/",
+        "numpy-2.5.4.dist-info/licenses/numpy/_core/src/umath/svml/LICENSE"
+      ]
+    },
+    {
+      "name": "omegaconf",
+      "version": "2.4.0",
+      "wheel": "omegaconf-2.4.0-py3-none-any.whl",
+      "sha256": "f141a664c777582405e3cc6e0545ecc79429e79f844995b1a6e71c35946a025c",
+      "bytes": 254152,
+      "origin": "https://files.pythonhosted.org/packages/4f/bd/0d9f8247b0819385213d09564eda5c52d3673313c2414d51f72883ec24cd/omegaconf-2.4.0-py3-none-any.whl",
+      "license_expression": "",
+      "license_files": [
+        "omegaconf-2.4.0.dist-info/licenses/LICENSE",
+        "omegaconf-2.4.0.dist-info/licenses/ATTRIBUTION/LICENSE-antlr4"
+      ]
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.31.1",
+      "wheel": "onnxruntime-1.31.1-cp312-cp312-win_amd64.whl",
+      "sha256": "ae8a9a351efda685cc59a66226cdefaa37a126c1d66872ca23a2de9425326130",
+      "bytes": 14888466,
+      "origin": "https://files.pythonhosted.org/packages/45/b2/793b4051d8dc6acb379ead9b72050f0ffa283ca49a6904add2e218b83e2e/onnxruntime-1.31.1-cp312-cp312-win_amd64.whl",
+      "license_expression": "MIT License",
+      "license_files": [
+        "onnxruntime/LICENSE",
+        "onnxruntime/ThirdPartyNotices.txt"
+      ]
+    },
+    {
+      "name": "opencv-python-headless",
+      "version": "5.0.0.93",
+      "wheel": "opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl",
+      "sha256": "829717b6a95554f273e49e357cee3b3a2a26b6f4842fbc1bed2b45bdd8f87e0e",
+      "bytes": 43825962,
+      "origin": "https://files.pythonhosted.org/packages/b8/88/763b967f7efd7226b82c9fae16d560cba049b1f0c036647e65c610fd636e/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl",
+      "license_expression": "Apache 2.0",
+      "license_files": [
+        "opencv_python_headless-5.0.0.93.dist-info/LICENSE-3RD-PARTY.txt",
+        "opencv_python_headless-5.0.0.93.dist-info/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "wheel": "packaging-26.3-py3-none-any.whl",
+      "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+      "bytes": 129956,
+      "origin": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+      "license_expression": "Apache-2.0 OR BSD-2-Clause",
+      "license_files": [
+        "packaging-26.3.dist-info/licenses/LICENSE",
+        "packaging-26.3.dist-info/licenses/LICENSE.APACHE",
+        "packaging-26.3.dist-info/licenses/LICENSE.BSD"
+      ]
+    },
+    {
+      "name": "pillow",
+      "version": "13.0.0",
+      "wheel": "pillow-13.0.0-cp312-cp312-win_amd64.whl",
+      "sha256": "ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b",
+      "bytes": 7272166,
+      "origin": "https://files.pythonhosted.org/packages/ff/cd/73a79ecdc822076002eb24b5e1e4a530b0bb5310fcb6d239abbec877110b/pillow-13.0.0-cp312-cp312-win_amd64.whl",
+      "license_expression": "MIT-CMU",
+      "license_files": [
+        "pillow-13.0.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "protobuf",
+      "version": "7.36.2",
+      "wheel": "protobuf-7.36.2-cp310-abi3-win_amd64.whl",
+      "sha256": "a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353",
+      "bytes": 456514,
+      "origin": "https://files.pythonhosted.org/packages/8a/55/b77bda4e5e5f5971fb51b07663694690e9afdb9402136c16a522bd621cad/protobuf-7.36.2-cp310-abi3-win_amd64.whl",
+      "license_expression": "3-Clause BSD License",
+      "license_files": [
+        "protobuf-7.36.2.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "pyclipper",
+      "version": "1.4.0",
+      "wheel": "pyclipper-1.4.0-cp312-cp312-win_amd64.whl",
+      "sha256": "d1e5498d883b706a4ce636247f0d830c6eb34a25b843a1b78e2c969754ca9037",
+      "bytes": 104619,
+      "origin": "https://files.pythonhosted.org/packages/97/77/dfea08e3b230b82ee22543c30c35d33d42f846a77f96caf7c504dd54fab1/pyclipper-1.4.0-cp312-cp312-win_amd64.whl",
+      "license_expression": "MIT",
+      "license_files": [
+        "pyclipper-1.4.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "wheel": "pyyaml-6.0.3-cp312-cp312-win_amd64.whl",
+      "sha256": "5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b",
+      "bytes": 154003,
+      "origin": "https://files.pythonhosted.org/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl",
+      "license_expression": "MIT",
+      "license_files": [
+        "pyyaml-6.0.3.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "rapidocr",
+      "version": "3.10.0",
+      "wheel": "rapidocr-3.10.0-py3-none-any.whl",
+      "sha256": "2fc34e26cd0f48514804a94f8832283039c7334076bff60768b1fed9ad068050",
+      "bytes": 27288134,
+      "origin": "https://files.pythonhosted.org/packages/59/07/203065283bba0c5e9c10af3602dc25ab3e59ee54dc2d1d22c8faeabf5ed8/rapidocr-3.10.0-py3-none-any.whl",
+      "license_expression": "Apache-2.0",
+      "license_files": [
+        "rapidocr-3.10.0.dist-info/licenses/LICENSE",
+        "rapidocr-3.10.0.dist-info/licenses/MODEL_LICENSES.md"
+      ]
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "wheel": "requests-2.34.2-py3-none-any.whl",
+      "sha256": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",
+      "bytes": 73075,
+      "origin": "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl",
+      "license_expression": "Apache-2.0",
+      "license_files": [
+        "requests-2.34.2.dist-info/licenses/LICENSE",
+        "requests-2.34.2.dist-info/licenses/NOTICE"
+      ]
+    },
+    {
+      "name": "shapely",
+      "version": "2.2.0",
+      "wheel": "shapely-2.2.0-cp312-cp312-win_amd64.whl",
+      "sha256": "90895df6542ae039fc6557dec6194e3509e883fbd6f5788e3c3e7a38fe46b257",
+      "bytes": 1791280,
+      "origin": "https://files.pythonhosted.org/packages/f6/26/ba9192f0a72c830aa8cc1c61e207ada57cc54b7de81668b1836f575ee717/shapely-2.2.0-cp312-cp312-win_amd64.whl",
+      "license_expression": "BSD-3-Clause",
+      "license_files": [
+        "shapely-2.2.0.dist-info/licenses/",
+        "shapely-2.2.0.dist-info/licenses/LICENSE.txt",
+        "shapely-2.2.0.dist-info/licenses/LICENSE_GEOS",
+        "shapely-2.2.0.dist-info/licenses/LICENSE_win32"
+      ]
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "wheel": "six-1.17.0-py2.py3-none-any.whl",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274",
+      "bytes": 11050,
+      "origin": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+      "license_expression": "MIT",
+      "license_files": [
+        "six-1.17.0.dist-info/LICENSE"
+      ]
+    },
+    {
+      "name": "tqdm",
+      "version": "4.70.1",
+      "wheel": "tqdm-4.70.1-py3-none-any.whl",
+      "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+      "bytes": 80199,
+      "origin": "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl",
+      "license_expression": "MPL-2.0 AND MIT",
+      "license_files": [
+        "tqdm-4.70.1.dist-info/licenses/LICENCE"
+      ]
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "wheel": "urllib3-2.8.0-py3-none-any.whl",
+      "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+      "bytes": 135717,
+      "origin": "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl",
+      "license_expression": "MIT",
+      "license_files": [
+        "urllib3-2.8.0.dist-info/licenses/LICENSE.txt"
+      ]
+    }
+  ]
+}

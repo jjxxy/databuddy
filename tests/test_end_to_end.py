@@ -128,7 +128,15 @@ def test_pdf_provenance_and_stable_special_primary_key(tmp_path):
     assert s['profile']['evidence']['parser']=='pypdf'
     assert any(f['label']=='页码' for f in s['profile']['fields'])
     assert client.get(f'/api/sources/{s["id"]}/original',headers=headers).content==path.read_bytes()
-    p=create(s);r=result(p).json();assert r['total']==1
+    p=create(s)
+    assert not p.get('published_run') and p.get('candidate_run')
+    candidate=client.get(f'/api/pipelines/{p["id"]}/preview',headers=headers)
+    assert candidate.status_code==200 and candidate.json()['requires_source_review'] is True
+    preview=candidate.json();confirmation={'run_id':preview['run_id'],'confirm_source_review':True,
+        'expected_commit':preview['manifest']['commit'],'expected_parquet_sha256':preview['manifest']['parquet_hash']}
+    published=client.post(f'/api/pipelines/{p["id"]}/publish',headers=headers,json=confirmation)
+    assert published.status_code==200,published.text
+    r=result(p).json();assert r['total']==1
     row=r['rows'][0];labels={f['label']:f['name'] for f in r['manifest']['fields']}
     assert row[labels['页码']]==1 and 'Contract example' in row[labels['内容']]
     s2=upload('订单号,客户,金额\n订单/甲,甲公司,123.45\n')

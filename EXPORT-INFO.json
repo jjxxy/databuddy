@@ -4,10 +4,10 @@
   "export_date": "2026-10-28",
   "kind": "source_with_tests_and_dependency_locks",
   "branch": "codex/agent-recovery-wip-20261026",
-  "source_state": "finance_trust_targeted_tests_passed_product_acceptance_pending",
-  "last_verified_portable": "r20",
+  "source_state": "multimodal_targeted_tests_passed_product_acceptance_pending",
+  "last_verified_portable": "r22-ocr-finance",
   "r20_built_and_locally_verified": true,
-  "current_source_differs_from_verified_portable": true,
+  "current_source_differs_from_verified_portable": false,
   "current_full_suite_passed": false,
   "database_evaluated": "SQLite",
   "host_evaluated": "native Windows",
@@ -27,7 +27,10 @@
     "commit": "9ebc25ee3dba553b25752428c6b2e582a28f5fb8"
   },
   "last_baseline_desktop_passed": 40,
-  "current_targeted_python_passed": 299,
-  "current_ui_script_count": 21,
-  "current_browser_synthetic_flow_passed": true
+  "current_targeted_python_passed": 387,
+  "current_ui_script_count": 22,
+  "current_browser_synthetic_flow_passed": true,
+  "runtime_source_matches_verified_portable": true,
+  "current_targeted_python_skipped": 3,
+  "ocr_packaged_and_synthetic_tested": true
 }

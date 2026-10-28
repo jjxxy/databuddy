@@ -1,0 +1,195 @@
+{
+  "hash_definition": "SHA256(UTF8(\"delivered-files-v1\\n\" + sorted(path + NUL + file_sha256 + NUL + decimal_size + LF)))",
+  "not_an_upstream_wheel_hash": true,
+  "packages": [
+    {
+      "name": "certifi",
+      "version": "2026.10.23",
+      "sha256": "8342ba9032b8755842c93ead0e011023ba5dfbe4947833ba1e7850f3c8f159c2",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 14,
+      "delivered_bytes": 244827,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.2",
+      "sha256": "35d3a4e02846ef90bd657692ba1e3ebddb100d0e354b6cc33526acbdfc580a2d",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 23,
+      "delivered_bytes": 573185,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "sha256": "ec2e4efd333a0d5570f0d72a789f3b69bd8055e0633a32042071cf69e74135a8",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 19,
+      "delivered_bytes": 77868,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "colorlog",
+      "version": "6.12.0",
+      "sha256": "22713a22c6abd6b1036fe6bcc09866641c0ceacc218d566c84d308a920b2bc2f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 12,
+      "delivered_bytes": 29168,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "sha256": "b4d58217062e3fdd72c71487cd09714912547245a31cc17a1d7c9666c9a8b9f6",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 16,
+      "delivered_bytes": 88196,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "sha256": "46ef204a1cdf19a8f7f577a4615b9bd44c825740ae9cc284319aad9c743ae916",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 18,
+      "delivered_bytes": 342341,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.4",
+      "sha256": "6346af370ecf716eef59db55150f9c10e4ce0fb4f6def5ac081cbb9575b4b50c",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 947,
+      "delivered_bytes": 41940799,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "omegaconf",
+      "version": "2.4.0",
+      "sha256": "f134a19b6ca10f461b8a943925c8dae8693d60cc4b209bed64cf6c176fe5e0d7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 96,
+      "delivered_bytes": 965062,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "onnxruntime",
+      "version": "1.31.1",
+      "sha256": "5a57d67d2662feb5fee6ea580dac7af5a298bc764e9ce361f902f235583541f7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 325,
+      "delivered_bytes": 43614563,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "opencv-python-headless",
+      "version": "5.0.0.93",
+      "sha256": "9fd7de464a0ad78a3e370adab95724f436ffbbe5d78c63e2c9959f215584d5a3",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 48,
+      "delivered_bytes": 117603329,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "sha256": "ccb61491be18cacd5f4848b38a990e7c637f48159722841481034c2134bb1294",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 31,
+      "delivered_bytes": 499390,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pillow",
+      "version": "13.0.0",
+      "sha256": "8d6341b31a0906e559a6136729f566928e96af4ddefc1dfc713807804fd38370",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 122,
+      "delivered_bytes": 14885077,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "protobuf",
+      "version": "7.36.2",
+      "sha256": "fac2549c20c4715044d0c4e2f398753d3234eba54e89860e6287ea355fcf2d0f",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 65,
+      "delivered_bytes": 1711612,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "pyclipper",
+      "version": "1.4.0",
+      "sha256": "cf7ae081e1a5e5ea7fa4cb7c8c481abb1f05769e2e924901db726f4d410e51a7",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 10,
+      "delivered_bytes": 234524,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "PyYAML",
+      "version": "6.0.3",
+      "sha256": "747ffdfd9e11299439df73d93a09fa54f49c76b26f68b6a87b5ff13ae9a56396",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 26,
+      "delivered_bytes": 478471,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "rapidocr",
+      "version": "3.10.0",
+      "sha256": "0f20c4be1a88e148584017bf95de8d80940e5587c24c2e48372ad10956813753",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 102,
+      "delivered_bytes": 32428786,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "requests",
+      "version": "2.34.2",
+      "sha256": "4874f0aa16f90a2b67722adb84245928887b0a2183f664aa84a041b1c59efdd9",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 28,
+      "delivered_bytes": 234607,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "shapely",
+      "version": "2.2.0",
+      "sha256": "b062a1b85d8a322bf4acd1b496162444a3394c90473bb7b3b48d21c72a27bccd",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 157,
+      "delivered_bytes": 5314445,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "six",
+      "version": "1.17.0",
+      "sha256": "d1375f33854c94392b5ea9481f83f4c546ff75932103c680dc1900a1b12d4ede",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 8,
+      "delivered_bytes": 38155,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "tqdm",
+      "version": "4.70.1",
+      "sha256": "4b7964130df05093744bcad491f85757a8952b5cd58ca086489144e1139df598",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 41,
+      "delivered_bytes": 233772,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
+      "name": "urllib3",
+      "version": "2.8.0",
+      "sha256": "14874c1ba86d57c09adaac6989eca982fbf7337b56711dd5a8fa2725883e519c",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 44,
+      "delivered_bytes": 450683,
+      "file_hash_reference": "runtime-manifest.json#files"
+    }
+  ]
+}

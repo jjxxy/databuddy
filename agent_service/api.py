@@ -18,7 +18,7 @@ from fastapi import FastAPI, Depends, File, Form, UploadFile, HTTPException, Req
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import ValidationError
+from pydantic import Field,ValidationError
 from .config import DATA, TOKEN, MAX_UPLOAD, TIMEZONE, LLM_BASE, LLM_MODEL
 from .store import get,put,all_items,delete,now,uid,seal,patch
 from .models import SourceInput,PipelineInput,ScheduleInput,NoteInput,QueryInput,AskInput,SourceUpdate,ViewInput,PublishInput,ReleaseInput
@@ -54,6 +54,11 @@ async def lifespan(app):
     finally:stop.set();thread.join(timeout=1)
 
 app=FastAPI(title='个人数据 Agent',version='0.20.0',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
+
+class SourceReviewPublishInput(PublishInput):
+    confirm_source_review:bool=Field(default=False,strict=True)
+    expected_commit:str|None=Field(default=None,min_length=1,max_length=128)
+    expected_parquet_sha256:str|None=Field(default=None,pattern=r'^[a-f0-9]{64}$')
 
 async def auth(request:Request):
     from .identity import mode,principal
@@ -376,7 +381,11 @@ def export(pipeline_id:str,run_id:str|None=None):
         run=get_job(run_id)
         if run['target']!=pipeline_id or not run.get('validated') or run.get('artifact_removed') or run['status'] not in ('validated','succeeded'):raise HTTPException(400,'该数据版本不属于此应用或已不可用')
         folder,manifest=manifest_for(run)
-    else:_,folder,manifest=published(pipeline_id)
+    else:
+        pipeline,folder,manifest=published(pipeline_id)
+        run=get_job(pipeline['published_run'])
+    from .releases import ensure_candidate_bulk_allowed
+    ensure_candidate_bulk_allowed(run,manifest)
     labels={x['name']:x['label'] for x in manifest['fields']}
     def records():
         with duckdb.connect(str(folder/'warehouse.duckdb'),read_only=True,config={'enable_external_access':False}) as con:
@@ -464,10 +473,18 @@ def update_source(source_id:str,value:SourceUpdate):
     return public_source(get('source',source_id))
 
 @app.post('/api/pipelines/{pipeline_id}/publish',dependencies=[Depends(auth)])
-def release(pipeline_id:str,value:PublishInput):return publish(pipeline_id,value.run_id)
+def release(pipeline_id:str,value:SourceReviewPublishInput,request:Request):
+    from .actor_context import actor_from_identity
+    return publish(pipeline_id,value.run_id,confirm_source_review=value.confirm_source_review,
+                   expected_commit=value.expected_commit,expected_parquet_sha256=value.expected_parquet_sha256,
+                   review_actor=actor_from_identity(request.state.identity))
 
 @app.post('/api/pipelines/{pipeline_id}/rollback',dependencies=[Depends(auth)])
-def rollback(pipeline_id:str,value:PublishInput):return publish(pipeline_id,value.run_id,rollback=True)
+def rollback(pipeline_id:str,value:SourceReviewPublishInput,request:Request):
+    from .actor_context import actor_from_identity
+    return publish(pipeline_id,value.run_id,rollback=True,confirm_source_review=value.confirm_source_review,
+                   expected_commit=value.expected_commit,expected_parquet_sha256=value.expected_parquet_sha256,
+                   review_actor=actor_from_identity(request.state.identity))
 
 @app.get('/api/pipelines/{pipeline_id}/preview',dependencies=[Depends(auth)])
 def preview(pipeline_id:str):
@@ -477,7 +494,10 @@ def preview(pipeline_id:str):
     with duckdb.connect(str(folder/'warehouse.duckdb'),read_only=True,config={'enable_external_access':False}) as con:
         cur=con.execute('select * from business.business_objects order by object_id limit 25')
         rows=[dict(zip([x[0] for x in cur.description],[browser_scalar(v) for v in r])) for r in cur.fetchall()]
-    return {'manifest':m,'rows':rows,'run_id':run['id']}
+    from .releases import _source_review_details,_requires_fact_alignment
+    needs_review,_=_source_review_details(run,m)
+    return {'manifest':m,'rows':rows,'run_id':run['id'],'requires_source_review':needs_review,
+            'fact_semantic_alignment_required':_requires_fact_alignment(run,m)}
 
 @app.patch('/api/pipelines/{pipeline_id}/release-mode',dependencies=[Depends(auth)])
 def release_mode(pipeline_id:str,value:ReleaseInput):return patch('pipeline',pipeline_id,release_mode=value.mode)

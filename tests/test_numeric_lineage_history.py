@@ -112,8 +112,12 @@ def _mock_graph(monkeypatch,edges):
         context={'project_id':pid,'plan_sha256':plan,'data_contract':None,
                  'input_evidence':{alias:{'result_id':child,'manifest_sha256':sha.get(child,'f'*64),'complete':True}
                                    for alias,child in zip(aliases,children)}}
+        if not children:
+            context['input_evidence']['input0']={'source_id':'source_fixture','content_hash':'a'*64}
         runs[name]={'id':name,'project_id':pid,'kind':'data_workflow','target':'workflow_'+name,
-                    'commit':plan,'workflow_document':doc,'data_result':meta}
+                    'commit':plan,'workflow_document':doc,'data_result':meta,
+                    'source_snapshot':{'source_fixture':{'id':'source_fixture','name':'source.csv',
+                                        'kind':'file','content_hash':'a'*64}}}
         metas[name]=meta;pages[name]={'context':context,'total':1}
     def job(name):return runs[name]
     def folder(project_id,name,**kwargs):

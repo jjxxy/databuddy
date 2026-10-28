@@ -287,10 +287,11 @@ def test_local_application_export_is_complete_decimal_and_spreadsheet_literal(lo
         db.execute('CREATE TABLE objects(object_id VARCHAR, customer VARCHAR, amount DECIMAL(38,12))')
         db.executemany('INSERT INTO objects VALUES (?,?,?)',[(str(i),'=HYPERLINK("unsafe")' if i==0 else 'customer-'+str(i),Decimal('0.100000000001')) for i in range(40)])
         db.execute('COPY objects TO ? (FORMAT PARQUET)',[str(parquet)])
-    manifest={'parquet_hash':hashlib.sha256(parquet.read_bytes()).hexdigest(),
+    commit='a'*40
+    manifest={'run_id':run_id,'pipeline_id':pipeline_id,'commit':commit,'parquet_hash':hashlib.sha256(parquet.read_bytes()).hexdigest(),
               'fields':[{'name':'object_id','label':'编号'},{'name':'customer','label':' =客户'},{'name':'amount','label':'金额'}]}
     (folder/'output.json').write_text(json.dumps(manifest))
-    run={'id':run_id,'target':pipeline_id,'validated':True,'status':'validated','artifact_dir':str(folder.relative_to(DATA))}
+    run={'id':run_id,'kind':'pipeline','target':pipeline_id,'commit':commit,'validated':True,'status':'validated','artifact_dir':str(folder.relative_to(DATA))}
     put('pipeline',{'project_id':pid,'published_run':run_id,'candidate_run':None},pipeline_id)
     monkeypatch.setattr(jobs,'get_job',lambda key:run if key==run_id else None)
     validated=[]

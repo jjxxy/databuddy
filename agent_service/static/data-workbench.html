@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>我的业务工作空间 · Atlas</title>
-  <link rel="stylesheet" href="/data-workbench.css?v=20">
-  <script src="/data-workbench.js?v=20" defer></script>
+  <link rel="stylesheet" href="/data-workbench.css?v=21">
+  <script src="/data-workbench.js?v=21" defer></script>
 </head>
 <body>
 <section id="workbench-login" class="login" hidden>
@@ -76,7 +76,7 @@
     </section>
     <section id="workbench-panel-result" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-result" hidden>
       <section id="workbench-candidate" class="candidate" hidden>
-        <div><strong>新结果待你确认</strong><p>核对数值与来源后，可以将它作为以后继续使用的结果。</p></div>
+        <div><strong id="workbench-candidate-title">新结果待你确认</strong><p id="workbench-candidate-description">核对数值与来源后，可以将它作为以后继续使用的结果。</p><p id="workbench-fact-semantic-warning" hidden>逐条事实需先完成指标、单位、期间和可加性的业务语义对齐。当前尚不支持对齐确认，暂不能采用或生成报告。</p><div id="workbench-source-review" hidden><p>这份结果包含需要人工复核的来源解释。请对照原件核对提取内容、业务口径和本次结果后，再决定是否采用。</p><label class="candidate-ack"><input id="workbench-source-review-ack" type="checkbox"><span>我已核对这份候选结果使用的来源原件、解释内容和结果。</span></label><p id="workbench-source-review-error" hidden>结果版本依据不完整，请刷新后重新核对。</p></div></div>
         <button id="workbench-publish" type="button" disabled>确认采用此结果</button>
       </section>
       <section class="panel">
@@ -112,7 +112,24 @@
         <div class="catalog-pagination"><span id="workbench-catalog-page-info" class="muted"></span><button id="workbench-more-catalogs" type="button" hidden>加载更多语义包</button></div>
       </section>
       <section class="panel"><div class="panel-heading"><div><h2>核对字段含义与值映射</h2><p>同名字段不一定有相同含义。请核对定义、单位、期间和粒度后作出选择。</p></div><button id="workbench-refresh-proposals" type="button">刷新待核对项</button></div><div id="workbench-proposals" class="proposal-list panel-body"></div><p id="workbench-proposals-empty" class="empty" hidden>暂无待核对项。</p><div class="proposal-pagination"><button id="workbench-more-proposals" type="button" hidden>加载更多</button></div></section>
-      <section class="panel"><div class="panel-heading"><div><h2>非结构化来源的数值核对</h2><p>查看原文与提取数值，核对金额、含义、单位和期间后再用于后续加工。</p></div><button id="workbench-refresh-facts" type="button">刷新来源数值</button></div><div id="workbench-facts" class="facts-list panel-body"></div><p id="workbench-facts-empty" class="empty">打开本页后读取待核对的来源数值。</p></section>
+      <section class="panel"><div class="panel-heading"><div><h2>非结构化来源的数值核对</h2><p>查看原文与提取数值，核对金额、含义、单位和期间；正式计算前还需完成业务语义对齐。</p></div><button id="workbench-refresh-facts" type="button">刷新来源数值</button></div><div id="workbench-facts" class="facts-list panel-body"></div><p id="workbench-facts-empty" class="empty">打开本页后读取待核对的来源数值。</p></section>
+      <section class="panel" aria-labelledby="visual-title"><div class="panel-heading"><div><h2 id="visual-title">图片与 PDF 人工录入核对</h2><p>识别文字可辅助录入；提交的内容由你对照原件确认，系统不会独立验证图片上的数字或财务口径。</p></div><button type="button" id="visual-refresh">刷新资料和核对记录</button></div>
+        <div class="panel-body visual-body"><p class="muted">先在项目对话上传图片或 PDF。每次录入一项数值；原文须包含完整数值、指标、单位、期间和范围，例如“2026-10 合肥办事处净收入 123.45 元”。</p>
+          <form id="visual-form"><div class="visual-fields">
+            <label>选择项目资料<select id="visual-source" required><option value="">请选择图片或 PDF</option></select></label>
+            <label>原件页码<input id="visual-page" type="number" min="1" max="2000" step="1" value="1" required></label>
+            <div class="visual-wide visual-ocr"><button id="visual-ocr-run" type="button" disabled>识别图片中的文字</button><p id="visual-ocr-status" class="muted" role="status" aria-live="polite">选择图片后可尝试识别；PDF 请先人工录入。</p><div id="visual-ocr-results"></div></div>
+            <label class="visual-wide">原文逐字录入<textarea id="visual-quote" maxlength="3000" rows="3" required></textarea></label>
+            <label>原文中的完整数值<input id="visual-value" maxlength="100" required placeholder="例如 123.45"></label>
+            <label>指标名称<input id="visual-measure" maxlength="200" required placeholder="例如 净收入"></label>
+            <label>单位<input id="visual-unit" maxlength="40" required placeholder="例如 元"></label>
+            <label>期间<input id="visual-period" maxlength="100" required placeholder="例如 2026-10"></label>
+            <label>范围名称<input id="visual-dimension-name" maxlength="100" required placeholder="例如 办事处"></label>
+            <label>范围内容<input id="visual-dimension-value" maxlength="300" required placeholder="例如 合肥办事处"></label>
+          </div><button id="visual-create" class="primary" type="submit">保存待核对记录</button></form>
+          <p id="visual-message" class="proposal-message" role="status" aria-live="polite"></p><div id="visual-list" class="proposal-list"></div><p id="visual-empty" class="muted">尚无人工录入记录。</p><button id="visual-more" type="button" hidden>加载更多记录</button>
+        </div>
+      </section>
     </section>
   </main>
 </div>

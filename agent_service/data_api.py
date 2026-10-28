@@ -16,6 +16,8 @@ class EditWorkflow(StrictModel):
 class AdoptInput(StrictModel):
     expected_plan_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     run_id:str|None=None
+    confirm_source_review:bool=Field(default=False,strict=True)
+    expected_handoff_sha256:str|None=Field(default=None,pattern=r'^[a-f0-9]{64}$')
 class Review(StrictModel):
     expected_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     target_id:str|None=None
@@ -142,9 +144,14 @@ def install(app,auth):
     def data_result(pid:str,rid:str,offset:int=0,limit:int=100):return data.read_result(pid,rid,offset,limit)
 
     @app.post('/api/projects/{pid}/data-results/{rid}/publish',dependencies=dependencies)
-    def adopt_result(pid:str,rid:str,value:AdoptInput):
+    def adopt_result(pid:str,rid:str,value:AdoptInput,request:Request):
         if value.run_id and value.run_id!=rid:raise ValueError('结果标识不一致')
-        return data.publish_result(pid,rid,value.expected_plan_sha256)
+        review_actor=None
+        if value.confirm_source_review:
+            from .actor_context import actor_from_identity
+            review_actor=actor_from_identity(getattr(request.state,'identity',{}))
+        return data.publish_result(pid,rid,value.expected_plan_sha256,review_actor=review_actor,
+                                   review_handoff_sha256=value.expected_handoff_sha256)
 
     @app.get('/api/projects/{pid}/data-results/{rid}/download',dependencies=dependencies)
     def download_result(pid:str,rid:str,format:Literal['xlsx','csv','handoff']='handoff'):
@@ -212,6 +219,32 @@ def install(app,auth):
             if value.decision!='approved':raise ValueError('映射可修改为新提案；拒绝操作不产生可执行核对回执')
             return review_mapping_record(pid,ident,value.expected_sha256,actor(request))
         return review(pid,ident,value.expected_sha256,value.target_id,actor(request),value.decision)
+
+    from .visual_fact_service import OCRInput, VisualProposal, VisualReview
+    @app.post('/api/projects/{pid}/sources/{sid}/ocr',dependencies=dependencies)
+    def recognize_source_ocr(pid:str,sid:str,value:OCRInput):
+        from .visual_fact_service import recognize_source
+        return recognize_source(pid,sid,value)
+
+    @app.post('/api/projects/{pid}/visual-facts',dependencies=dependencies)
+    def propose_visual_facts(pid:str,value:VisualProposal):
+        from .visual_fact_service import propose
+        return propose(pid,value)
+
+    @app.get('/api/projects/{pid}/visual-facts',dependencies=dependencies)
+    def list_visual_facts(pid:str,offset:int=0,limit:int=20):
+        from .visual_fact_service import list_proposals
+        return list_proposals(pid,offset,limit)
+
+    @app.get('/api/projects/{pid}/visual-facts/{ident}',dependencies=dependencies)
+    def get_visual_facts(pid:str,ident:str):
+        from .visual_fact_service import detail
+        return detail(pid,ident)
+
+    @app.post('/api/projects/{pid}/visual-facts/{ident}/review',dependencies=dependencies)
+    def review_visual_facts(pid:str,ident:str,value:VisualReview,request:Request):
+        from .visual_fact_service import review
+        return review(pid,ident,value,actor(request))
 
     from .data_tools import FactProposal
     @app.get('/api/projects/{pid}/data-documents/{sid}',dependencies=dependencies)

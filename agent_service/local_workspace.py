@@ -412,16 +412,16 @@ def export_project(pid):
                 if pipeline.get('project_id') != pid:continue
                 for run_id in sorted({v for v in (pipeline.get('published_run'), pipeline.get('candidate_run')) if v}):
                     try:
-                        from .releases import manifest_for, verify_semantics
+                        from .releases import ensure_candidate_bulk_allowed, manifest_for
                         import duckdb
                         run = get_job(run_id)
                         if run.get('target') != pipeline['id'] or not run.get('validated') or run.get('artifact_removed') or run.get('status') not in ('validated', 'succeeded'):
                             raise ValueError('数据版本不可用')
                         folder, manifest = manifest_for(run)
+                        ensure_candidate_bulk_allowed(run,manifest,project_id=pid)
                         parquet = folder / 'business_objects.parquet'
                         if hashlib.sha256(parquet.read_bytes()).hexdigest() != manifest['parquet_hash']:
                             raise ValueError('完整结果摘要不一致')
-                        verify_semantics(pipeline, run, manifest, folder)
                         csv_file = stage / ('pipeline-' + run_id + '.csv')
                         with duckdb.connect() as db, csv_file.open('w',encoding='utf-8-sig',newline='') as output:
                             cursor = db.read_parquet(str(parquet)).execute()

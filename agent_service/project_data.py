@@ -180,6 +180,39 @@ def _project_text_columns(rows,fields,options):
                       'lossless':True,'original_cell_evidence_preserved':True,'type_counts':counts}
 
 
+def source_requires_fact_alignment(source,evidence):
+    """Fact text review does not approve mixed row meanings or aggregation.
+
+    No currently accepted workflow receipt binds every fact, semantic meaning,
+    period, unit and aggregation to this exact run. Until one exists, these
+    sources remain inspectable candidates but cannot be promoted to reports or
+    upstream results by a generic source review click.
+    """
+    source=source if isinstance(source,dict) else {}
+    evidence=evidence if isinstance(evidence,dict) else {}
+    profile=source.get('profile')
+    profile_evidence=profile.get('evidence') if isinstance(profile,dict) else None
+    return bool(source.get('fact_review_id') or source.get('visual_fact_review_id')
+                or source.get('semantic_alignment_required') is True
+                or evidence.get('fact_review_id') or evidence.get('visual_fact_review_id')
+                or evidence.get('semantic_alignment_required') is True
+                or isinstance(profile_evidence,dict) and profile_evidence.get('semantic_alignment_required') is True)
+
+
+def source_interpretation_needs_review(source,evidence):
+    """Unstructured and explicitly tentative sources need an owner decision."""
+    source=source if isinstance(source,dict) else {}
+    evidence=evidence if isinstance(evidence,dict) else {}
+    name=str(source.get('name') or '').lower()
+    unstructured=source.get('kind')=='file' and name.endswith(
+        ('.txt','.md','.pdf','.docx','.pptx','.png','.jpg','.jpeg','.tif','.tiff','.webp','.html','.htm'))
+    return bool(source_requires_fact_alignment(source,evidence) or
+                source.get('requires_semantic_review') is True or
+                evidence.get('semantic_review_required') is True or
+                evidence.get('requires_semantic_review') is True or
+                evidence.get('parser')=='docling' or unstructured)
+
+
 def read_input(pid,binding,*,frozen_source=None):
     binding=InputBinding.model_validate(binding)
     if bool(binding.source_id)==bool(binding.result_id):raise ValueError('输入必须指定一个来源或已验证结果')
@@ -194,6 +227,7 @@ def read_input(pid,binding,*,frozen_source=None):
         rows=page['rows'];fields=page['schema']
         evidence={'result_id':binding.result_id,'manifest_sha256':meta['handoff_sha256'],'complete':True,
                   'requires_semantic_review':meta.get('requires_semantic_review',False),
+                  'requires_source_review':meta.get('requires_source_review',False),
                   'semantic_review_reasons':page.get('context',{}).get('semantic_review_reasons',[]),
                   'output_semantics':page.get('context',{}).get('output_semantics')}
         provenance={'upstream_result':binding.result_id,'handoff_manifest':meta['handoff_sha256']}
@@ -234,6 +268,20 @@ def read_input(pid,binding,*,frozen_source=None):
             if truncated:raise ValueError('来源返回的是样本，不能继续完整加工')
             rows=[{k:v for k,v in r.items() if k not in ('record_hash','_source_index')} for r in rows]
             provenance={'source_id':s['id'],'evidence':evidence,'level':'source_and_row_order; no_invented_cell_coordinates'}
+        # Interpretation of unstructured content and generated layouts is not
+        # a verified financial fact. Preserve this obligation across source
+        # snapshots, handoffs and later refreshes; parser names and source flags
+        # must not silently disappear during normalization.
+        source_review=source_interpretation_needs_review(s,evidence)
+        if source_review:
+            reasons=list(evidence.get('semantic_review_reasons') or [])
+            if 'SOURCE_INTERPRETATION_REVIEW_REQUIRED' not in reasons:
+                reasons.append('SOURCE_INTERPRETATION_REVIEW_REQUIRED')
+            if source_requires_fact_alignment(s,evidence):
+                reasons.append('FACT_SEMANTIC_ALIGNMENT_REQUIRED')
+                evidence['semantic_alignment_required']=True
+            evidence.update(requires_semantic_review=True,requires_source_review=True,
+                            semantic_review_reasons=reasons)
         if s['kind']=='file':
             # Readers must never attach a frozen revision to bytes which were
             # replaced while parsing. CSV also verifies the exact parsed buffer.
@@ -557,7 +605,109 @@ def require_current_numeric_evidence(rid,meta,context,total):
     require_exact_numeric_evidence(report,contract,expected_rows=total)
 
 
-def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_token=None):
+def _source_review_receipt_valid(pid, rid, run, meta, context):
+    """An adoption receipt is explicit evidence of a review, not run success."""
+    receipt=run.get('source_review_receipt')
+    if not isinstance(receipt,dict) or run.get('status')!='succeeded':return False
+    required={'version','decision','method','project_id','run_id','plan_sha256','handoff_sha256',
+              'source_snapshot_sha256','input_evidence_sha256','reviewer','reviewed_at','receipt_sha256'}
+    if set(receipt)!=required:return False
+    content={k:v for k,v in receipt.items() if k!='receipt_sha256'}
+    return (type(receipt['version']) is int and receipt['version']==1 and receipt['decision']=='confirmed' and
+            receipt['method']=='authenticated_user_source_review' and receipt['project_id']==pid and
+            receipt['run_id']==rid and receipt['plan_sha256']==meta.get('plan_sha256') and
+            receipt['handoff_sha256']==meta.get('handoff_sha256') and
+            receipt['source_snapshot_sha256']==digest(run.get('source_snapshot',{})) and
+            receipt['input_evidence_sha256']==digest(context.get('input_evidence')) and
+            isinstance(receipt['reviewer'],str) and re.fullmatch(r'owner|u_[a-f0-9]{64}',receipt['reviewer']) is not None and
+            isinstance(receipt['reviewed_at'],str) and bool(receipt['reviewed_at']) and
+            receipt['receipt_sha256']==digest(content))
+
+
+def _verify_review_originals(pid,run):
+    """Recheck actual frozen file evidence before recording a new review.
+
+    Derived manual evidence is not the original image. Follow its separate
+    explicit visual-review receipt back to the authenticated source and page.
+    Other derived inputs require a verifiable source revision and content record.
+    This function never re-queries an external connector.
+    """
+    from .connectors import verified_file_source
+    document=WorkflowDocument.model_validate(run['workflow_document'])
+    snapshot=run.get('source_snapshot')
+    if not isinstance(snapshot,dict):raise ValueError('来源快照不可核对，请重新运行')
+    for binding in document.bindings.values():
+        if not binding.source_id:continue
+        frozen=snapshot.get(binding.source_id)
+        if not isinstance(frozen,dict) or frozen.get('id')!=binding.source_id or frozen.get('project_id')!=pid:
+            raise ValueError('来源快照不可核对，请重新运行')
+        if frozen.get('kind')!='file':
+            raise ValueError('该外部来源没有可复核的本地版本快照，请先保存并核对原始资料')
+        verified_file_source(frozen)
+        origin=frozen.get('origin_source_id')
+        if not origin:continue
+        if not isinstance(origin,str):raise ValueError('派生资料的原件记录不可核对')
+        visual_id=frozen.get('visual_fact_review_id')
+        if visual_id:
+            from .visual_fact_service import _owned as visual_owned,_original as visual_original
+            record,payload=visual_owned(pid,visual_id)
+            reviewed=record.get('review')
+            if (record.get('status')!='approved' or record.get('output_source_id')!=binding.source_id
+                    or record.get('source_id')!=origin or type(payload.get('page')) is not int
+                    or payload['page']<1 or record.get('page')!=payload['page']
+                    or not isinstance(reviewed,dict) or reviewed.get('decision')!='approved'
+                    or reviewed.get('visual_review_confirmed') is not True
+                    or reviewed.get('content_sha256')!=record.get('content_sha256')
+                    or payload.get('source_id')!=origin):
+                raise ValueError('人工视觉资料缺少可核对的原件复核回执')
+            source,content_hash,_=visual_original(pid,origin,payload.get('page'))
+            if (source.get('revision',1)!=payload.get('source_revision')
+                    or content_hash!=payload.get('source_file_sha256')):
+                raise ValueError('人工视觉资料的原始图片或 PDF 版本已变化，请重新核对')
+            continue
+        fact_id=frozen.get('fact_review_id')
+        if fact_id:
+            from .fact_service import _owned as facts_owned,_document
+            record,payload=facts_owned(pid,fact_id);reviewed=record.get('review')
+            if (record.get('status')!='approved' or record.get('output_source_id')!=binding.source_id
+                    or not isinstance(reviewed,dict) or reviewed.get('decision')!='approved'
+                    or reviewed.get('content_sha256')!=record.get('content_sha256')
+                    or payload.get('source_id')!=origin):
+                raise ValueError('派生事实缺少可核对的原文复核回执')
+            original=_document(pid,origin)
+            if any(original.get(key)!=payload.get(key) for key in ('source_revision','source_file_sha256','source_text_sha256')):
+                raise ValueError('派生事实的原始资料版本已变化，请重新核对')
+            continue
+        cfg=unseal(frozen['secret_config']);extraction=cfg.get('extraction_evidence')
+        origin_revision=frozen.get('origin_source_revision')
+        if not isinstance(extraction,dict) or type(origin_revision) is not int or origin_revision<1:
+            raise ValueError('派生资料缺少可核对的原件版本，请重新处理原件')
+        original=owned(pid,'source',origin)
+        if original.get('kind')!='file' or original.get('archived') or original.get('revision',1)!=origin_revision:
+            raise ValueError('派生资料的原件版本已变化，请重新处理原件')
+        versions=[entry for entry in all_items('source_version') if entry.get('source_id')==origin and entry.get('revision')==origin_revision]
+        if len(versions)!=1 or versions[0].get('content_hash')!=original.get('content_hash'):
+            raise ValueError('派生资料的原件版本证据不完整，请重新处理原件')
+        path,content,_=verified_file_source(original)
+        try:text=content.decode('utf-8').replace('\r\n','\n').replace('\r','\n')
+        except UnicodeDecodeError:raise ValueError('派生资料的原文编码已变化，请重新处理原件') from None
+        if hashlib.sha256(text.encode('utf-8')).hexdigest()!=extraction.get('source_sha256'):
+            raise ValueError('派生资料的原文内容已变化，请重新处理原件')
+
+
+def _new_source_review_receipt(pid,rid,run,meta,context,review_actor):
+    if not isinstance(review_actor,str) or not re.fullmatch(r'owner|u_[a-f0-9]{64}',review_actor):
+        raise ValueError('来源需要在工作台由已认证用户核对并确认，不能由后台或模型代确认')
+    content={'version':1,'decision':'confirmed','method':'authenticated_user_source_review',
+             'project_id':pid,'run_id':rid,'plan_sha256':meta['plan_sha256'],
+             'handoff_sha256':meta['handoff_sha256'],
+             'source_snapshot_sha256':digest(run.get('source_snapshot',{})),
+             'input_evidence_sha256':digest(context.get('input_evidence')),
+             'reviewer':review_actor,'reviewed_at':now()}
+    return dict(content,receipt_sha256=digest(content))
+
+
+def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_token=None,allow_root_review_pending=False):
     """Check frozen SQL and all result-input ancestors without materializing rows.
 
     Every ancestor's handoff is verified, not merely its declared link. An
@@ -616,10 +766,51 @@ def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_t
                         raise NumericLineageError('unsafe_sql' if error.code=='SQL_INEXACT_NUMERIC' else 'unknown',
                                                   unsafe if error.code=='SQL_INEXACT_NUMERIC' else unknown) from None
             evidence=context.get('input_evidence')
+            if not isinstance(evidence,dict):raise NumericLineageError('source_review_unknown','历史来源证据不完整，请从原始资料重新运行并核对')
+            evidence_needs_review=any(isinstance(proof,dict) and proof.get('requires_source_review') is True for proof in evidence.values())
+            meta_needs_review=meta.get('requires_source_review') is True
+            context_needs_review=context.get('requires_source_review') is True
+            needs_review=evidence_needs_review or meta_needs_review or context_needs_review
+            if needs_review and not (evidence_needs_review and meta_needs_review and context_needs_review):
+                raise NumericLineageError('source_review_unknown','来源复核标记不一致，请从原始资料重新运行并核对')
+            if needs_review and not (current==rid and allow_root_review_pending):
+                if not _source_review_receipt_valid(pid,current,run,meta,context):
+                    raise NumericLineageError('source_review_unknown','历史来源解释缺少已认证的人工复核记录，请先在工作台核对该候选')
             links=[]
             for alias,binding in document.bindings.items():
-                if not binding.result_id:continue
                 proof=evidence.get(alias) if isinstance(evidence,dict) else None
+                if binding.source_id:
+                    snapshot=run.get('source_snapshot')
+                    frozen=snapshot.get(binding.source_id) if isinstance(snapshot,dict) else None
+                    if (not isinstance(frozen,dict) or frozen.get('id')!=binding.source_id
+                            or not isinstance(proof,dict) or proof.get('source_id')!=binding.source_id
+                            or not isinstance(frozen.get('kind'),str) or not isinstance(frozen.get('name'),str)
+                            or (frozen.get('kind')=='file' and
+                                (not isinstance(frozen.get('content_hash'),str)
+                                 or not re.fullmatch(r'[a-f0-9]{64}',frozen['content_hash'])
+                                 or proof.get('content_hash')!=frozen['content_hash']))):
+                        raise NumericLineageError('source_review_unknown',
+                            '历史来源证据不完整，请从原始资料重新运行并核对')
+                    if source_requires_fact_alignment(frozen,proof):
+                        raise NumericLineageError('fact_semantic_alignment_missing',
+                            '文本或视觉事实尚未完成逐项业务语义对齐，不能自动汇总、采用或生成报告；请先核对指标、单位、期间及可加性')
+                    # Historical receipts predate the review marker. If the
+                    # frozen source or parser proves an interpretation was
+                    # involved, do not retroactively invent an approval.
+                    if (source_interpretation_needs_review(frozen,proof)
+                            and (not isinstance(proof,dict) or proof.get('requires_source_review') is not True)):
+                        raise NumericLineageError('source_review_unknown',
+                            '历史来源解释缺少完整的复核记录，请从原始资料重新运行并核对')
+                    if proof.get('requires_source_review') is True:
+                        revision=frozen.get('revision',1)
+                        revisions=run.get('source_revisions')
+                        if (type(revision) is not int or revision<1 or type(proof.get('source_revision')) is not int
+                                or proof.get('source_revision')!=revision or not isinstance(revisions,dict)
+                                or type(revisions.get(binding.source_id)) is not int or revisions.get(binding.source_id)!=revision
+                                or meta.get('source_revisions')!=revisions):
+                            raise NumericLineageError('source_review_unknown','来源版本复核依据不完整，请重新运行并核对')
+                    continue
+                if not binding.result_id:continue
                 checksum=proof.get('manifest_sha256') if isinstance(proof,dict) else None
                 if (not isinstance(proof,dict) or proof.get('result_id')!=binding.result_id or proof.get('complete') is not True
                         or not isinstance(checksum,str) or not re.fullmatch(r'[a-f0-9]{64}',checksum)):
@@ -638,7 +829,15 @@ def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_t
 def read_result(pid,rid,offset=0,limit=100):
     folder,meta=result_folder(pid,rid)
     from .result_delivery import read_handoff
-    page=read_handoff(folder/'handoff',offset=offset,limit=limit)
+    page=read_handoff(folder/'handoff',offset=offset,limit=limit,expected_manifest_sha256=meta['handoff_sha256'])
+    # The display flag is conservative even if a legacy receipt and metadata
+    # disagree. Adoption still validates the original immutable context.
+    context=dict(page.get('context') or {})
+    evidence=context.get('input_evidence')
+    if (meta.get('requires_source_review') is True or context.get('requires_source_review') is True
+            or isinstance(evidence,dict) and any(isinstance(proof,dict) and proof.get('requires_source_review') is True for proof in evidence.values())):
+        context['requires_source_review']=True
+    page['context']=context
     return dict(page,run_id=rid,workflow_id=meta['workflow_id'],plan_sha256=meta['plan_sha256'],data_as_of=meta['created_at'])
 
 
@@ -766,20 +965,23 @@ def execute_job(run,folder):
                 try:report=evaluate(con,doc.contract)
                 except ExactDataContractError as error:raise TaskError(str(error),'DATA_CONTRACT_EXACTNESS') from None
             if not report['passed']:raise TaskError('加工结果未通过数据验收契约，保留之前的正式结果','DATA_CONTRACT_FAILED')
+        source_review=any(p.get('requires_source_review') for p in evidence.values())
         context={'project_id':pid,'workflow_id':run['target'],'plan_sha256':run['commit'],'processing_fingerprint':engine,'input_evidence':evidence,'data_contract':report,
                  'lineage_scope':'input_cell_or_source_evidence_plus_stage_dependencies; output_row_lineage_not_inferred',
                  'semantic_review_reasons':sorted({reason for proof in evidence.values() for reason in proof.get('semantic_review_reasons',[])}),
-                 'output_semantics':output['output']['schema'],'requires_semantic_review':bool(output.get('requires_semantic_review') or any(p.get('requires_semantic_review') for p in evidence.values()) or any(st.kind in ('reclassify','lookup') and st.id not in reviewed_stages for st in doc.plan.stages))}
+                 'output_semantics':output['output']['schema'],'requires_source_review':source_review,
+                 'requires_semantic_review':bool(output.get('requires_semantic_review') or any(p.get('requires_semantic_review') for p in evidence.values()) or any(st.kind in ('reclassify','lookup') and st.id not in reviewed_stages for st in doc.plan.stages))}
         manifest=write_handoff(folder/'handoff',output['output']['rows'],output['output']['schema'],context=context,provenance=provenance,stages=stage_receipts)
         verify_handoff(folder/'handoff');checkpoint(run)
         meta={'run_id':run['id'],'workflow_id':run['target'],'project_id':pid,'plan_sha256':run['commit'],'processing_fingerprint':engine,
               'handoff_sha256':hashlib.sha256((folder/'handoff'/'manifest.json').read_bytes()).hexdigest(),
               'records':output['output']['row_count'],'created_at':now(),'source_revisions':run.get('source_revisions',{}),'complete':True,'contract':report,
-              'requires_semantic_review':context['requires_semantic_review'],'semantic_review_reasons':context['semantic_review_reasons']}
+              'requires_semantic_review':context['requires_semantic_review'],'requires_source_review':source_review,
+              'semantic_review_reasons':context['semantic_review_reasons']}
         (folder/'data-result.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2))
         patch_run(run,validated=True,records=meta['records'],stage='完整结果验证通过',data_result=meta)
         w=owned(pid,'data_workflow',run['target'])
-        if w.get('published_run') and w.get('active_sha256')==run['commit']:
+        if w.get('published_run') and w.get('active_sha256')==run['commit'] and not source_review:
             publish_result(pid,run['id'],run['commit'],lease_token=run['lease_token'])
         else:
             patch_run(run,status='validated',finished_at=now(),stage='完整结果验证通过，等待采用',
@@ -787,22 +989,35 @@ def execute_job(run,folder):
     finally:stop.set();thread.join(timeout=4)
 
 
-def publish_result(pid,rid,expected_sha256,*,lease_token=None):
+def publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None):
     from .job_authority import guard
     from .jobs import get_job
     from contextlib import nullcontext
     # Explicit owner adoption is a new authorization; worker auto-publication
     # must retain its originating machine grant through the database commit.
     with guard(get_job(rid)) if lease_token else nullcontext():
-        return _publish_result(pid,rid,expected_sha256,lease_token=lease_token)
+        return _publish_result(pid,rid,expected_sha256,lease_token=lease_token,review_actor=review_actor,review_handoff_sha256=review_handoff_sha256)
 
 
-def _publish_result(pid,rid,expected_sha256,*,lease_token=None):
+def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None):
     from .jobs import get_job,jobs,render
     from .result_delivery import read_handoff
     folder,meta=result_folder(pid,rid,lease_token=lease_token)
+    before_review=get_job(rid)
+    snapshot_hash=digest(before_review.get('source_snapshot',{}))
     page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
-    require_safe_numeric_lineage(pid,rid,root_meta=meta,root_page=page,lease_token=lease_token)
+    needs_review=meta.get('requires_source_review') is True or page['context'].get('requires_source_review') is True
+    if needs_review:
+        if lease_token or review_handoff_sha256!=meta['handoff_sha256']:
+            raise ValueError('来源解释需要在工作台对照原件并明确确认，请刷新结果后核对')
+        if not isinstance(review_actor,str) or not re.fullmatch(r'owner|u_[a-f0-9]{64}',review_actor):
+            raise ValueError('来源解释需要由已认证用户在工作台明确确认，不能由后台或模型代确认')
+    require_safe_numeric_lineage(pid,rid,root_meta=meta,root_page=page,lease_token=lease_token,
+                                 allow_root_review_pending=bool(needs_review and not lease_token))
+    if needs_review and not _source_review_receipt_valid(pid,rid,before_review,meta,page['context']):
+        try:_verify_review_originals(pid,before_review)
+        except ValueError:raise
+        except Exception:raise ValueError('来源原件或复核记录不可用，请重新打开并核对') from None
     if meta['plan_sha256']!=expected_sha256:raise ValueError('加工方案版本已变化，请重新核对')
     with transaction() as c:
         row=c.execute(select(jobs).where(jobs.c.id==rid).with_for_update()).mappings().first();run=render(row)
@@ -823,6 +1038,10 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None):
         if w.get('candidate_run')==rid:w['candidate_run']=None
         if lease_token and (row_job_until or 0)<time.time():raise ValueError('执行租约失效，禁止采用结果')
         c.execute(update(items).where(items.c.id==w['id'],items.c.kind=='data_workflow').values(body=json.dumps(w,ensure_ascii=False)))
+        if run.get('data_result')!=meta or digest(run.get('source_snapshot',{}))!=snapshot_hash:
+            raise ValueError('结果或来源记录已变化，请重新核对')
+        if needs_review and not _source_review_receipt_valid(pid,rid,run,meta,page['context']):
+            run['source_review_receipt']=_new_source_review_receipt(pid,rid,run,meta,page['context'],review_actor)
         run.update(stage='已采用完整结果',finished_at=now())
         c.execute(update(jobs).where(jobs.c.id==rid).values(status='succeeded',body=json.dumps(run,ensure_ascii=False,default=str)))
     return {'workflow_id':w['id'],'published_run':rid,'plan_sha256':run['commit']}
@@ -860,9 +1079,68 @@ def queue_due():
                 if due:patch('data_workflow',w['id'],next_due=croniter(cron,datetime.now(timezone.utc)).get_next(datetime).isoformat())
 
 
+def ensure_candidate_bulk_allowed(pid,rid):
+    """Reject bulk output of unaligned fact candidates, including ancestors.
+
+    Already-succeeded historical artifacts remain readable. This does not
+    assert their financial correctness or grant permission to publish anew.
+    """
+    from .jobs import get_job
+    from .result_delivery import read_handoff
+    root=get_job(rid)
+    if root.get('project_id')!=pid or root.get('kind')!='data_workflow':
+        raise ValueError('结果不属于当前项目')
+    if root.get('status') not in ('validated','succeeded'):raise ValueError('候选结果尚未完成验证')
+    try:parent=owned(pid,'data_workflow',root['target'])
+    except KeyError:parent=None
+    if parent and parent.get('published_run')==rid and root.get('status')=='succeeded':
+        folder,meta=result_folder(pid,rid)
+        read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
+        return
+    stack=[(rid,None)];seen={}
+    while stack:
+        current,expected=stack.pop()
+        if current in seen:
+            if expected is not None and seen[current]!=expected:raise ValueError('候选来源链版本不一致，不能下载完整结果')
+            continue
+        if len(seen)>=512:raise ValueError('候选来源链过长，不能下载未经完整核对的结果')
+        run=get_job(current);folder,meta=result_folder(pid,current)
+        handoff=meta.get('handoff_sha256')
+        if expected is not None and handoff!=expected:raise ValueError('候选来源链版本不一致，不能下载完整结果')
+        page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=handoff)
+        context=page.get('context');evidence=context.get('input_evidence') if isinstance(context,dict) else None
+        document=run.get('workflow_document')
+        if not isinstance(document,dict) or digest(document)!=meta.get('plan_sha256') or not isinstance(evidence,dict):
+            raise ValueError('候选来源链无法核对，不能下载完整结果')
+        document=WorkflowDocument.model_validate(document)
+        reasons=context.get('semantic_review_reasons') or []
+        if not isinstance(reasons,list):raise ValueError('候选来源链无法核对，不能下载完整结果')
+        if 'FACT_SEMANTIC_ALIGNMENT_REQUIRED' in reasons:
+            raise ValueError('事实业务语义尚未对齐，候选只可分页预览，暂不能下载完整结果或生成图表')
+        seen[current]=handoff
+        for alias,binding in document.bindings.items():
+            proof=evidence.get(alias)
+            if not isinstance(proof,dict):raise ValueError('候选来源链无法核对，不能下载完整结果')
+            if binding.source_id:
+                snapshot=run.get('source_snapshot');source=snapshot.get(binding.source_id) if isinstance(snapshot,dict) else None
+                if not isinstance(source,dict) or source.get('id')!=binding.source_id or proof.get('source_id')!=binding.source_id:
+                    raise ValueError('候选来源链无法核对，不能下载完整结果')
+                if source_requires_fact_alignment(source,proof):
+                    raise ValueError('事实业务语义尚未对齐，候选只可分页预览，暂不能下载完整结果或生成图表')
+                if source.get('kind')=='file' and source.get('content_hash')!=proof.get('content_hash'):
+                    raise ValueError('候选来源链版本不一致，不能下载完整结果')
+            elif binding.result_id:
+                checksum=proof.get('manifest_sha256')
+                if (proof.get('result_id')!=binding.result_id or proof.get('complete') is not True
+                        or not isinstance(checksum,str) or not re.fullmatch(r'[a-f0-9]{64}',checksum)):
+                    raise ValueError('候选上游结果依据不完整，不能下载完整结果')
+                stack.append((binding.result_id,checksum))
+
+
 def export_result(pid,rid,precision_policy='text_exact',*,format='xlsx',expected_handoff_sha256=None):
     if precision_policy not in ('reject','text_exact'):raise ValueError('不支持的Excel精度策略')
     if format not in ('xlsx','csv'):raise ValueError('不支持的结果导出格式')
+    ensure_candidate_bulk_allowed(pid,rid)
     from .result_delivery import read_all_handoff,export_xlsx,export_csv,durable_cached_artifact
     from .locks import FileLock,assert_owned
     folder,meta=result_folder(pid,rid)
@@ -900,6 +1178,7 @@ def result_download(pid,rid,kind='handoff',*,expected_handoff_sha256=None):
     from .result_delivery import verify_handoff,durable_cached_artifact
     from .locks import FileLock,assert_owned
     if kind not in ('handoff','xlsx','csv'):raise ValueError('不支持的结果下载格式')
+    if kind=='handoff':ensure_candidate_bulk_allowed(pid,rid)
     verify_handoff(folder/'handoff',meta['handoff_sha256'])
     if kind=='xlsx':return export_result(pid,rid,expected_handoff_sha256=expected_handoff_sha256)
     if kind=='csv':return export_result(pid,rid,format='csv',expected_handoff_sha256=expected_handoff_sha256)

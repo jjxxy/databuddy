@@ -71,7 +71,11 @@ def current(project_id, application_id):
         stored = None
     if stored:
         value = stored
-    return dict(value, run_id=run['id'], data_as_of=manifest.get('data_as_of'))
+    result=dict(value, run_id=run['id'], data_as_of=manifest.get('data_as_of'))
+    from .releases import semantic_warning
+    warning=semantic_warning(run,manifest)
+    if warning:result.update(status='requires_review',semantic_warning=warning)
+    return result
 
 
 def confirm(turn, value):
@@ -85,6 +89,8 @@ def confirm(turn, value):
     from .tasks import check_target
     check_target(stored_turn, value.application_id)
     metric = current(turn['project_id'], value.application_id)
+    if metric.get('semantic_warning'):
+        raise ValueError('指标的来源或业务语义尚未核对，不能确认正式口径')
     spec = metric['semantics']
     definition = spec.get('metric_definition') or ''
     unit = spec.get('currency') or ''
@@ -118,7 +124,17 @@ def confirm(turn, value):
 
 
 def status(pipeline,run,manifest):
-    """Cheap status lookup for UI; never trust the model's metric_status flag."""
+    """Return a conservative status; a stored confirmation does not fix missing source semantics."""
+    from .releases import semantic_warning
+    try:
+        if not isinstance(run.get('source_snapshot'),dict):
+            from .jobs import get_job
+            full=get_job(run['id'])
+            if full.get('target')!=pipeline.get('id') or full.get('commit')!=run.get('commit'):
+                return 'requires_review'
+            run=full
+        if semantic_warning(run,manifest):return 'requires_review'
+    except (KeyError,ValueError,TypeError,OSError):return 'requires_review'
     value=declaration(pipeline,run,manifest)
     if value is None:return 'draft'
     try:record=get('metric',value['id'])

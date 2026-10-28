@@ -84,7 +84,10 @@ def info(project_id,application_id,preview=False,run_id=None):
         _,run,_,m,config=snapshot(project_id,application_id,preview,run_id)
         result.update(config=config,fields=[{'name':f['name'],'label':f['label'],'numeric':bool(f.get('numeric'))} for f in m['fields']],run_id=run['id'],result_commit=run['commit'],preview=run['id']!=p.get('published_run'),can_publish=run['id']==p.get('candidate_run') and run['commit']==p['commit'],preview_type='candidate' if run['id']==p.get('candidate_run') else 'published' if run['id']==p.get('published_run') else 'history',metric_status=__import__('agent_service.metric_registry',fromlist=['status']).status(p,run,m),data_as_of=m.get('data_as_of'),records=m['records'])
         from .experience import freshness,provenance
-        result.update(freshness=freshness(p,m),sources=provenance(m),definition=m['spec'].get('metric_definition',''))
+        from .releases import semantic_warning
+        warning=semantic_warning(run,m)
+        result.update(freshness=freshness(p,m),sources=provenance(m),definition=m['spec'].get('metric_definition',''),semantic_warning=warning)
+        if warning:result['metric_status']='requires_review'
     except ApplicationNotReady:
         result['status']='failed' if result.get('last_run_status')=='failed' else 'building'
     except ValueError:
@@ -117,6 +120,10 @@ def values(cursor):
 def data(project_id,application_id,preview=False,search='',offset=0,limit=25,sort=None,descending=False,run_id=None):
     if offset<0 or limit<1 or limit>100:raise ValueError('应用分页超出范围')
     p,run,folder,m,config=snapshot(project_id,application_id,preview,run_id)
+    from .releases import ensure_candidate_bulk_allowed,semantic_warning
+    blocked=None;warning=semantic_warning(run,m)
+    try:ensure_candidate_bulk_allowed(run,m,project_id=project_id)
+    except ValueError as error:blocked=str(error)
     where,params=condition(m,search)
     fields={f['name']:f for f in m['fields']};sort=sort or config['default_sort']
     if sort not in set(fields)|{'object_id'}:raise ValueError('应用排序字段不存在')
@@ -126,17 +133,21 @@ def data(project_id,application_id,preview=False,search='',offset=0,limit=25,sor
         total=con.execute('select count(*) from business.business_objects'+where,params).fetchone()[0]
         rows=values(con.execute('select object_id,'+','.join(quoted(c) for c in columns)+' from business.business_objects'+where+' order by '+order+(' desc' if descending else ' asc')+',object_id limit ? offset ?',params+[limit,offset]))
         summary=[];metric_total=None
-        if m['spec'].get('amount_field'):
+        # Historic results can remain downloadable even when their provenance
+        # is uncertain; that does not make a newly computed total trustworthy.
+        if m['spec'].get('amount_field') and not blocked and not warning:
             amount=quoted(m['spec']['amount_field']);group=quoted(m['spec']['group_by'])
             expression='try_cast(replace(cast('+amount+" as varchar), ',', '') as decimal(38,12))"
             value=con.execute('select sum('+expression+') from business.business_objects'+where,params).fetchone()[0]
             metric_total=str(value) if value is not None else None
             summary=values(con.execute('select cast('+group+' as varchar) as category,count(*) as record_count,sum('+expression+') as amount_total from business.business_objects'+where+' group by 1 order by amount_total desc nulls last limit 20',params))
-    return {'application':{'id':p['id'],'title':config['title'],'layout':config['layout'],'chart':config['chart']},'fields':[fields[c] for c in columns],'rows':rows,'total':total,'offset':offset,'limit':limit,'summary':summary,'summary_limit':20,'metric':{'label':m['spec'].get('amount_label'),'total':metric_total,'status':__import__('agent_service.metric_registry',fromlist=['status']).status(p,run,m),'currency':m['spec'].get('currency','')},'run_id':run['id'],'commit':run['commit'],'preview':run['id']!=p.get('published_run'),'data_as_of':m.get('data_as_of'),'search':search}
+    return {'application':{'id':p['id'],'title':config['title'],'layout':config['layout'],'chart':config['chart']},'fields':[fields[c] for c in columns],'rows':rows,'total':total,'offset':offset,'limit':limit,'summary':summary,'summary_limit':20,'metric':{'label':m['spec'].get('amount_label'),'total':metric_total,'status':'requires_review' if warning else __import__('agent_service.metric_registry',fromlist=['status']).status(p,run,m),'currency':m['spec'].get('currency','')},'run_id':run['id'],'commit':run['commit'],'preview':run['id']!=p.get('published_run'),'data_as_of':m.get('data_as_of'),'search':search,'bulk_blocked_reason':blocked,'semantic_warning':warning}
 
 
 def csv_records(project_id,application_id,preview=False,search='',run_id=None):
-    _,_,folder,m,config=snapshot(project_id,application_id,preview,run_id)
+    _,run,folder,m,config=snapshot(project_id,application_id,preview,run_id)
+    from .releases import ensure_candidate_bulk_allowed
+    ensure_candidate_bulk_allowed(run,m,project_id=project_id)
     where,params=condition(m,search);fields={f['name']:f for f in m['fields']};columns=config['columns']
     def records():
         buf=io.StringIO();writer=csv.writer(buf);writer.writerow([fields[c]['label'] for c in columns]);yield '\ufeff'+buf.getvalue();buf.seek(0);buf.truncate(0)

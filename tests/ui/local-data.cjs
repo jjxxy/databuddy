@@ -10,7 +10,7 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function until(check){for(let i=0;i<30;i++){await tick();if(check())return;}throw Error('UI did not settle');}
 function response(value,status=200){return {ok:status>=200&&status<300,status,json:async()=>value,blob:async()=>new Blob(['complete,exact\nresult,118.15\n'])};}
 const exact='1234567890123456.123456789012';
-async function boot({publishConflict=false,delayPublish=false,token=true}={}){
+async function boot({publishConflict=false,delayPublish=false,token=true,risk=false,alignment=false}={}){
  const dom=new JSDOM(html,{url:'http://127.0.0.1:8123/local-data.html',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
  if(token)w.sessionStorage.setItem('atlas_token','local-test-owner-token');
  let sequence=0,pipeline=false,published=false,releasePublish,downloaded=null;
@@ -19,7 +19,7 @@ async function boot({publishConflict=false,delayPublish=false,token=true}={}){
  w.HTMLAnchorElement.prototype.click=function(){downloaded={name:this.download,url:this.href};};
  const fields=[{name:'c_1',label:'唯一编号',numeric:false},{name:'c_2',label:'客户<img src=x onerror=alert(1)>',numeric:false},
   {name:'c_3',label:'金额<script>bad</script>',numeric:true},{name:'c_4',label:'退款',numeric:true},{name:'c_5',label:'状态',numeric:false}];
- const result={run_id:'r_1',manifest:{records:2,commit:'frozen-commit',fields,spec:{group_by:'c_2',amount_label:'净收入'},summary:[{category:'<img src=x>',amount_total:exact}]},
+ const result={run_id:'r_1',requires_source_review:risk,fact_semantic_alignment_required:alignment,manifest:{records:2,commit:risk?'c'.repeat(40):'frozen-commit',parquet_hash:'a'.repeat(64),fields,spec:{group_by:'c_2',amount_label:'净收入'},summary:[{category:'<img src=x>',amount_total:exact}]},
   rows:[{c_2:'<img src=x onerror=alert(1)>',c_3:exact}]};
  const listing=()=>pipeline?[{id:'p_1',name:'任务<script>bad</script>',candidate_run:'r_1',published_run:published?'r_1':null}]:[];
  w.fetch=async(url,options={})=>{
@@ -37,7 +37,7 @@ async function boot({publishConflict=false,delayPublish=false,token=true}={}){
   if(u.pathname==='/api/pipelines/p_1/preview')return response(result);
   if(u.pathname==='/api/pipelines/p_1/result')return response(result);
   if(u.pathname==='/api/pipelines/p_1/publish'){
-   assert.deepEqual(JSON.parse(options.body),{run_id:'r_1'},'publish must bind the exact previewed run');
+   assert.deepEqual(JSON.parse(options.body),risk?{run_id:'r_1',confirm_source_review:true,expected_commit:'c'.repeat(40),expected_parquet_sha256:'a'.repeat(64)}:{run_id:'r_1'},'publish must bind the exact previewed run and risk confirmation');
    const finish=()=>{if(publishConflict)return response({detail:'候选已变化，请重新核对。'},409);published=true;return response({published_run:'r_1'});};
    return delayPublish?new Promise(resolve=>{releasePublish=()=>resolve(finish());}):finish();
   }
@@ -80,6 +80,8 @@ async function preview(app){
  app.release();await until(()=>!app.d.querySelector('#download').hidden&&!app.d.querySelector('#download').disabled);
  app.d.querySelector('#download').click();await until(()=>app.downloaded());assert.equal(app.downloaded().name,'Atlas-完整结果.csv');
  assert.equal(app.calls.filter(c=>c.path.endsWith('/export')).length,1);app.dom.window.close();
+ const risky=await boot({risk:true});await preview(risky);assert.equal(risky.d.querySelector('#source-review-label').hidden,false);risky.d.querySelector('#publish').click();await until(()=>risky.d.querySelector('#status').textContent.includes('勾选确认'));assert.equal(risky.calls.filter(c=>c.path.endsWith('/publish')).length,0);risky.d.querySelector('#source-review-confirm').checked=true;risky.d.querySelector('#publish').click();await until(()=>!risky.d.querySelector('#download').hidden);assert.equal(risky.calls.filter(c=>c.path.endsWith('/publish')).length,1);risky.dom.window.close();
+ const alignment=await boot({risk:true,alignment:true});await preview(alignment);assert.equal(alignment.d.querySelector('#publish').hidden,true);assert.equal(alignment.d.querySelector('#source-review-label').hidden,true);assert(alignment.d.querySelector('#receipt').textContent.includes('不能发布'));alignment.d.querySelector('#publish').click();await tick();assert.equal(alignment.calls.filter(c=>c.path.endsWith('/publish')).length,0);alignment.dom.window.close();
  const conflict=await boot({publishConflict:true});await preview(conflict);conflict.d.querySelector('#publish').click();
  await until(()=>conflict.d.querySelector('#status').textContent.includes('候选已变化'));
  assert.equal(conflict.d.querySelector('#download').hidden,true);assert.equal(conflict.calls.filter(c=>c.path.endsWith('/publish')).length,1,'conflicts must not retry automatically');

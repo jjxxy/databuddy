@@ -153,7 +153,15 @@ def execute(run):
                 relationships.append({'source_id':j['source_id'],'label':j['label'],'cardinality':'many_to_one','unmatched':unmatched,'records':count})
             file=str(folder/'business_objects.parquet').replace("'","''");con.execute("copy business.business_objects to '"+file+"' (format parquet)")
         inputs=json.loads((folder/'input.json').read_text(encoding='utf-8'))
+        from .project_data import source_interpretation_needs_review
+        frozen_sources=run.get('source_snapshot') or json.loads((folder/'sources.json').read_text(encoding='utf-8'))
+        source_review=any(source_interpretation_needs_review(frozen_sources.get(item['source_id']),item.get('evidence'))
+                          for item in inputs['sources'])
         m={'data_contract':contract_result,'knowledge_basis':plan.get('knowledge_basis',[]),'application':plan.get('application'),'run_id':run['id'],'pipeline_id':p['id'],'commit':run['commit'],'semantic_version':3,'runtime':run.get('runtime_snapshot',{}),'records':count,'columns':columns,'output_schema':output_schema,'summary':summary,'fields':plan['fields'],'spec':plan['spec'],'relationships':relationships,'inputs':inputs['sources'],'quality':quality_report(folder),'published_at':now(),'versions':{x:importlib.metadata.version(x) for x in ['dlt','duckdb','dbt-core','dbt-duckdb','langgraph']},'data_as_of':min((s.get('collected_at',run['started_at']) for s in inputs['sources']),default=run['started_at']),'input_hash':inputs['input_hash'],'parquet_hash':hashlib.sha256((folder/'business_objects.parquet').read_bytes()).hexdigest()}
+        m['requires_source_review']=source_review
+        from .releases import _requires_fact_alignment
+        fact_alignment=_requires_fact_alignment(run,m)
+        m['fact_semantic_alignment_required']=fact_alignment
         if plan.get('column_lineage_version')==1:
             from .column_lineage import digest
             lineage=json.loads((code/'column-lineage.json').read_text(encoding='utf-8'))
@@ -166,11 +174,11 @@ def execute(run):
         latest=get('pipeline',p['id'])
         if run['commit']==latest['commit']:
             patch_run(run,target_patch={'kind':'pipeline','expected':{'commit':run['commit']},'values':{'candidate_run':run['id']}})
-        auto=latest.get('release_mode','auto')=='auto' or run['commit']==latest.get('active_commit')
+        auto=(latest.get('release_mode','auto')=='auto' or run['commit']==latest.get('active_commit')) and not source_review and not fact_alignment
         if auto:
             publish(p['id'],run['id'],lease_token=run['lease_token'])
             patch_run(run,status='succeeded',finished_at=now(),stage='已发布')
-        else:patch_run(run,status='validated',finished_at=now(),stage='验证通过，等待发布')
+        else:patch_run(run,status='validated',finished_at=now(),stage='事实业务语义待核对，尚不能发布' if fact_alignment else '来源解释待人工核对，等待发布' if source_review else '验证通过，等待发布')
         record('run.validated',p['id'],{'run_id':run['id'],'commit':run['commit'],'records':count})
     except Exception as e:
         current=get_job(run['id'])

@@ -303,8 +303,9 @@ def test_default_catalog_prioritizes_business_outputs_over_new_internal_specs_an
     for index in range(4):workspace.write_file(pid,f'reports/new-spec-{index}.json',json.dumps({'internal':'new specification'}))
     source(pid)
     first=assets.catalog(pid,limit=2)
-    assert first['total']==7 and [v['kind'] for v in first['items']]==['agent','result']
-    assert assets.catalog(pid,'code')['total']==4 and assets.catalog(pid,'source')['total']==1
+    # The source-backed result fixture adds one genuine source; business outputs still lead.
+    assert first['total']==8 and [v['kind'] for v in first['items']]==['agent','result']
+    assert assets.catalog(pid,'code')['total']==4 and assets.catalog(pid,'source')['total']==2
     assert assets.catalog(pid,offset=6,limit=2)['next_offset'] is None
 
 

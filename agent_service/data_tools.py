@@ -87,7 +87,13 @@ def _workflow_receipt(pid,r,meta,*,reused=False):
         'requires_semantic_review':meta.get('requires_semantic_review',False),'stage_receipts':'完整交接包中保存每步回执',
         'review_url':'/data-workbench.html?project='+pid+'&workflow='+r['target'],
         'download':{'label':'完整数据交接包.zip','url':'/api/projects/'+pid+'/data-results/'+r['id']+'/download?format=handoff'}}
-    if reused:receipt['next_step']='本任务已有此方案和来源版本的完整已验证结果；需要时读取该run_id、导出或交由用户明确确认采用，不必再次运行相同方案。'
+    try:data.ensure_candidate_bulk_allowed(pid,r['id'])
+    except ValueError as error:
+        receipt.pop('download',None)
+        receipt['download_blocked_reason']=str(error)
+        receipt['next_step']='候选结果仅供分页核对；业务语义未对齐前不能下载完整结果或当作正式成果。'
+    else:
+        if reused:receipt['next_step']='本任务已有此方案和来源版本的完整已验证结果；需要时读取该run_id、导出或交由用户明确确认采用，不必再次运行相同方案。'
     return receipt
 
 
