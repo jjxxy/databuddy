@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites>
+  <testsuite name="pytest" tests="7" errors="0" failures="0" skipped="0" time="29.242">
+    <testcase classname="tests.test_derived_fact_lineage" name="test_real_legacy_derived_fact_cannot_be_published_by_generic_review" time="15.299" />
+    <testcase classname="tests.test_derived_fact_lineage" name="test_real_new_workflow_also_blocks_derived_fact_even_after_review" time="5.670" />
+    <testcase classname="tests.test_derived_fact_lineage" name="test_frozen_ancestors_fail_closed_and_safe_sources_stay_usable" time="0.109" />
+    <testcase classname="tests.test_agent_handoff_fact_guard" name="test_reviewed_facts_and_unknown_source_ancestry_cannot_be_sent_as_ordinary_source" time="0.131" />
+    <testcase classname="tests.test_agent_handoff_fact_guard" name="test_imported_source_is_quarantined_even_for_an_ordinary_csv" time="2.474" />
+    <testcase classname="tests.test_agent_handoff_fact_guard" name="test_forged_peer_source_cannot_restore_mixed_fact_aggregation" time="2.621" />
+    <testcase classname="tests.test_agent_handoff_fact_guard" name="test_imported_result_remains_readable_but_not_reusable_even_with_historical_status" time="0.404" />
+  </testsuite>
+</testsuites>

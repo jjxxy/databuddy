@@ -1,0 +1,70 @@
+{
+  "title": "财经事实来源血缘修复验证",
+  "date": "2026-10-28",
+  "data_scope": "仅使用隔离项目中的合成数据",
+  "reproduced_cases": [
+    {
+      "case": "事实来源替换文件后经缩进表格派生",
+      "input": "合肥办事处净收入 123.4500 元与预算 200 元",
+      "pre_fix_observation": "旧发布路径曾将不同指标合计为 323.450000000000 并允许发布。",
+      "post_fix_observation": "候选仍可预览；来源祖先风险使旧发布和新工作流采用均被阻断，普通来源复核不能替代业务语义核对。",
+      "tests": [
+        "tests/test_derived_fact_lineage.py::test_real_legacy_derived_fact_cannot_be_published_by_generic_review",
+        "tests/test_derived_fact_lineage.py::test_real_new_workflow_also_blocks_derived_fact_even_after_review"
+      ]
+    },
+    {
+      "case": "Agent 交接将事实文件作为普通来源导入",
+      "input": "同一组合成净收入 123.4500 元与预算 200 元",
+      "pre_fix_observation": "普通交接丢失事实标记后，错误的 323.4500 可经普通来源确认发布，并被下游与报告检查接受。",
+      "post_fix_observation": "事实来源交接被阻断；伪造远端来源可形成预览候选，但鉴权发布接口即使收到普通来源确认也拒绝采用，结果不能作为下游输入或用于报告检查。",
+      "tests": [
+        "tests/test_agent_handoff_fact_guard.py::test_forged_peer_source_cannot_restore_mixed_fact_aggregation",
+        "tests/test_agent_handoff_fact_guard.py::test_imported_result_remains_readable_but_not_reusable_even_with_historical_status"
+      ]
+    }
+  ],
+  "regressions": [
+    {
+      "scope": "来源祖先、旧发布、新工作流、历史数值与 Agent 交接联合回归",
+      "tests_passed": 65,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_file": "verification/finance-lineage-junit-20261028.xml",
+      "junit_original_sha256": "8f0d7756b9c36d36b02854f1c1aa3bfd566fc0d2a7be0c47e89ea0fd4bdbf712",
+      "junit_sanitized_sha256": "0f4a9f6519cd856cd8fffb60707db2f94890acd491c36449c41940153f44841e",
+      "junit_note": "仓库中为仅含计数、测试名称与状态的脱敏副本，其哈希不同于原始 JUnit。"
+    },
+    {
+      "scope": "候选及历史导出、数据应用回归",
+      "tests_passed": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit_file": "verification/finance-historical-junit-20261028.xml",
+      "junit_original_sha256": "b781e5998886f0b96970bffac07970e22508652dcf089952fdbba226a885c569",
+      "junit_sanitized_sha256": "08ea5c11d02b9903f24fef160f84c69f6b2d3effa60355bfd94cbd7978c301d9",
+      "junit_note": "仓库中为仅含计数、测试名称与状态的脱敏副本，其哈希不同于原始 JUnit。"
+    },
+    {
+      "scope": "Agent 交接专项、既有交接与事实语义门槛",
+      "tests_passed": 34,
+      "failures": 0,
+      "warning": "既有重复 ZIP 条目测试产生一个预期的重复文件名警告。",
+      "test_files": [
+        "tests/test_agent_handoff_fact_guard.py",
+        "tests/test_agent_handoff.py",
+        "tests/test_fact_semantic_gate.py"
+      ],
+      "junit_generated": false
+    }
+  ],
+  "overlap": "上述回归集存在测试重叠，计数不可相加作为独立测试总数。",
+  "limitations": [
+    "跨 Agent 接收的普通来源也暂时需要独立业务语义核对，不能直接用于正式发布；已有来源证据不足时采取保守阻断。",
+    "历史导入结果测试包括将合成导入记录的状态改为 succeeded 的模拟，并非用户真实旧数据库迁移验收。",
+    "财务数据本身的真实性、真实财经样本的识别准确率和财务报告准确性尚未由这些测试证明。",
+    "本记录不作为 r25 便携包本体验证；r25 包在记录时仍在验证。"
+  ]
+}

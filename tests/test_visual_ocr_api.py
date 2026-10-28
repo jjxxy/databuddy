@@ -34,11 +34,11 @@ def test_ocr_endpoint_auth_project_format_and_source_version(tmp_path):
     assert client.post(f'/api/projects/{other}/sources/{sid}/ocr',json=payload,headers=headers).status_code==400
     assert client.post(root,json=dict(payload,expected_revision=2),headers=headers).status_code==400
     assert client.post(root,json=dict(payload,expected_sha256='0'*64),headers=headers).status_code==400
-    assert client.post(root,json=dict(payload,page=2),headers=headers).status_code==422
+    assert client.post(root,json=dict(payload,page=2),headers=headers).status_code==400
     assert client.post(root,json=dict(payload,page=True),headers=headers).status_code==422
     pdfpid,pdfsid,_=document(b'%PDF-not-a-real-file','.pdf')
     response=client.post(f'/api/projects/{pdfpid}/sources/{pdfsid}/ocr',json=input_value(pdfsid),headers=headers)
-    assert response.status_code==400 and 'PNG' in response.json()['detail']
+    assert response.status_code==400
     assert visual.list_proposals(pid)['total']==0
 
 
@@ -49,7 +49,7 @@ def test_busy_and_timeout_are_user_readable_and_never_create_candidates(tmp_path
         response=client.post(root,json=payload,headers=headers)
         assert response.status_code==400 and '稍后重试' in response.json()['detail']
     def timeout(*args,**kwargs):raise subprocess.TimeoutExpired('worker',60)
-    monkeypatch.setattr(subprocess,'run',timeout)
+    monkeypatch.setattr(visual,'_bounded_worker',timeout)
     response=client.post(root,json=payload,headers=headers)
     assert response.status_code==400 and '超时' in response.json()['detail']
     assert visual.list_proposals(pid)['total']==0
@@ -63,7 +63,7 @@ def test_source_changed_during_worker_cannot_return_stale_candidate(tmp_path,mon
         result={'ok':True,'result':{'source_file_sha256':payload['expected_sha256'],'page':1,
               'human_review_required':True,'financial_facts_verified':False,'complete':False}}
         return SimpleNamespace(returncode=0,stdout=json.dumps(result).encode())
-    monkeypatch.setattr(subprocess,'run',worker)
+    monkeypatch.setattr(visual,'_bounded_worker',worker)
     response=client.post(f'/api/projects/{pid}/sources/{sid}/ocr',json=payload,headers=headers)
     assert response.status_code==400 and '变化' in response.json()['detail']
     assert visual.list_proposals(pid)['total']==0

@@ -1,0 +1,36 @@
+{
+  "test": "synthetic_pdf_ocr_workbench_browser",
+  "date": "2026-10-28",
+  "result": "passed",
+  "environment": {
+    "browser": "headless Chrome controlled through DevTools",
+    "backend": "local application API with isolated synthetic project state",
+    "ocr": "real local OCR worker and models; the test harness explicitly injected a separate OCR Python interpreter",
+    "network": "Chrome name resolution restricted to loopback; the backend and OCR worker were not isolated by an operating-system firewall",
+    "package_under_test": false
+  },
+  "fixture": {
+    "type": "synthetic two-page PDF",
+    "source_records": 2,
+    "source_record_note": "Two distinct source records in one project reference identical synthetic PDF bytes.",
+    "selected_page": 2,
+    "expected_text": "2026-10 合肥办事处净收入123.4500 元"
+  },
+  "checks": {
+    "selected_page_ocr_through_real_api": "passed",
+    "recognized_text": "2026-10 合肥办事处净收入123.4500 元",
+    "explicit_user_selection_adds_text_to_draft": "passed",
+    "ocr_does_not_fill_draft_before_selection": "passed",
+    "no_visible_fact_record_created_by_selection": "passed",
+    "unreviewed_text_and_rendered_pixel_coordinate_warning_visible": "passed",
+    "no_automatic_highlight_and_possible_form_annotation_omission_warning_visible": "passed",
+    "cross_source_and_cross_page_draft_submission_blocked": "passed",
+    "draft_preserved_until_explicit_clear": "passed"
+  },
+  "limits": [
+    "This was a synthetic-data integration test, not a real financial document accuracy or completeness assessment.",
+    "The OCR interpreter was injected by the test harness; this is not an r24 portable-package or bundled-runtime verification.",
+    "The test did not exercise physical disconnection or operating-system firewall isolation.",
+    "Recognition is an unverified transcription aid and does not establish financial semantics, calculation approval, or correctness."
+  ]
+}

@@ -22,8 +22,10 @@ async function boot(options={}){
   if(u.pathname==='/api/projects/p_1/data-workflows'||u.pathname==='/api/projects/p_1/semantic-proposals'||u.pathname==='/api/projects/p_1/semantic-catalogs'||u.pathname==='/api/projects/p_1/data-facts')return response({items:[],next_offset:null});
   if(u.pathname==='/api/sources')return response([source,foreign]);
   if(u.pathname==='/api/projects/p_1/sources/src_1/ocr'){
-    assert.deepEqual(JSON.parse(opts.body),{expected_revision:1,expected_sha256:sha,page:1});
-    const value=options.ocrFail?response({detail:'本机 OCR 模型不可用，请配置本地组件。'},400):response({source_file_sha256:options.ocrWrongHash?'b'.repeat(64):sha,source_revision:1,page:1,image_width:100,image_height:50,ocr_executed:true,financial_facts_verified:false,lines:[{text:'收入 123.4500 元 <img src=x onerror=alert(1)>',box:[[1,2],[80,2],[80,12],[1,12]],human_review_required:true}]});
+    const page=options.pdfPage||1;
+    assert.deepEqual(JSON.parse(opts.body),{expected_revision:1,expected_sha256:sha,page});
+    const pdf=options.pdf?{pdf_page_count:3,rendered_image_sha256:'c'.repeat(64),coordinate_space:options.wrongCoordinates?'pdf_page':'rendered_pdf_page_pixels_not_pdf_coordinates'}:{};
+    const value=options.ocrFail?response({detail:options.ocrFailMessage||'本机 OCR 模型不可用，请配置本地组件。'},400):response({source_file_sha256:options.ocrWrongHash?'b'.repeat(64):sha,source_revision:1,page:options.ocrWrongPage?1:page,image_width:100,image_height:50,ocr_executed:true,financial_facts_verified:options.falseVerification?true:false,human_review_required:true,complete:false,...pdf,lines:options.emptyOcr?[]:[{text:'收入 123.4500 元 <img src=x onerror=alert(1)>',box:[[1,2],[80,2],[80,12],[1,12]],human_review_required:true}]});
     return options.deferOcr?new Promise(resolve=>{releaseOcr=()=>resolve(value)}):value;
   }
   if(u.pathname==='/api/projects/p_1/visual-facts'&&method==='GET')return response({items:record?[{id:record.id,source_id:record.source_id,page:record.page,status:record.status}]:[],next_offset:null});
@@ -103,11 +105,28 @@ async function boot(options={}){
  await until(()=>wd.querySelector('#visual-ocr-status').textContent.includes('识别未完成'));assert(!wd.querySelector('[data-visual-ocr-use]'));wrong.dom.window.close();
  const noModel=await boot({noCreate:true,ocrFail:true}),nd=noModel.w.document;nd.querySelector('#visual-ocr-run').click();
  await until(()=>nd.querySelector('#visual-ocr-status').textContent.includes('本机 OCR 模型不可用'));assert(!nd.querySelector('[data-visual-ocr-use]'));noModel.dom.window.close();
- const pdf=await boot({noCreate:true,pdf:true});assert(pdf.w.document.querySelector('#visual-ocr-run').disabled);assert(pdf.w.document.querySelector('#visual-ocr-status').textContent.includes('PDF'));pdf.dom.window.close();
+ const pdf=await boot({noCreate:true,pdf:true,pdfPage:2}),pdfd=pdf.w.document;pdfd.querySelector('#visual-page').value='2';pdfd.querySelector('#visual-page').dispatchEvent(new pdf.w.Event('input'));
+ assert(!pdfd.querySelector('#visual-ocr-run').disabled);pdfd.querySelector('#visual-quote').value='';pdfd.querySelector('#visual-ocr-run').click();await until(()=>!!pdfd.querySelector('[data-visual-ocr-use]'));
+ assert(pdfd.querySelector('#visual-ocr-results').textContent.includes('未核对'));assert(pdfd.querySelector('#visual-ocr-results').textContent.includes('渲染页的像素'));assert(pdfd.querySelector('#visual-ocr-results').textContent.includes('尚未自动高亮'));
+ assert.equal(pdfd.querySelector('#visual-quote').value,'');pdfd.querySelector('[data-visual-ocr-use]').click();assert(pdfd.querySelector('#visual-quote').value.includes('123.4500'));assert(!pdf.calls.some(c=>c.path.endsWith('/visual-facts')&&c.method==='POST'));
+ pdfd.querySelector('#visual-page').value='3';pdfd.querySelector('#visual-page').dispatchEvent(new pdf.w.Event('input'));pdfd.querySelector('#visual-form').dispatchEvent(new pdf.w.Event('submit',{bubbles:true,cancelable:true}));
+ assert(pdfd.querySelector('#visual-message').textContent.includes('之前的资料或页码'));assert(!pdf.calls.some(c=>c.path.endsWith('/visual-facts')&&c.method==='POST'));assert(pdfd.querySelector('#visual-quote').value.includes('123.4500'),'switching page must preserve text until explicit clearing');
+ pdfd.querySelector('#visual-clear-draft').click();assert.equal(pdfd.querySelector('#visual-quote').value,'');assert.equal(pdfd.querySelector('#visual-value').value,'');pdf.dom.window.close();
+ const manual=await boot({noCreate:true,pdf:true}),md=manual.w.document;md.querySelector('#visual-ocr-run').click();await until(()=>!!md.querySelector('[data-visual-ocr-use]'));const originalDraft=md.querySelector('#visual-quote').value;md.querySelector('[data-visual-ocr-use]').click();assert.equal(md.querySelector('#visual-quote').value,originalDraft);assert(md.querySelector('#visual-ocr-status').textContent.includes('请先清空'));manual.dom.window.close();
+ for(const fail of ['PDF 文件损坏或加密，请提供可读取的原件。','PDF 页码超过文档范围。','页面尺寸超过处理限制。']){
+  const item=await boot({noCreate:true,pdf:true,ocrFail:true,ocrFailMessage:fail}),dd=item.w.document;dd.querySelector('#visual-ocr-run').click();await until(()=>dd.querySelector('#visual-ocr-status').textContent===fail);assert(!dd.querySelector('[data-visual-ocr-use]'));item.dom.window.close();
+ }
+ const empty=await boot({noCreate:true,pdf:true,emptyOcr:true}),ed=empty.w.document;ed.querySelector('#visual-ocr-run').click();await until(()=>ed.querySelector('#visual-ocr-results').textContent.includes('未识别到文字'));assert(!ed.querySelector('[data-visual-ocr-use]'));empty.dom.window.close();
+ for(const opts of [{wrongCoordinates:true},{pdfPage:2,ocrWrongPage:true},{falseVerification:true}]){
+  const item=await boot({noCreate:true,pdf:true,...opts}),dd=item.w.document;if(opts.pdfPage){dd.querySelector('#visual-page').value='2';dd.querySelector('#visual-page').dispatchEvent(new item.w.Event('input'))}dd.querySelector('#visual-ocr-run').click();await until(()=>dd.querySelector('#visual-ocr-status').textContent.includes('识别未完成'));assert(!dd.querySelector('[data-visual-ocr-use]'));item.dom.window.close();
+ }
+ const pageRange=await boot({noCreate:true,pdf:true}),range=pageRange.w.document;range.querySelector('#visual-page').value='501';range.querySelector('#visual-page').dispatchEvent(new pageRange.w.Event('input'));assert(range.querySelector('#visual-ocr-run').disabled);assert(range.querySelector('#visual-ocr-status').textContent.includes('500'));pageRange.dom.window.close();
  const badPage=await boot({noCreate:true}),pd=badPage.w.document;pd.querySelector('#visual-page').value='2';pd.querySelector('#visual-page').dispatchEvent(new badPage.w.Event('input'));
  assert(pd.querySelector('#visual-ocr-run').disabled);assert(pd.querySelector('#visual-ocr-status').textContent.includes('第 1 页'));badPage.dom.window.close();
  const changed=await boot({noCreate:true,deferOcr:true}),cd=changed.w.document;cd.querySelector('#visual-ocr-run').click();
  await until(()=>changed.calls.some(c=>c.path.endsWith('/ocr')));cd.querySelector('#visual-source').value='';cd.querySelector('#visual-source').dispatchEvent(new changed.w.Event('change'));changed.releaseOcr();await tick();await tick();
  assert(!cd.querySelector('[data-visual-ocr-use]'),'late OCR output for previous source must be discarded');changed.dom.window.close();
+ const latePage=await boot({noCreate:true,pdf:true,deferOcr:true}),ld=latePage.w.document;ld.querySelector('#visual-ocr-run').click();await until(()=>latePage.calls.some(c=>c.path.endsWith('/ocr')));ld.querySelector('#visual-page').value='2';ld.querySelector('#visual-page').dispatchEvent(new latePage.w.Event('input'));latePage.releaseOcr();await tick();await tick();assert(!ld.querySelector('[data-visual-ocr-use]'),'late OCR output for old PDF page must be discarded');latePage.dom.window.close();
+ const lateProject=await boot({noCreate:true,pdf:true,deferOcr:true}),lp=lateProject.w.document;lp.querySelector('#visual-ocr-run').click();await until(()=>lateProject.calls.some(c=>c.path.endsWith('/ocr')));lateProject.w.history.replaceState({},'','?project=p_2');lateProject.releaseOcr();await tick();await tick();assert(!lp.querySelector('[data-visual-ocr-use]'),'late OCR output for old project must be discarded');lateProject.dom.window.close();
  process.stdout.write('visual-facts UI: passed\n');
 })().catch(error=>{console.error(error);process.exitCode=1});

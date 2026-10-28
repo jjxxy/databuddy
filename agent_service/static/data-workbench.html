@@ -119,8 +119,9 @@
           <form id="visual-form"><div class="visual-fields">
             <label>选择项目资料<select id="visual-source" required><option value="">请选择图片或 PDF</option></select></label>
             <label>原件页码<input id="visual-page" type="number" min="1" max="2000" step="1" value="1" required></label>
-            <div class="visual-wide visual-ocr"><button id="visual-ocr-run" type="button" disabled>识别图片中的文字</button><p id="visual-ocr-status" class="muted" role="status" aria-live="polite">选择图片后可尝试识别；PDF 请先人工录入。</p><div id="visual-ocr-results"></div></div>
+            <div class="visual-wide visual-ocr"><button id="visual-ocr-run" type="button" disabled>识别当前页文字</button><p id="visual-ocr-status" class="muted" role="status" aria-live="polite">选择图片或 PDF 后，可尝试识别当前页。</p><div id="visual-ocr-results"></div></div>
             <label class="visual-wide">原文逐字录入<textarea id="visual-quote" maxlength="3000" rows="3" required></textarea></label>
+            <div class="visual-wide"><button id="visual-clear-draft" type="button">清空录入内容</button><span class="muted">识别草稿绑定原件与页码；切换后请先清空，再录入新资料。</span></div>
             <label>原文中的完整数值<input id="visual-value" maxlength="100" required placeholder="例如 123.45"></label>
             <label>指标名称<input id="visual-measure" maxlength="200" required placeholder="例如 净收入"></label>
             <label>单位<input id="visual-unit" maxlength="40" required placeholder="例如 元"></label>

@@ -46,6 +46,7 @@ def main():
     components=[item for item in prior.get('components',[]) if item.get('component')!='Offline OCR Windows runtime']
     components.append({'component':'Offline OCR Windows runtime','path':'runtime/ocr',
         'python_version':'3.12.10','rapidocr_version':'3.10.0','onnxruntime_version':'1.31.1',
+        'pypdfium2_version':'5.14.0','pdfium_version':'156.0.8076.0',
         'lock':'requirements-ocr-windows.lock','lock_sha256':lock_hash,
         'wheel_inventory':'vendor/metadata/ocr-wheel-inventory.json',
         'licenses':'runtime/ocr/third-party-licenses and each distribution license'})

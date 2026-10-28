@@ -1,0 +1,58 @@
+{
+  "title": "r25 便携测试包财经门槛与扫描 PDF OCR 验证",
+  "date": "2026-10-28",
+  "tested_artifact": "r25 Windows 便携测试包",
+  "scope": "仅合成数据；功能测试在原 r25 测试包本体运行，最终干净副本经文件一致性校验，未在副本复跑功能测试。",
+  "guard_tests": {
+    "passed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "application_and_interpreter": "来自测试包；测试文件及 pytest 辅助依赖由仓库和隔离测试目录提供",
+    "junit_sanitized": "verification/r25-finance-and-ocr-20261028.xml",
+    "junit_original_sha256": "ef411c08f25aa6b37ea61726f509de374cef733f420987fc7a5d4d7ce0550ce7",
+    "junit_sanitized_sha256": "bcb3a397864062228f3b5aae11989c73b5e1e88ed221dc579494f8d10e5891ab"
+  },
+  "source_inventory": {
+    "source_files_compared": 168,
+    "package_files_sha256_verified": 17509,
+    "runtime_manifest_validated_by_builder": true,
+    "scope": "package_files_and_allowlisted_source"
+  },
+  "backend": {
+    "local_only_policy": true,
+    "inherited_path_empty": true,
+    "fresh_local_workflow_rows": 2,
+    "exact_total": "118.150000000000",
+    "manual_publish_required": true,
+    "bad_model_does_not_block_local": true,
+    "restart_data_preserved": true
+  },
+  "pdf_ocr": {
+    "synthetic_scanned_pdf": true,
+    "recognized_text": "2026年10月 财务收入 123.45 元合肥办事处 预算 200.00元",
+    "render_scale": 2.0,
+    "coordinates": "rendered_pdf_page_pixels_not_pdf_coordinates",
+    "empty_password_encrypted_pdf_rejected": true,
+    "human_review_required": true,
+    "source_hash_bound": true
+  },
+  "limitations": [
+    "Windows 长路径导入曾失败；采用短路径仅是规避，长路径问题未修复。",
+    "跨 Agent 接收的普通来源仍被保守隔离，需独立业务语义核对，不能直接正式发布。",
+    "人工视觉复核 PDF 的旧结构检查仍在服务进程内；OCR worker 不是操作系统安全沙箱。",
+    "local_only 和空 PATH 不代表物理断网或防火墙隔离。",
+    "真实财经 OCR 准确率、真实模型完整财经月结、云端部署与业务用户验收未验证。",
+    "最终干净副本仅做逐文件及源码一致性校验，功能测试在测试包本体执行，未在副本复跑。"
+  ],
+  "clean_copy": {
+    "inventory_verified": true,
+    "package_files_sha256_verified": 17509,
+    "source_files_compared": 168,
+    "missing_files": 0,
+    "unexpected_files": 0,
+    "tested_package_manifest_sha256": "2a8106a0f05a52b60c33478ab5acced36e38920f434387a60154cd9163ca8553",
+    "manifest_identical_to_tested_package": true,
+    "functional_tests_rerun_on_copy": false,
+    "copy_scope": "仅原测试包清单所列文件；排除测试产生的缓存"
+  }
+}

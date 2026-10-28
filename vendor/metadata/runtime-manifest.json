@@ -42,8 +42,10 @@
       "python_version": "3.12.10",
       "rapidocr_version": "3.10.0",
       "onnxruntime_version": "1.31.1",
+      "pypdfium2_version": "5.14.0",
+      "pdfium_version": "156.0.8076.0",
       "lock": "requirements-ocr-windows.lock",
-      "lock_sha256": "9516a78a30c17bf7a5be14259af09cea907c77539e3fc9c6090cf7b29dddc7f4",
+      "lock_sha256": "344d60369ef6da1ce1a9715b8034d84376cba74a112efb5e21482f260553fec5",
       "wheel_inventory": "vendor/metadata/ocr-wheel-inventory.json",
       "licenses": "runtime/ocr/third-party-licenses and each distribution license"
     }
@@ -2632,7 +2634,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/charset_normalizer-3.5.2.dist-info/RECORD",
       "bytes": 2173,
-      "sha256": "7058e0bf08321d1f52e06a72dd60ff5cdf5fdfd87c218b3ecb18e50da7418511"
+      "sha256": "1117352bd88074d262420b448941e2d49dd21512acfe423560bdea94651158ad"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/charset_normalizer-3.5.2.dist-info/REQUESTED",
@@ -3477,7 +3479,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/idna-3.20.dist-info/RECORD",
       "bytes": 1431,
-      "sha256": "49eabd74b939b88cdf7c00af62bb2da6cbdab0e9094e196af9562046f20d4a2f"
+      "sha256": "67f6c0253adac83f20c6d16b807395aff03ff3793aed3c25df5211852761adba"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/idna-3.20.dist-info/REQUESTED",
@@ -3572,7 +3574,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/numpy-2.5.4.dist-info/RECORD",
       "bytes": 88735,
-      "sha256": "b425a230dd16923e4969f8fafc56af8bd2dec48a81a8a563a6c2e74f71af6885"
+      "sha256": "4c938dd09433c89b23ba9675b9f20f69c8097213bb6f25d9595aed7d2697f454"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/numpy-2.5.4.dist-info/REQUESTED",
@@ -8782,7 +8784,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/onnxruntime-1.31.1.dist-info/RECORD",
       "bytes": 35840,
-      "sha256": "1fcd5a4d6b8f8e7635c4a2811315de46e724539cc7bdd475a021f61303e499f4"
+      "sha256": "8ba110f12ec9585a6f95158dc90709c0a43bc5b6dfc954cde9d27ea353da0739"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/onnxruntime-1.31.1.dist-info/REQUESTED",
@@ -10710,6 +10712,371 @@
       "sha256": "2a40f55c44a22f14e0963f89b8134ee48b3bb2de5fb33ad0647b3c9d73865e11"
     },
     {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/INSTALLER",
+      "bytes": 4,
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/METADATA",
+      "bytes": 63509,
+      "sha256": "8733a714c056453b87b48c819495cc05f9038d38221b89505043d28c2501237e"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/RECORD",
+      "bytes": 7132,
+      "sha256": "ff2f463f3a358cfdadd209fb0b8df10c184863669107c6ee0ba89f4dadc7fe7e"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/REQUESTED",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/WHEEL",
+      "bytes": 98,
+      "sha256": "671f7c8306ff75029c9092b71c43952a7c710f9d847d4fcf5c31bfbac309da78"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/entry_points.txt",
+      "bytes": 62,
+      "sha256": "39f3e2f656f1c386b806c26ecf2b9f92dd0e1927b6db2d496c8ddd014d779a27"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/LICENSES/Apache-2.0.txt",
+      "bytes": 11560,
+      "sha256": "3ddf9be5c28fe27dad143a5dc76eea25222ad1dd68934a047064e56ed2fa40c5"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/LICENSES/BSD-3-Clause.txt",
+      "bytes": 1485,
+      "sha256": "ad9a9e823df025f42389c1812eae28019f657d1ed7b3a4ebfd5010b0736a0da4"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/LICENSES/CC-BY-4.0.txt",
+      "bytes": 14844,
+      "sha256": "f1b1748301cd4274f46733c218d510929661b4990855de5fc645dacd69c4371c"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/abseil.txt",
+      "bytes": 11564,
+      "sha256": "f54fff0b905df5b3464527c652a30e903b172d6dcab4d89b5e6f105d5e4a4603"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/agg23.txt",
+      "bytes": 725,
+      "sha256": "c110d3ea2ad77467ce0dcff7d3337e6c8be8049a5103f4b9bd5fd911a77972e5"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/fast_float.txt",
+      "bytes": 1106,
+      "sha256": "bf1b57355feca8fce77ee95f48002f8d4789fb71b30ec7599c06cda4901fbb2b"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/freetype.txt",
+      "bytes": 6741,
+      "sha256": "f4b133e25df1f86ad3ffea453aa0e613f0474f34778dbbb3e437e7b2724937d8"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/icu.txt",
+      "bytes": 28286,
+      "sha256": "93679f4389d53b6835d89843f251844fb9bc455b35bab036d3c8e7abe497a47a"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/lcms.txt",
+      "bytes": 1353,
+      "sha256": "7312b68c5b25e9bf2b828706fb4e29588f22705112f411fd42e1f7d84c3d139a"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/libjpeg_turbo.ijg",
+      "bytes": 13059,
+      "sha256": "db16a04128171879c60708d171b88d97345a2dd20f9bfc173680a4497c73f704"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/libjpeg_turbo.md",
+      "bytes": 5755,
+      "sha256": "be2b2b5ab168bce87bc3e31f2a5c5adba4b7f6e9e51d618e958d1d46972ebd95"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/libopenjpeg.txt",
+      "bytes": 1794,
+      "sha256": "c5ab0890a737c2dfa7ba675036554f6d17741d98629b0c2a145354d00617e6b2"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/libpng.txt",
+      "bytes": 5479,
+      "sha256": "452390433ba0f88aa3e2b122c647741b72a0c117cd6ed7a329b49785aecb5511"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/llvm-libc.txt",
+      "bytes": 15418,
+      "sha256": "3b6226c32e168c83b891d8d6f0d3c29c2116dc3ef93dc93c307b54f279ecf383"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/pdfium-binaries.txt",
+      "bytes": 1184,
+      "sha256": "8854f4388f1ca13b3ad9baa42e95f5546b4c0b17109c159256d3eca7be39b09b"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/pdfium.txt",
+      "bytes": 12818,
+      "sha256": "961eacd9633fff6d051db7208b755e9210e30efac7adec3e6a6d52798f0ccf0e"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/simdutf.txt",
+      "bytes": 1077,
+      "sha256": "c172a0ba936ff31230febb5dad869e25cb7c1a07480c7a381be8cf011bb52719"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/licenses/data/windows_x64/BUILD_LICENSES/zlib.txt",
+      "bytes": 1332,
+      "sha256": "33fd641c9f3b0e0be64bc78fea9e94807674cdd70c48477599226cb8956565fe"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2-5.14.0.dist-info/top_level.txt",
+      "bytes": 52,
+      "sha256": "07e2cb6d8ff0e395a284a74697fa4ceab81bfb3dbe45886aca406b5d7fc90fc5"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/__init__.py",
+      "bytes": 653,
+      "sha256": "e4dea381d513bf1c657cc94d83701ff7a216721d64822d078522af1b38fd6491"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/__main__.py",
+      "bytes": 914,
+      "sha256": "cc9bc7ec16b8fb3724faf4b2f13f2886c193bdb107432246e0150a1278cd5f0d"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/attachment.py",
+      "bytes": 7701,
+      "sha256": "594d548ad08a77ea0c93b22387845dc23ad84d64e787dcabf1d8886d838d45c3"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/bitmap.py",
+      "bytes": 20807,
+      "sha256": "fc28faf6a56112b69f2570e3522d3c9d548046ac2de7c22812b11640353043a8"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/document.py",
+      "bytes": 30441,
+      "sha256": "b4d112176efcd8bacef8be71b652cc02fd873d3c597e57ca06d9afbb4cd252a1"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/matrix.py",
+      "bytes": 6615,
+      "sha256": "4eab322995c9bb6ae9bfe8ead5bd723a5b946d23e4abd66d9a4bc1bc8ac07107"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/misc.py",
+      "bytes": 1578,
+      "sha256": "0de38c4d38e8ffd24349d3e7b753e269d07efe3ee1390c057f88f5099e90b81f"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/page.py",
+      "bytes": 24174,
+      "sha256": "0c756c5542c58bdffa3a09e527508e651f3083a5d0d0e44910f2421bc820bc51"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/pageobjects.py",
+      "bytes": 27441,
+      "sha256": "3ccbca76c25ec3d39ee177b0b162f85bdb9982fdc9b7f9b244a97ce3a30426c5"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/sysfontinfo.py",
+      "bytes": 12468,
+      "sha256": "c97d9502e5004ff9b3de1071823dca410eec8182a9fb7368efc3864b2f9c45b4"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/textpage.py",
+      "bytes": 14058,
+      "sha256": "d8899cda5e394d26da5eeadf998644a417b8ce7ac10c20c33da512eed369446d"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_helpers/unsupported.py",
+      "bytes": 2651,
+      "sha256": "a46a7101a8865e094cad1923d5356d2377fbebc683ad673357418f07b74fbb8f"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_lazy.py",
+      "bytes": 871,
+      "sha256": "0b946874c8df7a542568f6a873843e8a63aeca1340520738777ea87bd8475b19"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/_library_scope.py",
+      "bytes": 2342,
+      "sha256": "d2507c29c5364f0939a8cd7571381ad0fcbdeb75b4bb12162395ed212db5dd5b"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/internal/__init__.py",
+      "bytes": 242,
+      "sha256": "ca51eac7bb2637e09bbb3e9b17f5c9ce69cb0f472b6176b0fbe32433d552da17"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/internal/bases.py",
+      "bytes": 6863,
+      "sha256": "ffa1d4664a0f7f0526e55e6356603022cba81cbacdbf3e1dcea2f3a785523e10"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/internal/consts.py",
+      "bytes": 8057,
+      "sha256": "4444cc73ed21386abf41959b16c33c6ff692f703851c6e0c0352ec6330e574a6"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/internal/utils.py",
+      "bytes": 3073,
+      "sha256": "69117299be5ee6cd062a7ee946d1ce9b044546f3610cafa3aabcf1e550c03802"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/raw.py",
+      "bytes": 273,
+      "sha256": "78f7cd3ff66290d97cf63771f3868729481b6edc4d808b93b2841304462951bb"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/version.json",
+      "bytes": 171,
+      "sha256": "4fea9865d76e0996f34fd409258c82e683393c273a58f4def53de27837965547"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2/version.py",
+      "bytes": 2779,
+      "sha256": "722db25612df52d609dc30c0a4aa74dda5210befd723fdf2ac3994effaf66ce8"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cfg/__init__.py",
+      "bytes": 550,
+      "sha256": "bea7f49aa76d7fe04b562ddd918bcd7ff3a09069e9a7b75dfc40c2cbdf4d8489"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cfg/_shared/__init__.py",
+      "bytes": 160,
+      "sha256": "0172429091cdb5c12636b432b475b8f1b79407e35d483a5bd9d15f9bf0bdbe05"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cfg/_shared/stl.py",
+      "bytes": 4809,
+      "sha256": "e59eedee77fea74609437a57b3e398dc423a96f5d08f501e754b86eac94615e7"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cfg/stl.py",
+      "bytes": 170,
+      "sha256": "e1d5069541783ff83910fe440f19581484014d836c3bd61402f2d4c99e61fb03"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/__init__.py",
+      "bytes": 119,
+      "sha256": "eb2b49690efe149596377bf9e2156556b67dc0c843b5939e5b872e2e791f6641"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/__main__.py",
+      "bytes": 3954,
+      "sha256": "fd5f3e196b8511d8417f0365700dced5e7bafe77a22bb5170fdc347564a1f45b"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/_parsers.py",
+      "bytes": 3070,
+      "sha256": "789d22cfef6030c33b16e2f4d68e2c54b2d400d390d85eee1918a878cb6e7c7f"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/_setup.py",
+      "bytes": 2326,
+      "sha256": "4e887dada62d361b3d3b6820ea7d5fedaa07b9cae51482a2e6c1de0469a68f60"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/_sysfonts.py",
+      "bytes": 3251,
+      "sha256": "d706fac6677a8583ea20939d0cb2fde39e4f246804c7398af98079a65b834337"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/arrange.py",
+      "bytes": 1521,
+      "sha256": "19a4caaf2f4824467a9535bd7960fad6fb5e688d3c8512e304258650941da16c"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/attachments.py",
+      "bytes": 3184,
+      "sha256": "0ebb6e3edd530e980b4f06a148b61f4877b509c13ee92102ca6a1fef69c7c565"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/default_fonts.py",
+      "bytes": 1918,
+      "sha256": "cc9661d671e794a9cad12756a81f8311d346123ad2708cd4fb1ed02c7295a7cd"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/extract_images.py",
+      "bytes": 3092,
+      "sha256": "4dfc5a83b30d6473c2a086b054e23416a2ed3827c3a6647c986d6ac363cbcabf"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/extract_text.py",
+      "bytes": 1386,
+      "sha256": "184bd80f4bc679448f9db82ce58e5bc16b8f6ea00fe079a49467ff0c5f0811de"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/fonts.py",
+      "bytes": 2829,
+      "sha256": "89567f0973ff3e4cb01b07bc61641f616d7d04dd858016713b5cd3db0bdcee37"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/imgtopdf.py",
+      "bytes": 2024,
+      "sha256": "5a9f60f9245dc205e05dcdba08704740e1c53af59eb69be1f50076616418e126"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/pageobjects.py",
+      "bytes": 4029,
+      "sha256": "be77329253a71a4b6d14f40e30f46b2f64874713b231b1ef46cbbbf78c0f699c"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/pdfinfo.py",
+      "bytes": 1949,
+      "sha256": "d2b8bdf2124e24120f912de2ba0c316dfd969235447cfcce374a1dedd5b0b7c0"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/render.py",
+      "bytes": 21007,
+      "sha256": "cac319754629796a1ac3f8e28284fbb4cd24df51ab4f2a04753e9fd6c2387411"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/tile.py",
+      "bytes": 2325,
+      "sha256": "c276716f90abf0528f3936ff7c20af54880a3c6f9c87327a8b102c3967011ae1"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_cli/toc.py",
+      "bytes": 2749,
+      "sha256": "49dbd40b0753161f6d824bcb8c5a51fc48259383e864858df2a4aa6a76fcc97c"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_raw/__init__.py",
+      "bytes": 841,
+      "sha256": "c8279b9e5b5171d37a3bcdb6628b7da8fb009d2cb803ea0e877c0381f52722d8"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_raw/bindings.py",
+      "bytes": 153023,
+      "sha256": "2f492d5232bfe3a52da5fd4f06ab0c5c6745715840d3128ddc8b7dd9c8ca6fc0"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_raw/pdfium.dll",
+      "bytes": 7381504,
+      "sha256": "69f1e860f6742fbaafcc4db80e785eec9a4ee0da36ea6d1dc0867ea0f18baea6"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_raw/version.json",
+      "bytes": 152,
+      "sha256": "363ee2f6a236c8b262326634ee79c661a6020c9df1fcef734dd928ee6924113a"
+    },
+    {
+      "path": "runtime/ocr/Lib/site-packages/pypdfium2_raw/version.py",
+      "bytes": 2664,
+      "sha256": "650422c7beaa6b233576531011a4a478eb3b73dc319febc5acd46c24b55ac241"
+    },
+    {
       "path": "runtime/ocr/Lib/site-packages/pyyaml-6.0.3.dist-info/INSTALLER",
       "bytes": 4,
       "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
@@ -10757,7 +11124,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/rapidocr-3.10.0.dist-info/RECORD",
       "bytes": 10456,
-      "sha256": "23d708bc8b07cbf100a9609d1183a0a323cde0b92f4908ac2f05004bd4affdcf"
+      "sha256": "f6e38899b49aa9a23fbf30e008bc8a5b6250f9bc4d12a70f5876c80e8c2036c3"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/rapidocr-3.10.0.dist-info/REQUESTED",
@@ -12232,7 +12599,7 @@
     {
       "path": "runtime/ocr/Lib/site-packages/tqdm-4.70.1.dist-info/RECORD",
       "bytes": 3201,
-      "sha256": "fd654d3d083ddc166521fee11a95e1786be75ef49f7c63cfebeef7c5790cfb41"
+      "sha256": "623198d7ee2c2727da3dfd650144d3e74c393b17433a80a0ffeeb81f80ad2ea5"
     },
     {
       "path": "runtime/ocr/Lib/site-packages/tqdm-4.70.1.dist-info/REQUESTED",

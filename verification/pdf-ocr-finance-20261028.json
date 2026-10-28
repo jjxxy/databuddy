@@ -1,0 +1,216 @@
+{
+  "scope": "synthetic_fixtures_only_not_real_financial_acceptance",
+  "python_regression": {
+    "tests": 121,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 4,
+    "passed": 117,
+    "junit": "pdf-ocr-finance-20261028.xml",
+    "skips": [
+      {
+        "class": "tests.test_pdf_ocr",
+        "test": "test_real_pdf_ocr_pages_rotation_crop_and_source_binding",
+        "reason": "Optional pinned PDF OCR test runtime unavailable"
+      },
+      {
+        "class": "tests.test_pdf_ocr",
+        "test": "test_pdf_malformed_encrypted_oversized_and_page_count_are_rejected",
+        "reason": "Optional pinned PDF OCR test runtime unavailable"
+      },
+      {
+        "class": "tests.test_ocr_worker_path",
+        "test": "test_desktop_refuses_external_symlink",
+        "reason": "Symlink creation not permitted on this Windows host"
+      },
+      {
+        "class": "tests.test_visual_ocr_api",
+        "test": "test_real_chinese_image_ocr_over_api",
+        "reason": "Optional OCR runtime is unavailable"
+      }
+    ]
+  },
+  "ui_scripts": [
+    {
+      "name": "auth-transition.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "collaboration.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-app-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-workbench.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "desktop-business-actions.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "facts-pagination.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lifecycle.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lineage-render.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-data.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-workspace-context.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "models.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "multi-files.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "project-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "resume-message.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "scroll.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "service-worker.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "single-fact-candidate.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "single-fact-review.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-buttons.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-preview.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "visual-facts.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "work.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-features.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-shell.cjs",
+      "exit_code": 0
+    }
+  ],
+  "package": "Atlas-DataBuddy-win32-x64-r24-pdf-ocr",
+  "package_result": {
+    "pdf": {
+      "synthetic_only": true,
+      "physical_disconnect_or_firewall_evaluated": false,
+      "real_finance_accuracy_evaluated": false,
+      "ok": true,
+      "local_only_policy": true,
+      "inherited_path_empty": true,
+      "render_scale": 2.0,
+      "pdf_encrypted_empty_password_rejected": true,
+      "human_review_required": true,
+      "source_hash_bound": true
+    },
+    "image": {
+      "synthetic_only": true,
+      "physical_disconnect_or_firewall_evaluated": false,
+      "real_finance_accuracy_evaluated": false,
+      "ok": true,
+      "embedded_backend": true,
+      "independent_ocr_python": true,
+      "local_only_policy": true,
+      "source_revision_bound": true,
+      "source_hash_bound": true,
+      "human_review_required": true
+    },
+    "backend": {
+      "ok": true,
+      "synthetic_data_only": true,
+      "real_ai_evaluated": false,
+      "os_firewall_or_disconnected_vm_evaluated": false,
+      "cases": {
+        "fresh_local_workflow": {
+          "auth_required": true,
+          "empty_input_rejected": true,
+          "long_input_rejected": true,
+          "empty_file_rejected": true,
+          "manual_publish_required": true,
+          "audit_verified": true
+        },
+        "restart": {
+          "data_preserved": true,
+          "credentials_preserved": true,
+          "port_preserved": true,
+          "audit_verified": true
+        },
+        "bad_model_local_workflow": {
+          "auth_required": true,
+          "empty_input_rejected": true,
+          "long_input_rejected": true,
+          "empty_file_rejected": true,
+          "manual_publish_required": true,
+          "audit_verified": true
+        },
+        "missing_runtime": {
+          "ok": true,
+          "real_runtime_modified": false
+        }
+      },
+      "inherited_path_empty": true
+    },
+    "source_inventory": {
+      "ok": true,
+      "source_files_equal": 155,
+      "artifact_manifest_entries_verified": 17509,
+      "app_runtime_manifest_verified_at_build": true
+    },
+    "extra_inventory": {
+      "ok": true,
+      "source_bundle_equality": {},
+      "unchanged_react_assets_equal_to_r23": 3,
+      "react_rebuild_run": false,
+      "pdf_license_files_identical_to_wheel": 18,
+      "ocr_lock_manifest_hash_matches": true
+    }
+  },
+  "limitations": [
+    "real financial accuracy and business acceptance not verified",
+    "legacy manual PDF review still parses in the service process",
+    "OCR child process is not an OS sandbox",
+    "PDF forms and annotations may not be rendered; PDF OCR boxes are render pixels",
+    "physical disconnection or firewall isolation not established by local_only alone"
+  ],
+  "pdf_coordinate_system": "rendered_pdf_page_pixels_not_pdf_coordinates",
+  "pypdfium2_windows_wheel_sha256": "149fd5c6397b8df8bf7911a93506eff0be874f877afe7ac936cf5d37d21a6a06"
+}

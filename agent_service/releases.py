@@ -60,17 +60,13 @@ def _source_review_details(run,manifest):
 
 def _requires_fact_alignment(run,manifest):
     """Evidence review does not establish additivity of financial facts."""
+    from .project_data import source_requires_fact_alignment
     frozen=run.get('source_snapshot') or {}
     for item in manifest.get('inputs') or []:
         if not isinstance(item,dict):continue
         source=frozen.get(item.get('source_id')) or {}
-        profile=source.get('profile') if isinstance(source.get('profile'),dict) else {}
-        profile_evidence=profile.get('evidence') if isinstance(profile.get('evidence'),dict) else {}
         evidence=item.get('evidence') if isinstance(item.get('evidence'),dict) else {}
-        if (source.get('fact_review_id') or source.get('visual_fact_review_id') or
-                source.get('semantic_alignment_required') is True or
-                profile_evidence.get('semantic_alignment_required') is True or
-                evidence.get('semantic_alignment_required') is True):
+        if source_requires_fact_alignment(source,evidence):
             return True
     return False
 
@@ -187,7 +183,7 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False,*,confirm_source_
         actual=hashlib.sha256((folder/'business_objects.parquet').read_bytes()).hexdigest()
         if actual!=manifest['parquet_hash'] or manifest['commit']!=run['commit']:raise ValueError('运行产物完整性校验失败')
         source_review,source_details=_source_review_details(run,manifest)
-        if _requires_fact_alignment(run,manifest):
+        if manifest.get('fact_semantic_alignment_required') is True or _requires_fact_alignment(run,manifest):
             raise ValueError('来源事实尚缺少逐条业务语义和可加性的可信核对，不能发布；请保留候选并核对来源')
         if lease_token:
             # A background refresh cannot approve an unreviewed interpretation.

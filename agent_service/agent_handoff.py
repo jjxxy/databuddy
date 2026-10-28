@@ -227,6 +227,8 @@ def build_input(turn,source_ids=None,result_ids=None):
     for sid in source_ids:
         s=project_data.owned(pid,'source',sid)
         if s.get('archived') or s.get('kind')!='file':raise HandoffError('仅交接可核对的来源原件，连接配置不会发送给其他Agent')
+        if project_data.source_requires_fact_alignment(s,{}):
+            raise HandoffError('来源事实或外部资料尚缺少可验证的业务语义及完整来源链，不能作为普通资料交接给其他Agent')
         path=project_data.source_path(s);raw=_read_bytes(path)
         current=get('source',sid)
         if any(current.get(k)!=s.get(k) for k in ('revision','revision_id','content_hash')) or _digest(raw)!=s.get('content_hash'):
@@ -283,7 +285,7 @@ def import_bundle(pid,bundle,*,scope_id,request_id):
                 except KeyError:
                     source=put('source',{'project_id':pid,'name':item['name'],'kind':'file','bytes':len(raw),'content_hash':item['sha256'],
                         'status':'queued','created_at':now(),'origin_agent_handoff':bundle['manifest_sha256'],'skip_model_planning':True,
-                        'external_provenance':item['source_version'],'requires_semantic_review':True,
+                        'external_provenance':item['source_version'],'requires_semantic_review':True,'semantic_alignment_required':True,
                         'secret_config':seal({'stored_name':stored,'agent_handoff':{'scope':scope_id,'manifest_sha256':bundle['manifest_sha256'],'source_version':item['source_version']}})},sid)
                     source=revision(source)
                 if source.get('project_id')!=pid or source.get('content_hash')!=item['sha256']:raise HandoffError('交接来源与已有回执不一致')

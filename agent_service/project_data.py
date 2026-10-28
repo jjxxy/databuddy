@@ -190,13 +190,41 @@ def source_requires_fact_alignment(source,evidence):
     """
     source=source if isinstance(source,dict) else {}
     evidence=evidence if isinstance(evidence,dict) else {}
-    profile=source.get('profile')
-    profile_evidence=profile.get('evidence') if isinstance(profile,dict) else None
-    return bool(source.get('fact_review_id') or source.get('visual_fact_review_id')
-                or source.get('semantic_alignment_required') is True
-                or evidence.get('fact_review_id') or evidence.get('visual_fact_review_id')
-                or evidence.get('semantic_alignment_required') is True
-                or isinstance(profile_evidence,dict) and profile_evidence.get('semantic_alignment_required') is True)
+    def marked(value,proof):
+        profile=value.get('profile')
+        profile_evidence=profile.get('evidence') if isinstance(profile,dict) else None
+        return bool(value.get('fact_review_id') or value.get('visual_fact_review_id')
+                    or value.get('semantic_alignment_required') is True
+                    or 'origin_agent_handoff' in value or 'external_provenance' in value
+                    or proof.get('fact_review_id') or proof.get('visual_fact_review_id')
+                    or proof.get('semantic_alignment_required') is True
+                    or isinstance(profile_evidence,dict) and profile_evidence.get('semantic_alignment_required') is True)
+    if marked(source,evidence):return True
+    # Derived sources must not launder an ancestor's fact-review obligation.
+    # Follow the immutable version referenced by each edge, not the current
+    # source (which may have since been replaced). Missing or ambiguous history
+    # is not evidence of safety; preserve the restriction in that case.
+    if 'origin_source_id' not in source and 'origin_source_revision' not in source:return False
+    project=source.get('project_id');ident=source.get('id');revision=source.get('revision',1)
+    if not isinstance(project,str) or not project or not isinstance(ident,str) or type(revision) is not int or revision<1:return True
+    versions={}
+    for version in all_items('source_version'):
+        versions.setdefault((version.get('source_id'),version.get('revision')),[]).append(version)
+    seen={(ident,revision)};current=source
+    for _ in range(512):
+        if 'origin_source_id' not in current and 'origin_source_revision' not in current:return False
+        origin=current.get('origin_source_id');number=current.get('origin_source_revision')
+        if not isinstance(origin,str) or not origin or type(number) is not int or number<1:return True
+        key=(origin,number)
+        if key in seen:return True
+        seen.add(key)
+        found=versions.get(key,[])
+        if len(found)!=1:return True
+        parent=found[0]
+        if parent.get('project_id')!=project or not isinstance(parent.get('kind'),str):return True
+        if marked(parent,{}):return True
+        current=parent
+    return True
 
 
 def source_interpretation_needs_review(source,evidence):
@@ -1234,7 +1262,8 @@ def extract_indented_source(pid,source_id,columns):
     cfg={'stored_name':name,'extraction_evidence':{k:v for k,v in parsed.items() if k not in ('rows','fields')}}
     child=put('source',{'project_id':pid,'name':'缩进表格-'+s['name']+'.json','kind':'file','secret_config':seal(cfg),
         'content_hash':hashlib.sha256(raw).hexdigest(),'bytes':len(raw),'status':'queued','created_at':now(),
-        'origin_source_id':source_id,'origin_source_revision':s.get('revision',1),'requires_semantic_review':True},key)
+        'origin_source_id':source_id,'origin_source_revision':s.get('revision',1),'requires_semantic_review':True,
+        'semantic_alignment_required':source_requires_fact_alignment(s,{})},key)
     revision(child);enqueue('probe',key)
     return {'source_id':key,'records':len(parsed['rows']),'requires_semantic_review':True,
             'scope':'explicit_delimiters_and_layout_hierarchy; no_invented_business_ontology'}

@@ -47,7 +47,7 @@ class VisualProposal(StrictModel):
 class OCRInput(StrictModel):
     expected_revision: int = Field(ge=1, strict=True)
     expected_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
-    page: int = Field(default=1, strict=True, ge=1, le=1)
+    page: int = Field(default=1, strict=True, ge=1, le=500)
 
 
 class VisualReview(StrictModel):
@@ -118,8 +118,93 @@ def _ocr_worker_python():
     return str(resolved)
 
 
+def _bounded_worker(command,request,*,cwd,env,timeout=60,stdout_limit=4*1024*1024,stderr_limit=64*1024):
+    """Drain both pipes concurrently; never buffer more than bounded output."""
+    import subprocess
+    import threading
+    import time
+    from .offline_ocr import OCRError
+    process=subprocess.Popen(command,cwd=cwd,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),close_fds=True)
+    exceeded=threading.Event();failed=threading.Event();out=bytearray();err=bytearray()
+    def drain(stream,target,limit):
+        try:
+            while True:
+                chunk=stream.read(65536)
+                if not chunk:break
+                if len(target)+len(chunk)>limit:
+                    exceeded.set();return
+                target.extend(chunk)
+        except (OSError,ValueError):failed.set()
+    def write_request():
+        try:process.stdin.write(request);process.stdin.close()
+        except (OSError,ValueError):failed.set()
+    readers=[threading.Thread(target=drain,args=(process.stdout,out,stdout_limit),daemon=True),
+             threading.Thread(target=drain,args=(process.stderr,err,stderr_limit),daemon=True)]
+    writer=threading.Thread(target=write_request,daemon=True)
+    for thread in [*readers,writer]:thread.start()
+    deadline=time.monotonic()+timeout
+    try:
+        while process.poll() is None:
+            if exceeded.is_set():raise OCRError('本地识别输出超过限制，未返回结果','OCR_OUTPUT_BUDGET_EXCEEDED')
+            if time.monotonic()>=deadline:raise subprocess.TimeoutExpired(command,timeout)
+            time.sleep(.02)
+        for thread in [*readers,writer]:
+            thread.join(timeout=max(0,min(2.0,deadline-time.monotonic())))
+        if any(thread.is_alive() for thread in [*readers,writer]):raise subprocess.TimeoutExpired(command,timeout)
+        if exceeded.is_set():raise OCRError('本地识别输出超过限制，未返回结果','OCR_OUTPUT_BUDGET_EXCEEDED')
+        if failed.is_set():raise OCRError('本地识别通信未完成','OCR_INFERENCE_FAILED')
+        return subprocess.CompletedProcess(command,process.returncode,stdout=bytes(out),stderr=bytes(err))
+    finally:
+        if process.poll() is None:
+            process.kill()
+            try:process.wait(timeout=5)
+            except subprocess.TimeoutExpired:pass
+
+
+def _run_ocr_worker(request):
+    """Minimize inherited secrets; this is not an operating-system sandbox."""
+    import os
+    import shutil
+    import subprocess
+    import tempfile
+    root=Path(tempfile.gettempdir()).resolve(strict=True)
+    scratch=Path(tempfile.mkdtemp(prefix='atlas-ocr-',dir=str(root)))
+    expected=root/scratch.name
+    try:
+        if scratch!=expected or scratch.resolve(strict=True)!=expected or not scratch.name.startswith('atlas-ocr-'):
+            raise OSError('OCR scratch directory is not confined')
+        env={'PATH':'','TEMP':str(scratch),'TMP':str(scratch)}
+        for name in ('SystemRoot','WINDIR'):
+            if os.environ.get(name):env[name]=os.environ[name]
+        return _bounded_worker([_ocr_worker_python(), '-E', '-s', '-X', 'utf8', '-m', 'agent_service.offline_ocr'],
+            request,cwd=Path(__file__).resolve().parent.parent,env=env)
+    finally:
+        # Only remove the exact freshly-created directory if it still resolves
+        # under the same trusted temp root; never recurse into a moved target.
+        try:
+            if scratch.parent==root and scratch.name.startswith('atlas-ocr-') and scratch.resolve(strict=True)==expected:
+                shutil.rmtree(scratch)
+        except OSError:
+            pass
+
+
+def _ocr_original(pid,sid,page):
+    """Verify PDF bytes only here; PDF parsing belongs to the bounded worker."""
+    source,path=_source(pid,sid)
+    if path.suffix.lower()!='.pdf':return _original(pid,sid,page)
+    revision=source.get('revision',1)
+    if type(revision) is not int or revision<1:raise ValueError('来源版本无效，请重新导入')
+    with path.open('rb') as stream:raw=stream.read(MAX_FILE_BYTES+1)
+    if len(raw)>MAX_FILE_BYTES:raise ValueError('文档超过25MB读取预算')
+    digest=hashlib.sha256(raw).hexdigest()
+    if not re.fullmatch(r'[a-f0-9]{64}',str(source.get('content_hash',''))) or source['content_hash']!=digest:
+        raise ValueError('来源原件与登记摘要不一致，请重新导入并核对')
+    return source,digest,path
+
+
 def recognize_source(pid, sid, value):
-    """Identify one verified image through a time- and concurrency-bounded worker.
+    """Identify one verified image or PDF page through a bounded worker.
 
     The model returns untrusted visual candidates only; this function neither
     creates a proposal nor approves values. Source metadata and bytes are
@@ -131,28 +216,28 @@ def recognize_source(pid, sid, value):
     from .offline_ocr import OCRError
     value = OCRInput.model_validate(value)
     source, path = _source(pid, sid)
-    if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):
-        raise OCRError('自动识别目前只支持 PNG、JPEG 和 WebP 图片，PDF 请先核对原件', 'OCR_IMAGE_UNSUPPORTED')
+    if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp', '.pdf'):
+        raise OCRError('仅支持 PDF、PNG、JPEG 和 WebP 原件', 'OCR_IMAGE_UNSUPPORTED')
+    if path.suffix.lower()!='.pdf' and value.page!=1:
+        raise OCRError('图片仅支持第 1 页','OCR_PAGE_UNSUPPORTED')
     if source.get('revision', 1) != value.expected_revision or source.get('content_hash') != value.expected_sha256:
         raise OCRError('资料版本已变化，请重新打开原件', 'OCR_SOURCE_CHANGED')
     try:
         with FileLock(str(DATA / 'visual-ocr-execution.lock'), timeout=0):
-            source, digest, path = _original(pid, sid, value.page)
+            source, digest, path = _ocr_original(pid, sid, value.page)
             if digest != value.expected_sha256 or source.get('revision', 1) != value.expected_revision:
                 raise OCRError('资料版本已变化，请重新打开原件', 'OCR_SOURCE_CHANGED')
             request = json.dumps({'path': str(path), 'expected_sha256': digest, 'page': value.page}, ensure_ascii=False).encode('utf-8')
             if len(request) > 8192:
                 raise OCRError('资料路径超过识别限制', 'OCR_REQUEST_TOO_LARGE')
             try:
-                result = subprocess.run([_ocr_worker_python(), '-X', 'utf8', '-m', 'agent_service.offline_ocr'],
-                    cwd=Path(__file__).resolve().parent.parent, input=request, capture_output=True,
-                    timeout=60, check=False, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                result = _run_ocr_worker(request)
             except subprocess.TimeoutExpired:
-                raise OCRError('图片识别超时，请拆分图片后重试或人工核对', 'OCR_TIMEOUT') from None
+                raise OCRError('本地识别超时，请拆分资料后重试或人工核对', 'OCR_TIMEOUT') from None
             except OSError:
                 raise OCRError('本地识别服务不可用，请人工核对原件', 'OCR_RUNTIME_UNAVAILABLE') from None
     except Timeout:
-        raise OCRError('已有图片正在识别，请稍后重试', 'OCR_BUSY') from None
+        raise OCRError('已有资料正在识别，请稍后重试', 'OCR_BUSY') from None
     if result.returncode != 0 or len(result.stdout) > 4 * 1024 * 1024:
         raise OCRError('本地识别未完成，请对照原图人工处理', 'OCR_INFERENCE_FAILED')
     try:
@@ -169,7 +254,9 @@ def recognize_source(pid, sid, value):
                 'OCR_SOURCE_UNAVAILABLE': '资料原件不可读取，请重新打开原件',
                 'OCR_IMAGE_UNSUPPORTED': '图片格式不受支持，请人工核对原件',
                 'OCR_IMAGE_INVALID': '图片损坏或格式不受支持',
-                'OCR_IMAGE_BUDGET_EXCEEDED': '图片过大，请拆分后重试',
+                'OCR_PDF_INVALID': 'PDF 文件损坏、加密或无法渲染，请人工核对',
+                'OCR_PAGE_UNSUPPORTED': '页码超出支持范围，PDF 最多 500 页',
+                'OCR_IMAGE_BUDGET_EXCEEDED': '页面或图片过大，请拆分后重试',
                 'OCR_OUTPUT_BUDGET_EXCEEDED': '图片内容过多，请拆分后重试',
             }
             raise OCRError(messages.get(code, '本地识别未完成，请对照原图人工处理'), code or 'OCR_INFERENCE_FAILED')
@@ -178,11 +265,20 @@ def recognize_source(pid, sid, value):
                 output.get('page') != value.page or output.get('human_review_required') is not True or
                 output.get('financial_facts_verified') is not False or output.get('complete') is not False):
             raise ValueError('invalid OCR evidence')
+        if path.suffix.lower()=='.pdf':
+            if (output.get('coordinate_space')!='rendered_pdf_page_pixels_not_pdf_coordinates'
+                    or output.get('render_scale')!=2.0 or type(output.get('pdf_rotation_degrees')) is not int
+                    or type(output.get('pdf_page_count')) is not int or not value.page<=output['pdf_page_count']<=500
+                    or not re.fullmatch(r'[a-f0-9]{64}',str(output.get('rendered_image_sha256','')))
+                    or type(output.get('image_width')) is not int or type(output.get('image_height')) is not int
+                    or not 1<=output['image_width']<=6000 or not 1<=output['image_height']<=6000
+                    or output['image_width']*output['image_height']>16_000_000):
+                raise ValueError('invalid PDF OCR evidence')
     except OCRError:
         raise
     except (KeyError, TypeError, ValueError, UnicodeError):
         raise OCRError('本地识别未完成，请对照原图人工处理', 'OCR_INFERENCE_FAILED') from None
-    current, current_digest, current_path = _original(pid, sid, value.page)
+    current, current_digest, current_path = _ocr_original(pid, sid, value.page)
     if (current.get('revision', 1) != value.expected_revision or current_digest != digest or current_path != path):
         raise OCRError('识别期间资料已变化，请重新打开原件', 'OCR_SOURCE_CHANGED')
     return dict(output, source_id=sid, source_revision=value.expected_revision)

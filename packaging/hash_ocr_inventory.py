@@ -31,7 +31,7 @@ def main():
             'sha256_kind': 'delivered-file-manifest-v1', 'delivered_files': len(delivered),
             'delivered_bytes': sum(e['bytes'] for e in delivered),
             'file_hash_reference': 'runtime-manifest.json#files'})
-    if len(packages) != 21:
+    if len(packages) != 22:
         raise ValueError('Unexpected number of OCR distributions')
     value = {'hash_definition': 'SHA256(UTF8("delivered-files-v1\\n" + sorted(path + NUL + file_sha256 + NUL + decimal_size + LF)))',
              'not_an_upstream_wheel_hash': True, 'packages': sorted(packages,key=lambda p:p['name'].lower())}

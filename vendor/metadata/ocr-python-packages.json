@@ -14,7 +14,7 @@
     {
       "name": "charset-normalizer",
       "version": "3.5.2",
-      "sha256": "35d3a4e02846ef90bd657692ba1e3ebddb100d0e354b6cc33526acbdfc580a2d",
+      "sha256": "89832ed0216d1ad08dd8f7f05854ba96d55bbecf15a03d1c339a7273b40065bf",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 23,
       "delivered_bytes": 573185,
@@ -50,7 +50,7 @@
     {
       "name": "idna",
       "version": "3.20",
-      "sha256": "46ef204a1cdf19a8f7f577a4615b9bd44c825740ae9cc284319aad9c743ae916",
+      "sha256": "e1f74ababab6050fd688f7166c953d16587600cf286b9d5a2a61fbcb19b53904",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 18,
       "delivered_bytes": 342341,
@@ -59,7 +59,7 @@
     {
       "name": "numpy",
       "version": "2.5.4",
-      "sha256": "6346af370ecf716eef59db55150f9c10e4ce0fb4f6def5ac081cbb9575b4b50c",
+      "sha256": "abd98a0ffa7f549bf41c050fde4a379f9a7852a6d639379ef8449088a8e36a81",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 947,
       "delivered_bytes": 41940799,
@@ -77,7 +77,7 @@
     {
       "name": "onnxruntime",
       "version": "1.31.1",
-      "sha256": "5a57d67d2662feb5fee6ea580dac7af5a298bc764e9ce361f902f235583541f7",
+      "sha256": "a2f37ddad72a45304c1a4629bd945b355f22d77813a2c85fdf2f5e67806302e0",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 325,
       "delivered_bytes": 43614563,
@@ -129,6 +129,15 @@
       "file_hash_reference": "runtime-manifest.json#files"
     },
     {
+      "name": "pypdfium2",
+      "version": "5.14.0",
+      "sha256": "29a6dc04051a2d3a228c0f41914e2fd00562d520bde213bc7153c4009b4b2073",
+      "sha256_kind": "delivered-file-manifest-v1",
+      "delivered_files": 73,
+      "delivered_bytes": 7985215,
+      "file_hash_reference": "runtime-manifest.json#files"
+    },
+    {
       "name": "PyYAML",
       "version": "6.0.3",
       "sha256": "747ffdfd9e11299439df73d93a09fa54f49c76b26f68b6a87b5ff13ae9a56396",
@@ -140,7 +149,7 @@
     {
       "name": "rapidocr",
       "version": "3.10.0",
-      "sha256": "0f20c4be1a88e148584017bf95de8d80940e5587c24c2e48372ad10956813753",
+      "sha256": "ab19d64b945124564d3fe7d9ec70725cdfc03d120844673ebb20f91143c8be88",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 102,
       "delivered_bytes": 32428786,
@@ -176,7 +185,7 @@
     {
       "name": "tqdm",
       "version": "4.70.1",
-      "sha256": "4b7964130df05093744bcad491f85757a8952b5cd58ca086489144e1139df598",
+      "sha256": "e2c788050cc8e51d581449ee154a3456fa214ecab2fd28e69937f1b78d215008",
       "sha256_kind": "delivered-file-manifest-v1",
       "delivered_files": 41,
       "delivered_bytes": 233772,

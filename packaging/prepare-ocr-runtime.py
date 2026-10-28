@@ -76,6 +76,20 @@ def main():
         path = site / 'rapidocr' / 'models' / name
         if not path.is_file() or sha256(path) != expected:
             raise ValueError('OCR model hash mismatch: ' + name)
+    pdf_wheel = wheels / 'pypdfium2-5.14.0-py3-none-win_amd64.whl'
+    if not pdf_wheel.is_file() or sha256(pdf_wheel) != '149fd5c6397b8df8bf7911a93506eff0be874f877afe7ac936cf5d37d21a6a06':
+        raise ValueError('Pinned PDFium wheel is missing or changed')
+    prefix = 'pypdfium2-5.14.0.dist-info/licenses/'
+    with zipfile.ZipFile(pdf_wheel) as package:
+        license_files = [item for item in package.infolist() if item.filename.startswith(prefix) and not item.is_dir()]
+        if not license_files or not any(item.filename.endswith('/BUILD_LICENSES/pdfium.txt') for item in license_files):
+            raise ValueError('PDFium license inventory is incomplete')
+        for item in license_files:
+            installed = site / item.filename
+            if not installed.resolve().is_relative_to(site.resolve()) or not installed.is_file():
+                raise ValueError('PDFium license was not installed: ' + item.filename)
+            if hashlib.sha256(installed.read_bytes()).digest() != hashlib.sha256(package.read(item)).digest():
+                raise ValueError('PDFium license differs from its wheel: ' + item.filename)
     supplemental = ROOT / 'vendor/metadata/ocr-licenses/flatbuffers-v25.12.19-LICENSE.txt'
     if not supplemental.is_file() or sha256(supplemental)!='cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30':
         raise ValueError('FlatBuffers upstream license is missing or changed')
@@ -86,7 +100,8 @@ def main():
     executable = build / 'python.exe'
     check = subprocess.run([str(executable), '-I', '-B', '-c',
         'import importlib.metadata as m; assert m.version("rapidocr")=="3.10.0"; '
-        'assert m.version("onnxruntime")=="1.31.1"; import cv2,numpy,onnxruntime,PIL'],
+        'assert m.version("onnxruntime")=="1.31.1"; assert m.version("pypdfium2")=="5.14.0"; '
+        'import cv2,numpy,onnxruntime,PIL,pypdfium2'],
         capture_output=True, text=True, check=True)
     build.rename(target)
     print(json.dumps({'ok': True, 'runtime': str(target), 'models_verified': len(MODELS),

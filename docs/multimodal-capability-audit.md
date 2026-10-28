@@ -2,17 +2,19 @@
 
 核查对象：[多模态专项需求清单](multimodal-data-processing-budget-1100.md)。本文是工程现状核查，不修改预算申请内容；条目状态代表代码覆盖程度，不代表业务验收、生产安全或财务正确性。
 
+**财务使用警示：r24 为修复前历史包，禁止用于财务生产。** 来源派生和 Agent 交接两处已复现绕过已修复，r25 测试包本体 7 项定向测试通过；最终干净副本已核查与测试包文件一致，功能测试未在副本复跑。真实财经准确率及业务验收尚未通过。证据见 [r25 验证记录](../verification/r25-finance-and-ocr-20261028.json)。
+
 状态口径：**已实现**为需求限定范围内存在可运行实现；**部分实现**为仅覆盖部分格式、链路或条件；**未实现**为未发现可完成该需求的端到端实现。无论状态如何，均需按约定真实业务样本和用户验收标准验证。
 
-特别说明：人工视觉转录依赖用户对照原图确认，系统未独立核验像素；OCR API 和工作台界面可请求 PNG、JPEG、WebP 单帧图片候选，用户自行选择后再人工录入，系统不会把识别候选自动认定为准确。隔离运行时对合成中文图片的测试不能代表财务准确率；模型与运行库的可交付包体验证尚未完成，缺少组件时提示人工处理；扫描 PDF 目前需人工核对，不支持直接 OCR。Docling 为可选路径，同样不等于完成图表或扫描表验收。
+特别说明：人工视觉转录依赖用户对照原图确认，系统未独立核验像素；OCR API 和工作台界面可请求 PNG、JPEG、WebP 单帧图片或 PDF 的指定单页候选，用户自行选择后再人工录入，系统不会把识别候选自动认定为准确。PDF OCR 绑定原件修订、SHA-256 和页码，识别框仅对应本次渲染图像像素，不能映射为 PDF 原生坐标；表单与注释可能未被渲染，须对照原件。r25 测试包本体已用合成扫描 PDF 测试，不能代表真实财务准确率；缺少组件时提示人工处理。Docling 为可选路径，同样不等于完成图表或扫描表验收。
 
 ### 当前财务安全边界
 
-- 文字事实及视觉事实的原文核对，仅证明用户核对过单条提取内容，**不证明不同指标、单位、期间、含税或汇率口径可以相加或关联**。目前没有可验证的逐条业务语义对齐回执，因此事实或视觉事实派生来源只能形成供分页查看的候选，禁止正式采用、发布、新报告和下游数值复用；单条事实也不自动例外。单条已核对事实可以生成原样候选，并对照原件确认后单独导出 JSON；这不改变正式采用状态，也不允许汇总、报告或下游加工。来源确认勾选不能代替业务语义核对。恢复正式加工需要先设计并验证绑定原件修订与摘要、完整事实与业务口径、处理方案和输出摘要的可信人工回执，之后再明确支持范围。
-- 未对齐的事实候选保留只读分页和警告；批量 CSV、Excel、完整交接包和基于候选的汇总图表受后端门槛阻断，工作台及数据应用同步隐藏或禁用相关按钮。直接 API、工作区产物和工具路径也经过检查；缺少可证明来源的候选不得被视为安全。关联代码：[project_data.py](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[workspace_artifacts.py](../agent_service/workspace_artifacts.py)、[applications.py](../agent_service/applications.py)。
+- 文字事实及视觉事实的原文核对，仅证明用户核对过单条提取内容，**不证明不同指标、单位、期间、含税或汇率口径可以相加或关联**。目前没有可验证的逐条业务语义对齐回执，事实或视觉事实派生来源仅形成供分页查看的候选，不能正式采用、发布、新报告和下游数值复用；已复现的来源派生与 Agent 交接绕过已修复并通过定向测试，单条事实也不自动例外。单条已核对事实可以生成原样候选，并对照原件确认后单独导出 JSON；这不改变正式采用状态，也不允许汇总、报告或下游加工。来源确认勾选不能代替业务语义核对。恢复正式加工需要先设计并验证绑定原件修订与摘要、完整事实与业务口径、处理方案和输出摘要的可信人工回执，之后再明确支持范围。
+- 未对齐的事实候选保留只读分页和警告；批量 CSV、Excel、完整交接包和基于候选的汇总图表在既有已测路径受到后端门槛限制，工作台及数据应用同步隐藏或禁用相关按钮。r25 包体七项定向回归覆盖已复现的两条绕过，但不能证明所有路径安全。跨 Agent 接收的普通来源暂时也被保守限制，不能直接正式发布；缺少可证明来源的候选不得被视为安全。关联代码：[project_data.py](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[workspace_artifacts.py](../agent_service/workspace_artifacts.py)、[applications.py](../agent_service/applications.py)。
 - 已发布历史成果保持原样：可证明属于当前已发布版本且结果完整时继续只读查看和导出；来源或业务语义证据不足时显示待核对风险，不能标记为已确认，也不计算或展示新的应用汇总和图表。无法证明来源或发布身份的其他历史记录不应据此自动放行批量输出。历史警告不会追认旧口径的正确性。
 - 一般 CSV 或 Excel 即便通过格式、来源和数值校验，也不能证明内容的业务含义正确；尤其匿名 CSV 可能缺失含税、汇率、期间及预算版本等信息，系统无法仅凭列名判断业务口径。用户应补足数据字典、原始依据和业务核对；当前不保证对未知语义自动识别或阻断所有错误。
-- 本轮候选门槛及应用回归 7 项通过，另有历史事实产物只读与图表阻断专项 1 项通过，包含直接接口及真实数据加工路径；完整回归、最终 UI 联测和可交付包体验证仍需独立完成，不能据此宣称所有能力或财务准确率已验收。
+- 当前变更的指定回归和 r25 测试包本体已用合成资料验证；最终干净副本的 17,509 个包文件与测试包清单一致、无缺失或额外文件，168 个源码文件独立核查一致；功能测试未在副本复跑。Windows 长路径导入曾失败，短路径仅为规避；真实财经/月结、云端部署和业务验收未验证，不能据此宣称财务准确率已验收。
 
 ## 优先顺序
 
@@ -54,9 +56,9 @@
 
 - **文档文本提取：部分实现。** 证据：[document_reader.py:read_document](../agent_service/document_reader.py)、[connectors.py:_file_rows](../agent_service/connectors.py)。缺口：提取 PDF 文字层和 Office XML 文本、单元格；版式、图形及 PDF 表格结构未全面保证。
 
-- **页面与图像预处理：未实现。** 证据：[offline_ocr.py:recognize_image](../agent_service/offline_ocr.py)。缺口：当前识别保持原始像素坐标；未实现有可核验映射的旋转、去倾斜或去模糊处理。
+- **页面与图像预处理：未实现。** 证据：[offline_ocr.py:recognize_image](../agent_service/offline_ocr.py)。缺口：图片识别保持原始像素坐标，PDF 单页在受控进程内渲染并保留该图的像素坐标；未实现原 PDF 坐标映射、去倾斜或去模糊处理。
 
-- **扫描文字识别：部分实现。** 证据：[offline_ocr.py:recognize_image](../agent_service/offline_ocr.py)、[visual_fact_service.py](../agent_service/visual_fact_service.py)、[data_api.py](../agent_service/data_api.py)、[data-workbench.js](../agent_service/static/data-workbench.js)、[tests/test_offline_ocr.py](../tests/test_offline_ocr.py)。API 与工作台对绑定原件版本的单帧 PNG/JPEG/WebP 返回带坐标的未验证 OCR 候选，由用户自行选择和核对。缺口：运行库及模型的可交付包体验证未完成；扫描 PDF 直接 OCR 和真实样本准确率未验，人工核对不构成业务语义对齐。
+- **扫描文字识别：部分实现。** 证据：[offline_ocr.py:recognize_image](../agent_service/offline_ocr.py)、[visual_fact_service.py](../agent_service/visual_fact_service.py)、[data_api.py](../agent_service/data_api.py)、[data-workbench.js](../agent_service/static/data-workbench.js)、[tests/test_offline_ocr.py](../tests/test_offline_ocr.py)。API 与工作台对绑定原件修订及摘要的单帧 PNG/JPEG/WebP 或 PDF 指定单页返回未验证 OCR 候选，由用户自行选择并对照原件核对；PDF 框坐标仅对应渲染图像，不是原 PDF 坐标。缺口：真实财经样本识别准确率及业务验收尚未完成；表单及注释可能漏渲染，人工核对不构成业务语义对齐。
 
 - **版面结构识别：部分实现。** 证据：[document_reader.py](../agent_service/document_reader.py)、[connectors.py:_file_rows](../agent_service/connectors.py)。缺口：Office XML 结构、PDF 页和可选 Docling 文本块可保留部分位置；扫描页面标题、表格与附注的完整识别未验。
 
@@ -110,15 +112,15 @@
 
 - **重复与异常检查：部分实现。** 证据：[data_contracts.py:evaluate](../agent_service/data_contracts.py)、[api.py:upload](../agent_service/api.py)。缺口：支持唯一性、范围和部分上传重复检测；文件级及跨来源业务重复判断不完整。
 
-- **识别结果人工校正：部分实现。** 证据：[visual_fact_service.py:propose](../agent_service/visual_fact_service.py)、[visual_fact_service.py:review](../agent_service/visual_fact_service.py)、[data-workbench.js](../agent_service/static/data-workbench.js)。工作台支持原图或 PDF 页人工转录、复核和修订提案，图片 OCR 行可由用户选择追加并自行校正；系统不独立保证原文准确，也不把事实核对当成业务语义对齐。缺口：区域级纠错和大表格纠错尚需完善。
+- **识别结果人工校正：部分实现。** 证据：[visual_fact_service.py:propose](../agent_service/visual_fact_service.py)、[visual_fact_service.py:review](../agent_service/visual_fact_service.py)、[data-workbench.js](../agent_service/static/data-workbench.js)。工作台支持原图或 PDF 页人工转录、复核和修订提案，图片或单页 PDF OCR 行可由用户选择追加并自行校正；系统不独立保证原文准确，也不把事实核对当成业务语义对齐。缺口：区域级纠错和大表格纠错尚需完善。
 
-- **高风险结果阻断：部分实现。** 证据：[project_data.py:require_safe_numeric_lineage](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[applications.py](../agent_service/applications.py)、[tests/test_candidate_bulk_gate.py](../tests/test_candidate_bulk_gate.py)。未对齐事实候选阻断发布、批量导出及汇总图表，缺来源证明的候选不自动放行；工作台保留分页预览及警告。已发布历史按可核验身份保留查看与导出并显示风险。缺口：事实语义可信回执尚未实现，不能由一次来源勾选替代；当前源码的相关回归和 r23 包内合成资料验收已完成；真实业务样本及全仓回归仍待完成。
+- **高风险结果阻断：部分实现。** 证据：[project_data.py:require_safe_numeric_lineage](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[applications.py](../agent_service/applications.py)、[tests/test_candidate_bulk_gate.py](../tests/test_candidate_bulk_gate.py)。此前测试覆盖了对未对齐事实候选发布、批量导出及汇总图表的部分阻断；已发现其他路径存在来源派生及 Agent 交接绕过，不能声称已全面阻断；工作台保留分页预览及警告。已发布历史按可核验身份保留查看与导出并显示风险。缺口：事实语义可信回执尚未实现，不能由一次来源勾选替代；修复前 r24 曾执行有限合成资料包体验证，不能证明新增绕过已修复，全仓回归与真实业务样本仍待完成。
 
 ### 八、过程说明与数据溯源
 
 - **来源与版本说明：部分实现。** 证据：[business_explanation.py:explain_artifact](../agent_service/business_explanation.py)、[sources.py:revision](../agent_service/sources.py)、[applications.py](../agent_service/applications.py)。业务简报展示当次冻结来源，历史语义或证据不足显示待核对；缺口：任意报告和全部多模态结果尚未覆盖。
 
-- **原文原图定位：部分实现。** 证据：[document_reader.py](../agent_service/document_reader.py)、[fact_service.py](../agent_service/fact_service.py)、[visual_fact_service.py](../agent_service/visual_fact_service.py)。缺口：文字偏移、Excel 坐标、图片或 PDF 页码有记录；图像单词或财务单元格端到端定位未完整实现。
+- **原文原图定位：部分实现。** 证据：[document_reader.py](../agent_service/document_reader.py)、[fact_service.py](../agent_service/fact_service.py)、[visual_fact_service.py](../agent_service/visual_fact_service.py)。缺口：文字偏移、Excel 坐标、图片或 PDF 页码有记录；PDF OCR 框仅绑定单页渲染图像像素，不能在原 PDF 精确高亮。图像单词或财务单元格端到端定位未完整实现。
 
 - **数据处理过程说明：部分实现。** 证据：[business_explanation.py:explain_artifact](../agent_service/business_explanation.py)、[agent_service/static/workspace-shell.js](../agent_service/static/workspace-shell.js)。缺口：业务简报按冻结回执解释主要加工；OCR、图表及所有生成内容尚无统一过程说明。
 

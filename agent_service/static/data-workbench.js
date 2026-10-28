@@ -15,7 +15,7 @@ const wbState = {
   catalogOffset: null, catalogTotal: 0, catalogActions: new Set(),
 };
 let wbAuthClosed=false;const wbAuthRequests=new Set();
-const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],blobUrls:new Set(),ocrGeneration:0,ocrBusy:false};
+const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],blobUrls:new Set(),ocrGeneration:0,ocrBusy:false,draftBinding:null};
 const wbSingle={key:'',generation:0,blobUrl:null,preview:null};
 function wbReloadAuthDocument(){location.reload()}
 function wbAuthError(){return Object.assign(Error('登录状态已变化，请在新页面继续'),{authTransition:true})}
@@ -965,6 +965,10 @@ wbEl('#visual-form').addEventListener('submit',async event=>{
   const generation=wbVisual.generation,source=wbEl('#visual-source').value,page=Number(wbEl('#visual-page').value),quote=wbEl('#visual-quote').value;
   const value=wbEl('#visual-value').value,measure=wbEl('#visual-measure').value,unit=wbEl('#visual-unit').value,period=wbEl('#visual-period').value;
   const dimensionName=wbEl('#visual-dimension-name').value.trim(),dimensionValue=wbEl('#visual-dimension-value').value;
+  const selected=wbVisual.sources.find(item=>item.id===source);
+  if(wbVisual.draftBinding&&!wbVisualDraftMatches(selected,page)){
+    wbVisualMessage('这份识别草稿属于之前的资料或页码，不能保存到当前资料；请先清空录入内容，再重新选择。',true);return;
+  }
   if(!wbVisual.sources.some(item=>item.id===source)||!Number.isSafeInteger(page)||page<1||page>2000||!quote.trim()||!value.trim()||!measure.trim()||!unit.trim()||!period.trim()||!dimensionName||!dimensionValue.trim()){
     wbVisualMessage('请选择资料并填写原文、数值、指标、单位、期间和范围。',true);return;
   }
@@ -981,45 +985,59 @@ wbEl('#visual-form').addEventListener('submit',async event=>{
 });
 wbEl('#visual-refresh').onclick=()=>wbRefreshVisual();
 wbEl('#visual-more').onclick=()=>{const generation=wbVisual.generation;wbLoadVisualList(generation,true).catch(()=>{if(wbVisualCurrent(generation))wbVisualMessage('后续记录读取失败，请重试。',true)});};
+function wbVisualDraftMatches(source,page){const b=wbVisual.draftBinding;return !!b&&!!source&&b.project===wbProject&&b.source===source.id&&b.page===page&&b.revision===source.revision&&b.hash===source.content_hash;}
+wbEl('#visual-clear-draft').onclick=()=>{
+  if(!wbVisualReady()||wbVisual.loading)return;
+  for(const name of ['quote','value','measure','unit','period','dimension-name','dimension-value'])wbEl('#visual-'+name).value='';
+  wbVisual.draftBinding=null;wbVisualMessage('已清空录入内容，请对照当前原件重新填写。');
+};
 
 function wbVisualOcrControls(){
   const source=wbVisual.sources.find(item=>item.id===wbEl('#visual-source').value),button=wbEl('#visual-ocr-run'),status=wbEl('#visual-ocr-status');
-  const isImage=!!source&&/\.(png|jpe?g|webp)$/i.test(source.name),complete=Number.isSafeInteger(source?.revision)&&source.revision>0&&/^[a-f0-9]{64}$/.test(source?.content_hash||'');
+  const isImage=!!source&&/\.(png|jpe?g|webp)$/i.test(source.name),isPdf=!!source&&/\.pdf$/i.test(source.name),complete=Number.isSafeInteger(source?.revision)&&source.revision>0&&/^[a-f0-9]{64}$/.test(source?.content_hash||'');
   const page=Number(wbEl('#visual-page').value);
-  button.disabled=wbVisual.ocrBusy||!wbVisualReady()||!isImage||!complete||page!==1;
-  if(wbVisual.ocrBusy)status.textContent='正在识别图片，请稍候；识别结果需对照原件核对。';
-  else if(!source)status.textContent='选择图片后可尝试识别；PDF 请先人工录入。';
-  else if(!isImage)status.textContent='目前只支持图片识别；PDF 请先人工录入并对照原件。';
+  const pageValid=Number.isSafeInteger(page)&&page>=1&&page<=500&&(isPdf||page===1);
+  button.disabled=wbVisual.ocrBusy||!wbVisualReady()||!(isImage||isPdf)||!complete||!pageValid;
+  if(wbVisual.ocrBusy)status.textContent='正在识别当前页，请稍候；识别结果需对照原件核对。';
+  else if(!source)status.textContent='选择图片或 PDF 后，可尝试识别当前页。';
+  else if(!(isImage||isPdf))status.textContent='目前仅支持图片或 PDF 识别。';
   else if(!complete)status.textContent='这份资料缺少可核验的版本或原件摘要，请重新上传。';
-  else if(page!==1)status.textContent='图片只支持第 1 页，请先调整页码。';
-  else status.textContent='可识别这张图片的文字；识别可能有遗漏或错误，不会自动生成或确认数值。';
+  else if(isImage&&page!==1)status.textContent='图片只支持第 1 页，请先调整页码。';
+  else if(!pageValid)status.textContent='请输入 1 到 500 之间的整数页码。';
+  else status.textContent=isPdf?'可识别选定的 PDF 页；识别可能有遗漏或错误，需对照原件核对。':'可识别这张图片的文字；识别可能有遗漏或错误，不会自动生成或确认数值。';
 }
 wbEl('#visual-source').addEventListener('change',()=>{wbVisual.ocrGeneration++;wbEl('#visual-ocr-results').replaceChildren();wbVisualOcrControls();});
 wbEl('#visual-page').addEventListener('input',()=>{wbVisual.ocrGeneration++;wbEl('#visual-ocr-results').replaceChildren();wbVisualOcrControls();});
 wbEl('#visual-ocr-run').onclick=async()=>{
   if(!wbVisualReady()||wbVisual.ocrBusy)return;
   const source=wbVisual.sources.find(item=>item.id===wbEl('#visual-source').value);
-  if(!source||Number(wbEl('#visual-page').value)!==1||!/\.(png|jpe?g|webp)$/i.test(source.name)||!Number.isSafeInteger(source.revision)||source.revision<1||!/^[a-f0-9]{64}$/.test(source.content_hash||''))return;
+  const page=Number(wbEl('#visual-page').value),isPdf=!!source&&/\.pdf$/i.test(source.name),isImage=!!source&&/\.(png|jpe?g|webp)$/i.test(source.name);
+  if(!source||!(isPdf||isImage)||!Number.isSafeInteger(page)||page<1||page>500||(isImage&&page!==1)||!Number.isSafeInteger(source.revision)||source.revision<1||!/^[a-f0-9]{64}$/.test(source.content_hash||''))return;
   const generation=wbVisual.generation,serial=++wbVisual.ocrGeneration,id=source.id,revision=source.revision,hash=source.content_hash;
   wbVisual.ocrBusy=true;wbEl('#visual-ocr-results').replaceChildren();wbVisualOcrControls();
-  const current=()=>wbVisualCurrent(generation)&&serial===wbVisual.ocrGeneration&&wbEl('#visual-source').value===id&&Number(wbEl('#visual-page').value)===1;
+  const current=()=>wbVisualCurrent(generation)&&serial===wbVisual.ocrGeneration&&wbEl('#visual-source').value===id&&Number(wbEl('#visual-page').value)===page;
   try{
-    const result=await wbRequest(wbRoot()+'/sources/'+wbEnc(id)+'/ocr',{method:'POST',body:{expected_revision:revision,expected_sha256:hash,page:1}});
+    const result=await wbRequest(wbRoot()+'/sources/'+wbEnc(id)+'/ocr',{method:'POST',body:{expected_revision:revision,expected_sha256:hash,page}});
     if(!current())return;
-    if(result?.source_revision!==revision||result.source_file_sha256!==hash||result.page!==1||result.ocr_executed!==true||
-       !Number.isSafeInteger(result.image_width)||!Number.isSafeInteger(result.image_height)||!Array.isArray(result.lines))throw Error('识别结果与所选原件不一致');
+    if(result?.source_revision!==revision||result.source_file_sha256!==hash||result.page!==page||result.ocr_executed!==true||result.financial_facts_verified!==false||result.human_review_required!==true||result.complete!==false||
+       !Number.isSafeInteger(result.image_width)||result.image_width<1||!Number.isSafeInteger(result.image_height)||result.image_height<1||!Array.isArray(result.lines)||
+       (isPdf&&(result.coordinate_space!=='rendered_pdf_page_pixels_not_pdf_coordinates'||!Number.isSafeInteger(result.pdf_page_count)||result.pdf_page_count<page||result.pdf_page_count>500||!/^[a-f0-9]{64}$/.test(result.rendered_image_sha256||''))))throw Error('识别结果与所选原件不一致');
     const box=wbEl('#visual-ocr-results');box.replaceChildren();
-    box.append(wbNode('p','以下是未核对的识别文字，可能遗漏或识错；请选择需要的内容，编辑后仍需对照原件。','proposal-warning'));
+    box.append(wbNode('p','以下是未核对的识别文字，可能遗漏或识错；请选择需要的内容，编辑后仍需对照原件。'+(isPdf?' 位置仅对应本次渲染页的像素，不能直接定位 PDF 原件；尚未自动高亮。表单和批注可能未显示，请核对原件。':''),'proposal-warning'));
     let place=0;for(const line of result.lines){
       if(typeof line?.text!=='string'||!line.text.trim())continue;
       place++;const item=wbNode('section','','visual-ocr-line');item.append(wbNode('p',line.text));
       if(Array.isArray(line.box)&&line.box.length===4&&line.box.every(point=>Array.isArray(point)&&point.length===2&&point.every(Number.isFinite))){
-        item.append(wbNode('small','原图第 '+place+' 处；尚未高亮，请对照原件。','muted'));
-      }else item.append(wbNode('small','原图位置未记录，请对照原件。','muted'));
+        item.append(wbNode('small',(isPdf?'渲染页':'原图')+'第 '+place+' 处；尚未高亮，请对照原件。','muted'));
+      }else item.append(wbNode('small','识别位置未记录，请对照原件。','muted'));
       const use=wbNode('button','加入原文草稿');use.type='button';use.dataset.visualOcrUse='true';
-      use.onclick=()=>{if(!current())return;const quote=wbEl('#visual-quote'),next=quote.value+(quote.value?'\n':'')+line.text;
+      use.onclick=()=>{if(!current())return;const quote=wbEl('#visual-quote');
+        if((wbVisual.draftBinding&&!wbVisualDraftMatches(source,page))||(!wbVisual.draftBinding&&quote.value.trim())){
+          wbEl('#visual-ocr-status').textContent='现有草稿可能属于其他资料或人工录入，请先清空录入内容，再加入识别文字。';return;
+        }
+        const next=quote.value+(quote.value?'\n':'')+line.text;
         if(next.length>3000){wbEl('#visual-ocr-status').textContent='原文超过 3000 字，请选择更少的内容或手工编辑。';return;}
-        quote.value=next;quote.focus();wbEl('#visual-ocr-status').textContent='已加入原文草稿；请人工核对、编辑并填写对应指标与数值。';};
+        wbVisual.draftBinding={project:wbProject,source:id,page,revision,hash};quote.value=next;quote.focus();wbEl('#visual-ocr-status').textContent='已加入原文草稿；请人工核对、编辑并填写对应指标与数值。';};
       item.append(use);box.append(item);
     }
     if(box.children.length===1)box.append(wbNode('p','未识别到文字，请对照原件人工录入。','muted'));
