@@ -3,7 +3,7 @@ import hashlib,json
 from typing import Literal
 from pydantic import Field
 from fastapi import Depends,HTTPException,Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse,Response
 from .models import StrictModel
 from .store import get,put,patch,all_items,seal,unseal,uid,now
 from .config import DATA
@@ -18,6 +18,16 @@ class AdoptInput(StrictModel):
     run_id:str|None=None
     confirm_source_review:bool=Field(default=False,strict=True)
     expected_handoff_sha256:str|None=Field(default=None,pattern=r'^[a-f0-9]{64}$')
+class SingleFactConfirmation(StrictModel):
+    expected_preview_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    confirm_original_value:bool=Field(strict=True)
+class SingleFactCandidate(StrictModel):
+    kind:Literal['text','visual']
+    fact_review_id:str=Field(min_length=1,max_length=64)
+    expected_fact_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    expected_original_revision:int=Field(strict=True,ge=1)
+    expected_original_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    retry_run_id:str|None=Field(default=None,min_length=1,max_length=64)
 class Review(StrictModel):
     expected_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     target_id:str|None=None
@@ -103,6 +113,12 @@ def install(app,auth):
         from .workflow_guidance import catalog
         return catalog(pid)
 
+    @app.post('/api/projects/{pid}/single-fact-candidates',dependencies=dependencies)
+    def create_single_fact_candidate(pid:str,value:SingleFactCandidate):
+        from .single_fact_value import create_candidate
+        payload=value.model_dump(exclude_none=True);payload['review_id']=payload.pop('fact_review_id')
+        return create_candidate(pid,**payload)
+
     @app.post('/api/projects/{pid}/data-workflows',dependencies=dependencies)
     def register_workflow(pid:str,value:data.RegisterWorkflow):
         receipt=data.register(pid,value.path);workspace.checkpoint(pid,reason='保存数据加工方案')
@@ -142,6 +158,24 @@ def install(app,auth):
 
     @app.get('/api/projects/{pid}/data-results/{rid}',dependencies=dependencies)
     def data_result(pid:str,rid:str,offset:int=0,limit:int=100):return data.read_result(pid,rid,offset,limit)
+
+    @app.get('/api/projects/{pid}/data-results/{rid}/single-fact-review',dependencies=dependencies)
+    def single_fact_preview(pid:str,rid:str):
+        from .single_fact_value import preview
+        return preview(pid,rid)
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/single-fact-review/confirm',dependencies=dependencies)
+    def confirm_single_fact(pid:str,rid:str,value:SingleFactConfirmation,request:Request):
+        if value.confirm_original_value is not True:raise ValueError('请明确确认仅核对这一条原文数值')
+        from .actor_context import actor_from_identity
+        from .single_fact_value import confirm
+        return confirm(pid,rid,value.expected_preview_sha256,actor_from_identity(getattr(request.state,'identity',{})))
+
+    @app.get('/api/projects/{pid}/data-results/{rid}/single-fact-review/download',dependencies=dependencies)
+    def download_single_fact(pid:str,rid:str):
+        from .single_fact_value import export
+        content=json.dumps(export(pid,rid),ensure_ascii=False,allow_nan=False,indent=2).encode('utf-8')
+        return Response(content,media_type='application/json',headers={'Content-Disposition':'attachment; filename="single-fact-value.json"','X-Content-Type-Options':'nosniff'})
 
     @app.post('/api/projects/{pid}/data-results/{rid}/publish',dependencies=dependencies)
     def adopt_result(pid:str,rid:str,value:AdoptInput,request:Request):

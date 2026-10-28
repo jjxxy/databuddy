@@ -8,7 +8,7 @@
 
 ### 当前财务安全边界
 
-- 文字事实及视觉事实的原文核对，仅证明用户核对过单条提取内容，**不证明不同指标、单位、期间、含税或汇率口径可以相加或关联**。目前没有可验证的逐条业务语义对齐回执，因此事实或视觉事实派生来源只能形成供分页查看的候选，禁止正式采用、发布、新报告和下游数值复用；单条事实也不自动例外。来源确认勾选不能代替业务语义核对。恢复正式加工需要先设计并验证绑定原件修订与摘要、完整事实与业务口径、处理方案和输出摘要的可信人工回执，之后再明确支持范围。
+- 文字事实及视觉事实的原文核对，仅证明用户核对过单条提取内容，**不证明不同指标、单位、期间、含税或汇率口径可以相加或关联**。目前没有可验证的逐条业务语义对齐回执，因此事实或视觉事实派生来源只能形成供分页查看的候选，禁止正式采用、发布、新报告和下游数值复用；单条事实也不自动例外。单条已核对事实可以生成原样候选，并对照原件确认后单独导出 JSON；这不改变正式采用状态，也不允许汇总、报告或下游加工。来源确认勾选不能代替业务语义核对。恢复正式加工需要先设计并验证绑定原件修订与摘要、完整事实与业务口径、处理方案和输出摘要的可信人工回执，之后再明确支持范围。
 - 未对齐的事实候选保留只读分页和警告；批量 CSV、Excel、完整交接包和基于候选的汇总图表受后端门槛阻断，工作台及数据应用同步隐藏或禁用相关按钮。直接 API、工作区产物和工具路径也经过检查；缺少可证明来源的候选不得被视为安全。关联代码：[project_data.py](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[workspace_artifacts.py](../agent_service/workspace_artifacts.py)、[applications.py](../agent_service/applications.py)。
 - 已发布历史成果保持原样：可证明属于当前已发布版本且结果完整时继续只读查看和导出；来源或业务语义证据不足时显示待核对风险，不能标记为已确认，也不计算或展示新的应用汇总和图表。无法证明来源或发布身份的其他历史记录不应据此自动放行批量输出。历史警告不会追认旧口径的正确性。
 - 一般 CSV 或 Excel 即便通过格式、来源和数值校验，也不能证明内容的业务含义正确；尤其匿名 CSV 可能缺失含税、汇率、期间及预算版本等信息，系统无法仅凭列名判断业务口径。用户应补足数据字典、原始依据和业务核对；当前不保证对未知语义自动识别或阻断所有错误。
@@ -112,7 +112,7 @@
 
 - **识别结果人工校正：部分实现。** 证据：[visual_fact_service.py:propose](../agent_service/visual_fact_service.py)、[visual_fact_service.py:review](../agent_service/visual_fact_service.py)、[data-workbench.js](../agent_service/static/data-workbench.js)。工作台支持原图或 PDF 页人工转录、复核和修订提案，图片 OCR 行可由用户选择追加并自行校正；系统不独立保证原文准确，也不把事实核对当成业务语义对齐。缺口：区域级纠错和大表格纠错尚需完善。
 
-- **高风险结果阻断：部分实现。** 证据：[project_data.py:require_safe_numeric_lineage](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[applications.py](../agent_service/applications.py)、[tests/test_candidate_bulk_gate.py](../tests/test_candidate_bulk_gate.py)。未对齐事实候选阻断发布、批量导出及汇总图表，缺来源证明的候选不自动放行；工作台保留分页预览及警告。已发布历史按可核验身份保留查看与导出并显示风险。缺口：事实语义可信回执尚未实现，不能由一次来源勾选替代；完整回归和包体验收仍待完成。
+- **高风险结果阻断：部分实现。** 证据：[project_data.py:require_safe_numeric_lineage](../agent_service/project_data.py)、[releases.py](../agent_service/releases.py)、[applications.py](../agent_service/applications.py)、[tests/test_candidate_bulk_gate.py](../tests/test_candidate_bulk_gate.py)。未对齐事实候选阻断发布、批量导出及汇总图表，缺来源证明的候选不自动放行；工作台保留分页预览及警告。已发布历史按可核验身份保留查看与导出并显示风险。缺口：事实语义可信回执尚未实现，不能由一次来源勾选替代；当前源码的相关回归和 r23 包内合成资料验收已完成；真实业务样本及全仓回归仍待完成。
 
 ### 八、过程说明与数据溯源
 

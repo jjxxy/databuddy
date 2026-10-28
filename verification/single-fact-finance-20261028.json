@@ -1,0 +1,213 @@
+{
+  "date": "2026-10-28",
+  "scope": "synthetic fixtures; not real finance acceptance",
+  "python_regression": {
+    "tests": 181,
+    "passed": 178,
+    "skipped": 3,
+    "failed": 0,
+    "warnings": 1,
+    "junit": "single-fact-regression-20261028.xml",
+    "skips": [
+      "development environment has no optional OCR runtime (2)",
+      "Windows host does not permit symlink creation (1)"
+    ]
+  },
+  "ui_scripts": [
+    {
+      "name": "auth-transition.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "collaboration.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-app-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "data-workbench.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "desktop-business-actions.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "facts-pagination.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lifecycle.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "lineage-render.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-data.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "local-workspace-context.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "models.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "multi-files.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "project-navigation.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "resume-message.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "scroll.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "service-worker.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "single-fact-candidate.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "single-fact-review.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-buttons.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "source-preview.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "visual-facts.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "work.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-features.cjs",
+      "exit_code": 0
+    },
+    {
+      "name": "workspace-shell.cjs",
+      "exit_code": 0
+    }
+  ],
+  "isolated_browser": {
+    "passed": true,
+    "case": "approved single text fact -> deterministic candidate -> original version and hash review -> explicit confirmation -> single-value JSON",
+    "exact_value": "123.4500",
+    "formal_publication": false,
+    "new_report_and_downstream": false,
+    "paid_model_calls": 0
+  },
+  "portable_package": "Atlas-DataBuddy-win32-x64-r23-single-fact",
+  "portable_backend": {
+    "ok": true,
+    "platform": "native Windows",
+    "synthetic_data_only": true,
+    "real_ai_evaluated": false,
+    "os_firewall_or_disconnected_vm_evaluated": false,
+    "cases": {
+      "fresh_local_workflow": {
+        "project": "p_315516da530ed9611ea3f07d2241334e32e2b563",
+        "pipeline": "4a19470a5994f7a4c61815e1",
+        "rows": 2,
+        "exact_total": "118.150000000000",
+        "csv_sha256": "876dd55a481602ace87f51a8d8a68e036e0e1e8491ec057995dea7e2877244c4",
+        "auth_required": true,
+        "empty_input_rejected": true,
+        "long_input_rejected": true,
+        "empty_file_rejected": true,
+        "manual_publish_required": true,
+        "audit_verified": true
+      },
+      "restart": {
+        "data_preserved": true,
+        "credentials_preserved": true,
+        "port_preserved": true,
+        "audit_verified": true
+      },
+      "bad_model_local_workflow": {
+        "project": "p_a522cec610f7ac9781e6a74cbea38fb3dc6aacd9",
+        "pipeline": "dbca9d37b5734c900bcde1fe",
+        "rows": 2,
+        "exact_total": "118.150000000000",
+        "csv_sha256": "876dd55a481602ace87f51a8d8a68e036e0e1e8491ec057995dea7e2877244c4",
+        "auth_required": true,
+        "empty_input_rejected": true,
+        "long_input_rejected": true,
+        "empty_file_rejected": true,
+        "manual_publish_required": true,
+        "audit_verified": true
+      },
+      "missing_runtime": {
+        "ok": true,
+        "method": "imported startup validation with an empty fixture root",
+        "human_message": "交付包缺少 Git 运行文件，请重新解压完整交付包。",
+        "real_runtime_modified": false
+      }
+    },
+    "offline_policy": "local_only",
+    "inherited_path_empty": true,
+    "app_directory_used_for_state": false,
+    "startup_does_not_require_reachable_model": true
+  },
+  "portable_ocr": {
+    "synthetic_only": true,
+    "physical_disconnect_or_firewall_evaluated": false,
+    "real_finance_accuracy_evaluated": false,
+    "ok": true,
+    "embedded_backend": true,
+    "independent_ocr_python": true,
+    "recognition": "2026年10月 合肥办事处 净收入金额123.45元",
+    "seconds": 6.375,
+    "local_only_policy": true,
+    "source_revision_bound": true,
+    "source_hash_bound": true,
+    "human_review_required": true
+  },
+  "portable_source_inventory": {
+    "ok": true,
+    "source_files_equal": 155,
+    "artifact_manifest_entries_verified": 17436,
+    "source_scope": "desktop, agent_service, ui/dist, portable host and lock files",
+    "manifest": "FILES.sha256; excludes generated post-run caches",
+    "app_runtime_manifest_verified_at_build": true
+  },
+  "portable_extra_inventory": {
+    "ok": true,
+    "source_bundle_equality": {
+      "vendor/metadata": 9,
+      "acceptance/offline": 4
+    },
+    "unchanged_react_assets_equal_to_r22": 3,
+    "react_rebuild_run": false,
+    "reason": "vite absent"
+  },
+  "limitations": [
+    "no full current-source test suite",
+    "no physical disconnect or firewall isolation",
+    "no real financial sample accuracy or business acceptance",
+    "formal financial fact alignment, multi-fact aggregation and reporting not implemented",
+    "React assets reused from verified r22; Vite rebuild unavailable"
+  ]
+}

@@ -16,6 +16,7 @@ const wbState = {
 };
 let wbAuthClosed=false;const wbAuthRequests=new Set();
 const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],blobUrls:new Set(),ocrGeneration:0,ocrBusy:false};
+const wbSingle={key:'',generation:0,blobUrl:null,preview:null};
 function wbReloadAuthDocument(){location.reload()}
 function wbAuthError(){return Object.assign(Error('登录状态已变化，请在新页面继续'),{authTransition:true})}
 function wbChangeAuthentication(nextToken=''){wbAuthClosed=true;clearTimeout(wbState.pollTimer);for(const c of wbAuthRequests)c.abort();wbAuthRequests.clear();wbLogin();for(const key of Object.keys(sessionStorage))if(key.startsWith('atlas_'))sessionStorage.removeItem(key);if(nextToken)sessionStorage.setItem('atlas_token',nextToken);wbReloadAuthDocument()}
@@ -198,6 +199,12 @@ function wbSetBusy(value) { wbState.busy = value;wbRenderButtons(); }
 function wbCurrentProject(){return !wbAuthClosed && new URLSearchParams(location.search).get('project')===wbProject;}
 function wbFactSemanticBlocked(){const reasons=wbState.result?.context?.semantic_review_reasons;return Array.isArray(reasons)&&reasons.includes('FACT_SEMANTIC_ALIGNMENT_REQUIRED');}
 function wbUnalignedFactCandidate(){return wbFactSemanticBlocked()&&wbState.result?.run_id===wbState.resultId&&wbRunId(wbState.workflow?.candidate_run)===wbState.resultId;}
+function wbSingleKey(){const r=wbState.result;return wbCurrentProject()&&wbUnalignedFactCandidate()&&/^[a-f0-9]{64}$/.test(r?.manifest_sha256||'')&&/^[a-f0-9]{64}$/.test(r?.plan_sha256||'')?JSON.stringify([wbProject,wbState.workflowId,wbState.resultId,r.plan_sha256,r.manifest_sha256]):'';}
+function wbSingleRelease(){if(wbSingle.blobUrl){URL.revokeObjectURL(wbSingle.blobUrl);wbSingle.blobUrl=null;}}
+function wbSyncSingleFact(){
+  const key=wbSingleKey();if(key!==wbSingle.key){wbSingle.key=key;wbSingle.generation++;wbSingle.preview=null;wbSingleRelease();wbEl('#single-fact-body').replaceChildren();wbEl('#single-fact-status').hidden=true;wbEl('#single-fact-load').disabled=false;}
+  wbEl('#single-fact-panel').hidden=!key;
+}
 function wbCandidateReviewKey(){
   const result=wbState.result,candidate=wbRunId(wbState.workflow?.candidate_run);
   if(!wbCurrentProject()||!result||result.run_id!==wbState.resultId||candidate!==result.run_id||
@@ -348,7 +355,7 @@ function wbRenderResult() {
   wbEl('#workbench-schedule-note').textContent = workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
     (nextDue ? '下次：' + nextDue : '按已保存的时间安排执行') + (workflow.watch_sources ? '；同时跟踪已接入的来源版本' : '') :
     workflow?.watch_sources ? '跟踪已接入的来源版本变化' : '也可以回到对话安排定时执行';
-  wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();
+  wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();wbSyncSingleFact();
   const head = wbEl('#workbench-table-head'), body = wbEl('#workbench-table-body');head.replaceChildren();body.replaceChildren();
   const schema = result?.schema || [];
   if (schema.length) {
@@ -704,13 +711,54 @@ for (const button of document.querySelectorAll('[data-tab]')) button.addEventLis
   if (target) {event.preventDefault();target.focus();wbTab(target.dataset.tab);}
 });
 window.addEventListener('beforeunload',event => {if (wbState.editorDirty) {event.preventDefault();event.returnValue = '';}});
-window.addEventListener('pagehide', () => {clearTimeout(wbState.pollTimer);wbVisual.generation++;wbClearVisualBlobs();});
+window.addEventListener('pagehide', () => {clearTimeout(wbState.pollTimer);wbVisual.generation++;wbClearVisualBlobs();wbSingle.generation++;wbSingleRelease();});
 const workbenchReady = wbInitialize().catch(error => wbNotice(error.message,true));
 
 
 function wbFactsCurrent(generation,project,token) {
   return !wbAuthClosed && generation === wbState.factsGeneration && project === wbProject &&
     token === wbState.token && new URLSearchParams(location.search).get('project') === project;
+}
+function wbAddSingleCandidateControl(record,kind,body,current){
+  if(!['text','visual'].includes(kind)||record?.status!=='approved'||!Array.isArray(record.facts)||record.facts.length!==1||
+     !Array.isArray(record.approval_blockers)||record.approval_blockers.length||
+     !/^[-A-Za-z0-9_]{1,100}$/.test(record.id||'')||!/^[-A-Za-z0-9_]{1,100}$/.test(record.output_source_id||'')||
+     !/^[a-f0-9]{64}$/.test(record.content_sha256||'')||!Number.isSafeInteger(record.source_revision)||record.source_revision<1||
+     !/^[a-f0-9]{64}$/.test(record.source_file_sha256||''))return;
+  const box=wbNode('div','','single-candidate-control'),description=wbNode('p','可以为这一条生成原值候选，之后仍需在结果页对照原件单独确认；不会自动发布、汇总或生成报告。','muted');
+  const create=wbNode('button','生成单条原值候选');create.type='button';create.dataset.singleCandidateCreate='true';
+  const view=wbNode('button','打开候选任务');view.type='button';view.dataset.singleCandidateOpen='true';view.hidden=true;
+  const message=wbNode('p','','proposal-message');box.append(description,create,view,message);body.append(box);
+  const token=wbState.token,valid=()=>!wbAuthClosed&&wbCurrentProject()&&wbState.token===token&&body.isConnected&&current();let candidate=null,busy=false;
+  create.onclick=async()=>{
+    if(!valid()||busy)return;busy=true;create.disabled=true;message.textContent='正在提交候选任务…';
+    try{
+      const value=await wbRequest(wbRoot()+'/single-fact-candidates',{method:'POST',body:{kind,fact_review_id:record.id,
+        expected_fact_sha256:record.content_sha256,expected_original_revision:record.source_revision,expected_original_sha256:record.source_file_sha256}});
+      if(!valid())return;
+      if(!/^[-A-Za-z0-9_]{1,100}$/.test(value?.workflow_id||'')||!/^[-A-Za-z0-9_]{1,100}$/.test(value?.run_id||'')||
+         !/^[a-f0-9]{64}$/.test(value?.plan_sha256||'')||!['queued','running','retrying','validated','failed','cancelled'].includes(value?.status))throw Error('候选状态未记录');
+      candidate=value;create.hidden=true;view.hidden=false;
+      message.textContent=value.status==='validated'?'候选已生成；打开后仍需对照原件逐项核对。':
+        ['failed','cancelled'].includes(value.status)?'候选未完成，请打开任务查看原因。':'候选任务已接收，请打开任务查看进度。';
+    }catch(error){if(valid()){message.textContent=error.status>=400&&error.status<500?'候选请求未通过：'+error.message+' 请刷新该记录后再操作。':'未收到候选结果，请刷新记录核对状态后再操作。';message.classList.add('error');}}
+    finally{busy=false;}
+  };
+  view.onclick=async()=>{
+    if(!valid()||!candidate||busy)return;
+    if(wbState.editorDirty){message.textContent='当前任务有未保存的做法，请先保存或放弃修改再打开候选。';message.classList.add('error');return;}
+    if(wbState.busy||wbState.workflowLoading){message.textContent='当前任务正在处理，请稍后再打开候选。';return;}
+    busy=true;view.disabled=true;wbSetBusy(true);
+    try{
+      await wbLoadWorkflow(candidate.workflow_id,{preserveEditor:false});if(!valid())return;
+      const workflow=wbState.workflow,bindings=Object.values(workflow?.document?.bindings||{});
+      if(workflow?.workflow_id!==candidate.workflow_id||workflow?.draft_sha256!==candidate.plan_sha256||bindings.length!==1||bindings[0]?.source_id!==record.output_source_id)throw Error('候选任务与核对记录不一致');
+      if(wbRunId(workflow.candidate_run)===candidate.run_id&&wbState.result?.run_id===candidate.run_id){
+        wbOpenTab('result');wbNotice('已打开本次候选。请先核对单条原值和当次原件，不能据此自动采用或汇总。');
+      }else{wbOpenTab('task');wbNotice('已打开候选任务；请查看运行进度或未完成原因。');}
+    }catch(error){if(valid()){message.textContent='候选任务无法核对或打开，请刷新记录后重试。';message.classList.add('error');}}
+    finally{busy=false;if(valid()){view.disabled=false;wbSetBusy(false);}}
+  };
 }
 function wbFactsControls() {
   let more = wbEl('#workbench-more-facts');
@@ -754,11 +802,12 @@ async function wbLoadFacts(append = false) {
   }
 }
 async function wbLoadFactRecord(id,body) {
+  const generation=wbState.factsGeneration,token=wbState.token;
   body.replaceChildren(wbNode('p','正在读取原文与数值…','muted'));
-  try {wbRenderFactRecord(await wbRequest(wbRoot() + '/data-facts/' + wbEnc(id)),body);}
-  catch (error) {body.replaceChildren(wbNode('p',error.message,'proposal-message error'));}
+  try {const record=await wbRequest(wbRoot() + '/data-facts/' + wbEnc(id));if(wbFactsCurrent(generation,wbProject,token)&&body.isConnected)wbRenderFactRecord(record,body,()=>wbFactsCurrent(generation,wbProject,token));}
+  catch (error) {if(wbFactsCurrent(generation,wbProject,token)&&body.isConnected)body.replaceChildren(wbNode('p',error.message,'proposal-message error'));}
 }
-function wbRenderFactRecord(record,body) {
+function wbRenderFactRecord(record,body,current=()=>false) {
   body.replaceChildren();
   const locked = ['approved','rejected'].includes(record.status);
   const blockers = record.approval_blockers || [];
@@ -772,6 +821,7 @@ function wbRenderFactRecord(record,body) {
   }
   if (!(record.facts || []).length) body.append(wbNode('p','这份提案没有可确认的数值。','muted'));
   if (record.output_source_id) body.append(wbNode('p','已保存核对数据；使用前仍需完成业务语义对齐，当前不能用于正式数值加工或报告。','muted'));
+  wbAddSingleCandidateControl(record,'text',body,current);
   const actions = wbNode('div','','review-actions');
   const approve = wbNode('button','确认这些数值','primary'), reject = wbNode('button','拒绝此提取');
   approve.type = reject.type = 'button';approve.dataset.factsDecision = 'approved';reject.dataset.factsDecision = 'rejected';
@@ -855,6 +905,7 @@ function wbRenderVisualRecord(record,body,generation){
       ['范围',value=>value.dimensions&&typeof value.dimensions==='object'?Object.entries(value.dimensions).map(([name,item])=>name+'：'+item).join('；'):'未记录']]));
   }
   if(record.output_source_id)body.append(wbNode('p','已保存人工核对数据；使用前仍需完成业务语义对齐，当前不能用于正式数值加工或报告。','muted'));
+  wbAddSingleCandidateControl(record,'visual',body,()=>wbVisualCurrent(generation));
   if(record.status!=='pending')return;
   if(!Array.isArray(record.approval_blockers)||record.approval_blockers.length||!Array.isArray(record.facts)||!record.facts.length||
      !/^[a-f0-9]{64}$/.test(record.content_sha256||'')||!Number.isSafeInteger(record.page)||record.page<1){
@@ -905,6 +956,7 @@ function wbRenderVisualRecord(record,body,generation){
       if(!wbVisualCurrent(generation)||!body.isConnected)return;
       if(value?.status!=='approved'||!value.output_source_id)throw Error('结果未确认');
       releaseOriginal();body.replaceChildren(wbNode('p','已保存人工核对记录；使用前仍需完成业务语义对齐，当前不能用于正式数值加工或报告。','proposal-message'));
+      wbAddSingleCandidateControl(value,'visual',body,()=>wbVisualCurrent(generation));
     }catch(error){if(wbVisualCurrent(generation)&&body.isConnected){message.textContent='未收到确认结果，请刷新记录核对是否已保存，不要重复提交。';message.classList.add('error');}}
   };
 }
@@ -975,6 +1027,105 @@ wbEl('#visual-ocr-run').onclick=async()=>{
   }catch(error){if(current()){const msg=error?.status===400&&typeof error.detail==='string'&&/[\u3400-\u9fff]/.test(error.detail)?error.detail:'识别未完成，请检查本机 OCR 组件并对照原件人工录入。';wbEl('#visual-ocr-status').textContent=msg;}}
   finally{wbVisual.ocrBusy=false;if(wbVisualReady()){if(current())wbEl('#visual-ocr-run').disabled=false;else wbVisualOcrControls();}}
 };
+
+// A single verified transcription is an isolated original-value export, not
+// permission to publish a workflow, aggregate facts, make reports or reuse it.
+function wbSingleCurrent(generation,key){return wbSingle.generation===generation&&wbSingle.key===key&&wbSingleKey()===key;}
+function wbSingleStatus(text,error=false){const node=wbEl('#single-fact-status');node.textContent=text;node.hidden=!text;node.classList.toggle('error',error);}
+wbEl('#single-fact-load').onclick=async()=>{
+  const key=wbSingleKey();if(!key)return;const generation=++wbSingle.generation,runId=wbState.resultId;
+  wbSingle.preview=null;wbSingleRelease();wbEl('#single-fact-body').replaceChildren();wbSingleStatus('正在读取单条原值及来源依据…');
+  const load=wbEl('#single-fact-load');load.disabled=true;
+  try{
+    const preview=await wbRequest(wbRoot()+'/data-results/'+wbEnc(runId)+'/single-fact-review');
+    if(!wbSingleCurrent(generation,key))return;
+    const original=preview?.original,fact=preview?.fact,source=preview?.source,review=preview?.fact_review;
+    const proofs=Object.values(wbState.result?.context?.input_evidence||{});
+    if(preview.project_id!==wbProject||preview.run_id!==runId||preview.plan_sha256!==wbState.result?.plan_sha256||
+       preview.handoff_sha256!==wbState.result?.manifest_sha256||!/^[a-f0-9]{64}$/.test(preview.preview_sha256||'')||
+       preview.scope!=='single_fact_original_value_only'||!source||!/^[-A-Za-z0-9_]{1,100}$/.test(source.id||'')||
+       !Number.isSafeInteger(source.revision)||source.revision<1||!/^[a-f0-9]{64}$/.test(source.sha256||'')||
+       !proofs.some(proof=>proof?.source_id===source.id&&proof.source_revision===source.revision&&proof.content_hash===source.sha256)||
+       !review||!/^[-A-Za-z0-9_]{1,100}$/.test(review.id||'')||!/^[a-f0-9]{64}$/.test(review.sha256||'')||!['text','visual'].includes(review.kind)||
+       !original||!/^[-A-Za-z0-9_]{1,100}$/.test(original.id||'')||!Number.isSafeInteger(original.revision)||original.revision<1||
+       !/^[a-f0-9]{64}$/.test(original.sha256||'')||!fact||typeof fact.quote!=='string'||!fact.quote||
+       typeof fact.value_as_printed!=='string'||!fact.value_as_printed||!fact.quote.includes(fact.value_as_printed)||typeof fact.normalized_value!=='string'||typeof fact.measure!=='string'||
+       typeof fact.unit!=='string'||typeof fact.period!=='string'||!fact.dimensions||typeof fact.dimensions!=='object'||Array.isArray(fact.dimensions))throw Error('单条记录的版本或内容不完整');
+    if(review.kind==='visual'&&(!Number.isSafeInteger(original.page)||original.page<1)||
+       review.kind==='text'&&(!Number.isSafeInteger(original.text_start)||!Number.isSafeInteger(original.text_end)||original.text_start<0||original.text_end<=original.text_start||!/^[a-f0-9]{64}$/.test(original.text_sha256||'')))throw Error('原文或原图位置不完整');
+    wbSingle.preview=preview;wbRenderSingleFact(preview,key,generation);wbSingleStatus('请打开当次原件，对照这条原值与全部业务信息。');
+  }catch(error){if(wbSingleCurrent(generation,key))wbSingleStatus(error.status>=400&&error.status<500?error.message:'暂时无法读取单条原值，请刷新结果后重试。',true)}
+  finally{if(wbSingleCurrent(generation,key))load.disabled=false;}
+};
+function wbRenderSingleFact(preview,key,generation){
+  const body=wbEl('#single-fact-body'),fact=preview.fact,original=preview.original;body.replaceChildren();
+  body.append(wbNode('p','这里只核对一条原值；系统不能证明原始资料真实，也没有确认这些数值可以相加或用于报告。','proposal-warning'));
+  body.append(wbDefinition(fact,[['指标','measure'],['原文数值','value_as_printed'],['记录的精确值','normalized_value'],['单位','unit'],['期间','period'],
+    ['范围',value=>Object.entries(value.dimensions).map(([name,item])=>name+'：'+item).join('；')||'未记录']]));
+  body.append(wbNode('blockquote',fact.quote,'fact-quote'));
+  const area=wbNode('div','','visual-original'),status=wbNode('p','请先打开当次原件并逐项对照。','muted'),open=wbNode('button','打开当次原件');
+  open.type='button';open.dataset.singleOriginal='true';const content=wbNode('div');area.append(status,open,content);body.append(area);
+  const label=wbNode('label','','catalog-acknowledgment'),ack=document.createElement('input');ack.type='checkbox';ack.disabled=true;ack.dataset.singleAck='true';
+  label.append(ack,wbNode('span','我已对照当次原件，确认这一条的原文数值、指标、单位、期间和范围；这不代表可以汇总或生成报告。'));body.append(label);
+  const confirm=wbNode('button','确认这一条原值','primary');confirm.type='button';confirm.disabled=true;confirm.dataset.singleConfirm='true';body.append(confirm);
+  const feedback=wbNode('p','','proposal-message');body.append(feedback);let opened=false,opening=0;
+  const valid=()=>wbSingleCurrent(generation,key)&&body.isConnected&&wbSingle.preview?.preview_sha256===preview.preview_sha256;
+  ack.onchange=()=>{confirm.disabled=!(opened&&ack.checked&&valid())};
+  open.onclick=async()=>{
+    if(!valid())return;const serial=++opening;opened=false;ack.checked=false;ack.disabled=true;confirm.disabled=true;open.disabled=true;wbSingleRelease();content.replaceChildren();
+    const current=()=>valid()&&serial===opening;
+    try{
+      const query=new URLSearchParams({revision:String(original.revision),expected_sha256:original.sha256});
+      const artifact=await wbRequest(wbRoot()+'/sources/'+wbEnc(original.id)+'/artifact?'+query);if(!current())return;
+      if(artifact?.kind!=='source'||artifact.sha256!==original.sha256||!/^[-A-Za-z0-9_]{1,100}$/.test(artifact.id||'')||
+         !Array.isArray(artifact.source_refs)||!artifact.source_refs.some(ref=>ref.source_id===original.id&&ref.revision===original.revision))throw Error('原件版本不一致');
+      const target=new URL(artifact.download_url,location.origin),expected=wbRoot()+'/artifacts/'+wbEnc(artifact.id)+'/download';
+      if(target.origin!==location.origin||target.pathname!==expected||target.search||target.hash)throw Error('原件地址不一致');
+      const response=await wbRequest(target.pathname,{binary:true}),blob=await response.blob();if(!current())return;
+      if(!window.crypto?.subtle)throw Error('浏览器无法核验原件');
+      const hash=Array.from(new Uint8Array(await window.crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))).map(b=>b.toString(16).padStart(2,'0')).join('');
+      if(!current())return;if(hash!==original.sha256)throw Error('原件摘要不一致');
+      const visual=Number.isSafeInteger(original.page)&&original.page>=1;
+      if(!visual){
+        if(!Number.isSafeInteger(original.text_start)||!Number.isSafeInteger(original.text_end)||original.text_start<0||original.text_end<=original.text_start||
+           original.text_end-original.text_start>64000||!/^[a-f0-9]{64}$/.test(original.text_sha256||''))throw Error('原文位置未记录');
+        const query=new URLSearchParams({offset:String(original.text_start),limit:String(original.text_end-original.text_start)});
+        const doc=await wbRequest(wbRoot()+'/data-documents/'+wbEnc(original.id)+'?'+query);if(!current())return;
+        if(doc.source_revision!==original.revision||doc.source_file_sha256!==original.sha256||doc.source_text_sha256!==original.text_sha256||
+           doc.offset!==original.text_start||doc.end_offset!==original.text_end||doc.text!==fact.quote)throw Error('原文与记录不一致');
+        content.append(wbNode('p','以下为从原件读取的文字片段；不代表图片、图表或文档排版已核对。','muted'),wbNode('pre',doc.text,'fact-quote'));
+      }
+      const type=blob.type.toLowerCase();if(visual&&!['image/png','image/jpeg','image/webp','application/pdf'].includes(type))throw Error('原件格式不支持预览');
+      wbSingle.blobUrl=URL.createObjectURL(blob);
+      if(type==='application/pdf'){
+        const frame=document.createElement('iframe');frame.title=visual?'原件 PDF 第 '+original.page+' 页':'原件 PDF';frame.src=wbSingle.blobUrl+(visual?'#page='+encodeURIComponent(String(original.page)):'');frame.setAttribute('sandbox','');content.append(frame);
+      }else if(visual){const img=document.createElement('img');img.alt='当次原件图片';
+        const displayed=new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(Error('原件图片无法显示'));});
+        img.src=wbSingle.blobUrl;content.append(img);await displayed;if(!current())return;}
+      const link=wbNode('a','打开或下载当次原件');link.href=wbSingle.blobUrl;link.target='_blank';link.rel='noopener noreferrer';content.append(link);
+      status.textContent=visual?'原件版本和摘要已核验；请对照第 '+original.page+' 页。':'原件版本和文字片段已核验；请对照原件内容。';opened=true;ack.disabled=false;
+    }catch(error){if(current())status.textContent='原件或文字片段无法打开或核验，本次不能确认；请检查权限与版本后重试。';}
+    finally{if(current())open.disabled=false;}
+  };
+  confirm.onclick=async()=>{
+    if(!valid()||!opened||!ack.checked||confirm.disabled)return;confirm.disabled=true;ack.disabled=true;open.disabled=true;
+    try{
+      const result=await wbRequest(wbRoot()+'/data-results/'+wbEnc(preview.run_id)+'/single-fact-review/confirm',
+        {method:'POST',body:{expected_preview_sha256:preview.preview_sha256,confirm_original_value:true}});
+      if(!valid())return;
+      const url=new URL(result?.download_url,location.origin),expected=wbRoot()+'/data-results/'+wbEnc(preview.run_id)+'/single-fact-review/download';
+      if(result?.preview_sha256!==preview.preview_sha256||result.scope!=='single_fact_original_value_only'||!/^[-A-Za-z0-9_]{1,100}$/.test(result.receipt_id||'')||
+         url.origin!==location.origin||url.pathname!==expected||url.search||url.hash)throw Error('确认回执不完整');
+      wbSingleRelease();body.replaceChildren(wbNode('p','已保存这条原值的人工核对记录；只可单独下载这条原值，不能据此汇总、采用结果、生成报告或作为下游输入。','proposal-warning'));
+      const download=wbNode('button','下载单条原值 JSON');download.type='button';download.dataset.singleDownload='true';body.append(download);
+      download.onclick=async()=>{if(!valid()||download.disabled)return;download.disabled=true;try{
+        const response=await wbRequest(expected,{binary:true}),blob=await response.blob();if(!valid())return;
+        const local=URL.createObjectURL(blob),link=document.createElement('a');link.href=local;link.download='已核对单条原值.json';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(local),1000);
+        wbSingleStatus('已准备单条原值下载；此文件不代表已确认可汇总或用于报告。');
+      }catch(error){if(valid())wbSingleStatus('下载未完成，请重新核对当前原件与记录。',true)}finally{if(valid())download.disabled=false;}};
+    }catch(error){if(valid()){feedback.textContent=error.status>=400&&error.status<500?'本次请求未通过：'+error.message:'未收到确认结果，请重新读取记录核对状态，不要重复提交。';feedback.classList.add('error');}}
+  };
+}
 
 function wbCatalogStatus(status) {
   return {draft:'待 owner 核阅',approved:'owner 已核阅',retired:'已退休，保留历史'}[status] || '状态待核验';

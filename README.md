@@ -1,4 +1,4 @@
-> 当前源码新增图片 OCR 候选、财务来源复核和语义风险防护；r22 便携包已在本机用合成资料验证，完整财经生产验收仍有未完成项。证据与边界见 [REPOSITORY-STATUS.md](REPOSITORY-STATUS.md) 和 [多模态工程核查](docs/multimodal-capability-audit.md)。
+> 当前源码新增图片 OCR 候选、财务来源复核和语义风险防护；r23 便携包已在本机用合成资料验证，完整财经生产验收仍有未完成项。证据与边界见 [REPOSITORY-STATUS.md](REPOSITORY-STATUS.md) 和 [多模态工程核查](docs/multimodal-capability-audit.md)。
 
 > **v0.20.0 更新**：本包延续 v0.19.0，新增独立工作空间网关/部署工具与委派任务撤权保护。先看 [本版交付与验收边界](RELEASE-v0.20.0.md)。原单实例启动方式仍保留；独立账号隔离需另按 [独立部署指南](deploy/isolated/README.md) 配置，不能把多个账号直接加入原共享空间当作隔离。
 
