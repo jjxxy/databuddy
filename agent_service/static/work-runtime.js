@@ -24,6 +24,7 @@
       const value = await b.api('/projects/' + encodeURIComponent(id) + '/work-environment');
       if (mark !== generation || !dialog.open || b.getState().projectId !== id) return;
       notice.textContent = value.configured ? '后台执行不依赖此页面。停止当前工作请使用对话中的停止按钮；生成的文件在“成果”中查看。' : '此工作空间尚未开启代码执行，请联系管理员。已有的数据工作流与办公文件功能仍可使用。';
+      if(value.web_research||value.vision)notice.textContent+=' 公开网页读取：'+(value.web_research?.page_reading?'已开启':'未开启')+'；公开搜索：'+(value.web_research?.search_configured?'已配置':'未配置')+'；图像检查：'+(value.vision?.enabled?'已启用，效果需验收':'未启用')+'。';
       const open = new Set([...list.querySelectorAll('details[open]')].map(item => item.dataset.execution));
       list.replaceChildren();
       for (const execution of value.executions || []) {

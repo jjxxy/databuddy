@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && mkdir /workspace && chown atlas:atlas /workspace
 COPY work_runner/guest.py /opt/atlas-work/guest.py
 COPY work_runner/transfer.py /opt/atlas-work/transfer.py
+COPY work_runner/render.py /opt/atlas-work/render.py
+COPY work_runner/render_html.mjs /opt/atlas-work/render_html.mjs
+COPY deploy/work-runner/package.json deploy/work-runner/package-lock.json /opt/atlas-work/
+RUN npm ci --prefix /opt/atlas-work --omit=dev --ignore-scripts --no-audit --no-fund \
+    && npm cache clean --force
 USER 10001:10001
 WORKDIR /workspace
 CMD ["/bin/sleep", "infinity"]

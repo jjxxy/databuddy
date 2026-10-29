@@ -1,0 +1,169 @@
+{
+  "date": "2026-10-29",
+  "base_commit": "b3fda681ae09081762bc37e4ff99eb86b11066d0",
+  "full_suite_before_delivery_fixes": {
+    "passed": 2129,
+    "failed": 7,
+    "skipped": 34,
+    "duration_seconds": 654.38,
+    "all_failures_match_preexisting_baseline": true
+  },
+  "final_related_suite": {
+    "passed": 273,
+    "failed": 0,
+    "duration_seconds": 55.73
+  },
+  "ui_dom_scripts": {
+    "passed": 21,
+    "failed": 0
+  },
+  "browser": {
+    "engine": "Chromium 153.0.8010.0",
+    "playwright_core": "1.64.1",
+    "mock_api": true,
+    "live_model": false,
+    "viewports": [
+      [
+        1440,
+        1000
+      ],
+      [
+        390,
+        844
+      ]
+    ],
+    "cjk_fixture_font": "Noto Sans SC, loaded only for verification",
+    "checks": [
+      "png_decode",
+      "page_navigation",
+      "partial_page_disclosure",
+      "no_generated_script_execution",
+      "no_horizontal_document_overflow"
+    ],
+    "screenshots": {
+      "verification/general-work/desktop-rendered-preview.png": "848e365d2ff1038073a72752e1c031a029baa00939733d532897820dce2135bb",
+      "verification/general-work/mobile-rendered-preview.png": "118b60d049fbfa3515a12faafb42718825bf48e84723f11684725d29f22473fd"
+    }
+  },
+  "real_local_rendition": {
+    "html": {
+      "schema": "atlas-rendition-v1",
+      "input_sha256": "cfcf6e15e6a3b3d5e4c1955096f9a08eaf6900316355000a4c1eb845c65920ca",
+      "input_format": "html",
+      "total_pages": 1,
+      "first_page": 1,
+      "rendered_pages": 1,
+      "complete": true,
+      "images": [
+        {
+          "page": 1,
+          "path": "previews/final/page-1.png",
+          "sha256": "bb142cebbc8db4d48f659434c121d3df653b74f1ea957219922c69ceb9d330ed",
+          "bytes": 38751,
+          "width": 1132,
+          "height": 1600
+        }
+      ],
+      "network": "none",
+      "financial_approval": false,
+      "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
+    },
+    "office": [
+      {
+        "schema": "atlas-rendition-v1",
+        "input_sha256": "20db5777d7c74a7d849cd1addc0a770589de9587ba1b4d79325d983efc222984",
+        "input_format": "docx",
+        "total_pages": 1,
+        "first_page": 1,
+        "rendered_pages": 1,
+        "complete": true,
+        "images": [
+          {
+            "page": 1,
+            "path": "previews/docx/page-1.png",
+            "sha256": "bb0083013389263f8345c818b8a659734ed74506c2d96229a91d51c12d449561",
+            "bytes": 24913,
+            "width": 1237,
+            "height": 1600
+          }
+        ],
+        "network": "none",
+        "financial_approval": false,
+        "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
+      },
+      {
+        "schema": "atlas-rendition-v1",
+        "input_sha256": "c99365ff0388f9b2192f973099dd54b68847588d0fbf5165a0cfe08926e263f6",
+        "input_format": "pptx",
+        "total_pages": 1,
+        "first_page": 1,
+        "rendered_pages": 1,
+        "complete": true,
+        "images": [
+          {
+            "page": 1,
+            "path": "previews/pptx/page-1.png",
+            "sha256": "e5520c159e2ddf0e94d87013e3c25a2a98f25c5514326289d1e2299ac1a0206c",
+            "bytes": 23599,
+            "width": 1600,
+            "height": 1200
+          }
+        ],
+        "network": "none",
+        "financial_approval": false,
+        "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
+      },
+      {
+        "schema": "atlas-rendition-v1",
+        "input_sha256": "d8dcc05624841cbb17c20ac3747332d956ebd2b2a1c37ef4c3c566db6cf51632",
+        "input_format": "xlsx",
+        "total_pages": 1,
+        "first_page": 1,
+        "rendered_pages": 1,
+        "complete": true,
+        "images": [
+          {
+            "page": 1,
+            "path": "previews/xlsx/page-1.png",
+            "sha256": "9b9e60d4045a47939aeb6fe02e19eaef4e02798da4c28cef04f36f4883500ec4",
+            "bytes": 13394,
+            "width": 1132,
+            "height": 1600
+          }
+        ],
+        "network": "none",
+        "financial_approval": false,
+        "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
+      }
+    ],
+    "libreoffice": "26.8.0.0.alpha0-codex.1",
+    "test_inputs": "synthetic controlled files",
+    "approved_docker_image_built": false,
+    "gvisor_exercised": false
+  },
+  "acceptance_manifest": {
+    "path": "evals/work-mode.json",
+    "cases": 5,
+    "executed": false,
+    "real_model_evaluated": false,
+    "score": null
+  },
+  "source_sha256": {
+    "agent_service/web_research.py": "a34c19ffcb98ab71ae7350439648952ac0a1dddac6674bedc81203f8da8f4a3b",
+    "agent_service/work_runtime.py": "e6b2b457356098074477b51e344814e5c567b5699f8d79950944e36ef9262872",
+    "agent_service/static/workspace-shell.js": "51dbff4b783da731c20ce10ef167332b5e5b0f6f928ed0b6fc1ccd051758b369",
+    "work_runner/render.py": "39cff7befe89188a024ae7489ee45a16578c24fdde2d446563cf7af5371b6791",
+    "work_runner/render_html.mjs": "dd9af6172bf6ab12551298a25c65682f528471b9367c9a2bd3737b544048c02a",
+    "scripts/evaluate_agent.py": "e7dc60e82488353fb81ffd397e33cd2b2e7828e3c977f55cdcb24e231ef82b15",
+    "tests/ui/browser-render.mjs": "07aea2d31c179c32f38decde1b95a51cf63fc094e1019b33fae4dbf7e7e99446"
+  },
+  "production_ha_evaluated": false,
+  "chatgpt_parity_established": false,
+  "limitations": [
+    "No live search instance tested",
+    "No actual language or vision model evaluated",
+    "No real Docker/gVisor image build or deployment verified",
+    "Local rendering libraries differ from the approved deployment image",
+    "Browser validation uses mocked API responses and controlled content"
+  ]
+}

@@ -98,9 +98,11 @@ ATLAS_WORK_RUNNER_TOKEN=<与执行器一致的独立令牌>
 chromium --headless --no-sandbox --disable-dev-shm-usage --screenshot=/workspace/report.png --window-size=1440,1000 file:///workspace/report.html
 ```
 
-Chromium 内层 sandbox 标志不取代外层 gVisor；容器仍无网络。需要联网检索、登录网站或操作业务系统时，复用已批准的 MCP 连接和原有外部写入确认。此版本没有内置任意网站登录或通用云桌面服务，不能声称已经拥有用户电脑的浏览器会话。
+Chromium 内层 sandbox 标志不取代外层 gVisor；容器仍无网络。公开检索与正文读取可按 [GENERAL-WORK.md](GENERAL-WORK.md) 开启原生研究工具；登录网站或操作业务系统时，复用已批准的 MCP 连接和原有外部写入确认。此版本没有内置任意网站登录或通用云桌面服务，不能声称已经拥有用户电脑的浏览器会话。
 
 成果面板对网页提供安全文本视图，图片提供实际预览，Office 提供现有内容提取视图。运行中的 Web 端口、交互式 Notebook 和任意脚本网页预览不在本版开放范围；可以在隔离环境生成截图再交付。
+
+后续增强现已接入 `render_work_preview`：可为 HTML / PDF / Office 成果生成按版本绑定的页图，并直接在原成果中查看；启用视觉模型后可 `inspect_visual_artifact` 检查真实图像。公开网页的原生搜索、正文读取、引用、二进制成果续作和配置见 [GENERAL-WORK.md](GENERAL-WORK.md)。登录网站和通用浏览器操作仍需获准的外部工具，不能用正文读取替代。
 
 ## 财经可靠性
 

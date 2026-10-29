@@ -482,7 +482,7 @@ def _chart(rows,columns,x,y,maximum=100):
             'scope_note':'完整结果汇总；仅展示前'+str(maximum)+'类' if len(shown)<len(ordered) else '覆盖完整结果中的全部类别'}
 
 
-def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,chart_y=None):
+def _content_preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,chart_y=None):
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100 or type(text_limit) is not int or not 1<=text_limit<=20000:raise ArtifactError('成果预览分页无效')
     record=_record(pid,aid);kind=record['kind'];private=record['private']
     if kind=='result':
@@ -619,6 +619,16 @@ def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,c
         if not valid:raise ArtifactError('文件不是受支持的图片来源')
         return {'artifact':_verified(record),'render':'image','url':record['download_url'],'verified':True,'fidelity_note':'原始图片预览；未执行OCR或把图像内容认定为财务事实'}
     return {'artifact':_verified(record),'render':'download_only','verified':True,'fidelity_note':'此格式没有已验证的安全预览器，可下载原件'}
+
+
+def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,chart_y=None):
+    result = _content_preview(pid,aid,offset,limit,text_limit,sheet,chart_x,chart_y)
+    record = _record(pid,aid)
+    if record['format'] in ('html','htm','pdf','docx','pptx','xlsx'):
+        from .work_runtime import visual_preview
+        visual = visual_preview(pid, record['sha256'])
+        if visual:result['visual_preview'] = visual
+    return result
 
 
 def install(app,auth):

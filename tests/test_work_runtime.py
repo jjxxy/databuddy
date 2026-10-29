@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import tarfile
+import struct
 
 import httpx
 import pytest
@@ -16,9 +17,193 @@ from agent_service.store import get, patch, put, uid, now, all_items, delete
 from agent_service.actor_context import actor_scope
 
 
+def sample_png():
+    from PIL import Image
+    output = io.BytesIO()
+    Image.new('RGB', (40, 30), 'white').save(output, format='PNG')
+    return output.getvalue()
+
+
+def make_saved_work(controller, name, content):
+    engine, backend, turn = controller
+    backend.output = {name: content}
+    turn = run_tool(turn, 'run_work_command', {'command': 'python create_output.py'})
+    engine.step(turn['work_execution_id']);engine.step(turn['work_execution_id'])
+    work.resume(turn);turn = get('turn', turn['id'])
+    turn = run_tool(turn, 'publish_work_file', {'execution_id': turn['work_execution_id'], 'path': name})
+    return turn, turn['agent_trace'][-1]['observation']['artifact_id']
+
+
+def test_binary_artifact_is_restored_from_exact_version_and_cross_project_is_refused(controller):
+    engine, backend, _ = controller
+    original = sample_png()
+    turn, aid = make_saved_work(controller, 'original.png', original)
+    backend.output = {'original.png': b'new version at same filename'}
+    turn = run_tool(turn, 'run_work_command', {'command': 'python modify.py', 'artifact_ids': [aid]})
+    eid = turn['work_execution_id'];engine.step(eid)
+    copied = 'artifacts/' + aid + '/original.png'
+    assert backend.containers[eid][copied] == original
+    value = get('work_execution', eid)
+    assert value['input_files'][0]['kind'] == 'artifact' and work.inputs_current(value)
+    other = put('project', {'name': 'Other'}, 'p_' + uid())
+    with pytest.raises((ValueError, KeyError)):work.artifact_input(dict(turn, project_id=other['id']), aid)
+
+
+def test_rendered_pages_are_version_bound_and_visible_in_original_artifact_preview(controller):
+    engine, backend, _ = controller
+    turn, aid = make_saved_work(controller, 'report.html', b'<h1>Actual report</h1><script>never runs in app</script>')
+    source = get('work_artifact', aid)
+    output = 'previews/' + source['sha256'][:24]
+    png = sample_png()
+    manifest = {'schema': 'atlas-rendition-v1', 'input_sha256': source['sha256'], 'total_pages': 3,
+                'rendered_pages': 1, 'images': [{'page': 1, 'path': output + '/page-1.png', 'sha256': digest(png)}]}
+    backend.output = {output + '/page-1.png': png, output + '/manifest.json': json.dumps(manifest).encode()}
+    turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid, 'max_pages': 1})
+    assert turn['state'] == 'waiting_work_command'
+    eid = turn['work_execution_id']
+    assert '/opt/atlas-work/render.py' in engine.get(eid)['command']
+    engine.step(eid);engine.step(eid)
+    work.resume(turn);turn = get('turn', turn['id'])
+    observation = turn['agent_trace'][-1]['observation']
+    assert observation['rendition']['complete'] is False
+    image = observation['rendition']['images'][0]
+    assert work.artifact(turn['project_id'], image['artifact_id'])[0].read_bytes() == png
+    records = workspace_artifacts.catalog(turn['project_id'])
+    original = next(v for v in records['items'] if v['name'] == 'report.html')
+    preview = workspace_artifacts.preview(turn['project_id'], original['id'])
+    assert preview['render'] == 'text' and '<script>' in preview['text']
+    assert preview['visual_preview']['total_pages'] == 3
+    assert preview['visual_preview']['visual_inspected'] is False
+    assert get('turn', turn['id'])['agent_download']['name'] == 'report.html'
+
+
+def test_forged_rendition_cannot_reuse_a_different_input_hash(controller):
+    engine, backend, _ = controller
+    turn, aid = make_saved_work(controller, 'report.html', b'<h1>Original</h1>')
+    output = 'previews/' + get('work_artifact', aid)['sha256'][:24]
+    backend.output = {output + '/manifest.json': json.dumps({'schema': 'atlas-rendition-v1', 'input_sha256': '0' * 64,
+        'total_pages': 1, 'rendered_pages': 1, 'images': [{'page': 1}]}).encode()}
+    turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid})
+    eid = turn['work_execution_id'];engine.step(eid);engine.step(eid)
+    work.resume(turn)
+    trace = get('turn', turn['id'])['agent_trace'][-1]
+    assert trace['status'] == 'failed' and trace['observation']['executed'] is False
+    assert not [v for v in all_items('work_rendition') if v['project_id'] == turn['project_id']]
+
+
+def test_rendition_readback_retries_same_execution_after_temporary_disconnect(controller, monkeypatch):
+    engine, backend, _ = controller
+    turn, aid = make_saved_work(controller, 'report.html', b'<h1>Retry snapshot read</h1>')
+    sha = get('work_artifact', aid)['sha256'];output = 'previews/' + sha[:24];png = sample_png()
+    backend.output = {output + '/page-1.png': png, output + '/manifest.json': json.dumps({
+        'schema': 'atlas-rendition-v1', 'input_sha256': sha, 'total_pages': 1, 'rendered_pages': 1,
+        'images': [{'page': 1, 'path': output + '/page-1.png', 'sha256': digest(png)}]}).encode()}
+    turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid})
+    eid = turn['work_execution_id'];engine.step(eid);engine.step(eid)
+    original = work._request;fail = [True]
+    def transport(method, path, **kwargs):
+        if path.endswith('/file') and fail[0]:
+            fail[0] = False
+            raise work.RunnerUnavailable('fixture disconnect')
+        return original(method, path, **kwargs)
+    monkeypatch.setattr(work, '_request', transport)
+    work.resume(turn)
+    assert get('turn', turn['id'])['state'] == 'waiting_work_command'
+    patch('work_execution', eid, next_poll_at=0)
+    work.resume(get('turn', turn['id']))
+    assert get('turn', turn['id'])['agent_trace'][-1]['observation']['rendition']['complete'] is True
+    assert backend.launches == 2
+
+
+def test_visual_model_receives_real_image_bytes_and_does_not_grant_financial_approval(controller, monkeypatch):
+    png = sample_png()
+    turn, aid = make_saved_work(controller, 'page.png', png)
+    monkeypatch.setenv('ATLAS_VISION_ENABLED', '1')
+    requests = []
+    def complete(messages, **kwargs):
+        requests.append((messages, kwargs))
+        return '页图可读；财务金额未复核。'
+    monkeypatch.setattr(provider, 'complete', complete)
+    result = work.execute(turn, 'inspect_visual_artifact', {'artifact_id': aid})
+    url = requests[0][0][1]['content'][1]['image_url']['url']
+    assert base64.b64decode(url.split(',', 1)[1]) == png
+    assert requests[0][1]['purpose'] == 'visual_inspection'
+    assert result['scope'] == 'model_visual_assessment' and result['financial_approval'] is False
+    record = get('visual_review', result['review_id'])
+    assert '页图可读' not in json.dumps(record) and 'base64' not in json.dumps(record)
+    monkeypatch.delenv('ATLAS_VISION_ENABLED')
+    with pytest.raises(ValueError, match='视觉输入'):work.execute(turn, 'inspect_visual_artifact', {'artifact_id': aid})
+
+
+def test_real_pdf_rendition_uses_poppler_and_marks_unrendered_pages(tmp_path):
+    import shutil
+    if not shutil.which('pdftoppm') or not shutil.which('pdfinfo'):pytest.skip('Poppler is not installed')
+    from pypdf import PdfWriter
+    from work_runner.render import render
+    writer = PdfWriter()
+    for _ in range(3):writer.add_blank_page(width=120, height=200)
+    source = tmp_path / 'actual.pdf'
+    with source.open('wb') as stream:writer.write(stream)
+    result = render('actual.pdf', 'previews/actual', 2, root=tmp_path)
+    assert result['total_pages'] == 3 and result['rendered_pages'] == 2 and result['complete'] is False
+    for image in result['images']:
+        raw = (tmp_path / image['path']).read_bytes()
+        assert digest(raw) == image['sha256'] and struct.unpack('>II', raw[16:24]) == (image['width'], image['height'])
+    outside = tmp_path / 'linked.pdf';outside.symlink_to(source)
+    with pytest.raises(ValueError):render('linked.pdf', 'preview', 1, root=tmp_path)
+    last = render('actual.pdf', 'previews/last', 2, first_page=3, root=tmp_path)
+    assert last['images'][0]['page'] == 3 and last['rendered_pages'] == 1 and last['complete'] is False
+
+
+def test_office_binary_artifact_can_be_selected_without_model_transcription(controller):
+    _, _, turn = controller
+    from agent_service import office, workspace
+    workspace.write_file(turn['project_id'], 'spec.json', json.dumps({'kind': 'spreadsheet', 'title': '精确结果',
+        'sheets': [{'name': '金额', 'columns': ['amount'], 'rows': [['9007199254740993.00000001']]}]}))
+    saved = office.render(turn, 'spec.json', '精确结果')
+    content, metadata = work.artifact_input(turn, saved['artifact_id'])
+    assert content.startswith(b'PK') and metadata['sha256'] == saved['sha256']
+    assert metadata['path'].endswith('/精确结果.xlsx')
+
+
+def test_vision_request_uses_actual_compatible_http_protocol_and_safe_image_mime(controller, monkeypatch):
+    from agent_service.api import app
+    from agent_service.config import TOKEN
+    png = sample_png()
+    turn, aid = make_saved_work(controller, 'page.png', png)
+    monkeypatch.setenv('ATLAS_VISION_ENABLED', '1')
+    configuration = {'share_data': True, 'base_url': 'https://vision.test/v1', 'model': 'vision-fixture', 'api_key': 'vision-fixture-key', 'engine': 'atlas'}
+    monkeypatch.setattr(provider, 'settings', lambda: configuration)
+    seen = []
+    def respond(request):
+        body = json.loads(request.content);seen.append(body)
+        assert request.headers['Authorization'] == 'Bearer vision-fixture-key'
+        assert body['model'] == 'vision-fixture'
+        assert base64.b64decode(body['messages'][1]['content'][1]['image_url']['url'].split(',', 1)[1]) == png
+        return httpx.Response(200, json={'choices': [{'message': {'content': '实际视觉协议夹具返回意见'}, 'finish_reason': 'stop'}]})
+    original = httpx.Client
+    monkeypatch.setattr(provider.httpx, 'Client', lambda **kw: original(transport=httpx.MockTransport(respond), **kw))
+    result = work.inspect_image(turn, work.InspectImage(artifact_id=aid))
+    assert seen and result['assessment'] == '实际视觉协议夹具返回意见'
+    response = TestClient(app).get('/api/projects/' + turn['project_id'] + '/work-artifacts/' + aid, headers={'Authorization': 'Bearer ' + TOKEN})
+    assert response.status_code == 200 and response.headers['content-type'] == 'image/png' and response.content == png
+
+
+def test_runner_readiness_is_an_authenticated_probe_not_a_production_claim(controller):
+    turn = controller[2]
+    result = work.execute(turn, 'work_environment_status', {'check_runner': True})
+    assert result['runner_ready'] is True and result['deployment_verified'] is False
+
+
+@pytest.mark.parametrize('width,height', [(0, 1), (200000, 20), (4000, 4000)])
+def test_vision_size_budget_rejects_compressed_pixel_bombs(width, height):
+    header = b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' + struct.pack('>II', width, height)
+    with pytest.raises(ValueError):work.image_size(header)
+
+
 @pytest.fixture(autouse=True)
 def clean_test_records():
-    kinds=('work_execution','work_artifact','workspace_artifact','installed_skill','checkpoint','turn','conversation','source','project')
+    kinds=('work_execution','work_artifact','work_rendition','visual_review','workspace_artifact','installed_skill','checkpoint','turn','conversation','source','project')
     before={kind:{value['id'] for value in all_items(kind)} for kind in kinds}
     yield
     for kind in kinds:

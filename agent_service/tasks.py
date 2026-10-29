@@ -98,7 +98,7 @@ def verify(turn):
     if turn.get('knowledge_citations'):receipts.append({'kind':'company_evidence','evidence_ids':list(dict.fromkeys(c['evidence_id'] for c in turn['knowledge_citations']))})
     for s in done:
         obs=s.get('observation') or {}
-        if s['tool']=='run_work_command' and obs.get('remote_receipt') and obs.get('state')=='succeeded' and obs.get('exit_code')==0:
+        if s['tool'] in ('run_work_command','render_work_preview') and obs.get('remote_receipt') and obs.get('state')=='succeeded' and obs.get('exit_code')==0:
             try:
                 from .work_runtime import _owned,inputs_current
                 execution=_owned(turn['project_id'],obs['execution_id'])
@@ -228,7 +228,7 @@ def verify(turn):
             if hashlib.sha256(actual.encode()).hexdigest()==exact['sha256']:receipts.append({'kind':'file_exact',**exact})
         except (ValueError,FileNotFoundError):pass
     missing=[k for k in required if not any(x['kind']==k for x in receipts)]
-    work_commands=[s for s in done if s['tool']=='run_work_command']
+    work_commands=[s for s in done if s['tool'] in ('run_work_command','render_work_preview')]
     if work_commands and (work_commands[-1].get('observation') or {}).get('state')!='succeeded':
         missing.append('work_command_not_successful')
     for action in __import__('agent_service.work_tools',fromlist=['actions']).actions(turn['project_id']):

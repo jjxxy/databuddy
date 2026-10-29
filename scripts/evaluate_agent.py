@@ -3,7 +3,8 @@
 Use ATLAS_URL and APP_TOKEN environment variables. Each case creates a separate
 project and retains it for review. No synthetic model or LLM judge is used.
 """
-import argparse,hashlib,json,math,os,time,uuid
+import argparse,hashlib,io,json,math,os,time,uuid
+from urllib.parse import urlsplit
 from decimal import Decimal
 from pathlib import Path
 import httpx
@@ -16,10 +17,10 @@ def interval(passed,total):
     return [max(0,center-half),min(1,center+half)]
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--execute',action='store_true');parser.add_argument('--protocol-test',action='store_true',help='Simulated integration only; never produces an intelligence score');parser.add_argument('--limit',type=int);parser.add_argument('--repeat',type=int,default=1);parser.add_argument('--case',action='append',default=[]);parser.add_argument('--label',default='Atlas');parser.add_argument('--baseline',type=Path);parser.add_argument('--output',type=Path,default=Path('eval-results.json'));args=parser.parse_args()
-    cases=json.loads((ROOT/'evals/tasks.json').read_text())
+    parser=argparse.ArgumentParser();parser.add_argument('--execute',action='store_true');parser.add_argument('--cases-file',type=Path,default=ROOT/'evals/tasks.json');parser.add_argument('--protocol-test',action='store_true',help='Simulated integration only; never produces an intelligence score');parser.add_argument('--limit',type=int);parser.add_argument('--repeat',type=int,default=1);parser.add_argument('--case',action='append',default=[]);parser.add_argument('--label',default='Atlas');parser.add_argument('--baseline',type=Path);parser.add_argument('--output',type=Path,default=Path('eval-results.json'));args=parser.parse_args()
+    cases=json.loads(args.cases_file.read_text())
     assert len({c['id'] for c in cases})==len(cases)
-    assert all(c['check'] in {'file','unchanged','rule','scalar','needs_input','run','build'} and c['mode'] in ('chat','work') and c['prompt'] for c in cases)
+    assert all(c['check'] in {'file','unchanged','rule','scalar','needs_input','run','build','research','workbook','rendition','vision'} and c['mode'] in ('chat','work') and c['prompt'] for c in cases)
     manifest_hash=hashlib.sha256(json.dumps(cases,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
     if not 1<=args.repeat<=3:raise ValueError('repeat must be 1..3; repeated real-model tasks incur costs')
     if args.case:
@@ -78,6 +79,10 @@ def main():
                 before_definitions={p['id']:p for p in request('GET','/api/pipelines') if p['id'] in {a['id'] for a in before_apps}}
                 message=request('POST',root+'/messages',json={'text':case['prompt'],'interaction_mode':case['mode'],'application_id':aid,'source_id':sid if not aid else None,'request_id':key+'-turn','session_id':session})
                 turn=wait(lambda:next((t for t in request('GET',root+'/conversation',params={'session_id':session} if session else {})['turns'] if t['id']==message['id'] and t['state'] in ('done','failed')),None))
+                if case.get('followup'):
+                    result['prior_turn_id']=turn['id'];result['prior_turn_usage']=turn.get('model_usage',{})
+                    followup=request('POST',root+'/messages',json={'text':case['followup'],'interaction_mode':case['mode'],'request_id':key+'-followup','session_id':session})
+                    turn=wait(lambda:next((t for t in request('GET',root+'/conversation',params={'session_id':session} if session else {})['turns'] if t['id']==followup['id'] and t['state'] in ('done','failed')),None))
                 after_files=file_snapshot(root);after_apps=request('GET',root+'/applications');after_runs=[r for a in after_apps for r in request('GET','/api/runs',params={'target':a['id']}) if r['id'] not in before_runs]
                 check=case['check'];passed=False
                 if check=='file':
@@ -97,6 +102,39 @@ def main():
                             except Exception:pass
                 elif check=='needs_input':passed=turn.get('outcome') in ('needs_input','blocked') or any(s.get('observation',{}).get('mode')=='llm_unanswerable' for s in turn.get('agent_trace',[]))
                 elif check=='run':passed=bool(after_runs) and any(r.get('validated') and r.get('commit')==before_definitions.get(r['target'],{}).get('active_commit') for r in after_runs) and turn.get('verification',{}).get('verified',False)
+                elif check=='research':
+                    references=turn.get('web_citations',[])
+                    passed=bool(references) and all(c.get('scope')=='read_snapshot' and c.get('quote') and len(c.get('sha256',''))==64 for c in references)
+                    if case.get('expected_host'):passed=passed and any(urlsplit(c['url']).hostname==case['expected_host'] for c in references)
+                elif check in ('workbook','rendition'):
+                    artifacts=request('GET',root+'/artifacts',params={'limit':100})['items']
+                    matches=[]
+                    for item in artifacts:
+                        if item['format']!=('xlsx' if check=='workbook' else 'html'):continue
+                        target=item.get('download_url','')
+                        if not target.startswith(root+'/') or urlsplit(target).scheme or '..' in target:raise ValueError('Invalid artifact URL')
+                        download=client.get(target);download.raise_for_status();raw=download.content
+                        if hashlib.sha256(raw).hexdigest()!=item['sha256']:raise ValueError('Artifact hash mismatch')
+                        if check=='workbook':
+                            from openpyxl import load_workbook
+                            book=load_workbook(io.BytesIO(raw),read_only=True,data_only=False)
+                            try:
+                                cells={address:book.active[address].value for address in case['cells']}
+                                matches.append(cells==case['cells'])
+                            finally:book.close()
+                        else:
+                            preview=request('GET',item['preview_url']);visual=preview.get('visual_preview') or {}
+                            images=visual.get('images',[])
+                            image_ok=bool(images)
+                            for image in images:
+                                if not image['download_url'].startswith(root+'/'):raise ValueError('Invalid rendition URL')
+                                response=client.get(image['download_url']);response.raise_for_status()
+                                image_ok=image_ok and response.content.startswith(b'\x89PNG\r\n\x1a\n') and hashlib.sha256(response.content).hexdigest()==image['sha256']
+                            matches.append(image_ok)
+                    passed=any(matches) and (not case.get('preserve_previous') or len(matches)>=2 and not all(matches))
+                elif check=='vision':
+                    passed=any(s.get('status')=='done' and s.get('tool')=='inspect_visual_artifact' and s.get('observation',{}).get('scope')=='model_visual_assessment' and s['observation'].get('assessment') for s in turn.get('agent_trace',[]))
+                    result['human_visual_review_required']=True
                 elif check=='build':
                     created={a['id'] for a in after_apps}-{a['id'] for a in before_apps}
                     passed=any(r.get('validated') and r['target'] in created for r in after_runs) and turn.get('verification',{}).get('verified',False)

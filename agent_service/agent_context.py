@@ -50,6 +50,8 @@ DATA_WORKING_SET=('source_schema','inspect_source_tables','read_source_table','d
                   'write_file','read_file','register_data_workflow','run_data_workflow',
                   'read_data_workflow_result','export_data_workflow_result','list_data_workflows')
 GROUPS=[
+ (r'成果|文件|预览|渲染|截图|版式|设计|视觉|图片|看图|PNG|JPEG|PDF|PPT|Word|Excel|html|png|jpeg|pdf|ppt|docx',{'list_project_artifacts','render_work_preview','inspect_visual_artifact'}),
+ (r'联网|互联网|公开|网页|网站|搜索|检索|研究|调研|查资料|最新|web|research',{'web_research_status','search_web','read_web_page'}),
  (r'代码|编程|脚本|终端|Python|python|Node|node|运行|执行|图表|可视化|网页|工作环境',{'work_environment_status','run_work_command','list_work_files','read_work_file','publish_work_file'}),
  (r'协作|协同|委派|分工|复核|核对|独立检查|Agent|agent',{'list_agent_peers','delegate_agents','get_agent_task','cancel_agent_task'}),
  (r'记住|记忆|偏好|忘记|以后|约定',{'recall_memories','remember_memory','forget_memory'}),
@@ -83,7 +85,12 @@ def allowed(turn):
     names={name for name,(_,writes,_) in TOOLS.items() if (turn.get('interaction_mode','work')=='work' or not writes) and (name!='run_python_file' or status()['configured'])}
     from .work_runtime import status as work_status, DEFINITIONS as WORK_RUNTIME_TOOLS
     if not work_status()['configured']:
-        names -= set(WORK_RUNTIME_TOOLS) - {'work_environment_status'}
+        names -= set(WORK_RUNTIME_TOOLS) - {'work_environment_status','inspect_visual_artifact','list_project_artifacts'}
+    from .work_runtime import vision_status
+    if not vision_status()['enabled']:names.discard('inspect_visual_artifact')
+    from .web_research import status as web_status
+    if not web_status()['enabled']:names -= {'search_web','read_web_page'}
+    elif not web_status()['search_configured']:names.discard('search_web')
     from . import agent_gateway,agent_team
     return agent_team.allowed_tools(turn,agent_gateway.allowed_tools(turn,names))
 

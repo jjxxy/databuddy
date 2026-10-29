@@ -323,6 +323,8 @@ def provision_presets(configuration=None):
     from .work_runtime import status as work_status
     if work_status()['configured']:
         cloud_work=Path(__file__).with_name('builtin_skills')/'cloud-work'/'SKILL.md'
+        office_quality=Path(__file__).with_name('builtin_skills')/'office-quality'/'SKILL.md'
+        result['skills'].append(install_skill('SKILL.md',office_quality.read_bytes(),preset=True,identity='skp_office_quality'))
         result['skills'].append(install_skill('SKILL.md',cloud_work.read_bytes(),preset=True,identity='skp_cloud_work'))
     for entry in configuration.get('skills',[]):
         if not isinstance(entry,dict) or set(entry)-{'id','name','content'} or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',str(entry.get('id',''))) or not isinstance(entry.get('content'),str) or not isinstance(entry.get('name',''),str):raise ValueError('预置技能须包含稳定id及Markdown content')

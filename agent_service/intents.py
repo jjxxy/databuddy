@@ -18,6 +18,7 @@ VERBS={
 }
 ALIASES={'remember_memory':'remember','forget_memory':'forget','export_local_workspace':'local_export','publish_result':'publish','schedule_daily':'schedule','schedule_updates':'schedule',
  'run_work_command':'analyze','publish_work_file':'write',
+ 'render_work_preview':'analyze',
  'pause_updates':'pause','run_data_application':'refresh','refresh_data':'refresh',
  'rename_project':'rename','run_python_file':'refresh','build_transform':'analyze','create_data_application':'analyze',
  'revise_data_application':'analyze','write_file':'write','edit_file':'write','delete_file':'delete','switch_source':'switch',
