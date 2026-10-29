@@ -1,6 +1,7 @@
 """Actual OpenCode + local simulated 400-context-overflow recovery.
 
-Use --lazy-office to verify late capability/spec discovery and a real DOCX.
+Use --lazy-office for late Office loading; --false-budget-stop verifies that
+a model-authored budget excuse is corrected through the actual native bridge.
 No external LLM, real account, billing or business files. Requires the pinned
 ATLAS_OPENCODE_BINARY. Creates an isolated temporary state directory.
 """
@@ -15,7 +16,7 @@ os.environ.update(DATA_DIR=str(root/'data'),DATABASE_URL='sqlite:///'+str(root/'
     ATLAS_DESKTOP_MODE='0',ATLAS_AUTH_MODE='token')
 from agent_service import agent,provider,opencode_runtime as runtime,model_catalog,conversation,workspace
 from agent_service.store import get,put,now
-calls=[];turn_id='';process=None;lazy_office='--lazy-office' in sys.argv
+calls=[];turn_id='';process=None;lazy_office='--lazy-office' in sys.argv;false_budget_stop='--false-budget-stop' in sys.argv
 from agent_service import office,workspace_artifacts
 office_spec={'kind':'document','title':'Weekly progress','sections':[{'body':'Actual controlled file, not a business claim.'}]}
 lazy_steps=[{'kind':'tool','tool':'discover_tools','arguments':{'query':'render_office_artifact','limit':1}},
@@ -31,11 +32,16 @@ class Handler(BaseHTTPRequestHandler):
         written=any(item.get('tool')=='write_file' and item.get('status')=='done' for item in current.get('agent_trace',[]))
         recovered=current.get('context_window',{}).get('recoveries',0)>0
         calls.append({'input_characters':len(json.dumps(body,ensure_ascii=False)),'written':written,'recovered':recovered})
-        if not lazy_office and written and not recovered:
+        if not lazy_office and not false_budget_stop and written and not recovered:
             raw=json.dumps({'error':{'code':'context_length_exceeded','message':'maximum context length exceeded (controlled local fixture)'}}).encode()
             self.send_response(400);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         step={'kind':'final','answer':'报告已生成，原有写入没有重复。','status':'complete'} if written else {
             'kind':'tool','tool':'write_file','arguments':{'path':'reports/native.md','content':'preserved exact report 9007199254740993.000000000001'}}
+        if false_budget_stop:
+            if len(calls)==1:step={'kind':'final','answer':'本轮模型预算已用完，已有成果已保存；可以缩小目标后继续','status':'blocked'}
+            if len(calls)==2:
+                calls[-1]['correction_received']='UNSUPPORTED_ROUND_BUDGET_STOP' in json.dumps(body,ensure_ascii=False)
+                assert calls[-1]['correction_received'],'Native provider must receive the correction, not terminate silently'
         if lazy_office:
             position=len([item for item in current.get('agent_trace',[]) if item.get('status')=='done'])
             actual_schema='office_spec_schema' in json.dumps(body,ensure_ascii=False)
@@ -71,13 +77,22 @@ try:
     current=conversation.submit(pid,conversation.TurnInput(text=goal,request_id='fixture-write-report',session_id=session))
     turn_id=current['id']
     from agent_service.store import patch
-    current=patch('turn',turn_id,state='agent')
+    current=patch('turn',turn_id,state='agent',**({'model_usage':{'calls':90,'input_characters':4000000,'output_tokens_budgeted':200000,'duration_ms':86400000}} if false_budget_stop else {}))
     agent.advance(current)
     final=get('turn',turn_id)
     assert final['state']=='done' and final['outcome'] in ('verified_complete','answered'),{'state':final['state'],'answer':final.get('answer')}
     writes=[item for item in final['agent_trace'] if item['tool']=='write_file']
     assert len(writes)==1
-    if lazy_office:
+    if false_budget_stop:
+        assert final['invalid_budget_stop']['attempts']==1
+        assert final.get('context_window',{}).get('recoveries',0)==0
+        assert final['model_usage']['calls']>=93
+        assert workspace.read_file(pid,'reports/native.md')=='preserved exact report 9007199254740993.000000000001'
+        print(json.dumps({'ok':True,'actual_opencode_binary':True,'version':runtime.VERSION,'local_simulated_provider':True,
+            'model_authored_false_budget_stop_corrected':True,'native_feedback_received':calls[1]['correction_received'],
+            'automatic_continue_original_goal':True,'no_fake_context_compaction':True,'write_count':len(writes),
+            'historical_counters_preserved':True,'state':final['state'],'calls':calls,'evidence_dir':str(root)},ensure_ascii=False))
+    elif lazy_office:
         outputs=conversation.public_turn(final)['outputs']
         assert len(outputs)==1 and outputs[0]['format']=='docx'
         file,metadata=workspace_artifacts.file(pid,outputs[0]['id'])

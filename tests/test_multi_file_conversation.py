@@ -249,3 +249,17 @@ def test_unsent_draft_keeps_every_uploaded_id_encrypted_and_pending_retry_immuta
         with pytest.raises(ValueError):activity.save_view(did,activity.ViewInput(project_id=pid,session_id=chat.default_session(pid),source_ids=ids*2,revision=1))
     finally:
         delete('browser_view',activity.view_key(did,pid,chat.default_session(pid)));delete('browser_device',did)
+
+
+@pytest.mark.parametrize('mode',['chat','work'])
+def test_composer_modes_keep_every_file_in_one_durable_message(project,mode):
+    files=[upload(project,'same.csv',b'id,amount\n1,1\n'),
+           upload(project,'same.csv',b'id,amount\n2,2\n'),
+           upload(project,'third.csv',b'id,amount\n3,3\n')]
+    identifiers=[value['id'] for value in files]
+    current=submit(project,identifiers,interaction_mode=mode)
+    assert current['interaction_mode']==mode and current['interactive_unlimited'] is True
+    assert current['source_ids']==identifiers
+    response=project[1].get('/api/projects/'+project[0]+'/conversation',headers=H).json()
+    assert response['turns'][-1]['source_ids']==identifiers
+    assert len(response['turns'][-1]['attached_sources'])==3

@@ -22,4 +22,8 @@ assert(temp.textContent.includes('执行结果待核对'));
 temp.innerHTML=w.component.operationTrace({model_usage:{calls:123456,completion_tokens:7654321,usage_incomplete:true},context_metrics:{selected_tools:9999},agent_trace:[{tool:'read_file',status:'done'}]});
 assert(temp.textContent.includes('读取项目文件'));
 assert(!/模型请求|tokens|本步加载|123456|7654321|9999/.test(temp.textContent),'internal model/tool-loading counters are not product progress');
+w.component.renderThread({project:{id:'p',name:'Fixture'},sources:[],turns:[{id:'old',text:'生成报告',answer:'本轮模型预算已用完，已有成果已保存；可以缩小目标后继续',state:'done',obsolete_budget_pause:true,resume_available:true,interaction_mode:'work'}]});
+assert(w.document.querySelector('.historical-budget-note').textContent.includes('无需缩小目标'));
+assert(w.document.querySelector('#messages').textContent.includes('本轮模型预算已用完'),'the original historical receipt is preserved');
+assert.equal(w.document.querySelector('[data-continue]').dataset.continue,'old');
 console.log(JSON.stringify({approval_is_inline:true,work_execution_status_truthful:true,exact_digest:true,arguments_escaped:true,unknown_cannot_be_retried_from_card:true,inherited_history_is_distinct_from_new_attempts:true,reused_or_blocked_operations_not_labelled_as_new_execution:true}));dom.window.close();

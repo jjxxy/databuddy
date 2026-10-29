@@ -96,6 +96,8 @@ cd databuddy
 
 **需要运行 Agent 编写的 Python / Node / Bash 代码时，还需单独部署隔离执行服务。** 它不随默认启动自动创建，配置步骤见 [云端工作模式](WORK-MODE.md)。模型配置、停止服务、升级与故障排查见 [快速启动指南](QUICKSTART.md)。
 
+更新源码后需要重启正在运行的服务并刷新页面；已解压的旧桌面包需要重新构建或替换。左下角运行版本可检查 API、Agent、Worker 是否一致，具体见 [桌面运行说明](desktop/README.md#updating-an-existing-instance)。
+
 ## 使用范围
 
 - 默认实例适合个人或共同授权的团队空间，成员共享项目资料；需要独立账号与数据隔离时，按 [独立部署指南](deploy/isolated/README.md) 配置。

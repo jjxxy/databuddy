@@ -3,9 +3,12 @@
 None denotes an unlimited dimension, never a very large substitute integer.
 External grants stay finite; internal roles inherit the owner's task policy.
 """
+import re
+
 KEYS=('model_calls','input_characters','output_tokens','duration_ms')
 LEGACY_DEFAULTS={'model_calls':18,'input_characters':360000,'output_tokens':24000,'duration_ms':300000}
 LEGACY_DEEP={'model_calls':40,'input_characters':1000000,'output_tokens':128000,'duration_ms':600000}
+LEGACY_SPECIALIST={'model_calls':5,'input_characters':120000,'output_tokens':16000,'duration_ms':120000}
 
 
 def _positive(value):
@@ -25,6 +28,40 @@ def is_interactive(turn):
         turn.get('interaction_mode') in ('chat','work'))
 
 
+def unsupported_round_stop(turn,answer):
+    """A model's old round-cap claim is not a runtime admission failure.
+
+    Match a current-task exhaustion assertion, not financial budgets, a user's
+    quoted error, daily workspace quotas, or genuine upstream rate limits.
+    Actual BudgetExceeded exceptions take their separate runtime error path.
+    """
+    if not isinstance(answer,str):return False
+    claim=re.match(r'^\s*(?:本轮|本次|当前(?:这轮|任务|对话))\s*(?:的)?\s*模型(?:调用)?预算\s*(?:已经|已)?(?:用完|耗尽|超限)(?=[，。；;,.！!\s]|$)',answer)
+    return bool(claim) and all(value is None for value in effective_limits(turn).values())
+
+
+def _legacy_specialist_parent(turn,raw):
+    """Recognize only server-linked, pre-policy automatic local-role caps."""
+    if ('collaboration_budget_inherited' in turn or raw!=LEGACY_SPECIALIST
+            or (turn.get('task_contract') or {}).get('budget_policy') is not None
+            or not turn.get('collaboration_parent_turn_id')
+            or turn.get('gateway_client_id') or turn.get('gateway_limits')):return None
+    from .store import get
+    from .agent_team import ROLES
+    if turn.get('collaboration_peer_id') not in ROLES or turn.get('collaboration_readonly') is not True:return None
+    try:
+        parent=get('turn',turn['collaboration_parent_turn_id'])
+        task=get('collab_task',turn['collaboration_task_id'])
+    except KeyError:return None
+    if (not is_interactive(parent) or task.get('transport')!='local'
+            or task.get('parent_turn_id')!=parent['id'] or task.get('child_turn_id')!=turn.get('id')
+            or task.get('peer_id')!=turn['collaboration_peer_id']):return None
+    if any(turn.get(key,default)!=parent.get(key,default) for key,default in
+           (('project_id',None),('actor_id','owner'),('model_id',None),('model_catalog_revision',None))):return None
+    if task.get('project_id')!=parent['project_id'] or task.get('actor_id','owner')!=parent.get('actor_id','owner'):return None
+    return parent
+
+
 def effective_limits(turn):
     """Four dimensions, each a positive integer or None (no total cap).
 
@@ -38,6 +75,8 @@ def effective_limits(turn):
         raise ValueError('任务预算策略无效')
     raw=contract.get('budgets') or {}
     if not isinstance(raw,dict):raise ValueError('任务预算记录无效')
+    legacy_parent=_legacy_specialist_parent(turn,raw)
+    if legacy_parent is not None:return effective_limits(legacy_parent)
     if (turn.get('collaboration_budget_inherited') and turn.get('collaboration_parent_turn_id')
             and not (turn.get('gateway_client_id') or turn.get('gateway_limits'))):
         # Internal roles inherit the owner's policy; a model never chooses a

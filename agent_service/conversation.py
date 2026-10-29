@@ -365,6 +365,9 @@ def public_turn(turn):
         inherited=turn.get('agent_budget_base',0)
         value['inherited_step_count']=max(0,min(inherited,len(turn.get('agent_trace',[])))) if type(inherited) is int else 0
     if 'answer' in value:value['answer']=visible_answer(turn)
+    from .task_budget import unsupported_round_stop
+    if value.get('state') in ('done','failed') and unsupported_round_stop(turn,value.get('answer')):
+        value['obsolete_budget_pause']=True
     sources=public_sources(turn)
     if sources:value['knowledge_sources']=sources
     from .workspace_artifacts import turn_outputs

@@ -72,7 +72,11 @@ def _visible(value,revoked,foreign_personal_sources=None,memory_versions=None):
                 'stale_memory_context':True,'outcome':value.get('outcome'),'state':value.get('state')}
     answer=visible_answer(value,model=True)
     answer=redact(answer) if sensitive(answer) else answer
-    return {'turn_id':value['id'],'user':text,'agent':answer,'outcome':value.get('outcome'),'state':value.get('state')}
+    item={'turn_id':value['id'],'user':text,'agent':answer,'outcome':value.get('outcome'),'state':value.get('state')}
+    from .task_budget import unsupported_round_stop
+    if unsupported_round_stop(value,answer):
+        item['runtime_policy_note']='这是历史停止回执，不能作为当前任务的额度依据；普通对话无固定轮次预算，继续原目标并复用成功回执。'
+    return item
 
 def _refs(value):
     fields={key:value[key] for key in ('source_id','source_ids','attached_sources','application_id','run_id','model_id','model_catalog_revision','work_version') if value.get(key) is not None}

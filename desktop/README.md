@@ -40,6 +40,28 @@ pending message ID. Do not delete the database to repair this condition. The
 updated frontend has a new cache version; restart the service and reload the page
 after updating the source.
 
+### Updating an existing instance
+
+`git pull` updates source files; it does not replace code already loaded by
+Python, an Agent/Worker process, or an extracted desktop package. Stop the old
+source instance, update `main`, restart the same entry command with the same
+state directory/model configuration, then reload the page. For a packaged
+desktop app, rebuild and replace the complete program folder; keep the selected
+workspace and state directory. Do not clear the database or credentials.
+
+The sidebar shows runtime revision `2026.10.29.1` for this repair. Click it to
+inspect API, Agent and Worker revisions. Missing or different node revisions
+indicate that some processes still need to be updated/restarted. These runtime
+revisions are distinct from the application version `0.20.0` and Git commit IDs.
+
+Both chat and work composers support multiple files in the native picker
+(Ctrl/Command or Shift), additional selection batches, and a visible count before
+sending. A historical budget-pause answer remains in history with a note; the
+current ordinary conversation has no fixed per-task totals. A model-authored
+round-budget excuse is returned for correction instead of being accepted as a
+runtime limit. Actual model connection, upstream quota and explicit external
+grant failures still report their real causes.
+
 ## Maintainer build
 
 Only the build machine needs Node and npm:

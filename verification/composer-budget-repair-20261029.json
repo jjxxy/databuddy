@@ -1,0 +1,169 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "base_main": "3128c608696083247676da0465f86db559d56831",
+  "runtime_revision": "2026.10.29.1",
+  "scope": [
+    "chat/work multi-file chooser and complete message submission",
+    "append batches without replacing attachments",
+    "model-authored false round-budget stops",
+    "authenticated migration of known old local specialist defaults",
+    "static cache freshness and process revision diagnostics"
+  ],
+  "prior_main_regression": {
+    "reproduced": true,
+    "method": "actual OpenCode 2.1.2 with local controlled HTTP/SSE provider returning the reported final-answer text",
+    "outcome": "old main terminated before artifact write",
+    "log_sha256": "8a72ecbaa731ec0e5dd5ab6619dd350a665dec3eb8f1f02c5640aca4e6f34330"
+  },
+  "checks": {
+    "python_related_batch_1": {
+      "log_sha256": "71eb47772af6f98631ba372ef41d09ac6465092217aae7c9e1a25f0e04ed8587",
+      "summary": [
+        "156 passed in 21.00s"
+      ]
+    },
+    "python_final_batch_2_overlapping": {
+      "log_sha256": "246e377c9022f51bf68c8cb8b7c7e73394840a3da56ffaf96a3e78cdee81372e",
+      "summary": [
+        "194 passed in 8.64s"
+      ]
+    },
+    "ui_25_dom_scripts": {
+      "passed": true,
+      "log_sha256": "b54a97354a38ce1de082a87b16a7b3aada117920705785b9be28fc499330fe59",
+      "result": {
+        "startup_registration_429_auto_retry": false,
+        "logout_cancels_startup_retry": true,
+        "no_data_reset": true
+      }
+    },
+    "native_js_21_cases": {
+      "log_sha256": "20babebb3b9e091a842b66510884bd7d4dc3466d2508d91d27458166242b501b",
+      "summary": [
+        "ℹ tests 21",
+        "ℹ pass 21"
+      ]
+    },
+    "actual_native_false_budget_stop": {
+      "log_sha256": "9272561c3ce746acb045c24ecd17259806c2f328889dc3dd2f3e52ef14ea5ca4",
+      "result": {
+        "ok": true,
+        "actual_opencode_binary": true,
+        "version": "2.1.2",
+        "local_simulated_provider": true,
+        "model_authored_false_budget_stop_corrected": true,
+        "native_feedback_received": true,
+        "automatic_continue_original_goal": true,
+        "no_fake_context_compaction": true,
+        "write_count": 1,
+        "historical_counters_preserved": true,
+        "state": "done",
+        "calls": [
+          {
+            "input_characters": 118437,
+            "written": false,
+            "recovered": false
+          },
+          {
+            "input_characters": 119751,
+            "written": false,
+            "recovered": false,
+            "correction_received": true
+          },
+          {
+            "input_characters": 121470,
+            "written": true,
+            "recovered": false
+          }
+        ],
+        "evidence_dir": "/tmp/atlas-context-overflow-6gykln3p"
+      }
+    },
+    "actual_native_context_overflow": {
+      "log_sha256": "7f90f6063624a6ff7abb825e6c9086d730dfdbf14d38176a210389d69560516a",
+      "result": {
+        "ok": true,
+        "actual_opencode_binary": true,
+        "version": "2.1.2",
+        "local_simulated_provider": true,
+        "real_provider_context_400_observed": true,
+        "automatic_retry_without_user_continue": true,
+        "originals_retained": true,
+        "write_count": 1,
+        "context_recoveries": 1,
+        "state": "done",
+        "calls": [
+          {
+            "input_characters": 118437,
+            "written": false,
+            "recovered": false
+          },
+          {
+            "input_characters": 119840,
+            "written": true,
+            "recovered": false
+          },
+          {
+            "input_characters": 122630,
+            "written": true,
+            "recovered": false
+          },
+          {
+            "input_characters": 43438,
+            "written": true,
+            "recovered": true
+          }
+        ],
+        "evidence_dir": "/tmp/atlas-context-overflow-bqrc7g1y"
+      }
+    },
+    "actual_browser_pickers_and_posted_ids": {
+      "log_sha256": "e8539e72d6cdddd3cfaf946cdcd18f79127054735c9bf30df52f9c0529b9408e",
+      "result": {
+        "real_chromium": "153.0.8010.0",
+        "api_fixture": true,
+        "chat_and_work_picker_multiple": true,
+        "both_modes_post_all_three_files": true,
+        "append_preserves_first_batch": true,
+        "local_picker_multiple": true,
+        "three_files_from_one_selection": true,
+        "partial_failure_keeps_and_continues_files": true,
+        "retry_only_failed_with_same_id": true,
+        "processing_uses_third_file": true,
+        "mobile_no_horizontal_overflow": true,
+        "no_live_model_or_windows_shell_test": true,
+        "evidence_directory": "/tmp/atlas-picker-m7qRF5"
+      }
+    },
+    "actual_browser_layout_cjk_fonts": {
+      "log_sha256": "ae5a12301ac9dacb10c2f5f3b6ea3f7a695bab3bba96449f9a8cfd25537e87f4",
+      "result": {
+        "real_chromium": "153.0.8010.0",
+        "mock_api": true,
+        "no_live_model_or_deployment": true,
+        "internal_model_counters_hidden": true,
+        "inline_conversation_output": true,
+        "desktop_preview": true,
+        "mobile_preview": true,
+        "png_decoded": true,
+        "pagination": true,
+        "generated_script_not_executed": true,
+        "partial_pages_disclosed": true,
+        "no_horizontal_overflow": true,
+        "browser_handoff_desktop_mobile": true,
+        "return_control_gates_inputs": true,
+        "unconfigured_voice_disabled": true,
+        "no_real_microphone_or_voice_service": true,
+        "evidence_directory": "/tmp/atlas-browser-check-Cmv8cD"
+      }
+    },
+    "syntax_and_crlf_aware_diff_check": true
+  },
+  "limits": [
+    "All model responses were local controlled fixtures; no paid-model quality claim.",
+    "Chromium picker multiple-selection flags and actual posted attachment IDs verified; Windows native shell and packaged app not exercised.",
+    "No production deployment or full-repository test run.",
+    "Git merge does not update an already running source process or an existing extracted desktop package."
+  ]
+}

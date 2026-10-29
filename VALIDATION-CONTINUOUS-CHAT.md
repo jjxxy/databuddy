@@ -50,3 +50,22 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium node tests/ui/browser-render.mjs
 ```bash
 ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --lazy-office
 ```
+
+## 多附件与旧预算停止回执修复（2026-10-29）
+
+本次用真实 OpenCode 2.1.2 和受控本地 HTTP/SSE 模型，在上一版 main `3128c60` 复现：模型直接回答“本轮模型预算已用完，已有成果已保存；可以缩小目标后继续”时，即使服务端已经没有任务总额度，仍会接受该回答并结束工作。
+
+修复后，无固定总额度的任务不会接受这种未经运行期证实的停止理由；两个规划路径都会返回当前策略与原目标，模型继续已有任务，成功写入不重做。连续返回同一无效停止理由且没有工具进展时，明确记录为模型输出不符并保留恢复入口，不伪装成预算耗尽，也不无休止重试。真实服务错误、明确外部授权及管理员每日配置仍按实际原因处理。
+
+旧版内部只读协作者的自动 5 次/120000 字符默认值，仅在服务端父子关系、同一项目/身份/冻结模型和本地角色全部吻合、且没有明确预算策略时继承普通会话策略；历史计量不清零，原合同不重写。已保存的预算暂停回答保留原文，并标明是历史回执。
+
+聊天与工作附件入口在打开原生选择器时明确启用多选，显示已选数量和追加入口，并防止选择期间切换项目后将文件加错对话。实际 Chromium 在两个模式中分别多选两份并追加第三份，确认发送的同一消息包含全部三个来源 ID；同名文件、部分失败和幂等重试仍覆盖。原生 Windows 文件窗口没有实机验证。
+
+静态页面与脚本不缓存；界面显示运行修订 `2026.10.29.1`，可检查 API、Agent、Worker 的修订是否一致。源码更新需要重启实际进程，旧桌面包需要重新构建或替换，不需要删除数据库。
+
+验证：相关 Python 两个重叠批次分别 156 项、194 项通过；25 个前端 DOM 脚本、21 项原生 JavaScript 检查通过。真实 OpenCode 的错误预算回答会自动纠正，完成真实文件写入一次，原有较高计量保留；另验证 HTTP 400 上下文溢出仍能自动压缩恢复。Chromium 使用中文字体完成桌面与手机布局检查。未调用付费模型、未运行全仓测试、未构建 Windows 包或更新用户正在运行的部署。证据见 `verification/composer-budget-repair-20261029.json`。
+
+```bash
+ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --false-budget-stop
+ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tests/ui
+```

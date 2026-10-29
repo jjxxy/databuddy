@@ -4,6 +4,7 @@ from pathlib import Path
 from sqlalchemy import text
 from .config import DATA,DATABASE_URL
 from .store import get,put,all_items,now,engine
+from .release_info import RUNTIME_REVISION
 INSTANCE=os.getenv('ATLAS_INSTANCE_ID') or os.getenv('RAILWAY_REPLICA_ID') or socket.gethostname()
 
 def heartbeat(role,**extra):
@@ -11,7 +12,7 @@ def heartbeat(role,**extra):
     try:build=process_build_fingerprint()
     except Exception:build=None # Qualification fails closed; normal heartbeat still works.
     value={'role':role,'instance':INSTANCE,'heartbeat':now(),'version':'0.20.0',**extra,
-           'build_fingerprint':build}
+           'build_fingerprint':build,'runtime_revision':RUNTIME_REVISION}
     put('runtime_node',value,'node_'+hashlib.sha256((role+':'+INSTANCE).encode()).hexdigest()[:40])
     # Compatibility for earlier clients; aggregate health uses runtime_node.
     put('system',value,role+'-health')

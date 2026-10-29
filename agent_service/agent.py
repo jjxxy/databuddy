@@ -725,6 +725,20 @@ def _execute_node(state):
     from . import agent_gateway,agent_team
     assert_turn_live(turn);agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn)
     if step.kind=='final':
+        from .task_budget import unsupported_round_stop
+        if unsupported_round_stop(turn,step.answer):
+            # A fluent final answer cannot invent a cap that admission never
+            # enforced. Return explicit feedback through both planner bridges.
+            boundary=len(turn.get('agent_trace',[]))
+            prior=turn.get('invalid_budget_stop') or {}
+            attempts=prior.get('attempts',0)+1 if prior.get('trace_length')==boundary else 1
+            patch('turn',turn['id'],invalid_budget_stop={'trace_length':boundary,'attempts':attempts},
+                  verification_feedback={'code':'UNSUPPORTED_ROUND_BUDGET_STOP',
+                    'error':'当前任务没有固定总模型调用、累计输入、累计输出或时长预算。刚才的停止理由不成立。沿用原目标和成功回执继续执行；不要要求用户缩小目标或重复写入。真实上下文溢出由运行框架压缩恢复；真实服务错误须按实际错误说明。'},
+                  state='agent',progress='正在沿用已有步骤继续处理')
+            if attempts>=2:
+                finish(get('turn',turn['id']),'模型连续返回与当前运行策略不符的停止原因，任务和已有成果已保留；可重试或切换模型继续原目标。',outcome='blocked',resume_available=True)
+            return {}
         if step.status=='complete':
             from .agent_mesh import assert_parent_completion
             try:assert_parent_completion(turn)

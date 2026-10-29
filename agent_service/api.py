@@ -18,6 +18,7 @@ from fastapi import FastAPI, Depends, File, Form, UploadFile, HTTPException, Req
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from .release_info import RUNTIME_REVISION
 from pydantic import Field,ValidationError
 from .config import DATA, TOKEN, MAX_UPLOAD, TIMEZONE, LLM_BASE, LLM_MODEL
 from .store import get,put,all_items,delete,now,uid,seal,patch
@@ -119,10 +120,13 @@ async def boundary(request:Request,call_next):
         with guard() if mutating else nullcontext():
             response=await call_next(request)
             response.headers['X-Request-ID']=request_id
+            response.headers['X-Atlas-Runtime-Revision']=RUNTIME_REVISION
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Referrer-Policy']='no-referrer'
             response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
-            if api_surface:response.headers['Cache-Control']='no-store'
+            # HTML has a stable URL. Reusing it can load the old composer even
+            # after versioned scripts changed; source updates need revalidation.
+            response.headers['Cache-Control']='no-store'
             if mutating and api_surface and response.status_code<400:record('api.'+request.method,request.url.path,{'request_id':request_id,'actor':hashlib.sha256(str(getattr(request.state,'identity',{}).get('subject','owner_token')).encode()).hexdigest()[:20]})
             return response
     except BlockingIOError:return JSONResponse(status_code=503,content={'detail':'工作空间正在备份或维护，请稍后重试'},headers={'Retry-After':'30'})
@@ -170,6 +174,13 @@ def ready():
 
 @app.get('/health')
 def health():return {'status':'ok'}
+
+@app.get('/api/runtime-info',dependencies=[Depends(auth)])
+def runtime_info():
+    from .release_info import public_info
+    from .runtime import nodes
+    return {**public_info(),'nodes':[{key:node.get(key) for key in ('role','healthy','runtime_revision')}
+                                     for role in ('api','worker','agent') for node in nodes(role)]}
 
 @app.get('/api/status',dependencies=[Depends(auth)])
 def status():
