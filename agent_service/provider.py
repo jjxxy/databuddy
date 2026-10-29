@@ -1,7 +1,7 @@
 """Owner-configured model connection. Credentials are never returned or put in Git."""
 from .workspace_lifecycle import assert_turn_live
 
-import json,os,time
+import json,os,time,re
 from contextvars import ContextVar
 from contextlib import contextmanager
 from urllib.parse import urlsplit
@@ -67,6 +67,28 @@ def task_scope(turn_id):
 class BudgetExceeded(ValueError):pass
 class ModelOutputError(ValueError):pass
 
+class ContextWindowExceeded(BudgetExceeded):
+    """A request window can be compressed; cumulative grants cannot."""
+    def __init__(self,message='模型上下文较长，需要压缩后继续',*,limit=None,characters=None,source='provider'):
+        super().__init__(message)
+        self.limit=limit;self.characters=characters;self.source=source
+
+
+def context_overflow_error(value):
+    """Classify a provider error envelope, never arbitrary document/tool text."""
+    if isinstance(value,httpx.HTTPStatusError):
+        if value.response.status_code not in (400,413,422):return False
+        try:value=value.response.json()
+        except (ValueError,httpx.ResponseNotRead):return False
+    if isinstance(value,dict):
+        if 'error' in value:return context_overflow_error(value['error'])
+        code=str(value.get('code') or value.get('type') or value.get('name') or '').lower()
+        if code in ('context_length_exceeded','context_window_exceeded','context_overflow','contextoverflowerror','contextlengthexceeded'):return True
+        return context_overflow_error(value.get('message','')) or (isinstance(value.get('data'),dict) and context_overflow_error(value['data']))
+    if not isinstance(value,str):return False
+    return bool(re.search(r'maximum context (?:length|window)|context (?:length|window).{0,60}(?:exceed|limit)|(?:prompt|input).{0,35}(?:too long|too large|exceeds.{0,25}token)|too many (?:input )?tokens|单次模型上下文超过限制|上下文(?:长度)?超过(?:模型)?(?:限制|上限)',value[:4000],re.I))
+
+
 def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning',tools=None):
     if os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')=='1':raise ValueError(os.getenv('ATLAS_DESKTOP_MODEL_NOTICE','云端模型不可用，本地能力可用。'))
     from .store import get,patch,put,now,uid
@@ -89,7 +111,7 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
     if max_tokens is None:max_tokens=response_token_allowance(value)
     character_cap=configured_input_character_limit(value.get('model'))
     if character_cap is not None and size>character_cap:
-        raise BudgetExceeded('此请求超过管理员配置的上下文字符上限，已有成果已保存')
+        raise ContextWindowExceeded('此请求超过管理员配置的上下文字符上限，正在压缩后继续',limit=character_cap,characters=size,source='operator')
     if tid:
         from .task_budget import effective_limits,exceeded_reason
         turn=get('turn',tid);budget=effective_limits(turn)
@@ -152,7 +174,9 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
                 usage['usage_incomplete']=usage.get('usage_incomplete',False) or not bool(tokens)
                 patch('turn',tid,model_usage=usage)
             return content
-    except httpx.HTTPError:
+    except httpx.HTTPError as error:
+        if isinstance(error,httpx.HTTPStatusError) and context_overflow_error(error):
+            raise ContextWindowExceeded(characters=size) from None
         if os.getenv('ATLAS_DESKTOP_MODE')=='1':
             raise ValueError('云端模型不可用，本地能力可用。请检查网络、模型权限或密钥后重试。') from None
         raise

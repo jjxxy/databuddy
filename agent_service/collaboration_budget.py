@@ -22,17 +22,16 @@ def _narrow(first,second):
 
 
 def _effective_record(record,root):
-    """Migrate only the known historical default, never an explicit grant.
+    """Migrate ordinary-session ledgers without enlarging explicit overrides.
 
-    A view migration keeps reservations intact. Old custom narrowed ledgers
-    remain bounded because they may record an administrator's explicit choice.
+    A view migration keeps reservations intact. Non-interactive custom narrowed ledgers remain bounded.
     """
-    from .task_budget import effective_limits,LEGACY_DEFAULTS,LEGACY_DEEP
+    from .task_budget import effective_limits,is_interactive,LEGACY_DEFAULTS,LEGACY_DEEP
     configured=effective_limits(root)
     old=record['limits']
-    migrate_default=('limit_overrides' not in record
+    migrate_default=(not record.get('limit_overrides')
         and all(value is None for value in configured.values())
-        and old in (LEGACY_DEFAULTS,LEGACY_DEEP))
+        and (old in (LEGACY_DEFAULTS,LEGACY_DEEP) or is_interactive(root)))
     limits=dict(configured) if migrate_default else {key:_narrow(old.get(key),configured[key]) for key in DEFAULTS}
     deadline=record.get('deadline_at')
     if limits['duration_ms'] is None and migrate_default:deadline=None

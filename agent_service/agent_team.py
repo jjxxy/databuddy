@@ -165,16 +165,14 @@ def create_local(parent_turn,collab_task,assignment):
             'parent_critical_constraints':critical,'source_ids':sources,'result_ids':results,
             'policy':'只读复核；原文约束不得反转；子任务意见不等于财务证据/人工审批；缺依据明确说明'}
         ledger=current_totals(parent)
-        defaults={'model_calls':5,'input_characters':120000,'output_tokens':16000,'duration_ms':120000}
-        child_budget={key:default if ledger['remaining'][key] is None else min(default,ledger['remaining'][key])
-                      for key,default in defaults.items()}
-        if any(v<=0 for v in child_budget.values()):raise ValueError('协同剩余预算不足')
+        child_budget=dict(ledger['remaining'])
+        if any(v is not None and v<=0 for v in child_budget.values()):raise ValueError('协同剩余预算不足')
         contract={'version':1,'kind':'answer','requirements':[],'goal':goal,'application_ids':applications,
             'created_at':now(),'acceptance':'实际读取指定来源/版本后提出有依据的复核意见，缺依据不得冒充通过',
             'budgets':child_budget,'initial_applications':applications}
         fields={'collaboration_parent_turn_id':parent['id'],'collaboration_root_turn_id':parent['id'],
             'collaboration_task_id':task['id'],'collaboration_peer_id':peer,'collaboration_depth':1,
-            'collaboration_readonly':True,'collaboration_source_ids':sources,'collaboration_result_ids':results,
+            'collaboration_readonly':True,'collaboration_budget_inherited':True,'collaboration_source_ids':sources,'collaboration_result_ids':results,
             'collaboration_application_ids':applications,'collaboration_application_snapshots':snapshots,
             'collaboration_deadline_at':task.get('deadline_at'),'collaboration_context':context,'task_contract':contract,
             **{key:parent[key] for key in ('model_id','model_catalog_revision','model_name') if key in parent}}

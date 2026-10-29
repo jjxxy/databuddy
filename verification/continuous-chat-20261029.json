@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-29",
+  "backend": {
+    "passed": 267,
+    "failed": 0,
+    "full_repository_suite": false
+  },
+  "frontend_dom_scripts": 25,
+  "native_plugin_js_tests": 21,
+  "actual_native_overflow": {
+    "ok": true,
+    "actual_opencode_binary": true,
+    "version": "2.1.2",
+    "local_simulated_provider": true,
+    "real_provider_context_400_observed": true,
+    "automatic_retry_without_user_continue": true,
+    "originals_retained": true,
+    "write_count": 1,
+    "context_recoveries": 1,
+    "state": "done",
+    "calls": [
+      {
+        "input_characters": 121863,
+        "written": false,
+        "recovered": false
+      },
+      {
+        "input_characters": 122870,
+        "written": true,
+        "recovered": false
+      },
+      {
+        "input_characters": 125660,
+        "written": true,
+        "recovered": false
+      },
+      {
+        "input_characters": 46864,
+        "written": true,
+        "recovered": true
+      }
+    ]
+  },
+  "native_compaction_and_memory_revoke_verified": true,
+  "real_chromium": {
+    "version": "153.0.8010.0",
+    "api_fixture": true,
+    "desktop_and_mobile_inline_outputs": true,
+    "live_paid_model_tested": false
+  },
+  "source_sha256": {
+    "agent_service/context_window.py": "f53ac751148c993440839b3a6215fae206537dd472b07b36a24cafb810fd95ce",
+    "agent_service/context_compaction.py": "f1c7ba931882dac0c27ba49bb32a94b70818a0d9de95c070aff9905432e4805f",
+    "agent_service/provider.py": "776d9f97c7a1383533b0f93149a965ced5293be08c0eba12e980ded30c46d842",
+    "agent_service/opencode_runtime.py": "4cf20a04cffac2b3da2f41ced8bff1447a183335a4c7630d09ba62d7dad75fd7",
+    "agent_service/task_budget.py": "5ef9b39822a67d9704865f783400f08474274e5179ce74fd289f78156d65b1e1",
+    "agent_service/collaboration_budget.py": "ca0827a84422aa80404864af7c1e8449991c18eb869ab1aba933d5f630977d8c",
+    "agent_service/agent_team.py": "abc40d4b42ac0ebf185430262d7cd7606c32f262c11387749d8eb5f4837bc9db",
+    "agent_service/agent.py": "209c68dbb587a9b4fcfb7bc25a9e19c9885c4409e1ff42515d9b350e8cdf9b3a",
+    "agent_service/conversation.py": "e8f634345d90f6bf2e8bc64b5daf841a58d28fb9aa22cdd777588d8998b6c3c6",
+    "agent_service/workspace_artifacts.py": "147addd37bccd4016120f073f5cb3999eb16f53ecac2250259dc0a600d2985e9",
+    "agent_service/static/app.js": "3313cbea715c2718b2799223261ad54240e0aabb9b33d12d42ddb6b319251df8",
+    "agent_service/static/workspace-shell.js": "f0d9dc4b5a2dcc3a9fddedb6fb37e3bed6e7ec3e8777868a1b2fe91279cb0e6f",
+    "scripts/verify_context_overflow.py": "4ed688b904c811dc542dd9394f370ad6b96c486626cf65822145936dc4cbf30e"
+  }
+}

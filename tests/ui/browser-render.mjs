@@ -40,7 +40,7 @@ try{
    if(p==='/api/models')value={models:[{id:'fixture',name:'Controlled fixture'}],default_model_id:'fixture'};
    else if(p==='/api/projects')value=[project];
    else if(p==='/api/projects/p/sessions')value=[session];
-   else if(p.endsWith('/conversation'))value={project,session_id:'c',sessions:[session],sources:[],applications:[],turns:[],mode:'llm'};
+   else if(p.endsWith('/conversation'))value={project,session_id:'c',sessions:[session],sources:[],applications:[],turns:[{id:'t_inline',text:'生成报告',answer:'报告已保存，可在这里查看或下载。',state:'done',interaction_mode:'work',created_at:'2026-10-29T04:00:00Z',outputs:[item]}],mode:'llm'};
    else if(p==='/api/projects/p/artifacts')value={items:[item],total:1,next_offset:null};
    else if(p.endsWith('/preview'))value={render:'text',text:'<script>window.fixtureUnsafe=true</script><h1>Report</h1>',visual_preview:{total_pages:3,rendered_pages:2,complete:false,visual_inspected:false,images:[{page:1,download_url:'/api/projects/p/work-artifacts/'+renditionId},{page:2,download_url:'/api/projects/p/work-artifacts/'+renditionId}]}};
    else if(p==='/api/projects/p/work-environment')value={configured:true,web_research:{page_reading:true,search_configured:true},vision:{enabled:true},executions:[]};
@@ -59,8 +59,9 @@ try{
  await page.goto('https://atlas.fixture/?project=p');
  if(process.env.ATLAS_BROWSER_FONT_PACKAGE)await page.waitForFunction(()=>window.__atlasFixtureFontsReady);
  await page.waitForSelector('#shell:not([hidden])',{timeout:15000});
- await page.click('#workspace-artifacts');
- await page.click('[data-preview-artifact="'+aid+'"]');
+ await page.waitForSelector('.conversation-artifact');
+ await page.screenshot({path:path.join(evidenceDir,'desktop-conversation-output.png')});
+ await page.click('[data-turn-artifact="'+aid+'"]');
  await page.waitForSelector('.artifact-rendition img[src^="blob:"]');
  await page.waitForFunction(()=>document.querySelector('.artifact-rendition img')?.naturalWidth>0);
  if(!await page.locator('.artifact-rendition').textContent().then(t=>t.includes('仅生成前2页')))throw Error('Missing partial-page disclosure');
@@ -86,6 +87,6 @@ try{
  await page.screenshot({path:path.join(evidenceDir,'mobile-voice.png')});
  if(!await page.locator('[data-voice-record]').isDisabled())throw Error('Unconfigured voice recording was offered');
  if(errors.length)throw Error('Page errors: '+JSON.stringify(errors));
- console.log(JSON.stringify({real_chromium:browser.version(),mock_api:true,no_live_model_or_deployment:true,desktop_preview:true,mobile_preview:true,png_decoded:true,pagination:true,generated_script_not_executed:true,partial_pages_disclosed:true,no_horizontal_overflow:true,browser_handoff_desktop_mobile:true,return_control_gates_inputs:true,unconfigured_voice_disabled:true,no_real_microphone_or_voice_service:true,evidence_directory:evidenceDir}));
+ console.log(JSON.stringify({real_chromium:browser.version(),mock_api:true,no_live_model_or_deployment:true,inline_conversation_output:true,desktop_preview:true,mobile_preview:true,png_decoded:true,pagination:true,generated_script_not_executed:true,partial_pages_disclosed:true,no_horizontal_overflow:true,browser_handoff_desktop_mobile:true,return_control_gates_inputs:true,unconfigured_voice_disabled:true,no_real_microphone_or_voice_service:true,evidence_directory:evidenceDir}));
 } catch(error){console.error(JSON.stringify({error:error.message,calls,errors}));process.exitCode=1}
 finally{await browser.close()}

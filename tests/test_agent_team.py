@@ -94,9 +94,8 @@ def test_unlimited_parent_can_delegate_without_creating_a_hidden_parent_cap(pare
     record=create((root,source));child=get('turn',record['child_turn_id'])
     assert all(value is None for value in current_totals(root)['remaining'].values())
     assert current_totals(root)['used']['calls']==100
-    assert child['task_contract']['budgets']=={'model_calls':5,'input_characters':120000,
-        'output_tokens':16000,'duration_ms':120000}
-    assert effective_limits(child)['model_calls']==5 and child['collaboration_readonly']
+    assert child['task_contract']['budgets']==dict.fromkeys(('model_calls','input_characters','output_tokens','duration_ms'),None)
+    assert effective_limits(child)['model_calls'] is None and child['collaboration_readonly']
     from agent_service.agent_context import selected
     assert 'source_schema' in selected(child)
 

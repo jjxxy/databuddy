@@ -87,7 +87,7 @@ def _refs(value):
                                                            'step_id':step.get('id'),'offset':0}})
     return {'turn_id':value['id'],'input_and_versions':fields,'tool_receipts':refs}
 
-def _critical(history,visible):
+def _critical(history,visible,*,bounded=True):
     result=[];seen=set();length=0
     for value,item in zip(history,visible):
         if item.get('revoked_memory') or item.get('personal_other_actor'):continue
@@ -101,11 +101,11 @@ def _critical(history,visible):
         if value.get('outcome') in ('needs_input','blocked','partial','paused'):
             result.append({'source_turn_id':value['id'],'unresolved_outcome':value.get('outcome'),
                            'recover_with':{'tool':'read_context_original','turn_id':value['id']}})
-    if length>CRITICAL_BUDGET or len(json.dumps(result,ensure_ascii=False))>CRITICAL_BUDGET:
+    if bounded and (length>CRITICAL_BUDGET or len(json.dumps(result,ensure_ascii=False))>CRITICAL_BUDGET):
         raise ValueError('历史关键约束超过安全压缩预算，请明确本次适用的约束或在新会话继续；未静默丢弃否定条件')
     return result
 
-def context_for_turn(turn,recent_turns=None,*,force=False):
+def context_for_turn(turn,recent_turns=None,*,force=False,window_managed=False):
     from .workspace_lifecycle import assert_turn_live
     assert_turn_live(turn)
     from .provider import settings
@@ -117,13 +117,13 @@ def context_for_turn(turn,recent_turns=None,*,force=False):
     memory_versions=_active_memory_versions(pid)
     visible=[_visible(value,revoked,foreign_personal_sources,memory_versions) for value in history] if allowed else [
         {'turn_id':value['id'],'user':'[模型业务内容读取未获批准]','agent':'','outcome':value.get('outcome')} for value in history]
-    keep=2 if force else RECENT_TURNS
+    keep=2 if force else max(1,len(history)) if window_managed else RECENT_TURNS
     older=history[:-keep] if len(history)>keep else []
     old_visible=visible[:-keep] if older else []
     recent=visible[-keep:]
     total_chars=sum(len(item['user'])+len(item['agent']) for item in visible)
     compress=bool(older and (force or len(history)>RECENT_TURNS or total_chars>16000))
-    critical=_critical(history,visible) if allowed else []
+    critical=_critical(history,visible,bounded=not window_managed) if allowed else []
     coverage=[{'turn_id':value['id'],'sha256':_digest({'text':value.get('text'),'answer':value.get('answer'),'trace':value.get('agent_trace'),'outcome':value.get('outcome'),'model_revision':value.get('model_catalog_revision')})} for value in older]
     coverage_hash=_digest({'coverage':coverage,'memory_generation':memory_generation,'actor':actor(),'content_allowed':allowed})
     checkpoint_id='ctx_'+coverage_hash[:48]
@@ -155,7 +155,7 @@ def context_for_turn(turn,recent_turns=None,*,force=False):
     # Bound the injected projection, while the durable checkpoint retains the
     # full coverage list. Recent material is labelled/paged if it does not fit.
     recent_budget=10000
-    for item in reversed(recent):
+    for item in ([] if window_managed and not force else reversed(recent)):
         for field in ('user','agent'):
             allowance=min(3500,max(0,recent_budget))
             if len(item[field])>allowance:
@@ -329,6 +329,8 @@ def read_checkpoint(turn,checkpoint_id,offset=0,limit=20):
     if record.get('memory_generation')!=generation(turn['project_id']):raise ValueError('检查点含已变更的记忆，请重新压缩当前上下文')
     from .provider import settings
     if not settings().get('share_data'):raise ValueError('模型业务内容读取未获批准')
+    if record.get('kind')=='working_context':
+        authorized_history_turn(turn,record['source_turn_id'])
     summary=unseal(record['secret_summary']);coverage=summary.get('coverage',[])
     page=coverage[offset:offset+limit]
     from .agent_context import recovery_page
@@ -336,5 +338,5 @@ def read_checkpoint(turn,checkpoint_id,offset=0,limit=20):
     text=''.join(lines);start=sum(map(len,lines[:offset]));length=sum(map(len,lines[offset:offset+limit]))
     return {'checkpoint_id':checkpoint_id,'coverage_sha256':record['coverage_sha256'],'total':len(coverage),
             'recovery':dict(recovery_page('context_checkpoint','checkpoint:'+checkpoint_id,text,start,length),pagination_unit='items'),
-            'items':[dict(item,recover_with={'tool':'read_context_original','turn_id':item['turn_id']}) for item in page],
+            'items':page if record.get('kind')=='working_context' else [dict(item,recover_with={'tool':'read_context_original','turn_id':item['turn_id']}) for item in page],
             'next_offset':offset+limit if offset+limit<len(coverage) else None,'summary_is_financial_evidence':False}

@@ -411,7 +411,7 @@ def run_session(turn, prompt, info, callback):
             if type(size) is not int or size<0:raise ValueError('模型请求字符计量无效')
             character_cap=_input_character_limit(payload,selected)
             if character_cap is not None and size>character_cap:
-                raise provider.BudgetExceeded('此请求超过管理员配置的上下文字符上限，已有成果已保存')
+                raise provider.ContextWindowExceeded('此请求超过管理员配置的上下文字符上限，正在压缩后继续',limit=character_cap,characters=size,source='operator')
             budget=effective_limits(current)
             usage = current.get('model_usage', {})
             output_allowance=payload.get('max_output_tokens',OUTPUT_LIMIT)
@@ -559,6 +559,15 @@ def run_session(turn, prompt, info, callback):
                 with serial:
                     if _observe_completed_compactions(turn['id'],session_id[0],messages):
                         compaction_pending[0]=False
+                # Only native error envelopes are trusted for retry classification;
+                # a web page/tool result mentioning token limits is not one.
+                for message in reversed(messages or []):
+                    if not isinstance(message,dict) or message.get('type') not in ('assistant','error','idle'):continue
+                    error=message.get('error')
+                    if error is None and isinstance(message.get('info'),dict):error=message['info'].get('error')
+                    if error is None and message.get('type')=='error':error=message
+                    if error is not None and provider.context_overflow_error(error):
+                        raise provider.ContextWindowExceeded()
                 if messages and messages[-1].get('type') == 'idle':
                     # An unverified free-text finish is a protocol error, never
                     # a business completion or a reason to fabricate receipts.
@@ -570,6 +579,9 @@ def run_session(turn, prompt, info, callback):
             current = get('turn', turn['id'])
         return {'session_id': session_id[0], 'version': VERSION, 'integration': 'native_session_tool_loop',
                 'model_requests': calls[0], 'state': current['state'],'context_rebuild_required':context_rebuild[0]}
+    except httpx.HTTPStatusError as error:
+        if provider.context_overflow_error(error):raise provider.ContextWindowExceeded() from None
+        raise
     finally:
         closing.set()
         bridge.shutdown();bridge.server_close();thread.join(timeout=2)

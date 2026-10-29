@@ -96,3 +96,17 @@ def test_stop_and_unchanged_repetition_protection_do_not_depend_on_a_total_budge
     result=agent.opencode_step(turn['id'],write('should not run'),'stopped:new-step')
     assert result['terminal'] and result['outcome']=='cancelled'
     assert not workspace.path_for(turn['project_id'],'reports/native.md').exists()
+
+
+def test_server_marked_ordinary_conversation_does_not_inherit_old_custom_round_caps():
+    legacy={'budget_policy':'bounded','budgets':{'model_calls':12,'input_characters':250000,'output_tokens':16000,'duration_ms':120000}}
+    assert all(value is None for value in task_budget.effective_limits({'interactive_unlimited':True,'task_contract':legacy}).values())
+    bounded=task_budget.effective_limits({'interactive_unlimited':True,'gateway_limits':{'model_calls':3},'task_contract':legacy})
+    assert bounded['model_calls']==3,'ordinary-chat policy cannot enlarge an external grant'
+
+
+def test_old_session_task_is_unlimited_before_a_new_message_or_resume():
+    old={'session_id':'original-session','interaction_mode':'work',
+         'task_contract':{'budget_policy':'bounded','budgets':{'model_calls':12,'input_characters':250000}}}
+    assert task_budget.tool_step_limit(old) is None
+    assert all(value is None for value in task_budget.effective_limits(old).values())

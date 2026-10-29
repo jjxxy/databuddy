@@ -13,19 +13,22 @@ BLOCKED_CODES=frozenset({REFERENCE_INVALID,NO_PROGRESS,'TOOL_NO_PROGRESS'})
 
 
 def recovery_epoch(turn):
-    """Only server-observed native compaction changes the evidence epoch."""
+    """Only server-observed native/checkpoint compaction changes the evidence epoch."""
     session=turn.get('opencode_session_id')
     if not isinstance(session,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,160}',session):session=None
     completed=turn.get('opencode_context_epoch',0)
     if type(completed) is not int or completed<0:completed=0
-    return {'session_id':session,'compaction':completed}
+    result={'session_id':session,'compaction':completed}
+    projected=turn.get('context_window_epoch',0)
+    if type(projected) is int and projected>0:result['projection']=projected
+    return result
 
 
 def _recorded_epoch(value):
     raw=value.get('recovery_epoch')
     if not isinstance(raw,dict):return recovery_epoch({})
     return recovery_epoch({'opencode_session_id':raw.get('session_id'),
-                           'opencode_context_epoch':raw.get('compaction')})
+                           'opencode_context_epoch':raw.get('compaction'),'context_window_epoch':raw.get('projection')})
 
 
 def recovery_descriptor(value):

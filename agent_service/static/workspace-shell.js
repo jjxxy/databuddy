@@ -254,11 +254,19 @@
    message('#artifact-error',friendly);throw Object.assign(Error(friendly),{status:error.status});
   }
  }
+ async function openArtifact(value){
+  const id=pid(),mark=epoch;safeUrl(value.preview_url,id);if(value.download_url)safeUrl(value.download_url,id);
+  b.closeSidebar();clearPreview();previewPrevious=[];previewSheet='';artifacts=[value];listNext=null;listTotal=1;
+  el('#artifact-project-name').textContent=(b.projectItems().find(p=>p.id===id)?.name||'当前项目')+' · 对话成果';
+  el('#artifact-list').replaceChildren();renderArtifacts();el('#workspace-artifacts-panel').hidden=false;syncLayout();
+  document.body.classList.add('artifacts-open');el('#workspace-artifacts').setAttribute('aria-expanded','true');
+  try{await loadPreview(value,0,false,true)}catch(error){if(current(id,mark))message('#artifact-error',error.message);throw error}
+ }
  el('#workspace-artifacts').onclick=()=>{if(!el('#workspace-artifacts-panel').hidden){closeArtifacts();return}openArtifacts().catch(e=>b.toast(e.message))};
  el('#workspace-artifacts-close').onclick=closeArtifacts;el('#artifact-preview-close').onclick=clearPreview;
  el('#artifact-refresh').onclick=e=>action(e.currentTarget,()=>loadArtifacts(),'#artifact-error');el('#artifact-filter').onchange=()=>loadArtifacts().catch(e=>message('#artifact-error',e.message));el('#artifact-more').onclick=e=>action(e.currentTarget,()=>loadArtifacts(true),'#artifact-error');
  el('#artifact-list').onclick=e=>{const show=e.target.closest('[data-preview-artifact]'),get=e.target.closest('[data-download-artifact]');if(show)action(show,()=>{const value=artifacts.find(a=>a.id===show.dataset.previewArtifact);if(!value?.preview_url)throw Error('此成果暂不支持预览，请下载查看');previewPrevious=[];previewSheet='';return loadPreview(value,0,false,true)},'#artifact-error');if(get)action(get,()=>download(artifacts.find(a=>a.id===get.dataset.downloadArtifact)),'#artifact-error')};
  el('#artifact-next-page').onclick=e=>action(e.currentTarget,async()=>{if(preview&&previewNext!=null){previewPrevious.push(previewOffset);await loadPreview(preview,previewNext)}},'#artifact-error');el('#artifact-previous-page').onclick=e=>action(e.currentTarget,async()=>{if(previewPrevious.length)await loadPreview(preview,previewPrevious.pop(),true)},'#artifact-error');
  document.addEventListener('keydown',e=>{if(e.key==='Escape'){el('#workspace-settings-menu').hidden=true;el('#workspace-settings').setAttribute('aria-expanded','false');if(!el('#workspace-artifacts-panel').hidden)closeArtifacts()}});
- window.atlasShell={projectChanged,reset,loadArtifacts,loadPreview,openArtifacts,openSource,closeArtifacts,syncLayout,safeUrl};
+ window.atlasShell={projectChanged,reset,loadArtifacts,loadPreview,openArtifacts,openArtifact,openSource,closeArtifacts,syncLayout,safeUrl};
 })();

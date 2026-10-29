@@ -144,3 +144,17 @@ def test_unlimited_root_still_stops_on_cancellation_and_model_drift(parent):
     with pytest.raises(BudgetExceeded,match='模型版本'):budget.admit(sub,100000,64000)
     patch('turn',root['id'],state='done',outcome='cancelled')
     with pytest.raises(BudgetExceeded,match='已结束或取消'):budget.admit(root,100000,64000)
+
+
+def test_v2_empty_override_ledger_cannot_keep_an_old_interactive_budget(parent):
+    legacy={'model_calls':12,'input_characters':250000,'output_tokens':16000,'duration_ms':120000}
+    root=patch('turn',parent['id'],interactive_unlimited=True,task_contract={'kind':'answer','budget_policy':'bounded','budgets':legacy})
+    used={'calls':80,'input_characters':3000000,'output_tokens_budgeted':500000}
+    identity=budget._identity(root['id'])
+    put(budget.KIND,{'root_turn_id':root['id'],'project_id':root['project_id'],'actor_id':'owner',
+        'limits':legacy,'limit_overrides':{},'budget_policy_version':2,'used':used,'baseline_usage':dict(used),
+        'model_pin':{'model_id':root['model_id'],'model_catalog_revision':root['model_catalog_revision']},
+        'deadline_at':time.time()-10,'per_turn':{},'policy':'stored v2 interactive ledger'},identity)
+    view=budget.admit(root,100000,3200)
+    assert all(value is None for value in view['limits'].values()) and view['deadline_at'] is None
+    assert view['used']['calls']==81 and view['used']['input_characters']==3100000

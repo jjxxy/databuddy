@@ -1,8 +1,7 @@
 """Explicit task budgets; ordinary owner conversations have no fixed total cap.
 
 None denotes an unlimited dimension, never a very large substitute integer.
-Gateway grants and delegated child contracts keep their finite authority even
-when the owner's interactive default changes.
+External grants stay finite; internal roles inherit the owner's task policy.
 """
 KEYS=('model_calls','input_characters','output_tokens','duration_ms')
 LEGACY_DEFAULTS={'model_calls':18,'input_characters':360000,'output_tokens':24000,'duration_ms':300000}
@@ -20,12 +19,18 @@ def _scoped(turn):
                 or turn.get('collaboration_parent_turn_id'))
 
 
+def is_interactive(turn):
+    return not _scoped(turn) and (turn.get('interactive_unlimited') is True or
+        'interactive_unlimited' not in turn and bool(turn.get('session_id')) and
+        turn.get('interaction_mode') in ('chat','work'))
+
+
 def effective_limits(turn):
     """Four dimensions, each a positive integer or None (no total cap).
 
-    Known historical owner defaults are migrated in view only, so a saved
-    continuation need not rewrite its original evidence contract. Historical
-    non-default limits remain explicit server choices, not inferred defaults.
+    Ordinary session contracts are unlimited in view, including old tasks;
+    original audit records remain intact. Explicit non-interactive contracts
+    and external grants keep their finite authority.
     """
     contract=turn.get('task_contract') or {}
     policy=contract.get('budget_policy')
@@ -33,6 +38,15 @@ def effective_limits(turn):
         raise ValueError('任务预算策略无效')
     raw=contract.get('budgets') or {}
     if not isinstance(raw,dict):raise ValueError('任务预算记录无效')
+    if (turn.get('collaboration_budget_inherited') and turn.get('collaboration_parent_turn_id')
+            and not (turn.get('gateway_client_id') or turn.get('gateway_limits'))):
+        # Internal roles inherit the owner's policy; a model never chooses a
+        # larger grant. Remote/gateway delegation remains explicitly bounded.
+        from .store import get
+        parent=get('turn',turn['collaboration_parent_turn_id'])
+        inherited=effective_limits(parent)
+        return {key:inherited[key] if raw.get(key) is None else
+                min(_positive(raw[key]),inherited[key]) if inherited[key] is not None else _positive(raw[key]) for key in KEYS}
     if _scoped(turn):
         limits={key:_positive(raw.get(key) if raw.get(key) is not None else default)
                 for key,default in LEGACY_DEFAULTS.items()}
@@ -41,7 +55,7 @@ def effective_limits(turn):
         for key in KEYS:
             if key in gateway:limits[key]=min(limits[key],_positive(gateway[key]))
         return limits
-    if policy=='unlimited' or policy is None and (not raw or raw==LEGACY_DEFAULTS or raw==LEGACY_DEEP):
+    if is_interactive(turn) or policy=='unlimited' or policy is None and (not raw or raw==LEGACY_DEFAULTS or raw==LEGACY_DEEP):
         return dict.fromkeys(KEYS,None)
     return {key:None if raw.get(key) is None else _positive(raw[key]) for key in KEYS}
 

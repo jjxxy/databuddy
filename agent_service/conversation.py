@@ -259,7 +259,7 @@ TRUSTED_SUBMISSION_FIELDS=frozenset({
     'gateway_client_id','gateway_client_revision','gateway_actor_id','gateway_limits','gateway_deadline',
     'gateway_protocol','gateway_input_result_ids','gateway_provenance','gateway_request_id','gateway_allowed_tools','gateway_input_manifest_sha256',
     'collaboration_parent_turn_id','collaboration_root_turn_id','collaboration_task_id','collaboration_peer_id',
-    'collaboration_depth','collaboration_readonly','collaboration_source_ids','collaboration_result_ids',
+    'collaboration_depth','collaboration_budget_inherited','collaboration_readonly','collaboration_source_ids','collaboration_result_ids',
     'collaboration_application_ids','collaboration_input_result_ids','collaboration_deadline_at','collaboration_context','collaboration_application_snapshots',
     'task_contract','model_id','model_name','model_catalog_revision'})
 
@@ -342,7 +342,7 @@ def submit(project_id, value, *, trusted_fields=None):
         text = value.text.strip() or ('请结合这些资料，先检查它们的结构、含义和关联，再整理可用的业务记录' if len(identifiers)>1 else '帮我看看这份资料，先整理出可用的业务记录')
         if identifiers and not bound_app:remember_application({'project_id':project_id,'session_id':session_id},None)
         if bound_app:remember_application({'project_id':project_id,'session_id':session_id},bound_app['id'])
-        turn = put('turn', {'project_id': project_id, 'session_id':session_id,'actor_id':actor_id,'interaction_mode':value.interaction_mode, 'text': redact(text), 'secret_text': seal(text), 'source_id': primary_id,'source_ids':identifiers,
+        turn = put('turn', {'project_id': project_id, 'session_id':session_id,'actor_id':actor_id,'interaction_mode':value.interaction_mode,'interactive_unlimited':not bool(trusted_fields.get('gateway_client_id') or trusted_fields.get('collaboration_parent_turn_id')), 'text': redact(text), 'secret_text': seal(text), 'source_id': primary_id,'source_ids':identifiers,
                             'attached_sources':resume_target.get('attached_sources',[snapshot_attachment(source) for source in attachments]) if resume_target else [snapshot_attachment(source) for source in attachments],
                             'application_id':bound_app['id'] if bound_app else None,
                             'candidate_run': value.candidate_run or (bound_app.get('candidate_run') if bound_app else owned('pipeline', project['pipeline_id'], project_id).get('candidate_run') if project.get('pipeline_id') else None),
@@ -367,6 +367,9 @@ def public_turn(turn):
     if 'answer' in value:value['answer']=visible_answer(turn)
     sources=public_sources(turn)
     if sources:value['knowledge_sources']=sources
+    from .workspace_artifacts import turn_outputs
+    outputs=turn_outputs(turn)
+    if outputs:value['outputs']=outputs
     return value
 
 

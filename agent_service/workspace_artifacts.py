@@ -681,3 +681,74 @@ def install(app,auth):
         media=mimetypes.guess_type(metadata['name'])[0] or 'application/octet-stream'
         if media in ('text/html','image/svg+xml','application/javascript','text/javascript'):media='text/plain'
         return FileResponse(path,filename=metadata['name'],media_type=media,headers={'X-Artifact-SHA256':metadata['download_sha256'],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+
+def turn_outputs(turn):
+    """Resolve generated-file receipts directly, without scanning the catalog.
+
+    Conversation polling reads metadata only. Exact bytes and current access are
+    checked by the existing preview/download routes when the user opens a file.
+    """
+    from .actor_context import current_actor
+    from .workspace_lifecycle import visible_turn
+    pid=turn['project_id']
+    if not visible_turn(turn):return []
+    identifiers=[]
+    tools={'render_office_artifact','publish_work_file','generate_image','synthesize_speech','render_business_report'}
+    for step in turn.get('agent_trace',[]):
+        if step.get('status')!='done' or step.get('tool') not in tools:continue
+        observation=step.get('observation')
+        if not isinstance(observation,dict) or observation.get('executed') is False:continue
+        identity=observation.get('artifact_id') or observation.get('report_id') or (observation.get('id') if step.get('tool')=='render_business_report' else None)
+        if isinstance(identity,str):identifiers.append(identity)
+    answer=[];seen=set()
+    for identity in identifiers:
+        if identity in seen:continue
+        seen.add(identity)
+        try:
+            if re.fullmatch(r'wa_[a-f0-9]{44}',identity):
+                record=get('workspace_artifact',identity)
+                if record['project_id']!=pid or _gone(record):continue
+                if record.get('kind')=='media':
+                    media=get('media_artifact',record['private']['media_id'])
+                    if media.get('actor_id')!=current_actor() or _gone(media):continue
+                answer.append(_public(record));continue
+            if re.fullmatch(r'brief_[a-f0-9]{40}',identity):
+                value=get('business_report',identity)
+                if value.get('project_id')!=pid or _gone(value) or not value.get('complete'):continue
+                aid='wa_'+_hash(json.dumps([pid,'report',identity,'md',value['manifest_sha256']],ensure_ascii=False,separators=(',',':')).encode())[:44]
+                try:cached=get('workspace_artifact',aid)
+                except KeyError:cached=None
+                if cached:
+                    if cached['project_id']==pid and not _gone(cached):answer.append(_public(cached))
+                    continue
+                entry=_register(pid,'report',identity,value.get('title','业务报告'),value['manifest_sha256'],
+                    format='md',version=value.get('recipe_commit') or value['recipe_sha256'],
+                    source_refs=[{'result_id':value['run_id'],'handoff_sha256':value.get('handoff_sha256')}],
+                    updated_at=value.get('created_at'),status='verified_result',private={'report_id':identity},
+                    downloads=['docx','pptx','md','json'],origin=turn['id'],sha256_scope='frozen_report_manifest')
+                if entry:answer.append(entry)
+                continue
+            if re.fullmatch(r'of_[a-f0-9]{40}',identity):
+                value=get('office_artifact',identity)
+                if value.get('state')!='committed':continue
+                kind='office';private={'office_id':identity};status='saved'
+            elif re.fullmatch(r'waf_[a-f0-9]{48}',identity):
+                value=get('work_artifact',identity)
+                if value.get('actor_id')!=current_actor():continue
+                kind='work';private={'work_artifact_id':identity};status='needs_review'
+            else:continue
+            if value.get('project_id')!=pid or _gone(value):continue
+            fmt=Path(value['name']).suffix.lower().lstrip('.') or 'bin'
+            aid='wa_'+_hash(json.dumps([pid,kind,identity,fmt,value['sha256']],ensure_ascii=False,separators=(',',':')).encode())[:44]
+            try:record=get('workspace_artifact',aid)
+            except KeyError:
+                record=None
+            if record:
+                if record['project_id']==pid and not _gone(record):answer.append(_public(record))
+            else:
+                entry=_register(pid,kind,identity,value['name'],value['sha256'],bytes=value.get('bytes'),
+                    updated_at=value.get('created_at'),origin=turn['id'],private=private,status=status)
+                if entry:answer.append(entry)
+        except (KeyError,ValueError,OSError):continue
+    return answer

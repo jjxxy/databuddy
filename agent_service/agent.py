@@ -242,7 +242,7 @@ def planning_context(turn, *, native=None):
           'completed_steps':agent_context.trace_context(turn,public_observation),
           'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'company_search':company_search.status(pid),'company_candidates':company_search.candidates_for_model(turn),'company_evidence':company_search.for_model(turn),'tools':tools,'response_schema':response_schema(Step)}
     from . import memory_service,context_compaction
-    compressed=context_compaction.context_for_turn(turn)
+    compressed=context_compaction.context_for_turn(turn,window_managed=True)
     info['conversation']=compressed['recent_verbatim']
     info['context_compaction']={k:v for k,v in compressed.items() if k!='recent_verbatim'}
     info['memory_context']=memory_service.context_for_turn(turn)
@@ -325,8 +325,10 @@ def planning_context(turn, *, native=None):
     # last, forcing a continuation to read the same financial inputs again.
     # Keep that exact working set; conversation has its own revocation-aware
     # checkpoint projection and must not lose critical history here either.
+    from .context_window import fit,request_size
+    info,native_tools=fit(turn,prompt,info,native_tools)
     encoded_info=json.dumps(info,ensure_ascii=False,default=str,separators=(',',':'))
-    patch('turn',turn['id'],context_metrics={'selected_tools':len(tools),'available_tools':len(agent_context.allowed(turn)),'engine':provider.settings().get('engine','atlas'),'protocol':'native' if native else 'json','context_characters':len(encoded_info),'prompt_characters':len(prompt),'tool_schema_characters':len(json.dumps(tools,ensure_ascii=False,default=str)),'tool_catalog_characters':len(json.dumps(info['tool_catalog'],ensure_ascii=False)),'completed_step_characters':len(json.dumps(info['completed_steps'],ensure_ascii=False,default=str)),'source_context_characters':len(json.dumps(info['source_context'],ensure_ascii=False,default=str)),'automatic_tool_schema_budget':agent_context.AUTO_SCHEMA_CHARACTERS,'recoverable_results':sum(isinstance(s['observation'],dict) and bool(s['observation'].get('recover_with')) for s in info['completed_steps'])})
+    patch('turn',turn['id'],context_metrics={'request_characters':request_size(prompt,info,native_tools),'selected_tools':len(tools),'available_tools':len(agent_context.allowed(turn)),'engine':provider.settings().get('engine','atlas'),'protocol':'native' if native else 'json','context_characters':len(encoded_info),'prompt_characters':len(prompt),'tool_schema_characters':len(json.dumps(tools,ensure_ascii=False,default=str)),'tool_catalog_characters':len(json.dumps(info['tool_catalog'],ensure_ascii=False)),'completed_step_characters':len(json.dumps(info['completed_steps'],ensure_ascii=False,default=str)),'source_context_characters':len(json.dumps(info['source_context'],ensure_ascii=False,default=str)),'automatic_tool_schema_budget':agent_context.AUTO_SCHEMA_CHARACTERS,'recoverable_results':sum(isinstance(s['observation'],dict) and bool(s['observation'].get('recover_with')) for s in info['completed_steps'])})
     messages=[{'role':'system','content':prompt},{'role':'user','content':encoded_info}]
     return messages,native_tools
 
@@ -347,7 +349,8 @@ def validate_step(turn, value, *, selected_only=False):
 def plan(turn):
     messages,native_tools=planning_context(turn)
     native=bool(native_tools)
-    for attempt in range(3):
+    attempt=0
+    while attempt<3:
         step=None
         raw=''
         try:
@@ -355,6 +358,11 @@ def plan(turn):
             if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
             step=validate_step(turn,json.loads(raw),selected_only=native)
             return step
+        except provider.ContextWindowExceeded as exc:
+            from .context_window import recover
+            if exc.source=='irreducible' or not recover(get('turn',turn['id']),exc):raise
+            turn=get('turn',turn['id']);messages,native_tools=planning_context(turn);native=bool(native_tools)
+            continue
         except provider.BudgetExceeded:raise
         except (ValueError,TypeError) as exc:
             details=[]
@@ -365,6 +373,7 @@ def plan(turn):
                 diagnostic['expected_arguments']=TOOLS[step.tool][0].model_json_schema()
             patch('turn',turn['id'],planning_errors=(get('turn',turn['id']).get('planning_errors',[])+[{'attempt':attempt+1,'validation':details,'code':diagnostic['code']}])[-6:])
             messages.append({'role':'assistant','content':raw[:5000]})
+            attempt+=1
             messages.append({'role':'user','content':'上一步输出格式或工具权限无效，未执行。请遵循JSON Schema；先discover_tools加载目录中的工具，聊天模式不得请求修改工具。原生模式必须调用一个函数。'+json.dumps(diagnostic,ensure_ascii=False)})
     raise ValueError('模型连续返回了无效计划，未执行该计划')
 
@@ -917,11 +926,20 @@ def advance(turn):
         with provider.task_scope(turn['id']):
             from . import opencode_runtime
             if opencode_runtime.is_enabled():
-                messages,_=planning_context(turn,native=False)
-                prompt=messages[0]['content']+'本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。'
-                receipt=opencode_runtime.run_session(get('turn',turn['id']),prompt,json.loads(messages[1]['content']),
-                    lambda step,call_id:opencode_step(turn['id'],step,call_id))
-                patch('turn',turn['id'],opencode_receipt=receipt)
+                while True:
+                    current=get('turn',turn['id'])
+                    if current['state'] not in ('agent','agent_tool'):return
+                    messages,_=planning_context(current,native=False)
+                    prompt=messages[0]['content']+'本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。'
+                    try:
+                        receipt=opencode_runtime.run_session(get('turn',turn['id']),prompt,json.loads(messages[1]['content']),
+                            lambda step,call_id:opencode_step(turn['id'],step,call_id))
+                    except provider.ContextWindowExceeded as exc:
+                        from .context_window import recover
+                        if exc.source=='irreducible' or not recover(get('turn',turn['id']),exc):raise
+                        continue
+                    patch('turn',turn['id'],opencode_receipt=receipt)
+                    break
             else:agent_graph.invoke({'turn_id':turn['id']})
         patch('turn',turn['id'],model_retry_count=0,model_retry_at=None)
     except provider.BudgetExceeded as exc:
