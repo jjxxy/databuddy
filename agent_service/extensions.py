@@ -320,6 +320,10 @@ def provision_presets(configuration=None):
     if any(not isinstance(configuration.get(k,[]),list) for k in ('skills','mcp')) or sum(len(configuration.get(k,[])) for k in ('skills','mcp'))>60:raise ValueError('管理员预置项目过多或格式无效')
     builtin=Path(__file__).with_name('builtin_skills')/'finance-close'/'SKILL.md'
     result={'skills':[install_skill('SKILL.md',builtin.read_bytes(),preset=True,identity='skp_finance_monthly_close')],'mcp':[]}
+    from .work_runtime import status as work_status
+    if work_status()['configured']:
+        cloud_work=Path(__file__).with_name('builtin_skills')/'cloud-work'/'SKILL.md'
+        result['skills'].append(install_skill('SKILL.md',cloud_work.read_bytes(),preset=True,identity='skp_cloud_work'))
     for entry in configuration.get('skills',[]):
         if not isinstance(entry,dict) or set(entry)-{'id','name','content'} or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',str(entry.get('id',''))) or not isinstance(entry.get('content'),str) or not isinstance(entry.get('name',''),str):raise ValueError('预置技能须包含稳定id及Markdown content')
         identity='skp_'+digest(entry['id'].encode())[:40]

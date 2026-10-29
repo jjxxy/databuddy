@@ -835,6 +835,8 @@ def office_download(project_id:str,artifact_id:str):
 
 from .data_api import install as install_data_api
 install_data_api(app,auth)
+from .work_runtime import install as install_work_runtime
+install_work_runtime(app,auth)
 
 
 

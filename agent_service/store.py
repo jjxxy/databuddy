@@ -28,7 +28,7 @@ def _decode(body):
     return unseal(value['__company_private_v1']) if '__company_private_v1' in value else value
 
 def _encode(kind,value,connection):
-    if kind in ('turn','collab_task','collab_batch','gateway_task') and value.get('project_id'):
+    if kind in ('turn','collab_task','collab_batch','gateway_task','work_execution') and value.get('project_id'):
         row=connection.execute(select(items.c.body).where(items.c.id==value['project_id'],items.c.kind=='project')).first()
         if row and (json.loads(row[0]).get('company_private') or json.loads(row[0]).get('work_private')):
             value={'id':value['id'],'project_id':value['project_id'],'__company_private_v1':seal(value)}

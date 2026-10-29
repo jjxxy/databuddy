@@ -15,4 +15,8 @@ assert(temp.querySelector('.current-trace').textContent.includes('复用已有�
 assert(temp.querySelector('.current-trace').textContent.includes('未重复执行'));
 temp.innerHTML=w.component.operationTrace({inherited_step_count:1,agent_trace:[{tool:'<img src=x onerror=alert(1)>',status:'done'}]});
 assert.equal(temp.querySelector('img'),null);assert.equal(temp.querySelector('.inherited-trace'),null,'unrelated tasks do not hide steps');
-console.log(JSON.stringify({approval_is_inline:true,exact_digest:true,arguments_escaped:true,unknown_cannot_be_retried_from_card:true,inherited_history_is_distinct_from_new_attempts:true,reused_or_blocked_operations_not_labelled_as_new_execution:true}));dom.window.close();
+temp.innerHTML=w.component.operationTrace({agent_trace:[{tool:'run_work_command',status:'done',observation:{remote_receipt:true,state:'failed'}}]});
+assert(temp.textContent.includes('执行未成功'));assert(!temp.textContent.includes('工作任务 完成'));
+temp.innerHTML=w.component.operationTrace({agent_trace:[{tool:'run_work_command',status:'done',observation:{remote_receipt:true,state:'unknown'}}]});
+assert(temp.textContent.includes('执行结果待核对'));
+console.log(JSON.stringify({approval_is_inline:true,work_execution_status_truthful:true,exact_digest:true,arguments_escaped:true,unknown_cannot_be_retried_from_card:true,inherited_history_is_distinct_from_new_attempts:true,reused_or_blocked_operations_not_labelled_as_new_execution:true}));dom.window.close();

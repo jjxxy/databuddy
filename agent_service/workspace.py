@@ -34,7 +34,9 @@ def folder(pid):
 def path_for(pid,name):
     root=folder(pid);p=Path(name)
     if not name or len(name)>200 or p.is_absolute() or '\\' in name or any(x.startswith('.') or x in ('..','pipelines','project-state.json') for x in p.parts):raise ValueError('只能操作项目内普通文件，不能修改内部目录')
-    if p.suffix.lower() not in ('.md','.txt','.csv','.json','.yaml','.yml','.sql','.py'):raise ValueError('只支持可版本化的文本文件')
+    if p.suffix.lower() not in ('.md','.txt','.csv','.json','.yaml','.yml','.sql','.py',
+                                '.js','.mjs','.cjs','.jsx','.ts','.tsx','.html','.htm','.css','.svg','.toml','.sh','.r','.ipynb'):
+        raise ValueError('只支持可版本化的文本和代码文件')
     out=root/'files'/p
     if not out.resolve().is_relative_to((root/'files').resolve()) or any(x.is_symlink() for x in [out,*out.parents]):raise ValueError('不允许链接或越界路径')
     assert_plain_path(out)

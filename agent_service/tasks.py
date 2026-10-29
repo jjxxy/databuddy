@@ -36,6 +36,13 @@ def ensure(turn):
             if re.search(pattern,text) and not denied(text,action):kind=k;break
         if re.search(r'脚本|\.py',text) and re.search(r'执行|运行|测试',text) and not denied(text,'refresh'):kind='execution'
     if turn.get('interaction_mode','work')=='work' and re.search(r'Word|Excel|PPT|PowerPoint|word|excel|ppt|docx|xlsx|pptx|幻灯片|演示文稿',text) and re.search(r'创建|生成|写|做|制作|导出',text):kind='office'
+    general_work=False
+    if turn.get('interaction_mode','work')=='work':
+        from .work_runtime import status as work_status
+        general_work=bool(work_status()['configured'] and not denied(text,'analyze') and (
+            re.search(r'(?:开发|实现|构建|制作|生成|创建|做|修改).*(?:网页|HTML|html|前端页面|交互页面|命令行程序)',text)
+            or re.search(r'(?:运行|执行|测试).*(?:代码|命令|Python|python|Node|node|脚本)',text)))
+        if general_work:kind='execution'
     applications=[p for p in all_items('pipeline') if p.get('project_id')==turn['project_id'] and not p.get('archived')]
     explicit=[p['id'] for p in applications if any(name and name in text for name in (p.get('name'),(p.get('application_spec') or {}).get('title')))]
     allowed=list(dict.fromkeys(([turn['application_id']] if turn.get('application_id') else [])+explicit))
@@ -43,6 +50,7 @@ def ensure(turn):
     if not allowed and not explicit and not turn.get('application_id') and len(applications)==1:allowed=[applications[0]['id']]
     if kind=='answer' and allowed and re.search(r'多少|几条|合计|平均|排名|最大|最小',text) and not re.search(r'解释|如何|怎么|什么意思',text):kind='query'
     requirements=[] if kind=='answer' else [kind]
+    if general_work and re.search(r'网页|HTML|html|页面|(?:生成|交付|导出|保存).*(?:文件|报告|图表)',text):requirements.append('file')
     local_export_requested=turn.get('interaction_mode','work')=='work' and re.search(r'(?:保存|导出|写入|同步).{0,30}(?:本地|所选|已选).{0,8}(?:文件夹|目录)|(?:本地文件夹|本地目录|所选文件夹).{0,20}(?:保存|导出|写入)',text) and not denied(text,'local_export')
     if local_export_requested:requirements.append('local_export')
     if kind in ('build','run','file'):
@@ -90,6 +98,22 @@ def verify(turn):
     if turn.get('knowledge_citations'):receipts.append({'kind':'company_evidence','evidence_ids':list(dict.fromkeys(c['evidence_id'] for c in turn['knowledge_citations']))})
     for s in done:
         obs=s.get('observation') or {}
+        if s['tool']=='run_work_command' and obs.get('remote_receipt') and obs.get('state')=='succeeded' and obs.get('exit_code')==0:
+            try:
+                from .work_runtime import _owned,inputs_current
+                execution=_owned(turn['project_id'],obs['execution_id'])
+                if execution.get('snapshot_complete') and execution.get('request_sha256')==obs.get('request_sha256') and inputs_current(execution):
+                    receipts.append({'kind':'execution','execution_id':execution['id'],'snapshot_sha256':execution['snapshot_sha256']})
+            except (KeyError,ValueError):pass
+        if s['tool']=='publish_work_file' and obs.get('artifact_id'):
+            try:
+                from .work_runtime import artifact
+                _,metadata=artifact(turn['project_id'],obs['artifact_id'])
+                if metadata['sha256']==obs.get('sha256'):
+                    receipts.append({'kind':'file','artifact_id':metadata['id'],'sha256':metadata['sha256']})
+                    if metadata.get('structure_verified') and metadata['name'].lower().endswith(('.xlsx','.docx','.pptx')):
+                        receipts.append({'kind':'office','artifact_id':metadata['id'],'sha256':metadata['sha256'],'financial_approval':False})
+            except (KeyError,ValueError,OSError):pass
         if s['tool']=='run_python_file' and obs.get('remote_receipt') and obs.get('exit_code')==0:
             from .workspace import read_file
             try:
@@ -204,6 +228,9 @@ def verify(turn):
             if hashlib.sha256(actual.encode()).hexdigest()==exact['sha256']:receipts.append({'kind':'file_exact',**exact})
         except (ValueError,FileNotFoundError):pass
     missing=[k for k in required if not any(x['kind']==k for x in receipts)]
+    work_commands=[s for s in done if s['tool']=='run_work_command']
+    if work_commands and (work_commands[-1].get('observation') or {}).get('state')!='succeeded':
+        missing.append('work_command_not_successful')
     for action in __import__('agent_service.work_tools',fromlist=['actions']).actions(turn['project_id']):
         if action['turn_id'] in (turn['id'],turn.get('agent_origin'),turn.get('resumed_from')) and action['state']!='succeeded':missing.append('external_action_'+action['state'])
     verified=not missing

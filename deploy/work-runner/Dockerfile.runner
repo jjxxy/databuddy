@@ -1,0 +1,8 @@
+FROM python:3.12.14-slim-bookworm
+WORKDIR /service
+COPY deploy/work-runner/requirements.lock /tmp/requirements.lock
+RUN pip install --no-cache-dir -r /tmp/requirements.lock
+COPY work_runner /service/work_runner
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 ATLAS_RUNNER_DATA=/state
+EXPOSE 8090
+CMD ["python", "-m", "work_runner"]

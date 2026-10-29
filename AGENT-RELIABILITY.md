@@ -44,6 +44,8 @@ python scripts/evaluate_agent.py --execute --limit 3 --output eval-results.json
 
 ## 远端隔离执行接口
 
+下面记录 0.8 的 `run_python_file` 兼容协议。新通用云端工作模式包含独立执行服务、命令任务与二进制成果回收，部署见 [WORK-MODE.md](WORK-MODE.md)；两套接口和环境变量不能互换。
+
 当前提供的是可关闭的接入客户端，**没有随此版本部署一个隔离计算平台**。试用服务默认不启用。只有独立执行服务完成隔离、租户、网络、资源与日志验收后，运维再配置：
 
 ```

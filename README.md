@@ -6,6 +6,8 @@
 
 # Atlas Personal Agent
 
+**云端工作模式执行底座**：新增独立 gVisor 执行服务，支持后台 Bash / Python / Node 任务、日志与文件检查点、恢复与取消，并将真实文件接入原有成果预览和下载。沿用现有模型目录、OpenCode、项目 Git 与 Skill / MCP。部署、范围和验收见 [WORK-MODE.md](WORK-MODE.md)。执行服务需单独部署；本次环境未运行真实 Docker / gVisor 或真实模型对标，不能据此认定已达到 ChatGPT 的全部能力或财经生产标准。
+
 v0.19.0 部署包提供一个容器的快速启动：填写 `llm.json` 的接口地址、模型名和 API Key，Windows 双击 `start.cmd`，Linux/macOS 执行 `bash start.sh`。需要已启动的 Docker 与 Compose v2，不需要本机 Python 或独立数据库。操作见 [QUICKSTART.md](QUICKSTART.md)；它是单个 owner 工作空间部署，当前环境未实测 Docker 镜像构建与 Windows Docker Desktop。
 
 
@@ -166,7 +168,7 @@ docker compose -f compose.yaml -f compose.multimodal.yaml up -d --build
 
 默认端口绑定本机，使用高熵 APP_TOKEN。服务包含 CSP、禁止 API 缓存、请求 ID、请求预算和加密配置；Worker 不挂 Docker socket，使用受约束的生成模板。
 
-Linux 下采集/dbt 子进程会在 Worker 消失时终止。一个工作空间仅运行一个 Worker，数据库租约保护恢复和发布。当前不是多租户团队服务，未实现企业 SSO、团队 RBAC、外部业务写回、Cube 服务或任意脚本执行。
+Linux 下采集/dbt 子进程会在 Worker 消失时终止。一个工作空间仅运行一个 Worker，数据库租约保护恢复和发布。当前基础部署采用共同 owner 权限，完整多租户、团队 RBAC 与 Cube 服务未实现。可选 OIDC、受控外部写入和独立脚本执行需按各自指南配置与验收。
 
 部署到服务器可先用 SSH 隧道：`ssh -L 8000:127.0.0.1:8000 user@server`。正式公网服务需 HTTPS 反向代理、目标网络权限、容量测试与镜像验证。不要直接公开 Dagster 管理端口。底层镜像当前为版本标签；在实际生产发布中由你的 CI/镜像仓锁定批准的 digest。
 

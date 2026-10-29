@@ -28,7 +28,7 @@ from . import workspace
 from .platform_files import open_regular_read,assert_plain_path
 
 MAX_FILE_BYTES=256*1024*1024
-KINDS={'code','office','report','result','application','chart','agent','source'}
+KINDS={'code','office','report','result','application','chart','agent','source','work'}
 
 
 class ArtifactError(ValueError):pass
@@ -218,6 +218,18 @@ def catalog(pid,kind='',offset=0,limit=40):
     for value in all_items('office_artifact'):
         if value.get('project_id')!=pid or _gone(value):continue
         add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),private={'office_id':value['id']})
+    from .actor_context import current_actor
+    from .workspace_lifecycle import visible_turn
+    for value in all_items('work_artifact'):
+        if value.get('project_id')!=pid or value.get('actor_id')!=current_actor() or _gone(value):continue
+        try:
+            if not visible_turn(get('turn',value['turn_id'])):continue
+            from .work_runtime import artifact
+            artifact(pid,value['id'])
+        except (KeyError,ValueError,OSError):continue
+        add('work',value['id'],value['name'],value['sha256'],bytes=value['bytes'],updated_at=value['created_at'],
+            status='needs_review',origin=value['turn_id'],private={'work_artifact_id':value['id']},
+            version=value['execution_id'],semantic_status='not_approved',metric_status='not_approved')
     for value in all_items('business_report'):
         if value.get('project_id')!=pid or _gone(value):continue
         add('report',value['id'],value.get('title','业务报告'),value['manifest_sha256'],format='md',version=value.get('recipe_commit') or value['recipe_sha256'],
@@ -283,7 +295,7 @@ def catalog(pid,kind='',offset=0,limit=40):
                 if item['format'] in ('docx','pptx','pdf','md'):return 0
                 if item['format'] in ('xlsx','csv'):return 2
                 return 4
-            return {'report':0,'office':1,'result':2,'application':2,'chart':3,'code':4,'source':5}[item['kind']]
+            return {'report':0,'office':1,'work':1,'result':2,'application':2,'chart':3,'code':4,'source':5}[item['kind']]
         items.sort(key=priority)  # Stable: newest first within each business group.
     page=items[offset:offset+limit];end=offset+len(page)
     return {'items':page,'total':len(items),'offset':offset,'limit':limit,'next_offset':end if end<len(items) else None,
@@ -297,6 +309,10 @@ def _record(pid,aid):
     if record['project_id']!=pid:raise KeyError(aid)
     if _gone(record):raise ArtifactGone('该成果已归档')
     private=record['private'];kind=record['kind']
+    if kind=='work':
+        from .work_runtime import artifact
+        _,value=artifact(pid,private['work_artifact_id'])
+        if value['sha256']!=record['sha256']:raise ArtifactError('成果摘要与执行版本不匹配')
     if kind=='source':
         value=get('source',private['source_id'])
         if value.get('project_id')!=pid or _gone(value):raise ArtifactGone('来源已归档，不能继续查看或下载')
@@ -371,7 +387,10 @@ def file(pid,aid,format=None):
     if format not in allowed:raise ArtifactError('该成果没有此下载格式')
     expected=record['sha256'] if record['sha256_scope']=='file' else None
     name=Path(record['name']).name
-    if kind=='code':path=DATA/private['snapshot']
+    if kind=='work':
+        from .work_runtime import artifact
+        path,metadata=artifact(pid,private['work_artifact_id']);expected=metadata['sha256']
+    elif kind=='code':path=DATA/private['snapshot']
     elif kind=='office':
         from .office import artifact
         path,metadata=artifact(pid,private['office_id']);expected=metadata['sha256']
@@ -518,7 +537,7 @@ def preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,c
             return response
     format='md' if kind=='report' else record['format']
     path,download=file(pid,aid,'md' if kind=='report' else None)
-    if format in ('md','txt','py','sql','json','yaml','yml','html','htm'):
+    if format in ('md','txt','py','sql','json','yaml','yml','html','htm','js','mjs','cjs','jsx','ts','tsx','css','svg','toml','sh','r','ipynb'):
         if path.stat().st_size>4*1024*1024:return {'artifact':_verified(record),'render':'download_only','fidelity_note':'文本超过安全预览预算，请下载完整文件','verified':True}
         try:text=path.read_text(encoding='utf-8-sig')
         except UnicodeError:return {'artifact':_verified(record),'render':'download_only','fidelity_note':'文本编码不是可安全预览的UTF-8，请下载原件','verified':True}

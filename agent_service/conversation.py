@@ -305,6 +305,8 @@ def submit(project_id, value, *, trusted_fields=None):
                     try:request_cancel(current['run_id'])
                     except KeyError:pass
                 cancel_owned_async_jobs(current)
+                from .work_runtime import cancel_turn
+                cancel_turn(current)
         if project.get('pending_connection_session',default_session(project_id))==session_id:patch('project',project_id,pending_connection=None)
         finish(turn,'已停止本对话的当前处理，其他对话及已发布结果保留。')
         return public_turn(get('turn',tid))
@@ -759,6 +761,8 @@ def legacy_handle(turn):
 def handle(turn):
     from .workspace_lifecycle import assert_turn_live
     assert_turn_live(turn)
+    from .work_runtime import resume as resume_work_command
+    if resume_work_command(turn):return
     if turn.get('gateway_client_id') or turn.get('collaboration_parent_turn_id'):
         # Untrusted remote instructions cannot use human-only deterministic
         # shortcuts (metric approval, restore, connector setup) to bypass tools.

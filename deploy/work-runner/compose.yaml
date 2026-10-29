@@ -1,0 +1,34 @@
+name: atlas-work-executor
+services:
+  runner:
+    build:
+      context: ../..
+      dockerfile: deploy/work-runner/Dockerfile.runner
+    environment:
+      ATLAS_WORK_RUNNER_TOKEN: ${ATLAS_WORK_RUNNER_TOKEN:?Set a separate runner token with at least 32 characters}
+      ATLAS_SANDBOX_IMAGE: ${ATLAS_SANDBOX_IMAGE:?Set the pushed workspace image by sha256 digest}
+      ATLAS_RUNNER_STORAGE_MB: ${ATLAS_RUNNER_STORAGE_MB:-4096}
+    # Place on a dedicated execution host, behind authenticated HTTPS ingress.
+    # Only this service holds the host Docker socket. Never mount it in Atlas
+    # or in workload containers. Host firewall must prevent public port access.
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - runner_state:/state
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=96m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 2.0
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  runner_state:

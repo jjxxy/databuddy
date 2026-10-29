@@ -25,6 +25,8 @@ def main():
                 try:
                     with guard():
                         __import__('agent_service.runtime',fromlist=['heartbeat']).heartbeat('agent',pid=os.getpid())
+                        from .work_runtime import reconcile
+                        reconcile()
                         if time.monotonic()-last_purge>60:
                             for project in all_items('project'):
                                 if project.get('company_private'):purge(project['id'],expired_only=True)
