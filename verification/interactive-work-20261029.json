@@ -1,0 +1,102 @@
+{
+  "observed_at": "2026-10-29T15:01:20.145846+08:00",
+  "implementation_base": "a8ad39d7b1f875dde2ad2231c646cdcc0497f79c",
+  "source_sha256": {
+    "agent_service/browser_tools.py": "1269947b622a34ae7d2d3cce444414a8895559d3aacc63a7fbe9a80e2981f643",
+    "agent_service/media_tools.py": "a864156a93f4d79ee2025fe6d290286103dee2c98a23aeaef8656ddb14c67f12",
+    "agent_service/tasks.py": "1d3a329472d64b476eec5735c4647b58f0cd9eeb480d846d332cff278dcbe02b",
+    "agent_service/static/interactive-work.js": "c260f24bb29dd08ea90b468ddb90746edc6ceddc386621a7294f47c812c01f59",
+    "browser_runner/service.mjs": "ecb3d9f7af465c765390e6020a0b444c49e3c2143018875171503c3aa07c68ef",
+    "browser_runner/proxy.py": "973051423fdede35506d205c9b439383f6cfdc9bdbf07f46e59bfa463efa914a",
+    "deploy/browser-runner/compose.yaml": "39a6f2c59bf6e8b9dd8747578784819d18552fc08c05d20c546ff084f8885684"
+  },
+  "focused_pytest": {
+    "passed": 206,
+    "failed": 0,
+    "log": "databuddy-interactive-delivery-checks.log",
+    "duration_seconds": 32.62
+  },
+  "frontend_scripts": {
+    "passed": 22,
+    "actual_microphone": false,
+    "live_model": false,
+    "logout_synchronous_auth_failure_microphone_cleanup": true
+  },
+  "chromium_service": {
+    "real_chromium": true,
+    "actual_http_fixture": true,
+    "login_post_count": 1,
+    "duplicate_action_not_replayed": true,
+    "cookies_preserved_within_session": true,
+    "cookies_isolated_between_sessions": true,
+    "agent_mutation_blocked": true,
+    "closed_session_inaccessible": true,
+    "screenshot_real_png": true,
+    "secret_input_not_in_observation": true,
+    "no_live_model": true,
+    "no_gvisor_claim": true
+  },
+  "chromium_ui": {
+    "real_chromium": "153.0.8010.0",
+    "mock_api": true,
+    "no_live_model_or_deployment": true,
+    "desktop_preview": true,
+    "mobile_preview": true,
+    "png_decoded": true,
+    "pagination": true,
+    "generated_script_not_executed": true,
+    "partial_pages_disclosed": true,
+    "no_horizontal_overflow": true,
+    "browser_handoff_desktop_mobile": true,
+    "return_control_gates_inputs": true,
+    "unconfigured_voice_disabled": true,
+    "no_real_microphone_or_voice_service": true,
+    "evidence_directory": "verification/interactive-work"
+  },
+  "wheel": {
+    "name": "personal_data_agent-0.20.0-py3-none-any.whl",
+    "sha256": "d37bfaa5eb80d35034e72bbbc1f190d5408a5ecb2525664b79eec5c771ee653a",
+    "final_source_bytes_verified": true,
+    "verified_source_files": 158
+  },
+  "not_evaluated": [
+    "production_docker_gvisor",
+    "public_egress_deployment",
+    "real_external_account_login",
+    "paid_image_generation_or_editing",
+    "actual_transcription_and_speech_quality",
+    "live_webrtc_audio_and_hangup_provider",
+    "full_chatgpt_parity"
+  ],
+  "screenshots": {
+    "mobile-browser-handoff.png": "7e05641224b4e2ebd7b513712886843905d06f4b64c15b1ec53e96b007bddec0",
+    "desktop-browser-handoff.png": "d480ad616b2606e2cbe4e43910b0e3f6319b7b1b61a478e6351aaac711368a5d",
+    "mobile-voice.png": "d620aceb2e2cc35c18375140b20d9fc96bbe4be8cd03d52783b400be2ed49984"
+  },
+  "development_full_run": {
+    "passed": 2154,
+    "failed": 9,
+    "skipped": 34,
+    "duration_seconds": 681.39,
+    "source_changed_during_run": true,
+    "final_source_full_suite_all_green": false,
+    "previously_reproduced_baseline_failures": [
+      "tests/test_agent_collaboration_verifier.py::test_real_two_process_bidirectional_http_collaboration_with_explicit_model_fixture",
+      "tests/test_financial_workflow_integrity.py::test_cached_formula_unknown_freshness_is_preserved_through_downstream_result",
+      "tests/test_financial_workflow_integrity.py::test_excel_precision_history_risk_keeps_exact_stored_value_and_blocks_unadopted_brief",
+      "tests/test_governance_boundaries.py::test_quote_contains_exact_code_and_does_not_inherit_model_status",
+      "tests/test_isolated_deployment.py::test_committed_templates_match_renderer",
+      "tests/test_native_launcher.py::test_native_lifecycle_uses_loopback_credentials_and_preserves_state",
+      "tests/test_ocr_supply_chain.py::test_ocr_wheel_lock_exactly_matches_official_inventory"
+    ],
+    "final_targeted_retests_include": [
+      "tests/test_interactive_work.py::test_literal_file_mentioning_image_generation_keeps_exact_file_contract",
+      "tests/test_workflow_continuation_reuse.py::test_same_build_fingerprint_is_cached_and_matches_worker_process"
+    ]
+  },
+  "final_individual_recheck": {
+    "passed": 2,
+    "failed": 0,
+    "duration_seconds": 1.72
+  }
+}

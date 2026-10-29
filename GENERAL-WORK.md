@@ -2,7 +2,7 @@
 
 Atlas DataBuddy 的目标是让用户通过对话完成研究、编程、数据分析和办公交付。能力应按真实任务的完成结果衡量，不能把工具数量、代码测试或一份生成文件换算成与 ChatGPT 对等的百分比。
 
-本次代码、实际渲染和界面验证结果见 [VALIDATION-GENERAL-WORK.md](VALIDATION-GENERAL-WORK.md)。
+研究与页图验证见 [VALIDATION-GENERAL-WORK.md](VALIDATION-GENERAL-WORK.md)，浏览器与媒体最新验证见 [VALIDATION-INTERACTIVE-WORK.md](VALIDATION-INTERACTIVE-WORK.md)。
 
 ## 当前可用范围
 
@@ -16,10 +16,13 @@ Atlas DataBuddy 的目标是让用户通过对话完成研究、编程、数据�
 | 视觉检查 | 把真实 PNG / JPEG 字节发送给当前模型，保存视觉意见 | 明确启用支持图像输入的模型；不把文字模型冒充视觉模型 |
 | 长任务与复用 | 后台运行、取消、恢复、版本、调度、记忆与上下文压缩 | 运行中的服务与持久存储可用 |
 | 系统操作与 Agent 协作 | 原有 Skills、MCP、专长 Agent 和外部 Agent 接口 | 独立授权连接；外部写入沿用确认机制 |
-| 登录网站、点击操作与用户接管 | 沿用已批准的外部浏览器/MCP；未内置通用云浏览器服务 | 需要实际部署和验证对应工具；公开网页读取不能替代浏览器操作 |
-| 图像生成、实时语音与桌面控制 | 未提供内置等价服务 | 需要单独的模型、连接与产品实现 |
+| 登录网站、点击操作与用户接管 | 独立云 Chromium、自动阅读与链接导航、应用内用户接管 | 单独部署 gVisor 浏览器和受限网络代理；表单与登录由用户操作 |
+| 图片生成、图片编辑与语音 | 真实 PNG / MP3 成果、录音转写、实时 WebRTC 与服务端挂断 | 管理员配置支持相应协议的媒体模型；需实际账号验收 |
+| 桌面应用控制 | 未内置通用桌面控制器 | 仍需对应执行器与实际业务验证 |
 
 官方 ChatGPT 文档描述了联网研究、成品文件、视觉与交互工作、浏览器、代码执行、协作和持续任务等不同能力。它们有各自的工具、权限和可用范围，不能用一个“工作模式开关”替代。对照来源：[Use ChatGPT](https://learn.chatgpt.com/docs/use-chatgpt)、[Browser](https://learn.chatgpt.com/docs/browser)。
+
+云浏览器、接管、图片与语音的部署及使用见 [BROWSER-AND-MEDIA.md](BROWSER-AND-MEDIA.md)。
 
 ## 开启公开研究
 

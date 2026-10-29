@@ -1,0 +1,40 @@
+name: atlas-cloud-browser
+services:
+  browser:
+    image: ${ATLAS_BROWSER_IMAGE:?Build and push the browser image with an immutable sha256 digest}
+    runtime: runsc
+    user: "10001:10001"
+    environment:
+      ATLAS_BROWSER_TOKEN: ${ATLAS_BROWSER_TOKEN:?Use a dedicated random token of at least 32 characters}
+      ATLAS_BROWSER_WORKSPACE_ID: ${ATLAS_BROWSER_WORKSPACE_ID:?Bind one container stack to one actor and project}
+      ATLAS_BROWSER_PROXY: http://egress:8092
+      ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+    ports: ["127.0.0.1:${ATLAS_BROWSER_PORT:-8091}:8091"]
+    networks: [restricted]
+    depends_on: [egress]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=384m,uid=10001,gid=10001,mode=0700"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 3g
+    memswap_limit: 3g
+    pids_limit: 256
+    cpus: 2.0
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: "2m", max-file: "2"}}
+  egress:
+    build: {context: ../.., dockerfile: deploy/browser-runner/Dockerfile.proxy}
+    environment:
+      ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+    networks: [restricted, public]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    user: "10001:10001"
+    mem_limit: 128m
+    pids_limit: 64
+    restart: unless-stopped
+    logging: {driver: local, options: {max-size: "2m", max-file: "2"}}
+networks:
+  restricted: {internal: true}
+  public: {}

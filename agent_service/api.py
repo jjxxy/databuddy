@@ -50,8 +50,16 @@ async def lifespan(app):
             except Exception:pass
             stop.wait(5)
     thread=threading.Thread(target=beat,daemon=True);thread.start()
+    def media_reaper():
+        from .media_tools import reconcile_calls
+        from .maintenance import guard
+        while not stop.wait(5):
+            try:
+                with guard():reconcile_calls()
+            except Exception:pass
+    media_thread=threading.Thread(target=media_reaper,daemon=True);media_thread.start()
     try:yield
-    finally:stop.set();thread.join(timeout=1)
+    finally:stop.set();thread.join(timeout=1);media_thread.join(timeout=1)
 
 app=FastAPI(title='个人数据 Agent',version='0.20.0',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
@@ -113,7 +121,7 @@ async def boundary(request:Request,call_next):
             response.headers['X-Request-ID']=request_id
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Referrer-Policy']='no-referrer'
-            response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+            response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
             if api_surface:response.headers['Cache-Control']='no-store'
             if mutating and api_surface and response.status_code<400:record('api.'+request.method,request.url.path,{'request_id':request_id,'actor':hashlib.sha256(str(getattr(request.state,'identity',{}).get('subject','owner_token')).encode()).hexdigest()[:20]})
             return response
@@ -837,6 +845,10 @@ from .data_api import install as install_data_api
 install_data_api(app,auth)
 from .work_runtime import install as install_work_runtime
 install_work_runtime(app,auth)
+from .browser_tools import install as install_browser_tools
+from .media_tools import install as install_media_tools
+install_browser_tools(app,auth)
+install_media_tools(app,auth)
 
 
 

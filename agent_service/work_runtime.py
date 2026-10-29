@@ -87,11 +87,12 @@ class RunnerUnavailable(ValueError):
 
 
 def status():
+    from .browser_tools import status as browser_status
     configured = bool(os.getenv('ATLAS_WORK_RUNNER_URL') and len(os.getenv('ATLAS_WORK_RUNNER_TOKEN', '')) >= 32)
     return {'configured': configured, 'execution': 'remote_gvisor', 'network': 'none',
             'persistent_checkpoints': True, 'deployment_verified': False,
             'max_command_seconds': 900, 'max_file_bytes': MAX_FILE,
-            'browser': 'offline_chromium_in_sandbox_or_authorized_mcp',
+            'browser': 'independent_chromium_service' if browser_status()['configured'] else 'offline_rendering_or_authorized_mcp',
             'note': '隔离服务需独立部署；配置状态不等于真实环境验收'}
 
 

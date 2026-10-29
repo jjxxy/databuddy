@@ -1,0 +1,5 @@
+FROM python:3.12.14-slim-bookworm
+COPY browser_runner/proxy.py /opt/proxy.py
+USER 10001:10001
+EXPOSE 8092
+CMD ["python", "-I", "/opt/proxy.py"]

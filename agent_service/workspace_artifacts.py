@@ -28,7 +28,7 @@ from . import workspace
 from .platform_files import open_regular_read,assert_plain_path
 
 MAX_FILE_BYTES=256*1024*1024
-KINDS={'code','office','report','result','application','chart','agent','source','work'}
+KINDS={'code','office','report','result','application','chart','agent','source','work','media'}
 
 
 class ArtifactError(ValueError):pass
@@ -220,6 +220,15 @@ def catalog(pid,kind='',offset=0,limit=40):
         add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),private={'office_id':value['id']})
     from .actor_context import current_actor
     from .workspace_lifecycle import visible_turn
+    for value in all_items('media_artifact'):
+        if value.get('project_id')!=pid or value.get('actor_id')!=current_actor() or _gone(value):continue
+        try:
+            from .media_tools import artifact as media_artifact
+            media_artifact(pid,value['id'])
+        except (KeyError,ValueError,OSError):continue
+        add('media',value['id'],value['name'],value['sha256'],bytes=value['bytes'],updated_at=value['created_at'],
+            status='needs_review',origin=value.get('turn_id'),private={'media_id':value['id']},
+            semantic_status='not_applicable',metric_status='not_applicable')
     for value in all_items('work_artifact'):
         if value.get('project_id')!=pid or value.get('actor_id')!=current_actor() or _gone(value):continue
         try:
@@ -295,7 +304,7 @@ def catalog(pid,kind='',offset=0,limit=40):
                 if item['format'] in ('docx','pptx','pdf','md'):return 0
                 if item['format'] in ('xlsx','csv'):return 2
                 return 4
-            return {'report':0,'office':1,'work':1,'result':2,'application':2,'chart':3,'code':4,'source':5}[item['kind']]
+            return {'report':0,'office':1,'work':1,'media':1,'result':2,'application':2,'chart':3,'code':4,'source':5}[item['kind']]
         items.sort(key=priority)  # Stable: newest first within each business group.
     page=items[offset:offset+limit];end=offset+len(page)
     return {'items':page,'total':len(items),'offset':offset,'limit':limit,'next_offset':end if end<len(items) else None,
@@ -309,6 +318,10 @@ def _record(pid,aid):
     if record['project_id']!=pid:raise KeyError(aid)
     if _gone(record):raise ArtifactGone('该成果已归档')
     private=record['private'];kind=record['kind']
+    if kind=='media':
+        from .media_tools import artifact as media_artifact
+        _,value=media_artifact(pid,private['media_id'])
+        if value['sha256']!=record['sha256']:raise ArtifactError('媒体版本不匹配')
     if kind=='work':
         from .work_runtime import artifact
         _,value=artifact(pid,private['work_artifact_id'])
@@ -387,7 +400,10 @@ def file(pid,aid,format=None):
     if format not in allowed:raise ArtifactError('该成果没有此下载格式')
     expected=record['sha256'] if record['sha256_scope']=='file' else None
     name=Path(record['name']).name
-    if kind=='work':
+    if kind=='media':
+        from .media_tools import artifact as media_artifact
+        path,metadata=media_artifact(pid,private['media_id']);expected=metadata['sha256']
+    elif kind=='work':
         from .work_runtime import artifact
         path,metadata=artifact(pid,private['work_artifact_id']);expected=metadata['sha256']
     elif kind=='code':path=DATA/private['snapshot']
@@ -617,7 +633,11 @@ def _content_preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart
         with path.open('rb') as stream:header=stream.read(16)
         valid=header.startswith(b'\x89PNG\r\n\x1a\n') or header.startswith(b'\xff\xd8\xff') or header.startswith((b'II*\x00',b'MM\x00*')) or header.startswith(b'RIFF') and header[8:12]==b'WEBP'
         if not valid:raise ArtifactError('文件不是受支持的图片来源')
-        return {'artifact':_verified(record),'render':'image','url':record['download_url'],'verified':True,'fidelity_note':'原始图片预览；未执行OCR或把图像内容认定为财务事实'}
+        note='原始图片预览；未执行OCR或把图像内容认定为财务事实'
+        if kind=='media':
+            provenance=get('media_artifact',private['media_id']).get('provenance')
+            note=('真实浏览器截图' if provenance=='browser_capture' else 'AI生成或编辑的图片')+'；未批准财务数字或业务口径'
+        return {'artifact':_verified(record),'render':'image','url':record['download_url'],'verified':True,'fidelity_note':note}
     return {'artifact':_verified(record),'render':'download_only','verified':True,'fidelity_note':'此格式没有已验证的安全预览器，可下载原件'}
 
 

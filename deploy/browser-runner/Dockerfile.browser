@@ -1,0 +1,7 @@
+# Build from the same approved digest used by the offline work runner.
+ARG ATLAS_WORKSPACE_IMAGE
+FROM ${ATLAS_WORKSPACE_IMAGE}
+COPY browser_runner/service.mjs /opt/atlas-browser/service.mjs
+ENV HOME=/tmp LANG=C.UTF-8
+EXPOSE 8091
+CMD ["node", "/opt/atlas-browser/service.mjs"]

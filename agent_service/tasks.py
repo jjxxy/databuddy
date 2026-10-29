@@ -50,6 +50,15 @@ def ensure(turn):
     if not allowed and not explicit and not turn.get('application_id') and len(applications)==1:allowed=[applications[0]['id']]
     if kind=='answer' and allowed and re.search(r'多少|几条|合计|平均|排名|最大|最小',text) and not re.search(r'解释|如何|怎么|什么意思',text):kind='query'
     requirements=[] if kind=='answer' else [kind]
+    media_requirement=None
+    if turn.get('interaction_mode','work')=='work' and kind in ('answer','file') and not literal_file(text):
+        if re.search(r'(?:生成|创建|制作|绘制|编辑|修改|设计).{0,20}(?:图片|图像|海报|插画|logo|壁纸)|^画(?:一|个|张|幅)',text,re.I) and not denied(text,'write'):
+            media_requirement='image'
+        elif re.search(r'朗读|(?:生成|制作|转换).{0,15}(?:语音|音频|MP3)',text,re.I) and not denied(text,'write'):
+            media_requirement='audio'
+        if media_requirement:
+            if kind=='answer':kind=media_requirement
+            requirements.append(media_requirement)
     if general_work and re.search(r'网页|HTML|html|页面|(?:生成|交付|导出|保存).*(?:文件|报告|图表)',text):requirements.append('file')
     local_export_requested=turn.get('interaction_mode','work')=='work' and re.search(r'(?:保存|导出|写入|同步).{0,30}(?:本地|所选|已选).{0,8}(?:文件夹|目录)|(?:本地文件夹|本地目录|所选文件夹).{0,20}(?:保存|导出|写入)',text) and not denied(text,'local_export')
     if local_export_requested:requirements.append('local_export')
@@ -61,7 +70,7 @@ def ensure(turn):
     from .task_budget import KEYS,effective_limits
     contract={'version':1,'kind':kind,'requirements':requirements,'goal':text[:12000],'application_ids':allowed,
               'source_id':turn.get('source_id'),'created_at':now(),
-              'acceptance':{'metric_confirmation':'正式指标与用户原文匹配，服务端保存对应代码版本的确认回执','office':'生成实际Office文件，哈希和格式验证通过','execution':'独立隔离执行回执成功，执行输入与当前文件一致','answer':'有依据的回答','query':'执行真实只读查询，或返回范围一致的内置统计','file':'文件内容与写入回执一致','build':'真实运行通过验证并产生候选结果','run':'本轮真实运行成功','schedule':'已保存有效调度或待发布计划','publish':'本轮候选已发布','pause':'调度已停止'}[kind],
+              'acceptance':{'image':'真实图片成果存在且完整文件摘要核对一致','audio':'真实音频成果存在且完整文件摘要核对一致','metric_confirmation':'正式指标与用户原文匹配，服务端保存对应代码版本的确认回执','office':'生成实际Office文件，哈希和格式验证通过','execution':'独立隔离执行回执成功，执行输入与当前文件一致','answer':'有依据的回答','query':'执行真实只读查询，或返回范围一致的内置统计','file':'文件内容与写入回执一致','build':'真实运行通过验证并产生候选结果','run':'本轮真实运行成功','schedule':'已保存有效调度或待发布计划','publish':'本轮候选已发布','pause':'调度已停止'}[kind],
               'budget_policy':'unlimited','budgets':dict.fromkeys(KEYS,None),
               'initial_applications':[p['id'] for p in applications]}
     if turn.get('gateway_client_id') or turn.get('gateway_limits') or turn.get('collaboration_parent_turn_id'):
@@ -98,6 +107,15 @@ def verify(turn):
     if turn.get('knowledge_citations'):receipts.append({'kind':'company_evidence','evidence_ids':list(dict.fromkeys(c['evidence_id'] for c in turn['knowledge_citations']))})
     for s in done:
         obs=s.get('observation') or {}
+        if s['tool'] in ('generate_image','synthesize_speech','capture_browser_screenshot') and obs.get('artifact_id'):
+            try:
+                from .workspace_artifacts import file
+                path,metadata=file(turn['project_id'],obs['artifact_id'])
+                if metadata['download_sha256']==obs.get('sha256'):
+                    receipts.append({'kind':'file','artifact_id':obs['artifact_id'],'sha256':metadata['download_sha256']})
+                    category='image' if metadata['download_format'] in ('png','jpg','jpeg') else 'audio' if metadata['download_format']=='mp3' else None
+                    if category:receipts.append({'kind':category,'artifact_id':obs['artifact_id'],'sha256':metadata['download_sha256'],'financial_approval':False})
+            except (KeyError,ValueError,OSError):pass
         if s['tool'] in ('run_work_command','render_work_preview') and obs.get('remote_receipt') and obs.get('state')=='succeeded' and obs.get('exit_code')==0:
             try:
                 from .work_runtime import _owned,inputs_current
@@ -111,6 +129,10 @@ def verify(turn):
                 _,metadata=artifact(turn['project_id'],obs['artifact_id'])
                 if metadata['sha256']==obs.get('sha256'):
                     receipts.append({'kind':'file','artifact_id':metadata['id'],'sha256':metadata['sha256']})
+                    if metadata['name'].lower().endswith(('.png','.jpg','.jpeg')):
+                        from .media_tools import verify_image
+                        path,_=artifact(turn['project_id'],obs['artifact_id']);verify_image(path.read_bytes())
+                        receipts.append({'kind':'image','artifact_id':metadata['id'],'sha256':metadata['sha256'],'financial_approval':False})
                     if metadata.get('structure_verified') and metadata['name'].lower().endswith(('.xlsx','.docx','.pptx')):
                         receipts.append({'kind':'office','artifact_id':metadata['id'],'sha256':metadata['sha256'],'financial_approval':False})
             except (KeyError,ValueError,OSError):pass
@@ -228,6 +250,13 @@ def verify(turn):
             if hashlib.sha256(actual.encode()).hexdigest()==exact['sha256']:receipts.append({'kind':'file_exact',**exact})
         except (ValueError,FileNotFoundError):pass
     missing=[k for k in required if not any(x['kind']==k for x in receipts)]
+    for step in done:
+        if step['tool']!='request_browser_takeover':continue
+        try:
+            from .browser_tools import owned
+            browser=owned(turn['project_id'],step['arguments']['session_id'])
+            if browser['mode']=='human' and browser['state']!='closed':missing.append('browser_awaiting_user')
+        except (KeyError,ValueError):missing.append('browser_session_unavailable')
     work_commands=[s for s in done if s['tool'] in ('run_work_command','render_work_preview')]
     if work_commands and (work_commands[-1].get('observation') or {}).get('state')!='succeeded':
         missing.append('work_command_not_successful')

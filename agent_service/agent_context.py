@@ -50,6 +50,8 @@ DATA_WORKING_SET=('source_schema','inspect_source_tables','read_source_table','d
                   'write_file','read_file','register_data_workflow','run_data_workflow',
                   'read_data_workflow_result','export_data_workflow_result','list_data_workflows')
 GROUPS=[
+ (r'浏览器|登录|网页操作|网站操作|browser|登录态',{'browser_capabilities','open_browser','observe_browser','navigate_browser','follow_browser_link','scroll_browser','capture_browser_screenshot','request_browser_takeover','close_browser'}),
+ (r'画|绘制|配图|图片|图像|海报|插画|朗读|语音|音频|image|speech',{'media_capabilities','generate_image','synthesize_speech'}),
  (r'成果|文件|预览|渲染|截图|版式|设计|视觉|图片|看图|PNG|JPEG|PDF|PPT|Word|Excel|html|png|jpeg|pdf|ppt|docx',{'list_project_artifacts','render_work_preview','inspect_visual_artifact'}),
  (r'联网|互联网|公开|网页|网站|搜索|检索|研究|调研|查资料|最新|web|research',{'web_research_status','search_web','read_web_page'}),
  (r'代码|编程|脚本|终端|Python|python|Node|node|运行|执行|图表|可视化|网页|工作环境',{'work_environment_status','run_work_command','list_work_files','read_work_file','publish_work_file'}),
@@ -91,6 +93,11 @@ def allowed(turn):
     from .web_research import status as web_status
     if not web_status()['enabled']:names -= {'search_web','read_web_page'}
     elif not web_status()['search_configured']:names.discard('search_web')
+    from . import browser_tools,media_tools
+    if not browser_tools.status()['configured']:names-=set(browser_tools.DEFINITIONS)-{'browser_capabilities'}
+    media=media_tools.status()
+    if not media['images']:names.discard('generate_image')
+    if not media['speech']:names.discard('synthesize_speech')
     from . import agent_gateway,agent_team
     return agent_team.allowed_tools(turn,agent_gateway.allowed_tools(turn,names))
 
