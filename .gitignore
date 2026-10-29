@@ -9,6 +9,7 @@ __pycache__/
 .atlas-local-folder
 tests/ui/node_modules/
 .atlas-native/
+.atlas-debug/
 runtime/
 dist/
 node_modules/

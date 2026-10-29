@@ -12,6 +12,34 @@ shortcuts remain window-local. Plain web clients hide the desktop-only lineage
 action. Service restart is not a business capability: recovery retry is exposed
 only on the portable startup failure page and rejects workbench-origin IPC.
 
+## Source debugging
+
+From an installed Python environment with the project dependencies and Git:
+
+```bash
+python run_debug.py --state-dir .atlas-debug --port 8000
+```
+
+This source entry detects Git with `shutil.which("git")` and sets an absolute
+`ATLAS_GIT_BINARY` before starting the desktop backend. An explicit existing
+`ATLAS_GIT_BINARY` takes precedence. Packaged desktop builds still require their
+bundled Git; their binary lookup does not fall back to the system PATH.
+
+The server binds to `127.0.0.1`. Credentials are saved in the selected state
+directory's `credentials.json` and reused on restart; an explicit `APP_TOKEN`
+environment value takes precedence and is not printed. The default state directory
+is `.atlas-debug`; without `--state-dir`, existing `DATA_DIR` / `DATABASE_URL`
+settings are preserved. Optional `--model-config /path/to/llm.json` selects the
+model configuration. Project data is never cleared by this entry.
+
+API polling allows 3000 requests per IP per 60 seconds. After a 429, the client
+honors `Retry-After`, including focus / online events, and retries initial device
+registration automatically. If the activity API reports a missing device record,
+the client registers the same device ID again and retains the current draft and
+pending message ID. Do not delete the database to repair this condition. The
+updated frontend has a new cache version; restart the service and reload the page
+after updating the source.
+
 ## Maintainer build
 
 Only the build machine needs Node and npm:

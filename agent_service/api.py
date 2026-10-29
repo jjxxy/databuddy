@@ -110,7 +110,7 @@ async def boundary(request:Request,call_next):
     if key[1]:
         bucket=_requests.setdefault(key,deque())
         while bucket and bucket[0]<time.time()-60:bucket.popleft()
-        if len(bucket)>=300:return JSONResponse(status_code=429,content={'detail':'请求过于频繁，请稍后重试'},headers={'Retry-After':'60'})
+        if len(bucket)>=3000:return JSONResponse(status_code=429,content={'detail':'请求过于频繁，请稍后重试'},headers={'Retry-After':'60'})
         bucket.append(time.time())
     mutating=request.method in ('POST','PUT','PATCH','DELETE')
     if mutating and any(j['state']=='applying' for j in all_items('restore')):
@@ -765,6 +765,10 @@ def application_code(project_id:str,application_id:str,preview:bool=False,run_id
 
 # Browser state is authenticated and separate from project Git snapshots.
 from . import activity
+@app.exception_handler(activity.DeviceNotRegistered)
+def browser_device_missing(request,exc):
+    return JSONResponse(status_code=404,content={'detail':'当前浏览器设备尚未注册，请重新注册后继续','code':'browser_device_missing'})
+
 @app.exception_handler(activity.ViewConflict)
 def view_conflict(request,exc):return JSONResponse(status_code=409,content={'detail':str(exc)})
 

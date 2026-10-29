@@ -1,0 +1,49 @@
+{
+  "observed_at": "2026-10-29T15:45:11.565484+08:00",
+  "base_commit": "9607bfa143776d8e5267649e9336627cdbdd0626",
+  "changes": {
+    "api_requests_per_ip_per_60_seconds": 3000,
+    "desktop_git_auto_detection": "run_debug.py only; packaged runtime stays explicit",
+    "activity_missing_device": "typed 404; re-register same device ID; no database reset",
+    "poll_cooldown": "Retry-After survives focus, online and forced polling",
+    "startup_registration": "429 retries without re-sending business messages; logout cancels pending retry"
+  },
+  "backend_regression": {
+    "passed": 99,
+    "skipped": 4,
+    "failed": 0,
+    "skip_scope": "Windows-specific process and filesystem checks",
+    "duration_seconds": 11.6
+  },
+  "frontend_regression": {
+    "passed_scripts": 23,
+    "failed_scripts": 0,
+    "controlled_dom_and_http": true
+  },
+  "real_source_debug_smoke": {
+    "real_debug_host_started_twice": true,
+    "git_detected_without_ATLAS_GIT_BINARY": true,
+    "real_git_project_creation": true,
+    "activity_registration_recovery": true,
+    "credentials_preserved_after_restart": true,
+    "project_preserved_after_restart": true,
+    "device_preserved_after_restart": true,
+    "no_database_clear": true,
+    "graceful_shutdown": true,
+    "platform": "posix",
+    "live_model": false
+  },
+  "source_sha256": {
+    "agent_service/api.py": "41abd7d52f0653afe0b59a62db56502e8a90a3ee0d55ed4bc4b121798255e0f4",
+    "agent_service/activity.py": "7ead013c93ebbce1fa52987688ee6f2aa13710fd5020c058cc513974946297fe",
+    "agent_service/static/app.js": "dce7d9e16ff889c5f894fb705c93146a180c376a5deae26accff7e5a02f14919",
+    "agent_service/static/lifecycle.js": "5e3c698b9b04aab71207bde593178c403edd5c6d28652d6605e53d3263a44d5d",
+    "agent_service/static/index.html": "72d1f42c9a2c544133d5a18b8341a0ff75addbaa2f0a6b7c0364b44d2d92883a",
+    "run_debug.py": "374456a2f2dbd917a27367e98fc729c9a72ac23259f5a0e77ca1a3b1fd304bd8"
+  },
+  "limits": [
+    "No Windows packaged executable was run in this POSIX environment",
+    "Full repository suite was not rerun for this focused fix",
+    "No live model was called"
+  ]
+}

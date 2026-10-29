@@ -109,6 +109,7 @@ cd databuddy
 | 联网研究、视觉检查与任务验收 | [通用工作能力](GENERAL-WORK.md) |
 | 云浏览器、登录接管、图片与语音 | [使用与部署](BROWSER-AND-MEDIA.md) |
 | 在自己的电脑使用业务文件夹 | [本地工作模式](LOCAL-MODE.md) |
+| 源码调试、Git 检测与桌面打包 | [桌面运行说明](desktop/README.md) |
 | 成果预览与数据应用 | [成果说明](WORKSPACE-ARTIFACTS.md) · [数据应用](DATA-APPLICATIONS.md) |
 | Skills、MCP、记忆与上下文 | [能力扩展](EXTENSIONS.md) · [记忆与上下文](MEMORY-AND-CONTEXT.md) |
 | 与其他 Agent 协作 | [内置团队](AGENT-TEAMS.md) · [外部协作](AGENT-COLLABORATION.md) |

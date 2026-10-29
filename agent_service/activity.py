@@ -52,13 +52,15 @@ class ViewInput(StrictModel):
     writer:str=Field(default='',max_length=64)
 
 class ViewConflict(ValueError):pass
+class DeviceNotRegistered(KeyError):pass
 
 def token_binding():return hashlib.sha256(TOKEN.encode()).hexdigest()
 def max_seq(c):return c.execute(select(func.max(events.c.seq))).scalar() or 0
 
 def device(device_id):
     if not re.fullmatch(DEVICE_RE,device_id):raise ValueError('设备标识无效')
-    d=get('browser_device',device_id)
+    try:d=get('browser_device',device_id)
+    except KeyError:raise DeviceNotRegistered(device_id) from None
     if d.get('token_binding')!=token_binding():raise ValueError('设备登录状态已变化，请重新登录')
     return d
 
