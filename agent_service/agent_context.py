@@ -108,8 +108,17 @@ def definition(name):
 
 def selected(turn):
     text=turn.get('work_request',turn['text'])
-    retained=set(turn.get('discovered_tools',[])[-6:])
-    retained.update(s['tool'] for s in turn.get('agent_trace',[])[-8:])
+    focus=turn.get('tool_focus')
+    if focus is None:
+        # Restore a current frontier from actual prior discovery, rather than
+        # pinning every schema used anywhere in a long task.
+        discovery=next((step for step in reversed(turn.get('agent_trace',[]))
+            if step.get('tool')=='discover_tools' and step.get('status')=='done'
+            and isinstance(step.get('observation'),dict) and isinstance(step['observation'].get('tools'),list)),None)
+        focus=[item['name'] for item in discovery['observation']['tools'] if isinstance(item,dict) and item.get('name')] if discovery else None
+    retained=set(focus or turn.get('discovered_tools',[])[-2:])
+    retained.update(name for name in turn.get('discovered_tools',[])[-1:] if name=='read_context_checkpoint')  # injected recovery, when required
+    retained.update(step['tool'] for step in turn.get('agent_trace',[])[-2:] if step.get('tool') not in ('discover_tools',))
     office_task=(re.search(r'Word|Excel|PPT|PowerPoint|docx|xlsx|pptx|工作簿|幻灯片|演示文稿',text,re.I)
                  and re.search(r'创建|生成|写|做|制作|导出|\b(?:create|generate|export|write|make)\b',text,re.I))
     data_task=re.search(r'汇总|对账|数据加工|工作流|底稿|库存|销售|人事|财务|金额|订单|CSV|SQL',text,re.I)
@@ -129,8 +138,9 @@ def selected(turn):
         names=[]
         for pattern,group in GROUPS:
             if re.search(pattern,text):names.extend(sorted(group))
+    if focus is not None:names=[]
     permitted=allowed(turn)
-    forced=ESSENTIAL|retained|{name for name in permitted if name in text}
+    forced=ESSENTIAL|retained|{name for name in permitted if re.search(r'(?<![a-z0-9_])'+re.escape(name)+r'(?![a-z0-9_])',text,re.I)}
     if turn.get('application_id'):forced.update({'application_info','view_result','ask_data_application'})
     selected_names=forced & permitted
     used=sum(len(json.dumps(definition(name),ensure_ascii=False)) for name in selected_names)
@@ -154,7 +164,7 @@ def discover(turn,value):
         if not matches:matches=[n for n in ranked if n not in CORE][:value.limit]
     current=get('turn',turn['id'])
     focus=list(dict.fromkeys(current.get('discovered_tools',[])+matches))[-16:]
-    patch('turn',turn['id'],discovered_tools=focus)
+    patch('turn',turn['id'],discovered_tools=focus,tool_focus=matches)
     return {'tools':[definition(n) for n in matches],'next_step':'下一步可调用这些工具；目录匹配不代表已经执行'}
 
 def row_scope(value,tool):

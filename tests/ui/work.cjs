@@ -19,4 +19,7 @@ temp.innerHTML=w.component.operationTrace({agent_trace:[{tool:'run_work_command'
 assert(temp.textContent.includes('执行未成功'));assert(!temp.textContent.includes('工作任务 完成'));
 temp.innerHTML=w.component.operationTrace({agent_trace:[{tool:'run_work_command',status:'done',observation:{remote_receipt:true,state:'unknown'}}]});
 assert(temp.textContent.includes('执行结果待核对'));
+temp.innerHTML=w.component.operationTrace({model_usage:{calls:123456,completion_tokens:7654321,usage_incomplete:true},context_metrics:{selected_tools:9999},agent_trace:[{tool:'read_file',status:'done'}]});
+assert(temp.textContent.includes('读取项目文件'));
+assert(!/模型请求|tokens|本步加载|123456|7654321|9999/.test(temp.textContent),'internal model/tool-loading counters are not product progress');
 console.log(JSON.stringify({approval_is_inline:true,work_execution_status_truthful:true,exact_digest:true,arguments_escaped:true,unknown_cannot_be_retried_from_card:true,inherited_history_is_distinct_from_new_attempts:true,reused_or_blocked_operations_not_labelled_as_new_execution:true}));dom.window.close();

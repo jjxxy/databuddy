@@ -41,7 +41,7 @@ async function run(){
   assert.equal(d.querySelector('[data-agent-peer-edit=local_finance_reviewer]'),null);
   assert.equal(d.querySelector('#collaboration-peers img'),null);assert.equal(d.querySelector('#collaboration-tasks svg'),null);
   assert(d.querySelector('#collaboration-peers').textContent.includes('私有资料发送需管理员批准'));
-  assert(d.querySelector('#collaboration-usage').textContent.includes('7次'));
+  assert.equal(d.querySelector('#collaboration-usage').hidden,true);assert.equal(d.querySelector('#collaboration-usage').textContent,'');
   const unknown=d.querySelector('[data-agent-task=unknown]').closest('article');
   assert(unknown.textContent.includes('这里不会自动重发'));assert.equal(unknown.querySelector('[data-agent-task-cancel]'),null);assert.equal(unknown.querySelector('[data-retry]'),null);
   assert(d.querySelector('[data-agent-task=claim]').closest('article').textContent.includes('尚无经过本方核验的完整成果'));

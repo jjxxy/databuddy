@@ -185,7 +185,14 @@ def _new_tool_definitions(result,known):
         digest=hashlib.sha256(json.dumps(tool,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         if key and known.get(key)!=digest:
             changed.append(tool);known[key]=digest
-    return dict(result,available_tools=changed,available_tools_scope='new_or_changed; existing definitions remain available')
+    output=dict(result,available_tools=changed,available_tools_scope='new_or_changed; existing definitions remain available')
+    capabilities=output.get('capability_context')
+    if isinstance(capabilities,dict):
+        from .capability_guidance import digest as capability_digest
+        identity=capability_digest(capabilities)
+        if known.get('__capability_context__')==identity:output.pop('capability_context')
+        else:known['__capability_context__']=identity
+    return output
 
 
 def _needs_compaction(native_context,content,requested=False,character_cap=None):
@@ -362,6 +369,8 @@ def run_session(turn, prompt, info, callback):
     compaction_pending = [False]
     known_tools={tool['name']:hashlib.sha256(json.dumps(tool,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                  for tool in info.get('tools',[]) if isinstance(tool,dict) and tool.get('name')}
+    if isinstance(info.get('capability_context_version'),str):
+        known_tools['__capability_context__']=info['capability_context_version']
     from .memory_service import generation as memory_generation
     starting_memory_generation=memory_generation(turn['project_id'])
     previous_generation=turn.get('opencode_memory_generation')
@@ -389,6 +398,7 @@ def run_session(turn, prompt, info, callback):
             messages=_request(value,'GET','/api/session/'+session_id[0]+'/context')['data']
             if _observe_completed_compactions(turn['id'],session_id[0],messages):
                 compaction_pending[0]=False
+                known_tools.clear()  # native summary may have evicted schemas/methods
 
     def dispatch(payload):
         assert_owned()
@@ -559,6 +569,7 @@ def run_session(turn, prompt, info, callback):
                 with serial:
                     if _observe_completed_compactions(turn['id'],session_id[0],messages):
                         compaction_pending[0]=False
+                        known_tools.clear()  # re-discovery must resend evicted definitions
                 # Only native error envelopes are trusted for retry classification;
                 # a web page/tool result mentioning token limits is not one.
                 for message in reversed(messages or []):

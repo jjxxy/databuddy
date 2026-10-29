@@ -1,0 +1,124 @@
+{
+  "date": "2026-10-29",
+  "backend_regression_passed": 280,
+  "subsequent_runtime_checks_passed": 40,
+  "subsequent_finance_capability_checks_passed": 30,
+  "frontend_dom_scripts_passed": 25,
+  "native_plugin_js_tests_passed": 21,
+  "full_repository_suite": false,
+  "payload_comparison": {
+    "same_core_tool_selection": true,
+    "all_services_configured": true,
+    "before_prompt_characters": 6692,
+    "after_prompt_characters": 1678,
+    "before_request_characters": 16555,
+    "after_request_characters": 11327,
+    "loaded_capabilities": [],
+    "core_tools": [
+      "business_rules",
+      "discover_tools",
+      "project_context",
+      "read_tool_result",
+      "set_task_plan"
+    ]
+  },
+  "actual_native_office_discovery": {
+    "ok": true,
+    "actual_opencode_binary": true,
+    "version": "2.1.2",
+    "local_simulated_provider": true,
+    "office_spec_absent_from_bootstrap": true,
+    "office_spec_loaded_after_discovery": true,
+    "actual_docx_generated": true,
+    "inline_output_metadata": true,
+    "file_sha256_verified": true,
+    "write_count": 1,
+    "calls": [
+      {
+        "input_characters": 116499,
+        "written": false,
+        "recovered": false,
+        "office_spec_loaded": false
+      },
+      {
+        "input_characters": 120438,
+        "written": false,
+        "recovered": false,
+        "office_spec_loaded": true
+      },
+      {
+        "input_characters": 121721,
+        "written": true,
+        "recovered": false,
+        "office_spec_loaded": true
+      },
+      {
+        "input_characters": 123282,
+        "written": true,
+        "recovered": false,
+        "office_spec_loaded": true
+      }
+    ]
+  },
+  "actual_native_overflow": {
+    "ok": true,
+    "actual_opencode_binary": true,
+    "version": "2.1.2",
+    "local_simulated_provider": true,
+    "real_provider_context_400_observed": true,
+    "automatic_retry_without_user_continue": true,
+    "originals_retained": true,
+    "write_count": 1,
+    "context_recoveries": 1,
+    "state": "done",
+    "calls": [
+      {
+        "input_characters": 118437,
+        "written": false,
+        "recovered": false
+      },
+      {
+        "input_characters": 119840,
+        "written": true,
+        "recovered": false
+      },
+      {
+        "input_characters": 122630,
+        "written": true,
+        "recovered": false
+      },
+      {
+        "input_characters": 43438,
+        "written": true,
+        "recovered": true
+      }
+    ]
+  },
+  "real_chromium": {
+    "real_chromium": "153.0.8010.0",
+    "mock_api": true,
+    "no_live_model_or_deployment": true,
+    "internal_model_counters_hidden": true,
+    "inline_conversation_output": true,
+    "desktop_preview": true,
+    "mobile_preview": true,
+    "png_decoded": true,
+    "pagination": true,
+    "generated_script_not_executed": true,
+    "partial_pages_disclosed": true,
+    "no_horizontal_overflow": true,
+    "browser_handoff_desktop_mobile": true,
+    "return_control_gates_inputs": true,
+    "unconfigured_voice_disabled": true,
+    "no_real_microphone_or_voice_service": true
+  },
+  "source_sha256": {
+    "agent_service/agent.py": "f146eaf956768b6494faae0d45b31b576f5179bcb754b519ca3ea999893e6915",
+    "agent_service/agent_context.py": "b0f0a29564491591bcb53b957e473f3e13d16d30dab1a519819da322d8e2ccf6",
+    "agent_service/capability_guidance.py": "5083cfca180020f331b95f6239c9ed027bc1c6def0f8a0c03d0b32bd9c46e0ed",
+    "agent_service/opencode_runtime.py": "adaaf59f0abb337e88dac5b6da70defb1ebe9a7c2c241291179455ff63962fc5",
+    "agent_service/static/app.js": "8c8386f5f3c44fa188c88a1cc93d4583493c70b201e9eb265599f94b9e7a6a3a",
+    "agent_service/static/agent-collaboration.js": "67213fbe6e5652d2d1100fc4c88864b1052d15bc220895c4e0864328caec2c78",
+    "scripts/verify_context_overflow.py": "3375bba777f0c6615383660f53b2de3c4d22ac18eb323ea756efeb872a3c3dcf"
+  }
+}
