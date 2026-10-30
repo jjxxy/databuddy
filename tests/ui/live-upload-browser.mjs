@@ -93,14 +93,84 @@ try{
    await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===0&&document.querySelectorAll('.user-row').length>=count,expected,{timeout:30000});
   }
  }
- assert.equal(messages.length,4);for(const [index,mode] of ['chat','chat','work','work'].entries()){
+ // Directory checkbox fallback uses a real temporary directory. Playwright
+ // provides the folder to Chromium; the OS selection window is not automated.
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-directory-input-'));
+ try{
+  fs.mkdirSync(path.join(folder,'nested'));
+  fs.writeFileSync(path.join(folder,'one.csv'),'id,amount\n1,10\n');
+  fs.writeFileSync(path.join(folder,'nested','two.txt'),'notes');
+  fs.writeFileSync(path.join(folder,'nested','one.csv'),'id,amount\n2,20\n');
+  fs.writeFileSync(path.join(folder,'three.json'),'{"name":"third"}');
+  fs.writeFileSync(path.join(folder,'unselected.csv'),'id,amount\n4,999\n');
+  fs.writeFileSync(path.join(folder,'unsupported.exe'),'unused');
+  fs.writeFileSync(path.join(folder,'empty.txt'),'');
+  for(const mode of ['chat','work']){
+   await page.click('[data-mode='+mode+']');
+   // An existing attachment must survive and be combined with the folder choices.
+   if(mode==='chat'){
+    const choosing=page.waitForEvent('filechooser');await page.click('#attach');
+    await (await choosing).setFiles({name:'existing.txt',mimeType:'text/plain',buffer:Buffer.from('existing')});
+    await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===1);
+   }
+   const attemptsBefore=uploadAttempts.length;await page.click('#folder-attach');
+   assert((await page.locator('#folder-attach-dialog').innerText()).includes('子文件夹'));
+   const choosing=page.waitForEvent('filechooser');await page.click('#folder-attach-choose');
+   const picker=await choosing;assert(picker.isMultiple());await picker.setFiles(folder);
+   const rows=page.locator('#folder-attach-list label');assert.equal(await rows.count(),7);
+   assert((await rows.filter({hasText:'unsupported.exe'}).locator('input').isDisabled()));
+   assert((await rows.filter({hasText:'empty.txt'}).locator('input').isDisabled()));
+   // Same-named files from two different directories are distinct choices.
+   const rootOne=rows.filter({hasText:'one.csv'}).filter({hasNotText:'nested/one.csv'});
+   await rootOne.locator('input').check();await rows.filter({hasText:'nested/one.csv'}).locator('input').check();
+   if(mode==='work')await rows.filter({hasText:'two.txt'}).locator('input').check();
+   assert.equal(uploadAttempts.length,attemptsBefore,'opening and checking never uploads');
+   assert((await page.locator('#folder-attach-status').textContent()).includes('已勾选 '+(mode==='chat'?2:3)));
+   await page.click('#folder-attach-confirm');await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===3);
+   const expected=messages.length+1;await page.fill('#message','Folder selected files for '+mode);await page.click('#send');
+   await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===0&&document.querySelectorAll('.user-row').length>=count,expected,{timeout:30000});
+  }
+  // Closing cancels the in-page selection and drops retained File references.
+  await page.click('#folder-attach');let choosing=page.waitForEvent('filechooser');await page.click('#folder-attach-choose');await (await choosing).setFiles(folder);
+  await page.locator('#folder-attach-list label').filter({hasText:'three.json'}).locator('input').check();
+  await page.click('#folder-attach-close');assert.equal(await page.locator('#folder-attach-list label').count(),0);
+  assert.equal(await page.locator('.attachment-chip').count(),0);
+  // Results from a picker opened in a different project must never be attached.
+  await page.click('#folder-attach');choosing=page.waitForEvent('filechooser');await page.click('#folder-attach-choose');await (await choosing).setFiles(folder);
+  await page.locator('#folder-attach-list label').filter({hasText:'three.json'}).locator('input').check();
+  const other=await jsonRequest(backendOrigin+'/api/projects',{method:'POST',body:JSON.stringify({name:'Other project',request_id:'other-'+Date.now()})});
+  await page.evaluate(()=>{window.testOldFolderScope={...folderScope}});
+  await page.evaluate(id=>window.atlasBusiness.openProject(id),other.id);
+  await page.evaluate(()=>{const data=new DataTransfer();data.items.add(new File(['old'],'old.csv'));folderPending=window.testOldFolderScope;folderInput.files=data.files;folderInput.dispatchEvent(new Event('change'))});
+  assert.equal(await page.locator('.attachment-chip').count(),0);assert.equal(await page.locator('#folder-attach-list label').count(),0);
+  await page.evaluate(id=>window.atlasBusiness.openProject(id),project.id);
+  await page.waitForFunction(id=>projectId===id&&!!sessionId&&!navigating,project.id);
+  // Bounded listing and hard 20-file limit, including XSS-safe file names.
+  await page.click('#folder-attach');
+  await page.evaluate(()=>{const data=new DataTransfer();data.items.add(new File(['x'],'<img src=x>.csv'));for(let i=1;i<5001;i++)data.items.add(new File(['x'],'f'+i+'.csv'));folderPending={...folderScope};folderInput.files=data.files;folderInput.dispatchEvent(new Event('change'))});
+  assert.equal(await page.locator('#folder-attach-list label').count(),5000);
+  assert.equal(await page.locator('#folder-attach-list img').count(),0);
+  assert((await page.locator('#folder-attach-status').textContent()).includes('共有 5001'));
+  for(let i=0;i<21;i++)await page.locator('#folder-attach-list input').nth(i).check();
+  assert(await page.locator('#folder-attach-confirm').isDisabled());
+  assert((await page.locator('#folder-attach-status').textContent()).includes('共有 5001'));
+  await page.click('#folder-attach-close');
+  // A long filename must wrap in the populated checklist on a small viewport.
+  fs.writeFileSync(path.join(folder,'long-'+('a'.repeat(180))+'.csv'),'id,amount\n1,1\n');
+  await page.setViewportSize({width:390,height:844});await page.click('#folder-attach');
+  choosing=page.waitForEvent('filechooser');await page.click('#folder-attach-choose');await (await choosing).setFiles(folder);
+  assert.equal(await page.locator('#folder-attach-dialog').evaluate(node=>node.scrollWidth>node.clientWidth+1),false);
+  assert.equal(await page.locator('#folder-attach-list').evaluate(node=>node.scrollWidth>node.clientWidth+1),false);
+  await page.click('#folder-attach-close');await page.setViewportSize({width:1380,height:900});
+ }finally{fs.rmSync(folder,{recursive:true,force:true})}
+ assert.equal(messages.length,6);for(const [index,mode] of ['chat','chat','work','work','chat','work'].entries()){
   assert.equal(messages[index].interaction_mode,mode);assert.equal(messages[index].source_ids.length,3);
   assert.equal(new Set(messages[index].source_ids).size,3);
  }
  assert(gateRejected&&droppedSuccess&&uploadAttempts[0]===uploadAttempts[1]&&uploadAttempts[1]===uploadAttempts[2],'gateway rejection and ambiguous upload response must retry the same id');
  assert.equal(uploadPeak,1,'UI must upload at most one attachment at a time');
  const sources=await jsonRequest(backendOrigin+'/api/sources');
- assert.equal(sources.filter(source=>source.project_id===project.id).length,12,'lost response retry must not create a duplicate source');
+ assert.equal(sources.filter(source=>source.project_id===project.id).length,18,'lost response retry must not create a duplicate source or upload unselected files');
  const conversation=await jsonRequest(backendOrigin+'/api/projects/'+project.id+'/conversation');
  for(const message of messages){const turn=conversation.turns.find(value=>value.text===message.text);assert(turn);assert.deepEqual(turn.source_ids,message.source_ids);assert.equal(turn.attached_sources.length,3)}
  assert.deepEqual(errors,[]);
@@ -122,11 +192,11 @@ try{
   oldClientSaturatedGateway=overloaded>0;
   assert(oldClientSaturatedGateway,'previous client must reproduce gateway rejection');
   assert((await oldPage.locator('#connection-error').textContent()).includes('部分文件上传失败'));
-  assert.equal(messages.length,4,'partial old-client upload must not submit a message');
+  assert.equal(messages.length,6,'partial old-client upload must not submit a message');
   await oldContext.close();
  }
  console.log(JSON.stringify({real_chromium:browser.version(),actual_api_and_sqlite:true,nonsecure_http:true,actual_secure_context:actualSecureContext,random_uuid_unavailable:true,
-  chat_and_work_three_distinct_files:true,both_modes_primary_picker_repeated_single_choices:true,focus_and_real_poll_preserve_selections:true,actual_turns_keep_all_sources:true,sequential_uploads:true,gateway_busy_retried:true,lost_response_same_request_id:true,
+  chat_and_work_three_distinct_files:true,both_modes_primary_picker_repeated_single_choices:true,focus_and_real_poll_preserve_selections:true,actual_folder_checkbox_three_files:true,unselected_folder_file_not_uploaded:true,actual_turns_keep_all_sources:true,sequential_uploads:true,gateway_busy_retried:true,lost_response_same_request_id:true,
   no_duplicate_sources:true,simulated_gateway_slots:2,peak_api_requests:peak,previous_main_gateway_failure_reproduced:oldClientSaturatedGateway,gateway_503_count:overloaded,
   real_model_or_windows_tested:false,evidence_dir:state}));
 }finally{

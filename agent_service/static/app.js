@@ -2,7 +2,7 @@
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uuid=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
-const CLIENT_REVISION='2026.10.30.3';
+const CLIENT_REVISION='2026.10.30.4';
 let runtimeNodeWarning=false;
 function runtimeVersion(r){
  const revision=r.headers.get('X-Atlas-Runtime-Revision'),label=$('#runtime-version');if(!label)return;
@@ -20,7 +20,7 @@ function authTransitionError(){return Object.assign(Error('登录状态已变化
 function clearAccountSession(){for(const key of Object.keys(sessionStorage))if(key.startsWith('atlas_'))sessionStorage.removeItem(key)}
 function reloadAuthDocument(){location.reload()}
 let projectDialogGeneration=0,applicationsScope=null,versionsScope=null;
-function invalidateProjectDialogs(){projectDialogGeneration++;applicationsScope=versionsScope=null;for(const name of ['applications','versions']){const dialog=$('#'+name+'-dialog');if(dialog?.open)dialog.close()}$('#application-list').replaceChildren();$('#version-list').replaceChildren()}
+function invalidateProjectDialogs(){closeFolderPicker();projectDialogGeneration++;applicationsScope=versionsScope=null;for(const name of ['applications','versions']){const dialog=$('#'+name+'-dialog');if(dialog?.open)dialog.close()}$('#application-list').replaceChildren();$('#version-list').replaceChildren()}
 function currentProjectDialog(scope){return scope&&!authSealed&&scope.projectId===projectId&&scope.epoch===viewEpoch&&scope.generation===projectDialogGeneration}
 function sealAuthentication(){authSealed=true;turnArtifactItems.clear();bootEpoch++;clearTimeout(bootRetryTimer);invalidateProjectDialogs();window.atlasLocalData?.reset();viewEpoch++;life?.invalidate();for(const controller of authRequests)controller.abort();authRequests.clear();window.atlasCollaboration?.reset();window.atlasShell?.reset();window.atlasWorkRuntime?.reset();window.atlasInteractive?.reset();$('#shell').hidden=true;$('#login').hidden=false}
 function expireAuthentication(){if(authSealed)return;sealAuthentication();clearAccountSession();reloadAuthDocument()}
@@ -173,6 +173,41 @@ $('#login-form').onsubmit=async e=>{e.preventDefault();const nextToken=$('#acces
 $('#composer').onsubmit=e=>{e.preventDefault();send()};$('#message').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}};$('#message').oninput=()=>{saveDraft();$('#message').style.height='auto';$('#message').style.height=Math.min($('#message').scrollHeight,180)+'px'};
 let fileSelectionScope=null;
 function openAttachmentPicker(){if(authSealed)return;if(navigating){toast('正在切换项目或对话，请稍后选择文件');return}if(sending){toast('正在发送，请稍后添加文件');return}if(pending){toast('上一条消息尚未确认，请先重试或处理该消息');return}const input=$('#file');input.multiple=true;input.removeAttribute('capture');input.value='';fileSelectionScope={projectId,sessionId,epoch:viewEpoch};input.click()}
+// Optional directory picker: never read or upload unselected contents.
+const folderDialog=$('#folder-attach-dialog'),folderInput=$('#folder-attach-input'),folderList=$('#folder-attach-list');
+const folderSupported=/\.(csv|xlsx|json|jsonl|html|htm|txt|md|pdf|docx|pptx|png|jpg|jpeg|tiff|webp)$/i;
+const folderScanLimit=5000;let folderScope=null,folderPending=null,folderEntries=[],folderGeneration=0,folderTruncatedTotal=0;
+function clearFolderPicker(){folderGeneration++;folderScope=folderPending=null;folderEntries=[];folderTruncatedTotal=0;folderInput.value='';folderList.replaceChildren();$('#folder-attach-confirm').disabled=true;$('#folder-attach-status').textContent='请选择文件夹。'}
+function closeFolderPicker(){if(folderDialog?.open)folderDialog.close();clearFolderPicker()}
+function folderCurrent(scope){return !!scope&&folderDialog.open&&!authSealed&&!navigating&&!sending&&!pending&&scope.generation===folderGeneration&&scope.project===projectId&&scope.session===sessionId&&scope.epoch===viewEpoch}
+function refreshFolderSelection(){const selected=folderEntries.filter(entry=>entry.checkbox.checked).length,available=Math.max(0,20-attached.length),status=$('#folder-attach-status');status.textContent=`已勾选 ${selected} 个；当前对话还可添加 ${available} 个文件。`+(folderTruncatedTotal?` 文件夹共有 ${folderTruncatedTotal} 项，仅列出前 ${folderScanLimit} 项，请选择更小的文件夹。`:'');$('#folder-attach-confirm').disabled=!selected||selected>available;if(selected>available)status.textContent+=' 选中数量超过上限，请减少。'}
+$('#folder-attach').onclick=()=>{
+ if(authSealed)return;if(navigating||sending||pending){toast('请等待当前操作完成后选择文件');return}
+ if(!('webkitdirectory' in folderInput)){toast('当前浏览器不支持选择文件夹，请使用“＋文件”或拖入文件');return}
+ if(attached.length>=20){toast('每条消息最多20个文件');return}
+ clearFolderPicker();folderScope={generation:folderGeneration,project:projectId,session:sessionId,epoch:viewEpoch};folderDialog.showModal();
+};
+$('#folder-attach-choose').onclick=()=>{if(!folderCurrent(folderScope)){toast('项目或对话已变化，请重新打开');closeFolderPicker();return}folderInput.value='';folderPending={...folderScope};folderInput.click()};
+folderInput.onchange=event=>{
+ const scope=folderPending;folderPending=null;if(!folderCurrent(scope)){event.target.value='';return}
+ const list=event.target.files||[],total=list.length,limit=Math.min(total,folderScanLimit);folderEntries=[];folderTruncatedTotal=total>folderScanLimit?total:0;folderList.replaceChildren();
+ for(let i=0;i<limit;i++){
+  const file=list[i],label=document.createElement('label'),checkbox=document.createElement('input'),name=document.createElement('span');checkbox.type='checkbox';
+  const supported=folderSupported.test(file.name),validSize=file.size>0&&file.size<=25*1024*1024;checkbox.disabled=!supported||!validSize;
+  name.textContent=(file.webkitRelativePath||file.name)+(supported?validSize?'':file.size?'（超过25MB）':'（文件为空）':'（格式不支持）');
+  label.append(checkbox,name);folderList.append(label);folderEntries.push({file,checkbox});checkbox.addEventListener('change',refreshFolderSelection);
+ }
+ event.target.value='';refreshFolderSelection();
+ if(!total)$('#folder-attach-status').textContent='文件夹没有可选择的文件。';
+};
+folderInput.addEventListener('cancel',()=>{folderPending=null});
+$('#folder-attach-confirm').onclick=()=>{
+ if(!folderCurrent(folderScope)){toast('项目或对话已变化，请重新选择文件');closeFolderPicker();return}
+ const selected=folderEntries.filter(entry=>entry.checkbox.checked&&!entry.checkbox.disabled).map(entry=>entry.file);
+ if(!selected.length||selected.length>20-attached.length){refreshFolderSelection();return}
+ attach(selected);closeFolderPicker();
+};
+$('#folder-attach-close').onclick=closeFolderPicker;folderDialog.addEventListener('close',()=>{if(!folderDialog.open)clearFolderPicker()});
 $('#file').multiple=true;
 $('#attach').onclick=openAttachmentPicker;$('#add-more-files').onclick=openAttachmentPicker;
 $('#file').onchange=e=>{const files=Array.from(e.target.files||[]);e.target.value='';const scope=fileSelectionScope;fileSelectionScope=null;if(scope&&(scope.projectId!==projectId||scope.sessionId!==sessionId||scope.epoch!==viewEpoch)||authSealed){toast('项目或对话已变化，请重新选择文件');return}attach(files)};
