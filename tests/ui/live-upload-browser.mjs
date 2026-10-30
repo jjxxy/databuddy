@@ -73,20 +73,34 @@ try{
   {name:'same.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n2,2.50\n')},
   {name:'third.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n3,3.75\n')}];
  for(const mode of ['chat','work']){
-  await page.click('[data-mode='+mode+']');const choosing=page.waitForEvent('filechooser');await page.click('#attach');
-  const picker=await choosing;assert.equal(picker.isMultiple(),true);await picker.setFiles(files);
-  await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===3);
-  const expected=messages.length+1;await page.fill('#message','Read all files for '+mode);await page.click('#send');
-  await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===0&&document.querySelectorAll('.user-row').length>=count,expected,{timeout:30000});
+  await page.click('[data-mode='+mode+']');
+  for(const [variant,batches] of [['multi',[files]],['separate',files.map(file=>[file])]]){
+   let selected=0;
+   for(const batch of batches){
+    // Both the first choice and each later choice use the primary + button.
+    const choosing=page.waitForEvent('filechooser');await page.click('#attach');
+    const picker=await choosing;assert.equal(picker.isMultiple(),true);await picker.setFiles(batch);
+    selected+=batch.length;
+    await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===count,selected);
+    // File dialogs cause focus changes. Exercise the production lifecycle poll
+    // against the real API before opening the next picker.
+    const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/projects/'+project.id+'/conversation'&&response.ok(),{timeout:15000});
+    await page.evaluate(async()=>{window.dispatchEvent(new Event('focus'));await new Promise(resolve=>setTimeout(resolve,100));await life.poll(true)});
+    await refreshed;await page.waitForFunction(()=>!polling);
+    assert.equal(await page.locator('.attachment-chip').count(),selected);
+   }
+   const expected=messages.length+1;await page.fill('#message','Read all files for '+mode+' '+variant);await page.click('#send');
+   await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===0&&document.querySelectorAll('.user-row').length>=count,expected,{timeout:30000});
+  }
  }
- assert.equal(messages.length,2);for(const [index,mode] of ['chat','work'].entries()){
+ assert.equal(messages.length,4);for(const [index,mode] of ['chat','chat','work','work'].entries()){
   assert.equal(messages[index].interaction_mode,mode);assert.equal(messages[index].source_ids.length,3);
   assert.equal(new Set(messages[index].source_ids).size,3);
  }
  assert(gateRejected&&droppedSuccess&&uploadAttempts[0]===uploadAttempts[1]&&uploadAttempts[1]===uploadAttempts[2],'gateway rejection and ambiguous upload response must retry the same id');
  assert.equal(uploadPeak,1,'UI must upload at most one attachment at a time');
  const sources=await jsonRequest(backendOrigin+'/api/sources');
- assert.equal(sources.filter(source=>source.project_id===project.id).length,6,'lost response retry must not create a duplicate source');
+ assert.equal(sources.filter(source=>source.project_id===project.id).length,12,'lost response retry must not create a duplicate source');
  const conversation=await jsonRequest(backendOrigin+'/api/projects/'+project.id+'/conversation');
  for(const message of messages){const turn=conversation.turns.find(value=>value.text===message.text);assert(turn);assert.deepEqual(turn.source_ids,message.source_ids);assert.equal(turn.attached_sources.length,3)}
  assert.deepEqual(errors,[]);
@@ -108,11 +122,11 @@ try{
   oldClientSaturatedGateway=overloaded>0;
   assert(oldClientSaturatedGateway,'previous client must reproduce gateway rejection');
   assert((await oldPage.locator('#connection-error').textContent()).includes('部分文件上传失败'));
-  assert.equal(messages.length,2,'partial old-client upload must not submit a message');
+  assert.equal(messages.length,4,'partial old-client upload must not submit a message');
   await oldContext.close();
  }
  console.log(JSON.stringify({real_chromium:browser.version(),actual_api_and_sqlite:true,nonsecure_http:true,actual_secure_context:actualSecureContext,random_uuid_unavailable:true,
-  chat_and_work_three_distinct_files:true,actual_turns_keep_all_sources:true,sequential_uploads:true,gateway_busy_retried:true,lost_response_same_request_id:true,
+  chat_and_work_three_distinct_files:true,both_modes_primary_picker_repeated_single_choices:true,focus_and_real_poll_preserve_selections:true,actual_turns_keep_all_sources:true,sequential_uploads:true,gateway_busy_retried:true,lost_response_same_request_id:true,
   no_duplicate_sources:true,simulated_gateway_slots:2,peak_api_requests:peak,previous_main_gateway_failure_reproduced:oldClientSaturatedGateway,gateway_503_count:overloaded,
   real_model_or_windows_tested:false,evidence_dir:state}));
 }finally{
