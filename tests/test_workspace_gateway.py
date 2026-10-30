@@ -582,3 +582,45 @@ def test_gateway_preserves_backend_runtime_revision_for_ui_diagnostics(settings)
         assert value.status_code==200
         assert value.headers['x-atlas-runtime-revision']==revision
         assert value.headers['cache-control']=='no-store'
+
+
+def test_web_gateway_forwards_multiple_attachments_to_real_workspace_api(settings, monkeypatch):
+    """Exercise the real isolated web gateway and workspace API, without browser emulation."""
+    from agent_service import api, identity, model_catalog
+    from agent_service.store import get, uid
+    from agent_service.connectors import verified_file_source
+
+    monkeypatch.setenv('ATLAS_AUTH_MODE', 'oidc')
+    monkeypatch.setenv('OIDC_ISSUER', settings[0]['oidc']['issuer'])
+    monkeypatch.setenv('OIDC_AUDIENCE', settings[0]['oidc']['audience'])
+    monkeypatch.setenv('OIDC_JWKS_URL', 'https://identity.example/jwks')
+    monkeypatch.setenv('OIDC_ALLOWED_SUBJECTS', 'alice-sub')
+    monkeypatch.setattr(identity, 'keys', lambda refresh=False: [settings[3]])
+    monkeypatch.setattr(model_catalog, 'select', lambda *args, **kwargs: {})
+    config = GatewayConfig.parse(settings[0])
+    app = create_app(config, transport=httpx.ASGITransport(app=api.app))
+    files = [('one.csv', b'id,amount\n1,12\n'), ('two.txt', b'notes\n'),
+             ('three.json', b'{"meta":{"unit":"CNY"},"items":[{"amount":1}]}')]
+    with TestClient(app, base_url='https://atlas.example') as client:
+        shell = client.get('/')
+        assert shell.status_code == 200
+        assert 'id="file" multiple' in shell.text
+        assert client.get('/app.js').status_code == 200
+        headers = auth(settings)
+        project = client.post('/api/projects', headers=headers,
+                              json={'name': 'isolated-web-multiple', 'request_id': 'project-' + uid()})
+        assert project.status_code == 200, project.text
+        project_id = project.json()['id']
+        source_ids = []
+        for name, raw in files:
+            result = client.post('/api/projects/' + project_id + '/attachments', headers=headers,
+                                 files={'file': (name, raw, 'application/octet-stream')},
+                                 data={'request_id': 'upload-' + uid()})
+            assert result.status_code == 200, result.text
+            source_ids.append(result.json()['id'])
+        message = client.post('/api/projects/' + project_id + '/messages', headers=headers,
+                              json={'text': 'Read all three', 'source_ids': source_ids,
+                                    'interaction_mode': 'work', 'request_id': 'message-' + uid()})
+        assert message.status_code == 200, message.text
+        assert message.json()['source_ids'] == source_ids
+        assert [verified_file_source(get('source', sid))[1] for sid in source_ids] == [raw for _, raw in files]
