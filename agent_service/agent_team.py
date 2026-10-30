@@ -21,7 +21,7 @@ ROLES={
 TERMINAL={'succeeded','failed','input_required','auth_required','cancelled','unknown','rejected'}
 READ_TOOLS={
  'project_context','discover_tools','read_tool_result','set_task_plan','load_workflow','business_rules',
- 'source_schema','source_preview','inspect_source_tables','read_source_table','read_document_data_evidence',
+ 'source_schema','source_preview','read_source_text','inspect_source_tables','read_source_table','read_document_data_evidence',
  'list_files','read_file','search_files','versions','list_data_applications','application_info',
  'data_asset_catalog','inspect_data_quality','inspect_column_lineage','inspect_metric','view_result','query_sql','ask_data_application',
  'list_data_workflows','inspect_data_workflow','read_data_workflow_result','data_workflow_guide',
@@ -29,11 +29,11 @@ READ_TOOLS={
  'inspect_semantic_proposal','list_semantic_catalogs','inspect_semantic_catalog','semantic_catalog_guide',
  'discover_skills','load_skill','read_skill_file','recall_memories',
 }
-EVIDENCE_TOOLS={'source_schema','source_preview','inspect_source_tables','read_source_table','read_document_data_evidence',
+EVIDENCE_TOOLS={'source_schema','source_preview','read_source_text','inspect_source_tables','read_source_table','read_document_data_evidence',
  'read_file','search_files','application_info','inspect_data_quality','inspect_column_lineage','inspect_metric',
  'view_result','query_sql','ask_data_application','inspect_data_workflow','read_data_workflow_result','inspect_business_report_input'}
 APP_TOOLS={'application_info','inspect_data_quality','inspect_column_lineage','inspect_metric','view_result','query_sql','ask_data_application'}
-SOURCE_TOOLS={'source_schema','source_preview','inspect_source_tables','read_source_table','read_document_data_evidence'}
+SOURCE_TOOLS={'source_schema','source_preview','read_source_text','inspect_source_tables','read_source_table','read_document_data_evidence'}
 RESULT_READ_TOOLS={'view_result','query_sql','ask_data_application','read_data_workflow_result','inspect_business_report_input'}
 
 

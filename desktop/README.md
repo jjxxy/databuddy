@@ -52,7 +52,7 @@ state directory/model configuration, then reload the page. For a packaged
 desktop app, rebuild and replace the complete program folder; keep the selected
 workspace and state directory. Do not clear the database or credentials.
 
-The sidebar shows runtime revision `2026.10.30.2` for this repair. Click it to
+The sidebar shows runtime revision `2026.10.30.3` for this repair. Click it to
 inspect API, Agent and Worker revisions. Missing or different node revisions
 indicate that some processes still need to be updated/restarted. These runtime
 revisions are distinct from the application version `0.20.0` and Git commit IDs.

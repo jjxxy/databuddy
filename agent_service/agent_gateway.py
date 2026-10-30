@@ -29,7 +29,7 @@ READ_TOOLS={
  'read_document_data_evidence','inspect_extracted_data_facts','list_report_sources','read_report_acquisition',
  'inspect_source_tables','read_source_table','inspect_data_workflow','read_data_workflow_result',
  'data_asset_catalog','inspect_data_quality','inspect_column_lineage','inspect_metric','source_schema',
- 'source_preview','list_files','read_file','search_files','versions','application_info','view_result',
+ 'source_preview','read_source_text','list_files','read_file','search_files','versions','application_info','view_result',
  'query_sql','ask_data_application','project_health','local_workspace_status',
 }
 WORK_TOOLS={'set_task_plan','write_file','edit_file','register_data_workflow','run_data_workflow',

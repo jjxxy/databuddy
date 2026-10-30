@@ -27,7 +27,7 @@ try{
    else if(p==='/api/desktop/runtime')value={notice:'本地处理'};
    else if(p==='/api/projects/p/attachments'){
     const body=request.postDataBuffer().toString('utf8'),n=body.includes('3,90.12')?3:body.includes('2,56.78')?2:1;
-    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.2'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
+    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.3'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
     if(n===2&&failSecond)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'暂时无法导入第二份'})});
     value={id:'s_'+n,name:files[n-1].name};if(!sources.some(s=>s.id===value.id))sources.push({...value,status:'ready',profile:{fields:fields(n),sample_rows:1}});
    }
@@ -36,7 +36,7 @@ try{
    else if(p==='/api/pipelines'&&request.method()==='POST'){processed=request.postDataJSON();value={id:'pipe',project_id:'p'};pipelines.push({...value,candidate_run:'run'});}
    else if(p==='/api/pipelines')value=pipelines;
    else if(p==='/api/pipelines/pipe/preview')value={run_id:'run',manifest:{fields:fields(3),records:1,summary:[]},rows:[{field_3:'90.12'}]};
-   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.2'},contentType:'application/json',body:JSON.stringify(value)});
+   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.3'},contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=path.join(root,p==='/'?'index.html':p.slice(1));
   if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
@@ -63,7 +63,7 @@ try{
    assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
   }
  }
- assert.equal(composerUploads.length,12);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.30.2'));
+ assert.equal(composerUploads.length,12);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.30.3'));
  await page.click('#open-local-work');await page.waitForSelector('#atlas-local-workspace-content:not([hidden])');
  await page.waitForFunction(()=>!document.querySelector('#atlas-local-file').disabled);
  const localChooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const localPicker=await localChooser;assert.equal(localPicker.isMultiple(),true);await localPicker.setFiles(files);

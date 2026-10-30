@@ -697,3 +697,27 @@ def test_docker_duplex_stream_stages_and_reads_tmpfs_without_archive_api(monkeyp
             worker.join(timeout=3)
             assert not worker.is_alive() and not errors and received==[inputs]
         finally:backend.client.close()
+
+
+def test_nested_json_upload_probes_and_copies_original_bytes_to_work_environment(controller):
+    from agent_service.api import app
+    from agent_service.config import TOKEN
+    from agent_service.execution import process_once
+    from agent_service.conversation import snapshot_attachment
+    raw=b'{"meta":{"currency":"CNY","amount":9007199254740.000001},"data":[{"id":1}],"other":[{"id":2}]}'
+    engine,_,turn=controller
+    with TestClient(app) as client:
+        response=client.post('/api/projects/'+turn['project_id']+'/attachments',headers={'Authorization':'Bearer '+TOKEN},
+            files={'file':('nested-document.json',raw,'application/json')},data={'request_id':uid()})
+    assert response.status_code==200,response.text
+    sid=response.json()['id'];assert process_once()
+    source=get('source',sid);assert source['status']=='ready',source
+    assert source['profile']['evidence']['document_only'] is True
+    from agent_service.project_data import read_input
+    with pytest.raises(ValueError,match='不是已确定的记录表'):
+        read_input(turn['project_id'],{'source_id':sid})
+    turn=patch('turn',turn['id'],source_ids=[sid],attached_sources=[snapshot_attachment(source)])
+    turn=run_tool(turn,'run_work_command',{'command':'python inspect_json.py','source_ids':[sid]})
+    files=engine.get(turn['work_execution_id'])['files']
+    assert len(files)==1 and files[0]['path']=='inputs/'+sid+'/nested-document.json'
+    assert base64.b64decode(files[0]['content_base64'])==raw

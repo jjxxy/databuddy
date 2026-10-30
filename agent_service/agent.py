@@ -29,6 +29,11 @@ class HistoryQuery(StrictModel):
     query:str=Field(default='',max_length=500)
     limit:int=Field(default=10,ge=1,le=25)
 class SourceArgs(StrictModel):source_id:str=Field(max_length=64)
+class SourceTextArgs(SourceArgs):
+    revision:int=Field(ge=1)
+    sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    offset:int=Field(default=0,ge=0,le=26*1024*1024)
+    limit:int=Field(default=4000,ge=1,le=8000)
 class ResultArgs(StrictModel):pipeline_id:str|None=Field(default=None,max_length=64)
 class QueryArgs(ResultArgs):sql:str=Field(min_length=1,max_length=6000)
 class TransformArgs(SourceArgs):
@@ -132,6 +137,7 @@ TOOLS={
  'search_project_history':(HistoryQuery,False,'检索本项目所有对话（跨会话）的用户需求、回答及已完成操作，获取之前约定'),
  'source_schema':(SourceArgs,False,'读取指定项目来源的画像、字段、建议；不读取连接密码'),
  'source_preview':(SourceArgs,False,'读取项目来源最多20条样本或文档片段及来源信息，需启用模型项目内容读取；样本不能代表全量统计'),
+ 'read_source_text':(SourceTextArgs,False,'按字符分页读取项目 JSON 文件原文，须使用来源版本和内容摘要；需启用模型项目内容读取。按 next_offset 继续，直到为 null'),
  'list_files':(Empty,False,'列出项目统一工作区中可读写的文本文件'),
  'read_file':(FileRead,False,'读取项目文本文件；需用户启用模型读取项目内容'),
  'versions':(Empty,False,'列出整个项目跨所有会话的 Git 检查点'),
@@ -699,7 +705,44 @@ def execute(turn,step):
         from .connectors import read_source
         source=owned('source',args['source_id'],pid)
         rows,fields,evidence,truncated=read_source(source,limit=20)
-        return {'fields':fields,'rows':[{k:v for k,v in r.items() if k not in ('record_hash','_source_index')} for r in rows[:20]],'evidence':evidence,'sample_only':True,'truncated':truncated or len(rows)>20}
+        values=[{k:v for k,v in r.items() if k not in ('record_hash','_source_index')} for r in rows[:20]]
+        result={'source_id':source['id'],'fields':fields,'sample_only':True,'truncated':truncated or len(rows)>20}
+        # A JSON document is one text value, not a table. Avoid placing its
+        # entire potentially 25 MiB body in durable agent trace and context.
+        # Only replace that value, not ordinary rows or their numeric metadata.
+        if evidence.get('parser')=='json_document' and len(values)==1:
+            field=next((f['name'] for f in fields if f.get('label')=='JSON原文'),None)
+            text=values[0].get(field) if field else None
+            if isinstance(text,str) and len(text)>4000:
+                values[0][field]=text[:4000]
+                result['value_truncated']=True;result['truncated']=True
+                result['truncated_field']={'field':field,'total_characters':len(text),'shown_characters':4000}
+                checksum=source.get('content_hash');revision=source.get('revision')
+                if isinstance(checksum,str) and re.fullmatch(r'[a-f0-9]{64}',checksum) and type(revision) is int and revision>0:
+                    result['read_original_with']={'tool':'read_source_text','source_id':source['id'],'revision':revision,'sha256':checksum,'offset':0}
+                    result['notice']='JSON原文字段仅显示前4000字符；使用 read_source_text 按 next_offset 分片读取原件，直到 next_offset 为 null，不能将片段当作完整文档。'
+                else:
+                    result['notice']='JSON原文字段仅显示前4000字符；该来源缺少可核验版本或摘要，请重新上传后读取完整原件。'
+        result['rows']=values;result['evidence']=evidence
+        return result
+    if name=='read_source_text':
+        if not provider.settings().get('share_data'):raise ValueError('模型项目内容读取尚未启用，请部署管理员在后台配置')
+        from .connectors import verified_file_source
+        source=owned('source',args['source_id'],pid)
+        if source.get('kind')!='file' or not source.get('name','').lower().endswith('.json'):
+            raise ValueError('当前只支持按原文读取 JSON 文件')
+        if source.get('revision')!=args['revision'] or source.get('content_hash')!=args['sha256']:
+            raise ValueError('来源版本或内容摘要已变化，请重新选择文件')
+        _,content,integrity=verified_file_source(source)
+        try:text=content.decode('utf-8-sig')
+        except UnicodeDecodeError:raise ValueError('JSON 原文不是有效的 UTF-8') from None
+        latest=owned('source',args['source_id'],pid)
+        if latest.get('revision')!=args['revision'] or latest.get('content_hash')!=args['sha256'] or latest.get('revision_id')!=source.get('revision_id'):
+            raise ValueError('来源在读取期间发生变化，请重新选择文件')
+        offset=args['offset'];end=min(offset+args['limit'],len(text))
+        return {'source_id':source['id'],'revision':source['revision'],'sha256':integrity['content_sha256'],
+                'offset_unit':'unicode_characters','offset':offset,'total_characters':len(text),
+                'next_offset':end if end<len(text) else None,'complete_document_in_this_page':offset==0 and end==len(text),'content':text[offset:end]}
     if name=='list_files':return {'files':workspace.list_files(pid)}
     if name=='read_file':
         if not provider.settings().get('share_data'):raise ValueError('模型项目内容读取尚未启用，请部署管理员在后台配置')

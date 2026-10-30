@@ -293,6 +293,8 @@ def read_input(pid,binding,*,frozen_source=None):
         else:
             from .connectors import read_source
             rows,fields,evidence,truncated=read_source(s)
+            if evidence.get('document_only'):
+                raise ValueError('此 JSON 是完整文档，不是已确定的记录表；请明确记录路径并转换为对象数组后再进行表格加工，原文仍可用于对话和工作。')
             if truncated:raise ValueError('来源返回的是样本，不能继续完整加工')
             rows=[{k:v for k,v in r.items() if k not in ('record_hash','_source_index')} for r in rows]
             provenance={'source_id':s['id'],'evidence':evidence,'level':'source_and_row_order; no_invented_cell_coordinates'}

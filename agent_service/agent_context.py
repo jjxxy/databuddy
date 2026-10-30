@@ -69,7 +69,7 @@ GROUPS=[
  (r'Word|Excel|PPT|word|excel|ppt|文档|演示|幻灯片|工作簿|docx|xlsx|pptx',{'write_file','render_office_artifact','load_workflow','read_file'}),
  (r'系统|邮件|日历|会议|任务|工单|发送|检索|搜索|MCP|连接',{'list_work_connectors','list_work_tools','read_work_tool','prepare_work_action','read_work_action'}),
  (r'文件|报告|代码|脚本|\.md|\.py|搜索文件|查找文件',{'list_files','read_file','search_files','edit_file','write_file','delete_file','versions','run_python_file'}),
- (r'应用|分析|汇总|整理|筛选|看板|报表|数据',{'source_schema','source_preview','create_data_application','build_transform','revise_data_application','application_info','view_result','query_sql','ask_data_application'}),
+ (r'应用|分析|汇总|整理|筛选|看板|报表|数据',{'source_schema','source_preview','read_source_text','create_data_application','build_transform','revise_data_application','application_info','view_result','query_sql','ask_data_application'}),
  (r'重跑|刷新|重新运行',{'run_data_application','refresh_data','application_info','view_result'}),
  (r'发文|制度|内部.*文档|公司.*规定',{'company_search_status','search_company_documents','read_company_document'}),
  (r'每天|定时|调度|更新|暂停|每周|每月|工作日',{'schedule_updates','schedule_daily','pause_updates','project_health','schedule_data_workflow'}),
@@ -119,6 +119,7 @@ def selected(turn):
     retained=set(focus or turn.get('discovered_tools',[])[-2:])
     retained.update(name for name in turn.get('discovered_tools',[])[-1:] if name=='read_context_checkpoint')  # injected recovery, when required
     retained.update(step['tool'] for step in turn.get('agent_trace',[])[-2:] if step.get('tool') not in ('discover_tools',))
+    if any(isinstance(step.get('observation'),dict) and isinstance(step['observation'].get('read_original_with'),dict) and step['observation']['read_original_with'].get('tool')=='read_source_text' for step in turn.get('agent_trace',[])[-2:]):retained.add('read_source_text')
     office_task=(re.search(r'Word|Excel|PPT|PowerPoint|docx|xlsx|pptx|工作簿|幻灯片|演示文稿',text,re.I)
                  and re.search(r'创建|生成|写|做|制作|导出|\b(?:create|generate|export|write|make)\b',text,re.I))
     data_task=re.search(r'汇总|对账|数据加工|工作流|底稿|库存|销售|人事|财务|金额|订单|CSV|SQL',text,re.I)

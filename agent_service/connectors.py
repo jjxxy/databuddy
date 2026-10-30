@@ -30,6 +30,20 @@ def exact_json(content):
         return value
     return json.loads(content,parse_float=Decimal,parse_constant=invalid_constant,object_pairs_hook=unique_object)
 
+def exact_json_dumps(value):
+    """Serialize parsed JSON containers without converting decimals to strings.
+
+    Files retain their original bytes; this representation is only for nested
+    values in an explicitly tabular JSON array, where strings would change type.
+    """
+    if isinstance(value, Decimal):
+        if not value.is_finite():raise SourceError('JSON数值不能包含NaN或Infinity','INVALID_JSON_NUMBER')
+        return str(value)
+    if isinstance(value, dict):
+        return '{'+','.join(json.dumps(key,ensure_ascii=False)+':'+exact_json_dumps(item) for key,item in value.items())+'}'
+    if isinstance(value, list):return '['+','.join(exact_json_dumps(item) for item in value)+']'
+    return json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+
 def scalar(v):
     if isinstance(v, (date, datetime)): return v.isoformat()
     if isinstance(v, Decimal): return str(v)
@@ -201,17 +215,40 @@ def _file_rows(source, limit, path, content):
         evidence['provenance']=dict(evidence['provenance'],complete=evidence['complete'])
         return extracted['rows'],evidence
     if suffix in ('.json', '.jsonl'):
+        try:text=content.decode('utf-8-sig')
+        except UnicodeDecodeError as exc:raise SourceError('JSON 编码无法识别，请使用 UTF-8','JSON_ENCODING_INVALID') from exc
         if suffix == '.jsonl':
-            with io.StringIO(content.decode('utf-8')) as f:
-                rows = []
-                for line in f:
-                    if line.strip(): rows.append(exact_json(line))
-                    if len(rows) > limit: break
+            rows=[]
+            for number,line in enumerate(io.StringIO(text),1):
+                if not line.strip():continue
+                try:value=exact_json(line)
+                except json.JSONDecodeError as exc:raise SourceError('JSONL 第 %s 行格式错误，请检查该行' % number,'JSON_SYNTAX_INVALID') from exc
+                if not isinstance(value,dict):raise SourceError('JSONL 第 %s 行不是对象；请每行提供一个 JSON 对象' % number,'JSONL_RECORD_INVALID')
+                rows.append(value)
+                if len(rows)>limit:break
         else:
-            rows = exact_json(content.decode('utf-8'))
-            if cfg.get('records_path'):rows=json_path(rows,cfg['records_path'])
-        if not isinstance(rows,list) or any(not isinstance(x,dict) for x in rows): raise SourceError('JSON 需要对象数组')
-        return rows[:limit+1], {'parser':'json','file':source['name']}
+            try:document=exact_json(text)
+            except json.JSONDecodeError as exc:raise SourceError('JSON 第 %s 行第 %s 列格式错误，请检查文件' % (exc.lineno,exc.colno),'JSON_SYNTAX_INVALID') from exc
+            if cfg.get('records_path'):
+                rows=json_path(document,cfg['records_path'])
+                if not isinstance(rows,list) or any(not isinstance(x,dict) for x in rows):
+                    raise SourceError('指定的 JSON 记录路径必须指向对象数组','JSON_RECORDS_PATH_INVALID')
+            elif isinstance(document,list) and document and all(isinstance(x,dict) for x in document):
+                rows=document
+            else:
+                # A JSON object may contain multiple unrelated arrays, metadata,
+                # or no arrays at all. Never guess one and discard the rest.
+                # Keep the complete original document as a single text record.
+                return [{'JSON原文':text}], {'parser':'json_document','file':source['name'],
+                    'document_only':True,'semantic_review_required':True,'warnings':[{'code':'JSON_DOCUMENT_NOT_TABLE',
+                    'note':'完整 JSON 文档保留为一条原文资料，未自动展开或选择嵌套数组；表格加工须先明确记录路径和业务口径'}]}
+        # Nested values in a row are a JSON text field; preserve numeric type and
+        # precision in that text instead of converting Decimal to quoted strings.
+        rows=[{key:exact_json_dumps(value) if isinstance(value,(dict,list)) else value
+               for key,value in row.items()} for row in rows[:limit+1]]
+        evidence={'parser':'json','file':source['name']}
+        if cfg.get('records_path'):evidence['records_path']=cfg['records_path']
+        return rows,evidence
     if suffix in ('.html','.htm'):
         from .evidence_tables import parse_html_tables
         tables=parse_html_tables(content.decode('utf-8'),source_id=source['id'])

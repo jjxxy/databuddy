@@ -9,7 +9,7 @@ CORE_PROMPT='你是Atlas DataBuddy工作Agent，持续协助用户完成资料�
 
 TRIGGERS={
     'applications':frozenset(['create_data_application', 'revise_data_application', 'build_transform', 'application_info', 'ask_data_application', 'view_result', 'publish_result']),
-    'data':frozenset(['source_schema', 'source_preview', 'read_source_table', 'inspect_source_tables', 'data_workflow_guide', 'register_data_workflow', 'inspect_data_workflow', 'run_data_workflow', 'read_data_workflow_result', 'export_data_workflow_result', 'build_transform']),
+    'data':frozenset(['source_schema', 'source_preview', 'read_source_text', 'read_source_table', 'inspect_source_tables', 'data_workflow_guide', 'register_data_workflow', 'inspect_data_workflow', 'run_data_workflow', 'read_data_workflow_result', 'export_data_workflow_result', 'build_transform']),
     'scheduling':frozenset(['schedule_daily', 'schedule_updates', 'pause_updates', 'schedule_data_workflow']),
     'company':frozenset(['company_search_status', 'search_company_documents', 'read_company_document']),
     'external':frozenset(['list_work_connectors', 'list_work_tools', 'read_work_tool', 'prepare_work_action', 'read_work_action']),
