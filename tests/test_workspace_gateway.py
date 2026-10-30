@@ -107,6 +107,8 @@ def test_public_shell_explicit_allowlist_and_no_business_auth_bypass(settings):
     called = []
     with client_for(settings, lambda r: called.append(r) or response()) as client:
         assert client.get('/').status_code == 200
+        legacy = client.get('/local-data.html')
+        assert legacy.status_code == 200 and 'http-equiv="refresh"' in legacy.text
         assert 'atlas_token' in client.get('/app.js').text
         assert client.get('/health').json()['scope'] == 'isolated_workspace_gateway'
         for path in ('/api/projects', '/api/browser/register'):

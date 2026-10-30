@@ -266,7 +266,13 @@
       },
       "summaries": []
     },
-    "syntax_and_crlf_aware_diff_check": true
+    "syntax_and_crlf_aware_diff_check": true,
+    "gateway_static_routes_64": {
+      "log_sha256": "b73542bd61c2f4bc59b8e44952b657c619357cb182e6d7420ebad028fcbf4d09",
+      "summaries": [
+        "64 passed in 6.30s"
+      ]
+    }
   },
   "limits": [
     "The upstream model and gateway overload responses were controlled local fixtures.",

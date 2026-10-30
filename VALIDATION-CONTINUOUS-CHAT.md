@@ -72,7 +72,7 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tes
 
 ## 多文件与模型计划兼容修复（2026-10-30）
 
-前次验证没有覆盖真实非安全 HTTP 与网关容量。这次在真实 Chromium 的非安全 HTTP 环境中确认 `crypto.randomUUID` 不存在：现在使用 `crypto.getRandomValues` 生成安全请求标识；项目对话、工作资料和数据应用所需资源均加入隔离网关静态文件白名单。
+前次验证没有覆盖真实非安全 HTTP 与网关容量。这次在真实 Chromium 的非安全 HTTP 环境中确认 `crypto.randomUUID` 不存在：现在使用 `crypto.getRandomValues` 生成安全请求标识；项目对话、工作资料和数据应用所需资源均加入隔离网关静态文件白名单，旧工作资料地址也能返回工作台。
 
 隔离网关默认两个并发位置，包括后台轮询。旧前端并发上传全部附件，在两位置的模拟网关下实际复现了 503 与部分上传失败。新版本顺序上传，对 429/503 有限退避并复用同一个上传标识；工作资料的上传与来源状态读取也采用可恢复的重试。已成功文件保留，切换项目会中止后续重试。
 
