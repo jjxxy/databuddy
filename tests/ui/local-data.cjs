@@ -50,7 +50,7 @@ async function boot({publishConflict=false,delayPublish=false,token=true,risk=fa
 function submit(app,id){app.d.querySelector(id).dispatchEvent(new app.w.Event('submit',{bubbles:true,cancelable:true}));}
 async function importFile(app){
  Object.defineProperty(app.d.querySelector('#file'),'files',{configurable:true,value:[new app.w.File(['id,customer,amount,refund,status\n1,A,100,10,paid\n'],'input.csv',{type:'text/csv'})]});
- submit(app,'#upload');await until(()=>!app.d.querySelector('#rules').hidden&&!app.d.querySelector('#process-button').disabled);
+ app.d.querySelector('#file').dispatchEvent(new app.w.Event('change'));submit(app,'#upload');await until(()=>!app.d.querySelector('#rules').hidden&&!app.d.querySelector('#process-button').disabled);
 }
 async function preview(app){
  await importFile(app);
@@ -62,7 +62,7 @@ async function preview(app){
  const empty=await boot();submit(empty,'#upload');await until(()=>empty.d.querySelector('#status').textContent.includes('非空'));
  assert.equal(empty.calls.filter(c=>c.method==='POST').length,0,'empty input must not create an orphan project');empty.dom.window.close();
  const large=await boot();Object.defineProperty(large.d.querySelector('#file'),'files',{configurable:true,value:[{name:'huge.csv',size:25*1024*1024+1}]});
- submit(large,'#upload');await until(()=>large.d.querySelector('#status').textContent.includes('25MB'));assert.equal(large.calls.filter(c=>c.method==='POST').length,0);large.dom.window.close();
+ large.d.querySelector('#file').dispatchEvent(new large.w.Event('change'));submit(large,'#upload');await until(()=>large.d.querySelector('#status').textContent.includes('25MB'));assert.equal(large.calls.filter(c=>c.method==='POST').length,0);large.dom.window.close();
  const invalid=await boot();await importFile(invalid);invalid.d.querySelector('#group').value='c_2';submit(invalid,'#process');
  await until(()=>invalid.d.querySelector('#status').textContent.includes('同时选择'));assert.equal(invalid.calls.filter(c=>c.path==='/api/pipelines'&&c.method==='POST').length,0);invalid.dom.window.close();
  const app=await boot({delayPublish:true});await preview(app);

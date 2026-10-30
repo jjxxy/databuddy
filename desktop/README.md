@@ -52,14 +52,15 @@ state directory/model configuration, then reload the page. For a packaged
 desktop app, rebuild and replace the complete program folder; keep the selected
 workspace and state directory. Do not clear the database or credentials.
 
-The sidebar shows runtime revision `2026.10.30.1` for this repair. Click it to
+The sidebar shows runtime revision `2026.10.30.2` for this repair. Click it to
 inspect API, Agent and Worker revisions. Missing or different node revisions
 indicate that some processes still need to be updated/restarted. These runtime
 revisions are distinct from the application version `0.20.0` and Git commit IDs.
 
 Both chat and work composers support multiple files in the native picker
 (Ctrl/Command or Shift), additional selection batches, and a visible count before
-sending. A historical budget-pause answer remains in history with a note; the
+sending. The local-work materials picker also appends later selections without
+losing existing imports or their retry state. A historical budget-pause answer remains in history with a note; the
 current ordinary conversation has no fixed per-task totals. A model-authored
 round-budget excuse is returned for correction instead of being accepted as a
 runtime limit. Actual model connection, upstream quota and explicit external

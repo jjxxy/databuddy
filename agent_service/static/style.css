@@ -65,3 +65,5 @@
 @media(max-width:600px){.composer-actions{flex-wrap:wrap}.attachment-selection{flex-wrap:wrap}.runtime-version{max-width:92px}}
 
 .historical-budget-note{font-size:12px;padding:8px 12px;background:#f4f8f5;border-left:2px solid #6b9b80;color:#486556;line-height:1.7}
+
+.attachment-selection .attachment-help{flex-basis:100%;font-size:12px;line-height:1.5;color:#596875}.attachment-selection{flex-wrap:wrap}.attachment-selection #add-more-files{color:#176d59;font-weight:600;background:#edf6f1}

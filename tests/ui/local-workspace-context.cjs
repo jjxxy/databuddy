@@ -43,6 +43,7 @@ async function openLocal(app){
 }
 async function importLocal(app){
  Object.defineProperty(app.d.querySelector('#atlas-local-file'),'files',{configurable:true,value:[new app.w.File(['id,customer,amount\n1,A,12.34\n'],'input.csv',{type:'text/csv'})]});
+ app.d.querySelector('#atlas-local-file').dispatchEvent(new app.w.Event('change'));
  app.d.querySelector('#atlas-local-upload').dispatchEvent(new app.w.Event('submit',{cancelable:true}));
  await until(()=>!app.d.querySelector('#atlas-local-rules').hidden&&!app.d.querySelector('#atlas-local-process-button').disabled);
 }

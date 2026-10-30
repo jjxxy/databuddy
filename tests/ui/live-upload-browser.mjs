@@ -97,6 +97,10 @@ try{
   const oldPage=await oldContext.newPage();
   await oldPage.goto('http://127.0.0.1:'+proxyPort+'/?project='+project.id,{waitUntil:'domcontentloaded'});
   await oldPage.waitForSelector('#shell:not([hidden])',{timeout:30000});
+  // Showing the shell precedes the async project/session restore. During that
+  // navigation the old picker silently ignores clicks, so wait for the actual
+  // project to be ready rather than racing its first conversation request.
+  await oldPage.waitForFunction(id=>projectId===id&&!!sessionId&&!navigating&&!sending&&!pending,project.id,{timeout:30000});
   const oldChooser=oldPage.waitForEvent('filechooser');await oldPage.click('#attach');await (await oldChooser).setFiles(files);
   await oldPage.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===3);
   await oldPage.fill('#message','Previous main concurrent upload');await oldPage.click('#send');

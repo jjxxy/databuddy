@@ -50,6 +50,23 @@ const uploads=app=>app.calls.filter(call=>call.url.endsWith('/attachments'));
   selector.value='s_2';selector.dispatchEvent(new app.w.Event('change'));assert.equal(app.d.querySelector('#batch-result').hidden,true,'a previous source result cannot be published under another source');
   app.view.projectChanged();assert.equal(app.d.querySelectorAll('#batch-source-select option').length,0);assert.equal(app.d.querySelector('#batch-import-files').textContent,'');
  }finally{app.dom.window.close()}
+ const late=await boot();try{
+  const input=late.d.querySelector('#batch-file');input.dispatchEvent(new late.w.Event('click'));
+  late.view.projectChanged();await late.view.open();choose(late,[new late.w.File(['x'],'stale.csv')]);
+  assert.equal(late.d.querySelector('#batch-import-files').textContent,'','late picker result cannot enter a reopened project');
+  input.dispatchEvent(new late.w.Event('click'));late.view.close();choose(late,[new late.w.File(['x'],'closed.csv')]);
+  assert.equal(late.d.querySelector('#batch-import-files').textContent,'','late picker result cannot enter a closed view');
+ }finally{late.dom.window.close()}
+ const appended=await boot();try{
+  const a=new appended.w.File(['a'],'one.csv'),b=new appended.w.File(['bb'],'two.csv'),c=new appended.w.File(['ccc'],'three.csv');
+  choose(appended,[a]);choose(appended,[b]);assert(appended.d.querySelector('#batch-selection-count').textContent.includes('已选2个'),'separate single-file selections accumulate');
+  submit(appended);await until(()=>!appended.view.isBusy());assert.equal(uploads(appended).length,2);const failedId=uploads(appended)[1].options.body.get('request_id');
+  assert(appended.d.querySelector('#batch-import-files').textContent.includes('one.csv'));assert(appended.d.querySelector('#batch-import-files').textContent.includes('two.csv'));
+  choose(appended,[c]);assert(appended.d.querySelector('#batch-selection-count').textContent.includes('已选3个'));assert.equal(appended.d.querySelectorAll('#batch-source-select option').length,1,'adding files does not lose imported sources');
+  appended.fail(false);submit(appended);await until(()=>!appended.view.isBusy());assert.equal(uploads(appended).length,4,'previously imported file is not uploaded again');assert.equal(uploads(appended)[2].options.body.get('request_id'),failedId,'failed file keeps its ID after another selection');assert.equal(appended.sources.length,3);
+  const remove=appended.d.querySelector('[aria-label="移除 one.csv"]');remove.click();assert.equal(appended.d.querySelectorAll('#batch-source-select option').length,2);assert.equal(appended.d.querySelector('#batch-source-select').value,'s_2','removing active source switches to another saved source');
+  assert(appended.d.querySelector('#batch-selection-count').textContent.includes('已选2个'));assert.equal(appended.sources.length,3,'removing a selection does not delete imported sources');
+ }finally{appended.dom.window.close()}
  for(const files of [w=>Array.from({length:21},()=>new w.File(['x'],'f.csv')),w=>[new w.File(['x'],'valid.csv'),new w.File([],'empty.csv')],w=>[{name:'valid.csv',size:1},{name:'large.csv',size:25*1024*1024+1}]]){
   const app=await boot();try{choose(app,files(app.w));submit(app);await until(()=>!app.view.isBusy());assert.equal(uploads(app).length,0,'entire selection validated before any upload')}finally{app.dom.window.close()}
  }

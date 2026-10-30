@@ -2,7 +2,7 @@
 /* Shared local-data view: same-origin web capability, also used by the desktop shell. */
 (()=>{
  const randomId=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
- const markup="<h1>把资料变成可核对的结果</h1><p class=\"lead\">导入、画像、明确处理口径、预览后发布。此页面使用本地确定性规则，不调用云端 AI。</p><p id=\"status\" role=\"status\" aria-live=\"polite\">正在读取本机状态…</p>\n<section><h2>1　选择资料</h2><form id=\"upload\"><label>任务名称<input id=\"name\" maxlength=\"80\" value=\"本地数据核对\" required></label><label>资料文件（可多选）<input id=\"file\" type=\"file\" multiple accept=\".csv,.xlsx,.json,.jsonl,.txt,.pdf,.docx,.pptx\" required></label><button id=\"upload-button\" type=\"submit\">导入所选文件</button></form><p class=\"note\">文件窗口中按住 Ctrl（Mac 为 ⌘）或 Shift 可多选；最多20个，每个不超过25MB。</p><p id=\"selection-count\" role=\"status\" aria-live=\"polite\"></p><ul id=\"import-files\" class=\"import-files\" hidden></ul><label id=\"source-choice\" hidden>选择要加工的资料<select id=\"source-select\"></select><small>文件分别保留；切换后可单独核对与加工。</small></label><p id=\"profile\"></p></section>\n<section id=\"rules\" hidden><h2>2　明确处理口径</h2><p>选择字段即确定处理方案。留空分组和金额可保留明细；分组汇总须同时选择两项。</p><form id=\"process\"><div class=\"grid\"><label>唯一编号（可选）<select id=\"primary\"></select></label><label>按哪个字段汇总<select id=\"group\"></select></label><label>金额字段<select id=\"amount\"></select></label><label>扣除的退款字段（可选）<select id=\"refund\"></select></label><label>仅保留该字段的指定值<select id=\"filter-field\"></select></label><label>指定值<input id=\"filter-value\" maxlength=\"2000\" placeholder=\"例如：已付款\"></label></div><p class=\"note\">金额按精确十进制处理。此操作产生新候选，不覆盖已有正式结果。</p><button id=\"process-button\" type=\"submit\">执行本地加工</button></form></section>\n<section id=\"result\" hidden><h2>3　核对结果</h2><p id=\"result-info\"></p><p id=\"summary\"></p><div id=\"table\" class=\"table-scroll\"></div><label id=\"source-review-label\" hidden><input id=\"source-review-confirm\" type=\"checkbox\">我已对照原始资料逐项核对来源解释、金额和业务口径，同意采用这次候选结果。</label><div class=\"actions\"><button id=\"publish\" type=\"button\" hidden>已核对，确认发布此候选</button><button id=\"download\" type=\"button\" hidden>导出完整 CSV</button></div><p id=\"receipt\"></p></section>\n<section><h2>已保存的本地任务</h2><p>退出或断网后，已发布成果仍可打开和导出。</p><div id=\"history\"></div></section>\n";
+ const markup="<h1>把资料变成可核对的结果</h1><p class=\"lead\">导入、画像、明确处理口径、预览后发布。此页面使用本地确定性规则，不调用云端 AI。</p><p id=\"status\" role=\"status\" aria-live=\"polite\">正在读取本机状态…</p>\n<section><h2>1　选择资料</h2><form id=\"upload\"><label>任务名称<input id=\"name\" maxlength=\"80\" value=\"本地数据核对\" required></label><label>资料文件（可多选）<input id=\"file\" type=\"file\" multiple accept=\".csv,.xlsx,.json,.jsonl,.txt,.pdf,.docx,.pptx\"></label><button id=\"upload-button\" type=\"submit\">导入所选文件</button></form><p class=\"note\">文件窗口中按住 Ctrl（Mac 为 ⌘）或 Shift 可多选；也可重复选择文件，已选文件会保留。最多20个，每个不超过25MB。</p><p id=\"selection-count\" role=\"status\" aria-live=\"polite\"></p><ul id=\"import-files\" class=\"import-files\" hidden></ul><label id=\"source-choice\" hidden>选择要加工的资料<select id=\"source-select\"></select><small>文件分别保留；切换后可单独核对与加工。</small></label><p id=\"profile\"></p></section>\n<section id=\"rules\" hidden><h2>2　明确处理口径</h2><p>选择字段即确定处理方案。留空分组和金额可保留明细；分组汇总须同时选择两项。</p><form id=\"process\"><div class=\"grid\"><label>唯一编号（可选）<select id=\"primary\"></select></label><label>按哪个字段汇总<select id=\"group\"></select></label><label>金额字段<select id=\"amount\"></select></label><label>扣除的退款字段（可选）<select id=\"refund\"></select></label><label>仅保留该字段的指定值<select id=\"filter-field\"></select></label><label>指定值<input id=\"filter-value\" maxlength=\"2000\" placeholder=\"例如：已付款\"></label></div><p class=\"note\">金额按精确十进制处理。此操作产生新候选，不覆盖已有正式结果。</p><button id=\"process-button\" type=\"submit\">执行本地加工</button></form></section>\n<section id=\"result\" hidden><h2>3　核对结果</h2><p id=\"result-info\"></p><p id=\"summary\"></p><div id=\"table\" class=\"table-scroll\"></div><label id=\"source-review-label\" hidden><input id=\"source-review-confirm\" type=\"checkbox\">我已对照原始资料逐项核对来源解释、金额和业务口径，同意采用这次候选结果。</label><div class=\"actions\"><button id=\"publish\" type=\"button\" hidden>已核对，确认发布此候选</button><button id=\"download\" type=\"button\" hidden>导出完整 CSV</button></div><p id=\"receipt\"></p></section>\n<section><h2>已保存的本地任务</h2><p>退出或断网后，已发布成果仍可打开和导出。</p><div id=\"history\"></div></section>\n";
  window.createAtlasLocalData=function(options){
  const root=options.root,prefix=options.prefix||'',token=options.token??sessionStorage.getItem('atlas_token')??'';
  if(!root||!/^[A-Za-z0-9_-]*$/.test(prefix))throw Error('本地工作区挂载参数不正确');
@@ -10,7 +10,7 @@
  const $=selector=>root.querySelector(selector.replace(/^#/,'#'+prefix));
  const fetcher=options.request||((url,requestOptions)=>fetch(url,requestOptions));
  const optionsOnUnauthorized=()=>{if(options.onUnauthorized)options.onUnauthorized();else{reset();message('登录已失效，请返回工作空间重新登录。',true)}};
-let imports=[],source,project,current,previewRun,previewManifest,previewNeedsReview=false,previewNeedsAlignment=false,busy=false,epoch=0,active=false,sealed=false,boundProject='';
+let imports=[],source,project,current,previewRun,previewManifest,previewNeedsReview=false,previewNeedsAlignment=false,busy=false,epoch=0,active=false,sealed=false,boundProject='',fileSelectionScope=null;
  const controllers=new Set();
  const authorized=()=>!sealed&&(options.isAuthorized?options.isAuthorized():(token?sessionStorage.getItem('atlas_token')===token:!sessionStorage.getItem('atlas_token')));
  function ensure(generation=epoch){if(!active||generation!==epoch||!authorized()||(options.projectId&&String(options.projectId()||'')!==boundProject))throw Object.assign(Error('工作空间或登录状态已变化，请重新打开本地工作区。'),{stale:true})}
@@ -58,20 +58,24 @@ function selectSource(selected){
 function renderImports(){
  const ready=imports.filter(row=>row.source),failed=imports.filter(row=>row.error);$('#selection-count').textContent=imports.length?`已选${imports.length}个文件；已导入${ready.length}个`+(failed.length?`，${failed.length}个未完成，可重试`:''):'';
  const list=$('#import-files');list.replaceChildren();list.hidden=!imports.length;
- for(const row of imports){const item=document.createElement('li');item.textContent=row.file.name+' · '+(row.source?'已导入':row.error?'未完成：'+row.error:row.status||'待导入');list.append(item)}
+ for(const row of imports){const item=document.createElement('li'),label=document.createElement('span'),remove=document.createElement('button');label.textContent=row.file.name+' · '+(row.source?'已导入':row.error?'未完成：'+row.error:row.status||'待导入');remove.type='button';remove.textContent='移除';remove.setAttribute('aria-label','移除 '+row.file.name);remove.disabled=busy;remove.onclick=()=>{if(busy)return;const index=imports.indexOf(row);if(index<0)return;imports.splice(index,1);if(source&&row.source?.id===source.id){const next=imports.find(entry=>entry.source);selectSource(next?.source||null)}renderImports();message('已从本次选择中移除文件。')};item.append(label,remove);list.append(item)}
  const select=$('#source-select');select.replaceChildren();for(const row of ready){const option=document.createElement('option');option.value=row.source.id;option.textContent=(imports.length>1?(imports.indexOf(row)+1)+'. ':'')+row.file.name;select.append(option)}
  $('#source-choice').hidden=!ready.length;if(source)select.value=source.id;
- $('#upload-button').textContent=failed.length?'重试未完成的文件':'导入所选文件';
+ $('#upload-button').textContent=failed.length?'导入或重试未完成的文件':'导入所选文件';
 }
-function selectedFiles(){
- const files=Array.from($('#file').files||[]);
- if(files.length!==imports.length||files.some((file,index)=>file!==imports[index].file)){imports=files.map(file=>({file,request_id:randomId()}));selectSource(null);renderImports()}
- return files;
-}
-$('#file').onchange=()=>{if(!busy){selectedFiles();message('已选择文件，点击“导入所选文件”开始。')}};
+// A file input replaces its native selection each time it opens. Keep our own
+// list so files chosen in separate visits remain available with their upload IDs.
+$('#file').onclick=()=>{fileSelectionScope={epoch,project:boundProject}};
+$('#file').onchange=event=>{
+ const files=Array.from(event.target.files||[]);event.target.value='';
+ const scope=fileSelectionScope;fileSelectionScope=null;
+ if(busy||!active||!authorized()||options.projectId&&String(options.projectId()||'')!==boundProject||scope&&(scope.epoch!==epoch||scope.project!==boundProject)||!files.length)return;
+ for(const file of files)imports.push({file,request_id:randomId()});
+ renderImports();message('已选择 '+imports.length+' 个文件，可继续选择，或点击“导入所选文件”。');
+};
 $('#source-select').onchange=()=>{if(busy)return;selectSource(imports.find(row=>row.source?.id===$('#source-select').value)?.source);message('已切换资料，请核对这份文件的处理口径。')};
 $('#upload').addEventListener('submit',event=>{event.preventDefault();guarded(async()=>{
- const generation=epoch,files=selectedFiles(),name=$('#name').value.trim();if(!files.length||files.some(file=>!file.size))throw Error('请选择非空资料文件。');if(files.length>20)throw Error('每次最多选择20个文件，请减少后再导入。');if(!name)throw Error('请填写任务名称。');const large=files.find(file=>file.size>25*1024*1024);if(large)throw Error(large.name+' 超过25MB，请拆分后导入。');
+ const generation=epoch,files=imports.map(row=>row.file),name=$('#name').value.trim();if(!files.length||files.some(file=>!file.size))throw Error('请选择非空资料文件。');if(files.length>20)throw Error('每次最多选择20个文件，请减少后再导入。');if(!name)throw Error('请填写任务名称。');const large=files.find(file=>file.size>25*1024*1024);if(large)throw Error(large.name+' 超过25MB，请拆分后导入。');
  project=boundProject?{id:boundProject}:project||await json('/projects',{method:'POST',body:{name,request_id:randomId()}});
  for(const row of imports){
   if(row.source)continue;row.error='';row.status='正在导入…';renderImports();message(`正在本地导入 ${imports.indexOf(row)+1}/${imports.length}：${row.file.name}，全程不调用云端 AI。`);
@@ -82,7 +86,7 @@ $('#upload').addEventListener('submit',event=>{event.preventDefault();guarded(as
   }catch(error){ensure(generation);row.error=error.message||'导入未完成，请重试'}
   renderImports();
  }
- const ready=imports.filter(row=>row.source).length,failed=imports.length-ready;await retryBusy(history);message(failed?`已导入${ready}个文件，${failed}个未完成。已成功的资料保留，点击“重试未完成的文件”继续。`:`${ready}个文件已保存在本机。请选择要加工的资料并明确处理口径。`,!!failed);
+ const ready=imports.filter(row=>row.source).length,failed=imports.length-ready;await retryBusy(history);message(failed?`已导入${ready}个文件，${failed}个未完成。已成功的资料保留，点击“导入或重试未完成的文件”继续。`:`${ready}个文件已保存在本机。请选择要加工的资料并明确处理口径。`,!!failed);
 })});
 $('#process').addEventListener('submit',event=>{event.preventDefault();guarded(async()=>{if(!source)throw Error('请先导入资料。');const group=$('#group').value,amount=$('#amount').value,refund=$('#refund').value,filter=$('#filter-field').value,value=$('#filter-value').value; if(Boolean(group)!==Boolean(amount))throw Error('分组和金额字段需要同时选择；都不选则保留明细。');if(refund&&!amount)throw Error('扣除退款前，请先选择金额和分组字段。');if(filter&&!value.trim())throw Error('请填写筛选字段需要保留的值。');
  const spec={object_label:'本地业务记录',primary_key:$('#primary').value||null,group_by:group||null,amount_field:refund?'m_net':amount||null,amount_label:refund?'净金额':'金额合计',filters:filter?[{field:filter,operator:'eq',data_type:'text',value}]:[],computations:refund?[{name:'m_net',label:'净金额',operation:'subtract',left_field:amount,right_field:refund}]:[]};

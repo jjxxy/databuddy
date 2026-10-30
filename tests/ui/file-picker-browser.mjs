@@ -27,7 +27,7 @@ try{
    else if(p==='/api/desktop/runtime')value={notice:'本地处理'};
    else if(p==='/api/projects/p/attachments'){
     const body=request.postDataBuffer().toString('utf8'),n=body.includes('3,90.12')?3:body.includes('2,56.78')?2:1;
-    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.1'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
+    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.2'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
     if(n===2&&failSecond)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'暂时无法导入第二份'})});
     value={id:'s_'+n,name:files[n-1].name};if(!sources.some(s=>s.id===value.id))sources.push({...value,status:'ready',profile:{fields:fields(n),sample_rows:1}});
    }
@@ -36,7 +36,7 @@ try{
    else if(p==='/api/pipelines'&&request.method()==='POST'){processed=request.postDataJSON();value={id:'pipe',project_id:'p'};pipelines.push({...value,candidate_run:'run'});}
    else if(p==='/api/pipelines')value=pipelines;
    else if(p==='/api/pipelines/pipe/preview')value={run_id:'run',manifest:{fields:fields(3),records:1,summary:[]},rows:[{field_3:'90.12'}]};
-   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.1'},contentType:'application/json',body:JSON.stringify(value)});
+   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.2'},contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=path.join(root,p==='/'?'index.html':p.slice(1));
   if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
@@ -46,20 +46,36 @@ try{
  await page.goto('https://atlas.fixture/?project=p');await page.waitForSelector('#shell:not([hidden])');
  for(const mode of ['chat','work']){
   await page.click('[data-mode='+mode+']');
-  const chooser=page.waitForEvent('filechooser');await page.click('#attach');const picker=await chooser;assert.equal(picker.isMultiple(),true);await picker.setFiles(files.slice(0,2));
-  await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===2);
-  const appendChooser=page.waitForEvent('filechooser');await page.click('#add-more-files');const appendPicker=await appendChooser;assert.equal(appendPicker.isMultiple(),true);await appendPicker.setFiles(files.slice(2));
-  await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===3);assert.equal(uploads.length,0);
-  assert((await page.locator('#attachment-count').textContent()).includes('3 / 20'));
-  await page.fill('#message','Read all selected files in '+mode);const count=messages.length;await page.click('#send');
-  await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===0);
-  assert.equal(messages.length,count+1);assert.equal(messages.at(-1).interaction_mode,mode);assert.equal(messages.at(-1).source_ids.length,3);
-  assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
+  assert((await page.locator('.attachment-help').innerText()).includes('Ctrl'));
+  // Exercise both native multi-select and the no-modifier fallback: each
+  // successive single-file choice must append instead of replacing earlier ones.
+  for(const batches of [[files.slice(0,2),files.slice(2)],files.map(file=>[file])]){
+   let selected=0;
+   for(const batch of batches){
+    const chooser=page.waitForEvent('filechooser');await page.click(selected?'#add-more-files':'#attach');
+    const picker=await chooser;assert.equal(picker.isMultiple(),true);await picker.setFiles(batch);selected+=batch.length;
+    await page.waitForFunction(count=>document.querySelectorAll('.attachment-chip').length===count,selected);
+   }
+   assert.equal(uploads.length,0);assert((await page.locator('#attachment-count').textContent()).includes('3 / 20'));
+   await page.fill('#message','Read all selected files in '+mode);const count=messages.length;await page.click('#send');
+   await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===0);
+   assert.equal(messages.length,count+1);assert.equal(messages.at(-1).interaction_mode,mode);assert.equal(messages.at(-1).source_ids.length,3);
+   assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
+  }
  }
- assert.equal(composerUploads.length,6);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.30.1'));
+ assert.equal(composerUploads.length,12);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.30.2'));
  await page.click('#open-local-work');await page.waitForSelector('#atlas-local-workspace-content:not([hidden])');
  await page.waitForFunction(()=>!document.querySelector('#atlas-local-file').disabled);
  const localChooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const localPicker=await localChooser;assert.equal(localPicker.isMultiple(),true);await localPicker.setFiles(files);
+ assert((await page.locator('#atlas-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
+ // Clear the batch and reopen the picker three times without modifier keys.
+ for(let i=0;i<3;i++)await page.locator('#atlas-local-import-files button').first().click();
+ assert.equal(await page.locator('#atlas-local-import-files li').count(),0);
+ for(let i=0;i<files.length;i++){
+  const chooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const picker=await chooser;
+  assert.equal(picker.isMultiple(),true);await picker.setFiles([files[i]]);
+  assert.equal(await page.locator('#atlas-local-import-files li').count(),i+1,'separate local selections accumulate');
+ }
  assert((await page.locator('#atlas-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
  await page.click('#atlas-local-upload-button');await page.waitForFunction(()=>document.querySelector('#atlas-local-status').textContent.includes('已导入2个文件，1个未完成'));
  assert.deepEqual(uploads.map(row=>row.n),[1,2,2,2,3]);assert(uploads.slice(1,4).every(row=>row.rid===uploads[1].rid));assert.equal(await page.locator('#atlas-local-source-select option').count(),2);
@@ -71,5 +87,5 @@ try{
  assert.equal(await page.locator('#composer').evaluate(node=>node.scrollWidth>node.clientWidth+1),false,'mobile composer does not overflow');
  assert.equal(await page.locator('#atlas-local-workspace-panel').evaluate(node=>node.scrollWidth>node.clientWidth+1),false,'mobile panel does not overflow horizontally');
  const output=process.env.ATLAS_BROWSER_EVIDENCE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'atlas-picker-'));fs.mkdirSync(output,{recursive:true});await page.screenshot({path:path.join(output,'multiple-file-picker.png')});
- assert.deepEqual(errors,[]);console.log(JSON.stringify({real_chromium:browser.version(),api_fixture:true,chat_and_work_picker_multiple:true,both_modes_post_all_three_files:true,append_preserves_first_batch:true,local_picker_multiple:true,three_files_from_one_selection:true,partial_failure_keeps_and_continues_files:true,temporary_retry_and_manual_retry_preserve_same_id:true,processing_uses_third_file:true,mobile_no_horizontal_overflow:true,no_live_model_or_windows_shell_test:true,evidence_directory:output}));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({real_chromium:browser.version(),api_fixture:true,chat_and_work_picker_multiple:true,both_modes_post_all_three_files:true,append_preserves_first_batch:true,both_modes_three_separate_single_file_choices:true,local_picker_multiple:true,local_three_separate_single_file_choices:true,three_files_from_one_selection:true,partial_failure_keeps_and_continues_files:true,temporary_retry_and_manual_retry_preserve_same_id:true,processing_uses_third_file:true,mobile_no_horizontal_overflow:true,no_live_model_or_windows_shell_test:true,evidence_directory:output}));
 }finally{await browser.close()}
