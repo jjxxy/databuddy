@@ -118,6 +118,31 @@ def test_public_shell_explicit_allowlist_and_no_business_auth_bypass(settings):
     assert not called
 
 
+def test_workbench_and_data_application_assets_are_served_by_isolated_gateway(settings):
+    """The actual HTML entry points must not reference assets blocked by the gateway."""
+    from html.parser import HTMLParser
+    from urllib.parse import urlsplit
+
+    class Assets(HTMLParser):
+        def __init__(self):super().__init__();self.scripts=[];self.files=[]
+        def handle_starttag(self,tag,attrs):
+            values=dict(attrs)
+            if tag=='script' and values.get('src'):
+                self.scripts.append(urlsplit(values['src']).path);self.files.append(urlsplit(values['src']).path)
+            if tag=='link' and values.get('href'):
+                self.files.append(urlsplit(values['href']).path)
+
+    with client_for(settings) as client:
+        for page in ('/','/data-app.html'):
+            markup=client.get(page);assert markup.status_code==200
+            assets=Assets();assets.feed(markup.text)
+            assert assets.scripts[0]=='/secure-id.js'
+            for asset in assets.files:
+                response=client.get(asset)
+                assert response.status_code==200,(page,asset,response.status_code)
+                assert response.headers['cache-control']=='no-store'
+
+
 @pytest.mark.parametrize('changes', [
     {'iss': 'https://evil.example'}, {'aud': 'other'}, {'aud': ['other', 'not-atlas']},
     {'exp': 1}, {'sub': 123}, {'iat': 'future-fixture'},
@@ -545,3 +570,13 @@ def test_backend_cookies_never_persist_or_cross_workspace_ports(settings):
             assert 'set-cookie' not in result.headers
             assert not list(app.state.client.cookies.jar)
     assert seen == [(8001, None), (8002, None), (8001, None), (8002, None)]
+
+
+def test_gateway_preserves_backend_runtime_revision_for_ui_diagnostics(settings):
+    revision='2026.10.30.1'
+    with client_for(settings,lambda request:response(b'{}',headers={'content-type':'application/json',
+            'x-atlas-runtime-revision':revision})) as client:
+        value=client.get('/api/projects',headers=auth(settings))
+        assert value.status_code==200
+        assert value.headers['x-atlas-runtime-revision']==revision
+        assert value.headers['cache-control']=='no-store'

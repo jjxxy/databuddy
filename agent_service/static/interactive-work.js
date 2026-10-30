@@ -6,7 +6,7 @@
  const $=s=>browserDialog.querySelector(s),v=s=>voiceDialog.querySelector(s);
  let generation=0,voiceEpoch=0,pid='',sid='',snapshot=null,busy=false,recorder=null,stream=null,peer=null,channel=null,voiceTimer=null,voiceCall=null;
  function node(tag,text){const el=document.createElement(tag);el.textContent=text;return el}
- function id(){return crypto.randomUUID()}
+ function id(){return window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID()}
  function hangup(call){try{Promise.resolve(b.authFetch('/api/projects/'+encodeURIComponent(call.project)+'/voice/calls/'+encodeURIComponent(call.id)+'/end',{method:'POST',keepalive:true})).catch(()=>{})}catch{}}
  function stopVoice(){
   voiceEpoch++;

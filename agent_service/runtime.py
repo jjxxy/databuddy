@@ -13,6 +13,8 @@ def heartbeat(role,**extra):
     except Exception:build=None # Qualification fails closed; normal heartbeat still works.
     value={'role':role,'instance':INSTANCE,'heartbeat':now(),'version':'0.20.0',**extra,
            'build_fingerprint':build,'runtime_revision':RUNTIME_REVISION}
+    if role=='agent' or role=='worker' and os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':
+        value['planner_mode']='opencode' if os.getenv('ATLAS_OPENCODE_RUNTIME')=='1' else 'legacy'
     put('runtime_node',value,'node_'+hashlib.sha256((role+':'+INSTANCE).encode()).hexdigest()[:40])
     # Compatibility for earlier clients; aggregate health uses runtime_node.
     put('system',value,role+'-health')

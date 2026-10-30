@@ -179,7 +179,7 @@ def health():return {'status':'ok'}
 def runtime_info():
     from .release_info import public_info
     from .runtime import nodes
-    return {**public_info(),'nodes':[{key:node.get(key) for key in ('role','healthy','runtime_revision')}
+    return {**public_info(),'nodes':[{key:node.get(key) for key in ('role','healthy','runtime_revision','planner_mode')}
                                      for role in ('api','worker','agent') for node in nodes(role)]}
 
 @app.get('/api/status',dependencies=[Depends(auth)])

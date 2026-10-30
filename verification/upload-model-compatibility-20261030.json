@@ -1,0 +1,276 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Shanghai",
+  "base_main": "7bbec0b7b4074f440aafaca3c3f1438add1d6775",
+  "runtime_revision": "2026.10.30.1",
+  "regressions": {
+    "insecure_http": "Real Chromium over non-secure HTTP reports no crypto.randomUUID; previous frontend initialization is invalid.",
+    "gateway_concurrency": "Prior main reproduces 503 using a simulated gateway with two concurrent API slots.",
+    "false_invalid_plan": "On prior main, a desktop-mode upstream HTTP 401 was converted into the same invalid-plan message after three attempts."
+  },
+  "checks": {
+    "model_and_continuity_330": {
+      "log_sha256": "7166ee8bf44cf814635b3322112509568a4447774a0cb72b143b27af662437a4",
+      "summaries": [
+        "330 passed in 30.62s"
+      ]
+    },
+    "upload_gateway_and_debug_115": {
+      "log_sha256": "7fdc7f80de02ef0f74d0b426e793616d330b4be26772d055d201a4be88d8b889",
+      "summaries": [
+        "115 passed in 9.53s"
+      ]
+    },
+    "conversation_16": {
+      "log_sha256": "981306587b573a906e655e7a78e0dcca26efc5d3c383c0a97b399d9151fd2840",
+      "summaries": [
+        "16 passed in 3.63s"
+      ]
+    },
+    "desktop_js_40": {
+      "log_sha256": "e6c0c86b7a012be92857923b053064898a2b2714e25220de47b875156cb43a03",
+      "summaries": [
+        "ℹ tests 40",
+        "ℹ pass 40",
+        "ℹ fail 0"
+      ]
+    },
+    "ui_dom_26": {
+      "log_sha256": "4c469f3b401425c1c58204a826aa7f1cc233e6adef2381d3e1ae670fbddd6f0e",
+      "result": {
+        "startup_registration_429_auto_retry": false,
+        "logout_cancels_startup_retry": true,
+        "no_data_reset": true
+      },
+      "summaries": []
+    },
+    "real_browser_api_and_sqlite": {
+      "log_sha256": "9b36ddce8d90998732f51e59e5979e34dbeac0b3ab65ed5f7bd026fbe83b6aee",
+      "result": {
+        "real_chromium": "153.0.8010.0",
+        "actual_api_and_sqlite": true,
+        "nonsecure_http": true,
+        "actual_secure_context": false,
+        "random_uuid_unavailable": true,
+        "chat_and_work_three_distinct_files": true,
+        "actual_turns_keep_all_sources": true,
+        "sequential_uploads": true,
+        "gateway_busy_retried": true,
+        "lost_response_same_request_id": true,
+        "no_duplicate_sources": true,
+        "simulated_gateway_slots": 2,
+        "peak_api_requests": 2,
+        "previous_main_gateway_failure_reproduced": true,
+        "gateway_503_count": 1,
+        "real_model_or_windows_tested": false
+      },
+      "summaries": []
+    },
+    "real_browser_pickers": {
+      "log_sha256": "84858eb30575566e10449715f2cde3ea71797d537cbc1af75355008fdf95ceaa",
+      "result": {
+        "real_chromium": "153.0.8010.0",
+        "api_fixture": true,
+        "chat_and_work_picker_multiple": true,
+        "both_modes_post_all_three_files": true,
+        "append_preserves_first_batch": true,
+        "local_picker_multiple": true,
+        "three_files_from_one_selection": true,
+        "partial_failure_keeps_and_continues_files": true,
+        "temporary_retry_and_manual_retry_preserve_same_id": true,
+        "processing_uses_third_file": true,
+        "mobile_no_horizontal_overflow": true,
+        "no_live_model_or_windows_shell_test": true
+      },
+      "summaries": []
+    },
+    "legacy_real_http_simulated_model": {
+      "log_sha256": "a2a25552b380b2136ff5126a1da100396331681be5349b987a658d9b1025db81",
+      "result": {
+        "actual_legacy_agent": true,
+        "actual_model_http": true,
+        "model_is_local_fixture": true,
+        "unsupported_native_automatically_falls_back": true,
+        "actual_git_workspace_file_written_once": true,
+        "auth_401_reports_real_issue_without_sensitive_body": true,
+        "rate_429_resumes_original_task": true,
+        "state": "passed",
+        "calls": [
+          {
+            "mode": "work",
+            "native_tools": true
+          },
+          {
+            "mode": "work",
+            "native_tools": false
+          },
+          {
+            "mode": "work",
+            "native_tools": false
+          },
+          {
+            "mode": "auth",
+            "native_tools": true
+          },
+          {
+            "mode": "rate",
+            "native_tools": true
+          },
+          {
+            "mode": "rate",
+            "native_tools": true
+          }
+        ]
+      },
+      "summaries": []
+    },
+    "native_false_budget_stop": {
+      "log_sha256": "73880e2924df1009078f7889bd8ef04d6c4ec905ab14aae7c157206d8cef381a",
+      "result": {
+        "ok": true,
+        "actual_opencode_binary": true,
+        "version": "2.1.2",
+        "local_simulated_provider": true,
+        "model_authored_false_budget_stop_corrected": true,
+        "native_feedback_received": true,
+        "automatic_continue_original_goal": true,
+        "no_fake_context_compaction": true,
+        "write_count": 1,
+        "historical_counters_preserved": true,
+        "state": "done",
+        "calls": [
+          {
+            "input_characters": 118421,
+            "written": false,
+            "recovered": false
+          },
+          {
+            "input_characters": 119735,
+            "written": false,
+            "recovered": false,
+            "correction_received": true
+          },
+          {
+            "input_characters": 121454,
+            "written": true,
+            "recovered": false
+          }
+        ]
+      },
+      "summaries": []
+    },
+    "native_context_overflow": {
+      "log_sha256": "c9dd5fd566688e8dbfd2ebd37ba2ec4c933e0d6749b8eca0a79a31ec08f1625d",
+      "result": {
+        "ok": true,
+        "actual_opencode_binary": true,
+        "version": "2.1.2",
+        "local_simulated_provider": true,
+        "real_provider_context_400_observed": true,
+        "automatic_retry_without_user_continue": true,
+        "originals_retained": true,
+        "write_count": 1,
+        "context_recoveries": 1,
+        "state": "done",
+        "calls": [
+          {
+            "input_characters": 118421,
+            "written": false,
+            "recovered": false
+          },
+          {
+            "input_characters": 119824,
+            "written": true,
+            "recovered": false
+          },
+          {
+            "input_characters": 122614,
+            "written": true,
+            "recovered": false
+          },
+          {
+            "input_characters": 43422,
+            "written": true,
+            "recovered": true
+          }
+        ]
+      },
+      "summaries": []
+    },
+    "native_compaction_and_revoked_memory": {
+      "log_sha256": "15f28a36189fdb67f419c42f7e7236f7a877bbfb9a8f3ade7b0c2cc5d48c0f25",
+      "result": {
+        "ok": true,
+        "actual_opencode_binary": true,
+        "opencode_version": "2.1.2",
+        "simulated_model": true,
+        "real_model_evaluated": false,
+        "original_native_messages_verified_after_compaction": true,
+        "memory_forget_rotates_native_session": true,
+        "forgotten_content_absent_from_new_context": true,
+        "native_compaction_receipt": {
+          "requested": true,
+          "completed": true,
+          "request_id": "msg_9288f7e959f36da17858b9163d632cc9393facc4",
+          "summary_message_id": "msg_9288f7e959f36da17858b9163d632cc9393facc4",
+          "method": "opencode_summary",
+          "model_pinned": true,
+          "originals_retained": true,
+          "history_messages_before": 3,
+          "context_messages_after": 2
+        },
+        "budgeted_model_calls": 4,
+        "model_requests": [
+          {
+            "kind": "primary",
+            "model": "quickstart-simulated-model",
+            "tools": [
+              "atlas_step"
+            ]
+          },
+          {
+            "kind": "compaction",
+            "model": "quickstart-simulated-model",
+            "tools": [
+              "atlas_step"
+            ]
+          },
+          {
+            "kind": "primary",
+            "model": "quickstart-simulated-model",
+            "tools": [
+              "atlas_step"
+            ]
+          },
+          {
+            "kind": "primary",
+            "model": "quickstart-simulated-model",
+            "tools": [
+              "atlas_step"
+            ]
+          }
+        ],
+        "before_types": [
+          "user",
+          "assistant",
+          "idle"
+        ],
+        "after_types": [
+          "compaction",
+          "idle",
+          "user",
+          "assistant",
+          "idle"
+        ],
+        "critical_preserved": true
+      },
+      "summaries": []
+    },
+    "syntax_and_crlf_aware_diff_check": true
+  },
+  "limits": [
+    "The upstream model and gateway overload responses were controlled local fixtures.",
+    "The browser integrated test used an actual API and SQLite, but a simulated gateway; Windows Electron and the user deployment were not tested.",
+    "No paid model was contacted and no full-repository test run was performed."
+  ]
+}

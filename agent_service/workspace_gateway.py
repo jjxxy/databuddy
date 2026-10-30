@@ -232,11 +232,12 @@ class _SecurityHeaders:
 
 
 _STATIC = frozenset(('index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.webmanifest', 'sw.js',
-    'lifecycle.js', 'safe-markdown.js', 'workspace-features.js', 'workspace-shell.js', 'agent-collaboration.js',
+    'secure-id.js', 'lifecycle.js', 'safe-markdown.js', 'workspace-features.js', 'workspace-shell.js', 'agent-collaboration.js',
+    'local-data.js', 'local-data.css', 'work-runtime.js', 'interactive-work.js',
     'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css'))
 _DENIED_API = frozenset(('operator', 'agent', 'mcp', 'a2a'))
 _REQUEST_HEADERS = frozenset(('accept', 'accept-language', 'content-type', 'if-match', 'if-none-match', 'range', 'if-range'))
-_RESPONSE_HEADERS = frozenset(('content-type', 'content-disposition', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'retry-after'))
+_RESPONSE_HEADERS = frozenset(('content-type', 'content-disposition', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'retry-after', 'x-atlas-runtime-revision'))
 
 
 def _validate_target(request):

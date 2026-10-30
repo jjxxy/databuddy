@@ -36,6 +36,7 @@ const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await 
     if(route.endsWith('/voice/connect'))return {sdp:'v=0\r\ncontrolled-answer',call_id:'vc_fixture',max_seconds:300};
     throw Error('Unexpected request '+route);
    }};
+  Object.defineProperty(w.crypto,'randomUUID',{value:undefined});w.eval(fs.readFileSync(path.join(root,'secure-id.js'),'utf8'));
   w.eval(fs.readFileSync(path.join(root,'interactive-work.js'),'utf8'));
   d.querySelector('#cloud-browser').click();await wait(()=>d.querySelector('[data-browser-image]').hasAttribute('src'));
   assert.equal(d.querySelector('[data-browser-list] img'),null);

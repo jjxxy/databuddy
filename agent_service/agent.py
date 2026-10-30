@@ -84,6 +84,9 @@ class FinalAnswer(StrictModel):
     citations:list[company_search.Citation]=Field(default_factory=list,max_length=10)
     web_citations:list[web_research.Citation]=Field(default_factory=list,max_length=10)
 
+class ReasoningTaggedAnswer(ValueError):
+    """A model final response must not include internal reasoning markers."""
+
 
 def response_schema(model):
     value = model.model_json_schema()
@@ -287,6 +290,9 @@ def planning_context(turn, *, native=None):
     info['data_evidence_scope']=data_evidence_context(turn,allow_values=provider.settings().get('share_data',False))
     native_tools=None
     if native:
+        # Native function-calling and JSON-text mode are different contracts.
+        # Do not ask for text JSON after removing response_schema from info.
+        prompt=prompt.replace('只返回符合response_schema的JSON，不输出思维链。','按工具协议返回结果，不输出思维链。')
         native_tools=[{'type':'function','function':{'name':t['name'],'description':t['description'],'parameters':t['arguments_schema']}} for t in tools]
         native_tools.append({'type':'function','function':{'name':'finish_task','description':'回答用户或说明所缺信息；完成前须有真实工具证据，内部结论必须引用','parameters':response_schema(FinalAnswer)}})
         info.pop('tools');info.pop('response_schema')
@@ -314,39 +320,129 @@ def validate_step(turn, value, *, selected_only=False):
         if mutates and turn.get('interaction_mode','work')!='work':raise ValueError('聊天模式不能使用写入工具')
         step.arguments=schema.model_validate(step.arguments).model_dump()
     elif not step.answer.strip():raise ValueError('回答不能为空')
+    elif provider.contains_reasoning_marker(step.answer):raise ReasoningTaggedAnswer('回答中包含内部推理标记，请仅返回最终答复')
     return step
 
 
+def _model_json(raw):
+    """Parse a complete JSON response or one complete Markdown JSON fence."""
+    if not isinstance(raw,str):raise ValueError('模型返回内容不是文本')
+    raw=raw.strip()
+    if raw.startswith('```'):
+        fence=re.fullmatch(r'```(?:json)?\s*\n([\s\S]*?)\n```\s*',raw,re.I)
+        if not fence:raise ValueError('模型返回的代码块不完整')
+        raw=fence.group(1).strip()
+    return json.loads(raw)
+
+
+def _plain_chat_answer(turn,candidate):
+    """An ordinary text answer is safe only for an uncomplicated chat.
+
+    Data sources and requests that activate non-core capabilities must still
+    use the validated planning path, so prose is not mistaken for a tool call.
+    """
+    if turn.get('interaction_mode','work')!='chat' or not isinstance(candidate,str):return None
+    if (turn.get('source_id') or turn.get('source_ids') or turn.get('application_id')
+            or turn.get('gateway_client_id') or turn.get('gateway_limits')
+            or turn.get('collaboration_parent_turn_id') or turn.get('resumed_from') or turn.get('agent_trace')):return None
+    # Workspace-specific answers require an actual scoped read or structured
+    # explanation of a missing capability; a fluent claim is not a receipt.
+    if re.search(r'项目|工作空间|资料|附件|文件|历史|记录|上次|之前|查|搜|检索|最新|数据|报表|报告|公司|系统|网页|网站|project|workspace|file|search|latest|previous',turn.get('work_request',turn.get('text','')),re.I):return None
+    if set(agent_context.selected(turn))-agent_context.ESSENTIAL:return None
+    text=candidate.strip()
+    if (not 1<=len(text)<=12000 or re.match(r'^(?:\{|\[|```|<\s*(?:tool|function))',text,re.I)
+            or provider.contains_reasoning_marker(text)):return None
+    return validate_step(turn,{'kind':'final','answer':text,'status':'complete'})
+
+
+def _plan_diagnostic(turn,parsed,exc,attempt):
+    name=parsed.get('tool') if isinstance(parsed,dict) else None
+    if not isinstance(name,str):name=None
+    details=[]
+    if isinstance(exc,ValidationError):
+        safe_fields=set(Step.model_fields)
+        if name in TOOLS:safe_fields.update(TOOLS[name][0].model_fields)
+        for error in exc.errors(include_input=False,include_context=False)[:8]:
+            parts=[str(part) if isinstance(part,str) and part in safe_fields else '*' for part in error['loc']]
+            details.append({'path':'.'.join(parts)[:180],'type':error['type']})
+    code='model_output_reasoning' if isinstance(exc,ReasoningTaggedAnswer) else 'schema_mismatch' if details else 'invalid_plan_format'
+    result={'attempt':attempt,'validation':details,'code':code}
+    # Never hand the model a schema outside its present grants / working set.
+    if name in TOOLS and name in agent_context.allowed(turn) and name in agent_context.selected(turn):
+        result['expected_arguments']=TOOLS[name][0].model_json_schema()
+    return result
+
+
 def plan(turn):
-    messages,native_tools=planning_context(turn)
+    requested_native=provider.settings().get('tool_protocol','json')=='native'
+    marker=turn.get('model_tool_compatibility') or {}
+    pinned=bool(turn.get('model_id') and turn.get('model_catalog_revision'))
+    use_json=(requested_native and pinned and marker.get('reason')=='native_unsupported_tool_calling'
+              and marker.get('model_id')==turn['model_id']
+              and marker.get('model_catalog_revision')==turn['model_catalog_revision'])
+    messages,native_tools=planning_context(turn,native=False if use_json else None)
+    turn=get('turn',turn['id'])
     native=bool(native_tools)
+    originally_native=requested_native
     attempt=0
+    last_code='invalid_model_output'
     while attempt<3:
-        step=None
-        raw=''
+        raw='';parsed=None;diagnostic=None;fallback=False
         try:
             raw=provider.complete(messages,tools=native_tools) if native else provider.complete(messages)
-            if raw.startswith('```'):raw=raw.split('\n',1)[1].rsplit('```',1)[0]
-            step=validate_step(turn,json.loads(raw),selected_only=native)
-            return step
         except provider.ContextWindowExceeded as exc:
             from .context_window import recover
             if exc.source=='irreducible' or not recover(get('turn',turn['id']),exc):raise
-            turn=get('turn',turn['id']);messages,native_tools=planning_context(turn);native=bool(native_tools)
+            turn=get('turn',turn['id']);messages,native_tools=planning_context(turn,native=native);native=bool(native_tools)
             continue
         except provider.BudgetExceeded:raise
-        except (ValueError,TypeError) as exc:
-            details=[]
-            if hasattr(exc,'errors'):
-                details=[{'path':'.'.join(map(str,e['loc']))[:180],'type':e['type']} for e in exc.errors(include_input=False,include_context=False)[:8]]
-            diagnostic={'attempt':attempt+1,'validation':details,'code':'schema_mismatch' if details else 'invalid_plan'}
-            if isinstance(step,Step) and step.tool in TOOLS:
-                diagnostic['expected_arguments']=TOOLS[step.tool][0].model_json_schema()
-            patch('turn',turn['id'],planning_errors=(get('turn',turn['id']).get('planning_errors',[])+[{'attempt':attempt+1,'validation':details,'code':diagnostic['code']}])[-6:])
+        except provider.ModelOutputError as exc:
+            if exc.code=='content_filter':raise
+            if exc.code=='native_tool_call_missing':
+                answer=_plain_chat_answer(turn,exc.candidate)
+                if answer is not None:return answer
+            last_code=exc.code
+            diagnostic={'attempt':attempt+1,'validation':[],'code':exc.code}
+            if native and exc.code.startswith('native_'):
+                # Some compatible providers ignore tool_choice. Re-request a
+                # single schema-validated JSON decision without tools. All
+                # authorization and evidence checks still happen on our side.
+                turn=get('turn',turn['id'])
+                if exc.code=='native_unsupported_tool_calling' and turn.get('model_id') and turn.get('model_catalog_revision'):
+                    turn=patch('turn',turn['id'],model_tool_compatibility={'reason':exc.code,'model_id':turn['model_id'],
+                        'model_catalog_revision':turn['model_catalog_revision']})
+                messages,native_tools=planning_context(turn,native=False)
+                native=False;fallback=True
+        else:
+            try:
+                turn=get('turn',turn['id'])
+                parsed=_model_json(raw)
+                return validate_step(turn,parsed,selected_only=originally_native)
+            except (ValueError,TypeError) as exc:
+                if not native and isinstance(exc,json.JSONDecodeError):
+                    answer=_plain_chat_answer(turn,raw)
+                    if answer is not None:return answer
+                diagnostic=_plan_diagnostic(turn,parsed,exc,attempt+1)
+                last_code=diagnostic['code']
+        patch('turn',turn['id'],planning_errors=(get('turn',turn['id']).get('planning_errors',[])+[
+            {'attempt':attempt+1,'validation':diagnostic['validation'],'code':diagnostic['code']}])[-6:])
+        # Native responses are internally projected into Step JSON; that
+        # projection is not an actual assistant text message or tool receipt.
+        if raw and not native and not provider.contains_reasoning_marker(raw):
             messages.append({'role':'assistant','content':raw[:5000]})
-            attempt+=1
-            messages.append({'role':'user','content':'上一步输出格式或工具权限无效，未执行。请遵循JSON Schema；先discover_tools加载目录中的工具，聊天模式不得请求修改工具。原生模式必须调用一个函数。'+json.dumps(diagnostic,ensure_ascii=False)})
-    raise ValueError('模型连续返回了无效计划，未执行该计划')
+        attempt+=1
+        instruction=('模型没有按原生工具协议返回单个调用，现使用JSON格式重新请求；' if fallback else '上一步输出不符合要求，未执行；')
+        if last_code=='output_truncated':instruction+='输出未完整返回，请把工作拆成可验证的小步骤，复用已有回执；'
+        if last_code=='model_output_reasoning':instruction+='不要返回内部推理或其标签，只返回最终答复；'
+        instruction+='根据提供的工具参数和response_schema返回一个完整JSON对象；先discover_tools加载需要的能力，聊天模式不得请求修改工具。' if not native else '根据提供的工具参数调用一个函数；先discover_tools加载需要的能力，聊天模式不得请求修改工具。'
+        messages.append({'role':'user','content':instruction+json.dumps(diagnostic,ensure_ascii=False)})
+    if last_code=='output_truncated':
+        message='模型连续返回不完整内容，当前任务和已有成果已保留；请检查模型单次输出限制或重试。'
+    elif last_code=='invalid_response_json':
+        message='模型服务返回的数据格式异常，当前任务和已有成果已保留；请检查模型服务后重试。'
+    else:
+        message='模型没有返回可验证的下一步，当前任务与已有成果已保留；请检查模型的工具调用兼容性后继续。'
+    raise provider.ModelOutputError(message,code=last_code)
 
 
 def observe(turn,value,error=False):
@@ -868,6 +964,9 @@ def opencode_step(turn_id,value,call_id):
         return result
     try:step=validate_step(turn,value)
     except (ValueError,TypeError) as exc:
+        if isinstance(exc,ReasoningTaggedAnswer):
+            return {'observation':{'executed':False,'code':'MODEL_OUTPUT_REASONING',
+                                   'error':'回答包含内部推理标记，请仅返回最终答复'}}
         details=[{'path':'.'.join(map(str,e['loc']))[:180],'type':e['type']} for e in exc.errors(include_input=False,include_context=False)[:8]] if hasattr(exc,'errors') else []
         expected=TOOLS[value['tool']][0].model_json_schema() if isinstance(value,dict) and value.get('tool') in TOOLS else None
         return {'observation':{'error':'工具参数或权限不正确，未执行；请根据工具目录和参数结构修正','validation':details,'expected_arguments':expected}}
@@ -918,7 +1017,7 @@ def advance(turn):
                     current=get('turn',turn['id'])
                     if current['state'] not in ('agent','agent_tool'):return
                     messages,_=planning_context(current,native=False)
-                    prompt=messages[0]['content']+'本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。'
+                    prompt=messages[0]['content'].replace('只返回符合response_schema的JSON，不输出思维链。','按工具协议返回结果，不输出思维链。')+'本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。'
                     try:
                         receipt=opencode_runtime.run_session(get('turn',turn['id']),prompt,json.loads(messages[1]['content']),
                             lambda step,call_id:opencode_step(turn['id'],step,call_id))
@@ -931,6 +1030,10 @@ def advance(turn):
             else:agent_graph.invoke({'turn_id':turn['id']})
         patch('turn',turn['id'],model_retry_count=0,model_retry_at=None)
     except provider.BudgetExceeded as exc:
+        finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)
+    except provider.ModelOutputError as exc:
+        finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)
+    except provider.ModelServiceError as exc:
         finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)
     except company_search.CompanySearchError as exc:
         finish(get('turn',turn['id']),str(exc),outcome='needs_input',resume_available=True)

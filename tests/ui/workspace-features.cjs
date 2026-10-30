@@ -3,6 +3,7 @@ const root=path.resolve(__dirname,'../../agent_service/static');
 const wait=async f=>{const until=Date.now()+5000;while(!f()){if(Date.now()>until)throw Error('UI condition timed out');await new Promise(r=>setTimeout(r,5))}};
 const response=v=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(v))});
 async function scenario(){const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;try{
+ Object.defineProperty(w.crypto,'randomUUID',{value:undefined});w.eval(fs.readFileSync(path.join(root,'secure-id.js'),'utf8'));
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','fixture-owner');const requests=[],digest='a'.repeat(64);let forgotten=false,skillInstalled=false,compact=false;
  const memory={id:'mem',title:'金额显示单位',content:'以万元展示 <img src=x>',scope:'project',category:'preference',version:2};const original=JSON.stringify({user:'请核对全部记录',agent:'已经保留完整原文',outcome:'answered'});
  w.fetch=async(url,o={})=>{const u=new URL(url,'https://atlas.test'),route=u.pathname,body=o.body&&!(o.body instanceof w.FormData)?JSON.parse(o.body):o.body;requests.push({route,query:u.search,body,method:o.method||'GET'});let v;

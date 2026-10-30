@@ -1,6 +1,7 @@
 'use strict';
 /* Shared local-data view: same-origin web capability, also used by the desktop shell. */
 (()=>{
+ const randomId=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
  const markup="<h1>把资料变成可核对的结果</h1><p class=\"lead\">导入、画像、明确处理口径、预览后发布。此页面使用本地确定性规则，不调用云端 AI。</p><p id=\"status\" role=\"status\" aria-live=\"polite\">正在读取本机状态…</p>\n<section><h2>1　选择资料</h2><form id=\"upload\"><label>任务名称<input id=\"name\" maxlength=\"80\" value=\"本地数据核对\" required></label><label>资料文件（可多选）<input id=\"file\" type=\"file\" multiple accept=\".csv,.xlsx,.json,.jsonl,.txt,.pdf,.docx,.pptx\" required></label><button id=\"upload-button\" type=\"submit\">导入所选文件</button></form><p class=\"note\">文件窗口中按住 Ctrl（Mac 为 ⌘）或 Shift 可多选；最多20个，每个不超过25MB。</p><p id=\"selection-count\" role=\"status\" aria-live=\"polite\"></p><ul id=\"import-files\" class=\"import-files\" hidden></ul><label id=\"source-choice\" hidden>选择要加工的资料<select id=\"source-select\"></select><small>文件分别保留；切换后可单独核对与加工。</small></label><p id=\"profile\"></p></section>\n<section id=\"rules\" hidden><h2>2　明确处理口径</h2><p>选择字段即确定处理方案。留空分组和金额可保留明细；分组汇总须同时选择两项。</p><form id=\"process\"><div class=\"grid\"><label>唯一编号（可选）<select id=\"primary\"></select></label><label>按哪个字段汇总<select id=\"group\"></select></label><label>金额字段<select id=\"amount\"></select></label><label>扣除的退款字段（可选）<select id=\"refund\"></select></label><label>仅保留该字段的指定值<select id=\"filter-field\"></select></label><label>指定值<input id=\"filter-value\" maxlength=\"2000\" placeholder=\"例如：已付款\"></label></div><p class=\"note\">金额按精确十进制处理。此操作产生新候选，不覆盖已有正式结果。</p><button id=\"process-button\" type=\"submit\">执行本地加工</button></form></section>\n<section id=\"result\" hidden><h2>3　核对结果</h2><p id=\"result-info\"></p><p id=\"summary\"></p><div id=\"table\" class=\"table-scroll\"></div><label id=\"source-review-label\" hidden><input id=\"source-review-confirm\" type=\"checkbox\">我已对照原始资料逐项核对来源解释、金额和业务口径，同意采用这次候选结果。</label><div class=\"actions\"><button id=\"publish\" type=\"button\" hidden>已核对，确认发布此候选</button><button id=\"download\" type=\"button\" hidden>导出完整 CSV</button></div><p id=\"receipt\"></p></section>\n<section><h2>已保存的本地任务</h2><p>退出或断网后，已发布成果仍可打开和导出。</p><div id=\"history\"></div></section>\n";
  window.createAtlasLocalData=function(options){
  const root=options.root,prefix=options.prefix||'',token=options.token??sessionStorage.getItem('atlas_token')??'';
@@ -19,12 +20,26 @@ async function api(path,requestOptions={}){
  const controller=new AbortController();controllers.add(controller);const timer=setTimeout(()=>controller.abort(),options.body instanceof FormData?120000:20000);
  const headers={Authorization:'Bearer '+token};let body=options.body;
  if(body&&!(body instanceof FormData)){headers['Content-Type']='application/json';body=JSON.stringify(body)}
- try{const response=await fetcher('/api'+path,{...options,body,headers,signal:controller.signal});ensure(generation);if(response.status===401){optionsOnUnauthorized();ensure(generation);}if(!response.ok){let detail;try{detail=(await response.json()).detail}catch{}throw Error(typeof detail==='string'?detail:'本地请求未完成，请稍后重试')}return response}
+ try{const response=await fetcher('/api'+path,{...options,body,headers,signal:controller.signal});ensure(generation);if(response.status===401){optionsOnUnauthorized();ensure(generation);}if(!response.ok){let detail;try{detail=(await response.json()).detail}catch{}const error=Error(typeof detail==='string'?detail:'本地请求未完成，请稍后重试');error.status=response.status;const seconds=Number(response.headers?.get?.('Retry-After')||0);error.retryAfter=Number.isFinite(seconds)&&seconds>0?seconds*1000:0;throw error}return response}
  catch(error){if(error.name==='AbortError')throw Error('本地请求等待超时，请刷新状态后再操作；不要重复提交。');throw error}
  finally{clearTimeout(timer);controllers.delete(controller)}
 }
 const json=async(path,requestOptions)=>{const generation=epoch,response=await api(path,requestOptions),value=await response.json();ensure(generation);return value};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+// The gateway can briefly reject an upload or status poll while its two
+// request slots are occupied. Retry only these idempotent operations.
+async function retryBusy(action){
+ const generation=epoch;
+ for(let attempt=0;;attempt++){
+  ensure(generation);
+  try{return await action()}catch(error){
+   ensure(generation);
+   const delay=error.retryAfter||250*(2**attempt);
+   if(![429,503].includes(error.status)||attempt>=2||delay>10000)throw error;
+   await pause(delay);ensure(generation);
+  }
+ }
+}
 async function waitFor(check){const generation=epoch,end=Date.now()+240000;while(Date.now()<end){ensure(generation);const value=await check();ensure(generation);if(value)return value;await pause(1000)}throw Error('加工尚未完成。请保留任务，并在稍后查看已保存任务的状态。')}
 async function guarded(action){if(busy||!active||!authorized())return;const generation=epoch;busy=true;root.querySelectorAll('button').forEach(b=>b.disabled=true);$('#file').disabled=$('#source-select').disabled=true;try{await action()}catch(error){if(active&&generation===epoch&&!error.stale)message(error.message||'操作未完成，原有资料和成果已保留。',true)}finally{if(generation===epoch){busy=false;root.querySelectorAll('button').forEach(b=>b.disabled=false);$('#file').disabled=$('#source-select').disabled=false}}}
 function choices(id,fields){const select=$(id);select.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent='不选择';select.append(empty);for(const f of fields){const option=document.createElement('option');option.value=f.name;option.textContent=f.label;select.append(option)}}
@@ -50,24 +65,24 @@ function renderImports(){
 }
 function selectedFiles(){
  const files=Array.from($('#file').files||[]);
- if(files.length!==imports.length||files.some((file,index)=>file!==imports[index].file)){imports=files.map(file=>({file,request_id:crypto.randomUUID()}));selectSource(null);renderImports()}
+ if(files.length!==imports.length||files.some((file,index)=>file!==imports[index].file)){imports=files.map(file=>({file,request_id:randomId()}));selectSource(null);renderImports()}
  return files;
 }
 $('#file').onchange=()=>{if(!busy){selectedFiles();message('已选择文件，点击“导入所选文件”开始。')}};
 $('#source-select').onchange=()=>{if(busy)return;selectSource(imports.find(row=>row.source?.id===$('#source-select').value)?.source);message('已切换资料，请核对这份文件的处理口径。')};
 $('#upload').addEventListener('submit',event=>{event.preventDefault();guarded(async()=>{
  const generation=epoch,files=selectedFiles(),name=$('#name').value.trim();if(!files.length||files.some(file=>!file.size))throw Error('请选择非空资料文件。');if(files.length>20)throw Error('每次最多选择20个文件，请减少后再导入。');if(!name)throw Error('请填写任务名称。');const large=files.find(file=>file.size>25*1024*1024);if(large)throw Error(large.name+' 超过25MB，请拆分后导入。');
- project=boundProject?{id:boundProject}:project||await json('/projects',{method:'POST',body:{name,request_id:crypto.randomUUID()}});
+ project=boundProject?{id:boundProject}:project||await json('/projects',{method:'POST',body:{name,request_id:randomId()}});
  for(const row of imports){
   if(row.source)continue;row.error='';row.status='正在导入…';renderImports();message(`正在本地导入 ${imports.indexOf(row)+1}/${imports.length}：${row.file.name}，全程不调用云端 AI。`);
   try{
-   if(!row.uploaded){const form=new FormData();form.append('file',row.file);form.append('request_id',row.request_id);form.append('local_processing','true');row.uploaded=await json(`/projects/${project.id}/attachments`,{method:'POST',body:form})}
-   row.source=await waitFor(async()=>{const value=(await json('/sources')).find(s=>s.id===row.uploaded.id);if(value?.status==='failed'){row.uploaded=null;throw Error(value.error||'文件检查未通过，请检查格式和内容。')}return value?.status==='ready'?value:null});
+   if(!row.uploaded){const form=new FormData();form.append('file',row.file);form.append('request_id',row.request_id);form.append('local_processing','true');row.uploaded=await retryBusy(()=>json(`/projects/${project.id}/attachments`,{method:'POST',body:form}))}
+   row.source=await waitFor(async()=>{const value=(await retryBusy(()=>json('/sources'))).find(s=>s.id===row.uploaded.id);if(value?.status==='failed'){row.uploaded=null;throw Error(value.error||'文件检查未通过，请检查格式和内容。')}return value?.status==='ready'?value:null});
    if(!source)selectSource(row.source);
   }catch(error){ensure(generation);row.error=error.message||'导入未完成，请重试'}
   renderImports();
  }
- const ready=imports.filter(row=>row.source).length,failed=imports.length-ready;await history();message(failed?`已导入${ready}个文件，${failed}个未完成。已成功的资料保留，点击“重试未完成的文件”继续。`:`${ready}个文件已保存在本机。请选择要加工的资料并明确处理口径。`,!!failed);
+ const ready=imports.filter(row=>row.source).length,failed=imports.length-ready;await retryBusy(history);message(failed?`已导入${ready}个文件，${failed}个未完成。已成功的资料保留，点击“重试未完成的文件”继续。`:`${ready}个文件已保存在本机。请选择要加工的资料并明确处理口径。`,!!failed);
 })});
 $('#process').addEventListener('submit',event=>{event.preventDefault();guarded(async()=>{if(!source)throw Error('请先导入资料。');const group=$('#group').value,amount=$('#amount').value,refund=$('#refund').value,filter=$('#filter-field').value,value=$('#filter-value').value; if(Boolean(group)!==Boolean(amount))throw Error('分组和金额字段需要同时选择；都不选则保留明细。');if(refund&&!amount)throw Error('扣除退款前，请先选择金额和分组字段。');if(filter&&!value.trim())throw Error('请填写筛选字段需要保留的值。');
  const spec={object_label:'本地业务记录',primary_key:$('#primary').value||null,group_by:group||null,amount_field:refund?'m_net':amount||null,amount_label:refund?'净金额':'金额合计',filters:filter?[{field:filter,operator:'eq',data_type:'text',value}]:[],computations:refund?[{name:'m_net',label:'净金额',operation:'subtract',left_field:amount,right_field:refund}]:[]};

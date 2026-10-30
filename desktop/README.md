@@ -24,6 +24,9 @@ This source entry detects Git with `shutil.which("git")` and sets an absolute
 `ATLAS_GIT_BINARY` before starting the desktop backend. An explicit existing
 `ATLAS_GIT_BINARY` takes precedence. Packaged desktop builds still require their
 bundled Git; their binary lookup does not fall back to the system PATH.
+Source debugging also checks PATH and the project runtime folder for OpenCode.
+The startup message identifies the selected planning mode; an explicit runtime
+choice is respected, and missing OpenCode uses the compatible Atlas planner.
 
 The server binds to `127.0.0.1`. Credentials are saved in the selected state
 directory's `credentials.json` and reused on restart; an explicit `APP_TOKEN`
@@ -49,7 +52,7 @@ state directory/model configuration, then reload the page. For a packaged
 desktop app, rebuild and replace the complete program folder; keep the selected
 workspace and state directory. Do not clear the database or credentials.
 
-The sidebar shows runtime revision `2026.10.29.1` for this repair. Click it to
+The sidebar shows runtime revision `2026.10.30.1` for this repair. Click it to
 inspect API, Agent and Worker revisions. Missing or different node revisions
 indicate that some processes still need to be updated/restarted. These runtime
 revisions are distinct from the application version `0.20.0` and Git commit IDs.

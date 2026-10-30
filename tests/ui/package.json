@@ -1,10 +1,11 @@
 {
   "private": true,
   "scripts": {
-    "test": "node scroll.cjs && node lifecycle.cjs && node service-worker.cjs && node work.cjs && node models.cjs && node multi-files.cjs && node resume-message.cjs && node workspace-features.cjs && node collaboration.cjs && node workspace-shell.cjs && node conversation-outputs.cjs && node source-preview.cjs && node data-workbench.cjs && node auth-transition.cjs && node local-data.cjs && node local-data-multi.cjs && node local-workspace-context.cjs && node data-app-navigation.cjs && node project-navigation.cjs && node facts-pagination.cjs && node desktop-business-actions.cjs && node source-buttons.cjs && node work-runtime.cjs && node interactive-work.cjs && node polling-recovery.cjs",
+    "test": "node scroll.cjs && node lifecycle.cjs && node service-worker.cjs && node work.cjs && node models.cjs && node multi-files.cjs && node insecure-multi-files.cjs && node resume-message.cjs && node workspace-features.cjs && node collaboration.cjs && node workspace-shell.cjs && node conversation-outputs.cjs && node source-preview.cjs && node data-workbench.cjs && node auth-transition.cjs && node local-data.cjs && node local-data-multi.cjs && node local-workspace-context.cjs && node data-app-navigation.cjs && node project-navigation.cjs && node facts-pagination.cjs && node desktop-business-actions.cjs && node source-buttons.cjs && node work-runtime.cjs && node interactive-work.cjs && node polling-recovery.cjs",
     "test:browser": "node browser-render.mjs",
     "test:file-picker": "node file-picker-browser.mjs",
-    "test:browser-service": "node browser-service.mjs"
+    "test:browser-service": "node browser-service.mjs",
+    "test:live-upload": "node live-upload-browser.mjs"
   },
   "dependencies": {
     "fake-indexeddb": "6.2.4",

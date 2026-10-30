@@ -69,3 +69,22 @@ ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify
 ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --false-budget-stop
 ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tests/ui
 ```
+
+## 多文件与模型计划兼容修复（2026-10-30）
+
+前次验证没有覆盖真实非安全 HTTP 与网关容量。这次在真实 Chromium 的非安全 HTTP 环境中确认 `crypto.randomUUID` 不存在：现在使用 `crypto.getRandomValues` 生成安全请求标识；项目对话、工作资料和数据应用所需资源均加入隔离网关静态文件白名单。
+
+隔离网关默认两个并发位置，包括后台轮询。旧前端并发上传全部附件，在两位置的模拟网关下实际复现了 503 与部分上传失败。新版本顺序上传，对 429/503 有限退避并复用同一个上传标识；工作资料的上传与来源状态读取也采用可恢复的重试。已成功文件保留，切换项目会中止后续重试。
+
+真实 Chromium 153 通过非安全 HTTP 连接真实 Atlas API 与 SQLite，聊天和工作模式分别一次选择并提交三份文件；服务端对话记录各保留三个独立来源。测试同时模拟首次网关 503 和服务端已保存后响应丢失，确认复用请求标识且没有重复来源。另在浏览器验证工作资料多选、部分失败和重试。网关是受控模拟，Windows Electron 原生选择窗口没有实机验证。
+
+旧规划器把桌面模式的真实 HTTP 错误误当作计划格式问题；受控 401 在旧 main 可复现为“模型连续返回了无效计划”。现区分错误与格式问题：401/额度错误保留脱敏原因，429/503 沿用退避；明确不支持原生工具调用时，在同一任务的固定模型配置内回退到 JSON 协议，依然校验参数和权限。模型返回普通文本时，仅在不需要来源或工具的普通聊天中直接作为答复；工作任务仍需可验证的步骤和实际回执。
+
+真实旧规划器连接本地模拟 HTTP 模型，验证不支持原生工具后的自动回退、实际文件写入一次、401 脱敏和 429 后恢复；同一任务后续步骤没有再次探测已确认不支持的协议。真实 OpenCode 2.1.2 加本地模拟模型回归通过虚假预算停止修正、上下文超限恢复和记忆撤回。
+
+相关 Python 回归批次分别为 330、115、16 项通过（有重叠），26 个前端脚本和 40 项桌面 JavaScript 检查通过。运行修订 `2026.10.30.1` 支持在版本检查中显示 Agent 选择的执行模式，隔离网关也会转发运行修订响应头。未连接付费模型、未运行全仓测试、未更新用户部署；验证数据详见 `verification/upload-model-compatibility-20261030.json`。
+
+```bash
+.venv/bin/python scripts/verify_legacy_model_recovery.py
+ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:live-upload --prefix tests/ui
+```

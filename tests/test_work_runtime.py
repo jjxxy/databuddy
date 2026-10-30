@@ -135,6 +135,34 @@ def test_visual_model_receives_real_image_bytes_and_does_not_grant_financial_app
     with pytest.raises(ValueError, match='视觉输入'):work.execute(turn, 'inspect_visual_artifact', {'artifact_id': aid})
 
 
+@pytest.mark.parametrize('status',[401,429,503])
+def test_visual_provider_http_error_is_safe_and_does_not_create_review(controller,monkeypatch,status):
+    turn, aid=make_saved_work(controller,'page.png',sample_png())
+    monkeypatch.setenv('ATLAS_VISION_ENABLED','1');monkeypatch.setenv('ATLAS_DESKTOP_MODE','1')
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'base_url':'https://vision.test/v1',
+        'model':'fixture','api_key':'fixture-only','engine':'atlas'})
+    monkeypatch.setattr('agent_service.network_policy.check_url',lambda url:None)
+    original=httpx.Client
+    def respond(request):return httpx.Response(status,json={'error':{'message':'FIXTURE-SECRET-GATEWAY'}})
+    monkeypatch.setattr(provider.httpx,'Client',lambda **kw:original(transport=httpx.MockTransport(respond),**kw))
+    current=run_tool(turn,'inspect_visual_artifact',{'artifact_id':aid})
+    observation=current['agent_trace'][-1]
+    assert observation['status']=='failed' and '工具执行没有成功' in observation['observation']['error']
+    assert 'FIXTURE-SECRET-GATEWAY' not in json.dumps(current,ensure_ascii=False)
+    assert not [value for value in all_items('visual_review') if value['turn_id']==turn['id']]
+
+
+def test_visual_reasoning_is_not_saved_as_assessment(controller,monkeypatch):
+    turn, aid=make_saved_work(controller,'page.png',sample_png())
+    monkeypatch.setenv('ATLAS_VISION_ENABLED','1')
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas'})
+    monkeypatch.setattr(provider,'complete',lambda *args,**kwargs:'<think>FIXTURE-PRIVATE-THOUGHT</think>图片清晰')
+    current=run_tool(turn,'inspect_visual_artifact',{'artifact_id':aid})
+    assert current['agent_trace'][-1]['status']=='failed'
+    assert 'FIXTURE-PRIVATE-THOUGHT' not in json.dumps(current,ensure_ascii=False)
+    assert not [value for value in all_items('visual_review') if value['turn_id']==turn['id']]
+
+
 def test_real_pdf_rendition_uses_poppler_and_marks_unrendered_pages(tmp_path):
     import shutil
     if not shutil.which('pdftoppm') or not shutil.which('pdfinfo'):pytest.skip('Poppler is not installed')

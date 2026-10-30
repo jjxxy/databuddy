@@ -35,6 +35,43 @@ def test_missing_git_fails_before_any_application_start(monkeypatch):
     with pytest.raises(ValueError,match='安装 Git'):run_debug.configure_git({})
 
 
+def test_debug_discovers_bundled_opencode_when_not_on_path(monkeypatch,tmp_path):
+    monkeypatch.setattr(run_debug,'ROOT',tmp_path)
+    monkeypatch.setattr(run_debug.shutil,'which',lambda *a,**k:None)
+    binary=tmp_path/'runtime'/'opencode'/('opencode.exe' if os.name=='nt' else 'opencode')
+    binary.parent.mkdir(parents=True);binary.write_bytes(b'test executable');binary.chmod(0o755)
+    env={'PATH':''}
+    assert run_debug.configure_opencode(env)
+    assert env['ATLAS_OPENCODE_BINARY']==str(binary.resolve())
+    assert env['ATLAS_OPENCODE_RUNTIME']=='1'
+
+
+def test_debug_honors_explicit_opencode_and_legacy_mode(monkeypatch):
+    monkeypatch.setattr(run_debug.shutil,'which',lambda *a,**k:pytest.fail('explicit binary must not search PATH'))
+    env={'ATLAS_OPENCODE_BINARY':'/explicit/opencode','ATLAS_OPENCODE_RUNTIME':'0'}
+    assert not run_debug.configure_opencode(env)
+    assert env['ATLAS_OPENCODE_BINARY']=='/explicit/opencode'
+
+
+def test_debug_reports_compatibility_mode_when_opencode_not_found(monkeypatch,tmp_path):
+    monkeypatch.setattr(run_debug,'ROOT',tmp_path)
+    monkeypatch.setattr(run_debug.shutil,'which',lambda *a,**k:None)
+    env={'PATH':''}
+    assert not run_debug.configure_opencode(env)
+    assert env['ATLAS_OPENCODE_RUNTIME']=='0' and 'ATLAS_OPENCODE_BINARY' not in env
+
+
+@pytest.mark.parametrize('configured,expected',[('1','opencode'),('0','legacy')])
+def test_running_agent_heartbeat_reports_selected_planning_mode(monkeypatch,configured,expected):
+    from agent_service import production_release,runtime
+    saved=[]
+    monkeypatch.setattr(production_release,'process_build_fingerprint',lambda:'fixture-build')
+    monkeypatch.setattr(runtime,'put',lambda kind,value,identity:saved.append((kind,value,identity)))
+    monkeypatch.setenv('ATLAS_OPENCODE_RUNTIME',configured)
+    runtime.heartbeat('agent')
+    assert len(saved)==2 and all(value['planner_mode']==expected for _,value,_ in saved)
+
+
 def test_packaged_desktop_keeps_its_strict_binary_requirement(monkeypatch):
     monkeypatch.setenv('ATLAS_DESKTOP_MODE','1');monkeypatch.delenv('ATLAS_GIT_BINARY',raising=False)
     with pytest.raises(ValueError,match='桌面包未提供'):process_control.executable('git')

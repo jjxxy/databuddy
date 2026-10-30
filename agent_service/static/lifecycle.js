@@ -2,9 +2,10 @@
 /* This controller never persists the access token or caches authenticated responses. */
 function createAtlasLifecycle(b){
  const el=s=>document.querySelector(s), enc=encodeURIComponent;
- let deviceId;try{deviceId=localStorage.getItem('atlas_device');if(!/^d_[a-f0-9]{32}$/.test(deviceId||'')){deviceId='d_'+crypto.randomUUID().replaceAll('-','');localStorage.setItem('atlas_device',deviceId)}}catch{deviceId='d_'+crypto.randomUUID().replaceAll('-','')}
+ const randomId=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
+ let deviceId;try{deviceId=localStorage.getItem('atlas_device');if(!/^d_[a-f0-9]{32}$/.test(deviceId||'')){deviceId='d_'+randomId().replaceAll('-','');localStorage.setItem('atlas_device',deviceId)}}catch{deviceId='d_'+randomId().replaceAll('-','')}
  let pref=null,views=new Map(),current='',restoring=false,chain=Promise.resolve(),saveTimer,pollTimer,busy=false,failures=0,retryAt=0,serverRetryAt=0,needsRegistration=false,epoch=0,cursor=0,feed=null,sw=null,stopped=true,conflict=null,draftState='';
- const writer=crypto.randomUUID(),path='/browser/'+deviceId;
+ const writer=randomId(),path='/browser/'+deviceId;
  const key=(p,c)=>p+':'+c;
  function status(text){el('#workspace-status').textContent=text+(draftState?' · '+draftState:'')}
  function snapshot(){const s=b.state(),sc=el('#thread-scroll');if(!s.projectId||!s.sessionId||!views.has(key(s.projectId,s.sessionId)))return null;const anchor=[...el('#messages').querySelectorAll('[data-turn]')].find(n=>n.getBoundingClientRect().bottom>sc.getBoundingClientRect().top);return {project_id:s.projectId,session_id:s.sessionId,mode:s.mode,draft:el('#message').value,pending:s.pending,source_ids:s.sourceIds||[],anchor_turn_id:anchor?.dataset.turn||null,offset:anchor?anchor.getBoundingClientRect().top-sc.getBoundingClientRect().top:0,at_bottom:b.atLatest(),writer}}

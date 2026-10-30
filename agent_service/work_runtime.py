@@ -568,6 +568,8 @@ def inspect_image(turn, args):
                     {'type': 'image_url', 'image_url': {'url': 'data:' + media + ';base64,' + base64.b64encode(content).decode()}}]}]
     with provider.task_scope(turn['id']):
         answer = provider.complete(messages, max_tokens=1800, purpose='visual_inspection')
+    if provider.contains_reasoning_marker(answer):
+        raise provider.ModelOutputError('视觉模型返回了内部推理标记，请重试以获得可展示的检查结果',code='model_output_reasoning')
     _scope(turn)
     _, current = artifact_input(turn, args.artifact_id)
     if current['sha256'] != metadata['sha256']:raise ValueError('视觉请求期间成果版本发生变化，未采用检查结果')

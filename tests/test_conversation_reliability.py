@@ -164,25 +164,24 @@ def test_explicit_cadences_and_ambiguous_or_negative_requests(text,cron):
     with pytest.raises(ValueError):parse('每天25:00更新')
 
 
-def test_explicit_agent_step_budget_pauses_and_continues_with_prior_observations(project,monkeypatch):
+def test_ordinary_conversation_ignores_legacy_step_budget_and_keeps_audit(project,monkeypatch):
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://model.invalid/v1','model':'simulated','share_data':True})
     count=[0]
     def vary(*args,**kwargs):
         count[0]+=1
+        if count[0]>20:return json.dumps({'kind':'final','answer':'已有信息已核对，当前缺少来源资料。','status':'needs_input'})
         return json.dumps({'kind':'tool','tool':'project_context' if count[0]%2 else 'list_data_applications'})
     monkeypatch.setattr(provider,'complete',vary)
     tid=send(project,'梳理项目资料并制定方案','budget-original')
     from agent_service.tasks import ensure
     from agent_service.task_budget import LEGACY_DEFAULTS
     contract=ensure(get('turn',tid))
-    patch('turn',tid,task_contract={**contract,'budget_policy':'bounded','budgets':dict(LEGACY_DEFAULTS)})
-    paused=complete(tid)
-    assert paused['resume_available'] and len(paused['agent_trace'])==17 and paused['outcome']=='paused'
-    captured=[]
-    def final(messages,**kwargs):captured.append(json.loads(messages[-1]['content']));return json.dumps({'kind':'final','answer':'已有信息已核对，当前缺少来源资料。'})
-    monkeypatch.setattr(provider,'complete',final)
-    resumed=complete(send(project,'继续','budget-resume'))
-    assert resumed['state']=='done' and len(captured[0]['completed_steps'])==17 and resumed['resumed_from']==tid
+    saved={**contract,'budget_policy':'bounded','budgets':dict(LEGACY_DEFAULTS)}
+    patch('turn',tid,task_contract=saved)
+    result=complete(tid)
+    assert result['outcome']=='needs_input' and len(result['agent_trace'])==20 and count[0]==21
+    assert result['task_contract']['budgets']==LEGACY_DEFAULTS,'historical contract remains available for audit'
+
 
 def test_identical_operation_loop_stops_before_consuming_entire_budget(project,monkeypatch):
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://model.invalid','model':'simulated','share_data':True})

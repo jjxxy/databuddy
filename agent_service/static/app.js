@@ -1,8 +1,8 @@
 'use strict';
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uuid=()=>crypto.randomUUID();
-const CLIENT_REVISION='2026.10.29.1';
+const uuid=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
+const CLIENT_REVISION='2026.10.30.1';
 let runtimeNodeWarning=false;
 function runtimeVersion(r){
  const revision=r.headers.get('X-Atlas-Runtime-Revision'),label=$('#runtime-version');if(!label)return;
@@ -122,13 +122,27 @@ async function boot(){
 
 function restoreAttachments(ids=[]){attached=[...new Set(ids)].slice(0,20).map(id=>({source_id:id,name:sourceNames[id]||'已上传资料',request_id:uuid(),status:'uploaded'}));renderAttachment()}
 function renderAttachment(){const busy=sending||!!pending;$('#attachment-count').textContent=attached.length?'已选 '+attached.length+' / 20 个文件 · 发送时一起处理':'可一次多选文件，也可分批添加';$('#add-more-files').hidden=!attached.length;$('#add-more-files').disabled=busy||attached.length>=20;const tray=$('#attachment-tray');tray.hidden=!attached.length;tray.innerHTML=attached.map((a,i)=>`<div class="file-chip attachment-chip ${a.status==='failed'?'attachment-failed':''}"><span class="file-glyph" aria-hidden="true">▤</span>${a.source_id?`<button type="button" class="attachment-name source-file" data-open-source="${esc(a.source_id)}" ${a.revision?`data-source-revision="${esc(a.revision)}"`:''} aria-label="查看资料 ${esc(a.name||'已上传资料')}" title="查看资料">${esc(a.name||'已上传资料')}<small>已上传 · 点击查看</small></button>`:`<span class="attachment-name">${esc(a.name||a.file?.name||'已上传资料')}<small>${a.status==='uploading'?'正在上传…':a.status==='failed'?esc(a.error||'上传未完成'):'待上传'}</small></span>`}${a.status==='failed'?`<button type="button" data-retry-attachment="${i}" ${sending||pending?'disabled':''}>重试</button>`:''}<button type="button" data-remove-attachment="${i}" aria-label="移除 ${esc(a.name||a.file?.name)}" ${sending||pending?'disabled':''}>×</button></div>`).join('');document.querySelectorAll('[data-mode]').forEach(n=>n.disabled=sending||!!pending);$('#send').disabled=sending;$('#attach').disabled=sending||!!pending;$('#local-files')&&($('#local-files').disabled=sending||!!pending)}
-$('#attachment-tray').onclick=async e=>{const source=e.target.closest('[data-open-source]');if(source){await openSourceButton(source);return}const remove=e.target.closest('[data-remove-attachment]'),retry=e.target.closest('[data-retry-attachment]');if(sending||pending)return;if(remove){attached.splice(Number(remove.dataset.removeAttachment),1);renderAttachment();saveDraft()}if(retry){const a=attached[Number(retry.dataset.retryAttachment)];if(a){sending=true;updateModelPicker();renderAttachment();try{await uploadAttachment(a,projectId);await life?.persist()}catch(err){toast(err.message)}finally{sending=false;updateModelPicker();renderAttachment()}}}};
+$('#attachment-tray').onclick=async e=>{const source=e.target.closest('[data-open-source]');if(source){await openSourceButton(source);return}const remove=e.target.closest('[data-remove-attachment]'),retry=e.target.closest('[data-retry-attachment]');if(sending||pending)return;if(remove){attached.splice(Number(remove.dataset.removeAttachment),1);renderAttachment();saveDraft()}if(retry){const a=attached[Number(retry.dataset.retryAttachment)];if(a){sending=true;updateModelPicker();renderAttachment();try{await uploadWithRetry(a,projectId);await life?.persist()}catch(err){toast(err.message)}finally{sending=false;updateModelPicker();renderAttachment()}}}};
 function draftKey(){return 'atlas_draft_'+projectId+'_'+sessionId}
 function saveDraft(){if(life){life.schedule();return}if(!projectId||!sessionId)return;const text=$('#message').value;if(/https?:|postgres(?:ql)?:|mysql:|password|api[_-]?key|token|secret|authorization|Bearer|sk-[A-Za-z0-9-]{12}/i.test(text))sessionStorage.removeItem(draftKey());else sessionStorage.setItem(draftKey(),JSON.stringify({text,mode:interactionMode,source_ids:attached.filter(a=>a.source_id).map(a=>a.source_id)}))}
 function restoreDraft(){if(life){$('#message').value='';setMode('work');return}try{const d=JSON.parse(sessionStorage.getItem(draftKey())||'{}');$('#message').value=d.text||'';setMode(d.mode==='chat'?'chat':'work');restoreAttachments(d.source_ids||[])}catch{$('#message').value='';setMode('work')}}
 function attach(files){if(sending||navigating||pending){if(pending)toast('请先确认上一条消息的发送结果，再修改附件');return}const list=files instanceof File?[files]:Array.from(files||[]);if(!list.length)return;boundApplication='';clearApplication=true;renderApplicationContext();let skipped=0;for(const file of list){if(attached.length>=20){skipped++;continue}if(file.size>25*1024*1024){toast(file.name+' 超过25MB，未添加');continue}attached.push({file,name:file.name,request_id:uuid(),source_id:null,status:'queued'})}if(skipped)toast('每条消息最多20个文件，超出文件未添加');renderAttachment();saveDraft();$('#message').focus({preventScroll:true})}
 function attachSources(sources){if(sending||pending){toast('请先确认上一条消息的发送结果');return false}for(const source of sources){if(attached.length>=20){toast('每条消息最多20个文件');break}if(attached.some(a=>a.source_id===source.id))continue;sourceNames[source.id]=source.name;attached.push({source_id:source.id,name:source.name,revision:source.revision||null,request_id:uuid(),status:'uploaded'})}boundApplication='';clearApplication=true;renderApplicationContext();renderAttachment();saveDraft();return true}
 function uploadAttachment(a,pid){if(a.source_id)return Promise.resolve();if(a.uploadPromise)return a.uploadPromise;a.status='uploading';a.error='';renderAttachment();a.uploadPromise=(async()=>{try{const form=new FormData();form.append('file',a.file);form.append('request_id',a.request_id);const source=await api('/projects/'+pid+'/attachments',{method:'POST',body:form});a.source_id=source.id;a.revision=source.revision||1;a.name=source.name||a.name;a.status='uploaded';sourceNames[source.id]=a.name;await life?.persist().catch(()=>{})}catch(e){a.status='failed';a.error=e.message;throw e}finally{a.uploadPromise=null;renderAttachment()}})();return a.uploadPromise}
+// A shared gateway can have only two concurrent requests, including polling.
+// Retry the same request ID after transient admission failures; never re-upload
+// a file for which the server already returned a source ID.
+async function uploadWithRetry(a,pid){
+ for(let attempt=0;;attempt++){
+  if(authSealed||pid!==projectId)throw authTransitionError();
+  try{return await uploadAttachment(a,pid)}catch(error){
+   const waitMs=error.retryAfter||250*(2**attempt);
+   if(error.authTransition||![429,503].includes(error.status)||attempt>=2||waitMs>10000)throw error;
+   a.status='uploading';a.error='';renderAttachment();
+   await new Promise(resolve=>setTimeout(resolve,Math.max(0,waitMs)));
+  }
+ }
+}
 function pendingMatches(a,b){return a.text===b.text&&JSON.stringify(a.source_ids|| (a.source_id?[a.source_id]:[]))===JSON.stringify(b.source_ids||[])&&a.candidate_run===b.candidate_run&&a.interaction_mode===b.interaction_mode&&a.model_id===b.model_id&&a.session_id===b.session_id&&a.application_id===b.application_id&&a.clear_application===b.clear_application&&a.resume_turn_id===b.resume_turn_id}
 async function releaseRejectedResume(error,pid){
  const frozen=pending;
@@ -143,7 +157,14 @@ async function releaseRejectedResume(error,pid){
  }catch{return false}
 }
 async function send(textOverride,candidateRun=null,resumeTurn=null){if(sending||navigating||!projectId)return;const text=typeof textOverride==='string'?textOverride:$('#message').value.trim();if(!text&&!attached.length)return;if(text!=='停止'&&modelCatalogLoaded&&!modelCatalog.length){toast('当前没有可用模型，请联系管理员配置');return}if(text!=='停止'&&selectedModelId&&!modelCatalog.some(m=>m.id===selectedModelId)){toast('原模型已停用，请重新选择一个可用模型');return}if(pending&&text!==pending.text&&text!=='停止'){toast('上一条消息的发送结果尚未确认，请先重试原消息');return}const id=projectId;sending=true;updateModelPicker();renderAttachment();$('#send').disabled=true;$('#message').readOnly=true;$('#new-project').disabled=true;$('#new-session').disabled=true;
-try{if(!pending&&text!=='停止'){const outcomes=await Promise.allSettled(attached.filter(a=>!a.source_id).map(a=>uploadAttachment(a,id)));if(outcomes.some(r=>r.status==='rejected')){await life?.persist().catch(()=>{});throw Object.assign(Error('部分文件上传失败，尚未发送消息。已上传文件已保留，请重试失败项或移除后发送。'),{uploadFailure:true})}}
+try{if(!pending&&text!=='停止'){
+ let failed=false;
+ for(const attachment of attached.filter(a=>!a.source_id)){
+  if(authSealed||id!==projectId)throw authTransitionError();
+  try{await uploadWithRetry(attachment,id)}catch(error){if(error.authTransition)throw error;failed=true}
+ }
+ if(failed){await life?.persist().catch(()=>{});throw Object.assign(Error('部分文件上传失败，尚未发送消息。已上传文件已保留，请重试失败项或移除后发送。'),{uploadFailure:true})}
+}
 const body={text,model_id:selectedModelId||null,resume_turn_id:resumeTurn,source_ids:text==='停止'?[]:attached.filter(a=>a.source_id).map(a=>a.source_id),candidate_run:candidateRun,application_id:boundApplication||null,clear_application:clearApplication,session_id:sessionId,interaction_mode:interactionMode};if(pending&&text===pending.text){pendingRecovered=false}else if(!pending||!pendingMatches(pending,body))pending={...body,request_id:uuid()};await life?.persist();await api('/projects/'+id+'/messages',{method:'POST',body:pending});pending=null;pendingRecovered=false;attached=[];sessionStorage.removeItem(draftKey());clearApplication=false;manualApplication=false;$('#message').value='';$('#message').style.height='auto';await life?.persist().catch(()=>{});renderAttachment();lastRender='';await refresh();$('#thread-scroll').scrollTop=$('#thread-scroll').scrollHeight;
 }catch(e){let modelRejected=false,resumeRejected=false;if(e.status===400&&e.message.startsWith('所选模型当前不可用')&&pending?.request_id){try{const check=await api('/projects/'+id+'/message-status?request_id='+encodeURIComponent(pending.request_id));if(check.accepted===false){pending=null;pendingRecovered=false;modelRejected=true;await loadModels();await life?.persist().catch(()=>{})}}catch{}}if(!modelRejected)resumeRejected=await releaseRejectedResume(e,id);toast(e.message);$('#connection-error').textContent=e.uploadFailure?e.message:modelRejected?'此消息没有提交，输入和附件已保留。请重新选择可用模型后发送。':resumeRejected?'这条继续消息尚未接收，输入、附件和模型已保留。请刷新对话后再点原任务的“继续”。':'没有确认发送成功。再次发送会复用原来的消息编号、模型和完整附件，避免重复处理。';$('#connection-error').hidden=false}finally{sending=false;updateModelPicker();renderAttachment();$('#send').disabled=false;$('#message').readOnly=!!pending;$('#new-project').disabled=false;$('#new-session').disabled=false;$('#message').focus({preventScroll:true})}}
 $('#login-form').onsubmit=async e=>{e.preventDefault();const nextToken=$('#access-token').value.trim();if(!nextToken)return;sealAuthentication();clearAccountSession();sessionStorage.setItem('atlas_token',nextToken);$('#access-token').value='';reloadAuthDocument()};
@@ -191,7 +212,7 @@ $('#messages').addEventListener('click',async e=>{const b=e.target.closest('[dat
 $('#runtime-version').onclick=async()=>{
  try{
   const info=await api('/runtime-info');
-  const nodes=(info.nodes||[]).map(node=>({api:'API',agent:'Agent',worker:'Worker'}[node.role]||node.role)+'：'+(node.runtime_revision||'旧版，需重启')+(node.healthy?'':'（未就绪）'));
+  const nodes=(info.nodes||[]).map(node=>({api:'API',agent:'Agent',worker:'Worker'}[node.role]||node.role)+'：'+(node.runtime_revision||'旧版，需重启')+(node.planner_mode==='opencode'?'（OpenCode）':node.planner_mode==='legacy'?'（兼容模式）':'')+(node.healthy?'':'（未就绪）'));
   toast('当前服务 '+info.revision+(nodes.length?'；'+nodes.join('；'):''));
   runtimeNodeWarning=(info.nodes||[]).some(node=>node.runtime_revision!==CLIENT_REVISION);
   if(runtimeNodeWarning){const label=$('#runtime-version');label.textContent='服务需更新重启';label.dataset.mismatch='true';label.title='API、Agent、Worker 版本不一致。更新代码后需要重启全部服务，旧桌面包需要重新构建。'}

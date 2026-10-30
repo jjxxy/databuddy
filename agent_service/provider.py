@@ -65,7 +65,15 @@ def task_scope(turn_id):
     finally:_scope.reset(token)
 
 class BudgetExceeded(ValueError):pass
-class ModelOutputError(ValueError):pass
+class ModelOutputError(ValueError):
+    def __init__(self,message,*,code='invalid_model_output',candidate=None):
+        super().__init__(message)
+        # Candidate is in-memory only: never put model responses into telemetry
+        # or expose them in diagnostics. It is used only for safe chat replies.
+        self.code=code;self.candidate=candidate
+
+class ModelServiceError(ValueError):
+    """A structured upstream error, whose body must not be exposed."""
 
 class ContextWindowExceeded(BudgetExceeded):
     """A request window can be compressed; cumulative grants cannot."""
@@ -87,6 +95,39 @@ def context_overflow_error(value):
         return context_overflow_error(value.get('message','')) or (isinstance(value.get('data'),dict) and context_overflow_error(value['data']))
     if not isinstance(value,str):return False
     return bool(re.search(r'maximum context (?:length|window)|context (?:length|window).{0,60}(?:exceed|limit)|(?:prompt|input).{0,35}(?:too long|too large|exceeds.{0,25}token)|too many (?:input )?tokens|单次模型上下文超过限制|上下文(?:长度)?超过(?:模型)?(?:限制|上限)',value[:4000],re.I))
+
+
+def _response_text(content):
+    """Accept compatible text parts without accepting arbitrary binary parts."""
+    if isinstance(content,str):return content if len(content)<=100000 else None
+    if not isinstance(content,list) or not 1<=len(content)<=64:return None
+    if not all(isinstance(part,dict) and part.get('type') in ('text','output_text')
+               and isinstance(part.get('text'),str) for part in content):return None
+    text=''.join(part['text'] for part in content)
+    return text if len(text)<=100000 else None
+
+
+def contains_reasoning_marker(text):
+    """Never expose raw model reasoning tags, including incomplete tags."""
+    return isinstance(text,str) and bool(re.search(r'<\s*/?\s*(?:think|analysis|reasoning)\b',text,re.I))
+
+
+def _native_tool_unsupported(error):
+    """Only a clear upstream unsupported-tools response can change protocol."""
+    if not isinstance(error,httpx.HTTPStatusError) or error.response.status_code not in (400,422):return False
+    try:payload=error.response.json()
+    except (ValueError,UnicodeError):return False
+    if not isinstance(payload,dict):return False
+    detail=payload.get('error',payload)
+    if not isinstance(detail,dict):return False
+    code=str(detail.get('code') or '').lower()
+    param=str(detail.get('param') or '').lower()
+    message=str(detail.get('message') or '')[:1000].lower()
+    unsupported=r'unsupported|not supported|does not support|doesn.t support|unknown|unrecognized|不支持|未知参数'
+    subject=r'tool_choice|tools?|function[ _-]?call(?:ing)?|工具调用'
+    return bool(re.search('(?:'+subject+')',param) and re.search('(?:'+unsupported+')',code+' '+message)
+                or re.search('(?:'+subject+').{0,80}(?:'+unsupported+')',message)
+                or re.search('(?:'+unsupported+').{0,80}(?:'+subject+')',message))
 
 
 def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning',tools=None):
@@ -150,35 +191,70 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
         if tools:body.update(tools=tools,tool_choice='required',parallel_tool_calls=False)
         with httpx.Client(timeout=50,trust_env=False) as client:
             r=client.post(value['base_url'].rstrip('/')+'/chat/completions',headers={'Authorization':'Bearer '+value.get('api_key','')},json=body)
-            r.raise_for_status();payload=r.json()
-            try:
-                choice=payload['choices'][0];message=choice['message']
-                if choice.get('finish_reason') in ('length','content_filter'):raise ModelOutputError('模型输出未完整返回，未执行该计划；请缩小步骤或检查模型限制')
-                if tools:
-                    calls=message.get('tool_calls') or []
-                    if len(calls)!=1:raise ModelOutputError('每步必须返回一个原生工具调用，未执行任何调用')
-                    fn=calls[0]['function'];name=fn['name'];args=fn['arguments']
-                    if name not in {x['function']['name'] for x in tools} or not isinstance(args,str) or len(args)>100000:raise ModelOutputError('模型返回了未提供的工具或过长参数')
-                    arguments=json.loads(args)
-                    if not isinstance(arguments,dict):raise ModelOutputError('工具参数必须为JSON对象')
-                    content=json.dumps({**arguments,'kind':'final'} if name=='finish_task' else {'kind':'tool','tool':name,'arguments':arguments},ensure_ascii=False)
-                else:content=message['content']
-                if not isinstance(content,str) or len(content)>100000:raise ModelOutputError('模型返回格式无效')
-            except (KeyError,IndexError,TypeError,json.JSONDecodeError):raise ModelOutputError('模型没有返回完整、有效的计划；未执行该计划') from None
-            tokens={k:v for k,v in (payload.get('usage') or {}).items() if k in ('prompt_tokens','completion_tokens','total_tokens') and isinstance(v,int) and v>=0}
-            event.update(status='succeeded',usage=tokens,usage_reported=bool(tokens))
+            r.raise_for_status()
+            try:payload=r.json()
+            except (ValueError,UnicodeError):raise ModelOutputError('模型服务返回了无效响应',code='invalid_response_json') from None
+            if not isinstance(payload,dict):raise ModelOutputError('模型服务返回的数据格式异常',code='invalid_response_json')
+            if payload.get('error') and not payload.get('choices'):
+                failure=payload['error'] if isinstance(payload['error'],dict) else {}
+                code=str(failure.get('code') or failure.get('type') or '').lower()
+                if code in ('insufficient_quota','billing_hard_limit_reached'):
+                    message='模型服务额度不足，请检查模型账户额度或余额；任务和已有成果已保留。'
+                elif code in ('invalid_api_key','authentication_error','unauthorized'):
+                    message='模型服务认证失败，请检查模型连接或密钥；任务和已有成果已保留。'
+                elif code in ('rate_limit_exceeded','rate_limit_error'):
+                    message='模型服务请求过于频繁，请稍后继续；任务和已有成果已保留。'
+                else:message='模型服务返回错误，请检查模型服务状态与配置；任务和已有成果已保留。'
+                raise ModelServiceError(message)
+            reported=payload.get('usage') if isinstance(payload.get('usage'),dict) else {}
+            tokens={k:v for k,v in reported.items() if k in ('prompt_tokens','completion_tokens','total_tokens') and type(v) is int and v>=0}
+            event.update(usage=tokens,usage_reported=bool(tokens))
             if tid:
                 usage=get('turn',tid).get('model_usage',{})
                 for k,v in tokens.items():usage[k]=usage.get(k,0)+v
                 if 'completion_tokens' in tokens:usage['output_tokens_budgeted']-=max_tokens-tokens['completion_tokens']
                 usage['usage_incomplete']=usage.get('usage_incomplete',False) or not bool(tokens)
                 patch('turn',tid,model_usage=usage)
+            try:
+                choice=payload['choices'][0];message=choice['message']
+                if choice.get('finish_reason')=='length':raise ModelOutputError('模型输出未完整返回，正在尝试分步处理。',code='output_truncated')
+                if choice.get('finish_reason')=='content_filter':raise ModelOutputError('模型服务未返回可用内容，已有任务和成果已保留。',code='content_filter')
+                if tools:
+                    calls=message.get('tool_calls') or []
+                    if len(calls)!=1:
+                        candidate=_response_text(message.get('content')) if not calls else None
+                        if candidate:
+                            # The upstream completed with usable text; record
+                            # the incompatible tool protocol separately.
+                            event.update(status='succeeded',protocol_warning='native_tool_call_missing')
+                        raise ModelOutputError('模型没有返回单个工具调用，未执行任何操作',code='native_tool_call_missing' if not calls else 'native_multiple_tool_calls',candidate=candidate)
+                    fn=calls[0]['function'];name=fn['name'];args=fn['arguments']
+                    if name not in {x['function']['name'] for x in tools}:raise ModelOutputError('模型返回了未提供的工具',code='native_unknown_tool')
+                    if isinstance(args,str):
+                        if len(args)>100000:raise ModelOutputError('模型工具参数过长',code='native_invalid_arguments')
+                        try:arguments=json.loads(args)
+                        except json.JSONDecodeError:raise ModelOutputError('模型工具参数不是有效JSON',code='native_invalid_arguments') from None
+                    elif isinstance(args,dict):
+                        # Some OpenAI-compatible gateways decode arguments for
+                        # us. This is equivalent data, not a new authorization.
+                        if len(json.dumps(args,ensure_ascii=False))>100000:raise ModelOutputError('模型工具参数过长',code='native_invalid_arguments')
+                        arguments=args
+                    else:raise ModelOutputError('模型工具参数不是JSON对象',code='native_invalid_arguments')
+                    if not isinstance(arguments,dict):raise ModelOutputError('工具参数必须为JSON对象',code='native_invalid_arguments')
+                    content=json.dumps({**arguments,'kind':'final'} if name=='finish_task' else {'kind':'tool','tool':name,'arguments':arguments},ensure_ascii=False)
+                else:content=_response_text(message['content'])
+                if content is None:raise ModelOutputError('模型返回格式无效')
+            except (KeyError,IndexError,TypeError,json.JSONDecodeError):raise ModelOutputError('模型没有返回完整的响应',code='native_invalid_response' if tools else 'invalid_model_response') from None
+            event.update(status='succeeded')
             return content
     except httpx.HTTPError as error:
         if isinstance(error,httpx.HTTPStatusError) and context_overflow_error(error):
             raise ContextWindowExceeded(characters=size) from None
-        if os.getenv('ATLAS_DESKTOP_MODE')=='1':
-            raise ValueError('云端模型不可用，本地能力可用。请检查网络、模型权限或密钥后重试。') from None
+        if tools and _native_tool_unsupported(error):
+            raise ModelOutputError('模型服务不支持原生工具调用',code='native_unsupported_tool_calling') from None
+        # Preserve status/transport type for the agent's retry and sanitizing
+        # boundary. Masking it as ValueError used to turn 429/503 into a
+        # misleading format error and prevented automatic recovery.
         raise
     finally:
         event['duration_ms']=round((time.monotonic()-started)*1000)
