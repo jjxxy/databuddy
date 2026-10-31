@@ -50,7 +50,7 @@ def _active_memory_versions(pid):
     from .memory_service import list_memories
     return {item['id']:item['version'] for item in list_memories(pid,include_expired=False)}
 
-def _visible(value,revoked,foreign_personal_sources=None,memory_versions=None):
+def _visible(value,revoked,foreign_personal_sources=None,memory_versions=None,*,include_historical_answer=False):
     from .company_search import visible_answer
     from .conversation import redact
     if value['id'] in revoked:
@@ -76,6 +76,11 @@ def _visible(value,revoked,foreign_personal_sources=None,memory_versions=None):
     from .task_budget import unsupported_round_stop
     if unsupported_round_stop(value,answer):
         item['runtime_policy_note']='这是历史停止回执，不能作为当前任务的额度依据；普通对话无固定轮次预算，继续原目标并复用成功回执。'
+        if not include_historical_answer:
+            # The original is retained and available through explicit history
+            # recovery, but routinely feeding it back can cause the model to
+            # repeat an obsolete stopping message on a new task.
+            item['agent']='[此前任务记录了暂停提示；原始回执可按引用回查]'
     return item
 
 def _refs(value):
@@ -187,7 +192,7 @@ def context_for_turn(turn,recent_turns=None,*,force=False,window_managed=False):
                 'lossy':compress,'originals_retained':True,'content_allowed':allowed},
             'scope_note':'当前项目会话；个人偏好按当前用户隔离。摘要不是财务证据，原文和完整结果可回查'}
 
-def authorized_history_turn(turn,turn_id):
+def authorized_history_turn(turn,turn_id,*,include_historical_answer=False):
     try:target=get('turn',turn_id)
     except KeyError:
         from .agent_context import InvalidRecoveryReference
@@ -198,14 +203,14 @@ def authorized_history_turn(turn,turn_id):
     if not visible_turn(target) and target.get('session_id')!=turn.get('session_id'):raise ValueError('不能读取内部协作对话')
     from .provider import settings
     if not settings().get('share_data'):raise ValueError('模型业务内容读取未获批准，请管理员配置')
-    item=_visible(target,revoked_turn_ids(turn['project_id']))
+    item=_visible(target,revoked_turn_ids(turn['project_id']),include_historical_answer=include_historical_answer)
     # Manual/API users can retrieve originals even after memory withdrawal;
     # agent recovery preserves the withdrawal and never restores old preference.
     active=not item.get('revoked_memory') and not item.get('personal_other_actor') and not item.get('stale_memory_context')
     return target,item,active
 
 def _original_snapshot(turn,turn_id):
-    target,item,active=authorized_history_turn(turn,turn_id)
+    target,item,active=authorized_history_turn(turn,turn_id,include_historical_answer=True)
     from .agent_context import trace_context
     from .agent import public_observation
     # Reading an original is traversal, not a new business fact. Including the
@@ -263,6 +268,8 @@ def filter_history_matches(pid,entries):
             if not visible_turn(original):continue
             visible=_visible(original,revoked)
             if visible.get('personal_other_actor') or visible.get('stale_memory_context'):continue
+            if visible.get('runtime_policy_note'):
+                value={**value,'answer':visible['agent'],'runtime_policy_note':visible['runtime_policy_note']}
         result.append(value)
     return result
 

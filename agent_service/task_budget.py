@@ -36,7 +36,12 @@ def unsupported_round_stop(turn,answer):
     Actual BudgetExceeded exceptions take their separate runtime error path.
     """
     if not isinstance(answer,str):return False
-    claim=re.match(r'^\s*(?:本轮|本次|当前(?:这轮|任务|对话))\s*(?:的)?\s*模型(?:调用)?预算\s*(?:已经|已)?(?:用完|耗尽|超限)(?=[，。；;,.！!\s]|$)',answer)
+    # Models can wrap an otherwise identical stopping message in Markdown or
+    # an apology. Normalize only harmless leading formatting; do not search
+    # the whole answer, where the words may be a quotation or an explanation.
+    normalized=re.sub(r'(?m)^\s{0,3}(?:#{1,6}\s+|[-*]\s+)', '', answer)
+    normalized=re.sub(r'\*\*|__|`', '', normalized).lstrip()
+    claim=re.match(r'^(?:(?:抱歉|对不起|很遗憾)[，,。！!\s]*(?:由于|因为)?\s*)?(?:本轮|本次(?:任务)?|当前(?:这轮|任务|对话))\s*(?:的)?\s*模型(?:调用)?预算\s*(?:已经|已)?(?:用完|耗尽|超限)(?=[，。；;,.！!\s]|$)',normalized)
     return bool(claim) and all(value is None for value in effective_limits(turn).values())
 
 

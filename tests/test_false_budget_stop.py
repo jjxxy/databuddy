@@ -25,6 +25,18 @@ def test_native_model_cannot_stop_an_unlimited_conversation_with_old_budget_excu
     assert '缩小目标' in reply['verification_feedback']['error']
 
 
+@pytest.mark.parametrize('answer',[
+    '**本轮模型预算已用完**，已有成果已保存；可以缩小目标后继续',
+    '抱歉，本次任务的模型调用预算已经耗尽，已有成果保留。',
+    '很遗憾，因为当前任务的模型预算已超限，请稍后继续。',
+    '### 本轮模型预算已用完\n请缩小目标后继续。',
+])
+def test_formatted_false_stop_is_rejected_by_native_planner(turn,answer):
+    reply=agent.opencode_step(turn['id'],{'kind':'final','answer':answer,'status':'blocked'},'native:formatted-false-stop')
+    assert reply['verification_feedback']['code']=='UNSUPPORTED_ROUND_BUDGET_STOP'
+    assert get('turn',turn['id'])['state']=='agent'
+
+
 def test_corrected_native_final_reuses_existing_write_and_finishes(turn):
     agent.opencode_step(turn['id'],write('original artifact'),'native:write')
     agent.opencode_step(turn['id'],{'kind':'final','answer':CLAIM,'status':'blocked'},'native:bad-final')
@@ -82,8 +94,22 @@ def test_historical_message_is_preserved_and_labelled_as_old_policy(turn):
     assert conversation.public_turn(old)['obsolete_budget_pause'] is True
     from agent_service.context_compaction import _visible
     projected=_visible(old,set(),set(),{})
-    assert projected['agent']==CLAIM and '当前任务' in projected['runtime_policy_note']
+    assert CLAIM not in projected['agent'] and '当前任务' in projected['runtime_policy_note']
+    assert _visible(old,set(),set(),{},include_historical_answer=True)['agent']==CLAIM
     assert get('turn',old['id'])['answer']==CLAIM
+
+
+def test_history_search_replaces_old_stop_only_in_model_projection(turn,monkeypatch):
+    old=patch('turn',turn['id'],session_id='fixture-session',interaction_mode='work',
+              state='done',outcome='paused',answer=CLAIM,resume_available=True)
+    from agent_service import context_compaction,workspace_lifecycle
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True})
+    monkeypatch.setattr(workspace_lifecycle,'visible_turn',lambda _turn:True)
+    entry={'turn_id':old['id'],'user':old['text'],'answer':CLAIM}
+    result=context_compaction.filter_history_matches(old['project_id'],[entry])
+    assert len(result)==1 and CLAIM not in result[0]['answer']
+    assert '当前任务' in result[0]['runtime_policy_note']
+    assert entry['answer']==CLAIM and get('turn',old['id'])['answer']==CLAIM
 
 
 def test_linked_old_local_specialist_inherits_owner_policy_without_rewriting_audit(parent):

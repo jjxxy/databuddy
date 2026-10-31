@@ -27,7 +27,7 @@ try{
    else if(p==='/api/desktop/runtime')value={notice:'本地处理'};
    else if(p==='/api/projects/p/attachments'){
     const body=request.postDataBuffer().toString('utf8'),n=body.includes('3,90.12')?3:body.includes('2,56.78')?2:1;
-    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.4'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
+    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.31.1'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
     if(n===2&&failSecond)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'暂时无法导入第二份'})});
     value={id:'s_'+n,name:files[n-1].name};if(!sources.some(s=>s.id===value.id))sources.push({...value,status:'ready',profile:{fields:fields(n),sample_rows:1}});
    }
@@ -36,7 +36,7 @@ try{
    else if(p==='/api/pipelines'&&request.method()==='POST'){processed=request.postDataJSON();value={id:'pipe',project_id:'p'};pipelines.push({...value,candidate_run:'run'});}
    else if(p==='/api/pipelines')value=pipelines;
    else if(p==='/api/pipelines/pipe/preview')value={run_id:'run',manifest:{fields:fields(3),records:1,summary:[]},rows:[{field_3:'90.12'}]};
-   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.30.4'},contentType:'application/json',body:JSON.stringify(value)});
+   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.10.31.1'},contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=path.join(root,p==='/'?'index.html':p.slice(1));
   if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
@@ -63,7 +63,24 @@ try{
    assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
   }
  }
- assert.equal(composerUploads.length,12);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.30.4'));
+ // Exercise real Chromium's ClipboardEvent and DataTransfer file lists. This
+ // synthesizes the paste payload; it does not emulate the Windows shell.
+ for(const mode of ['chat','work']){
+  await page.click('[data-mode='+mode+']');
+  const chooser=page.waitForEvent('filechooser');await page.click('#attach');await (await chooser).setFiles([files[0]]);
+  const canceled=await page.locator('#message').evaluate(node=>{
+   const data=new DataTransfer();data.items.add(new File(['id,amount\n2,56.78\n'],'same-name.csv',{type:'text/csv'}));data.items.add(new File(['id,amount\n3,90.12\n'],'third.csv',{type:'text/csv'}));
+   return !node.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));
+  });
+  assert.equal(canceled,true,'file paste must be consumed');
+  assert.equal(await page.locator('.attachment-chip').count(),3,'file paste appends every file to existing attachments');
+  const textCanceled=await page.locator('#message').evaluate(node=>{const data=new DataTransfer();data.setData('text/plain','ordinary text');return !node.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}))});
+  assert.equal(textCanceled,false,'ordinary text paste keeps the browser default');
+  const count=messages.length;await page.fill('#message','Read pasted files in '+mode);await page.click('#send');
+  await page.waitForFunction(()=>document.querySelectorAll('.attachment-chip').length===0);
+  assert.equal(messages.length,count+1);assert.equal(messages.at(-1).interaction_mode,mode);assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
+ }
+ assert.equal(composerUploads.length,18);assert((await page.locator('#runtime-version').textContent()).includes('2026.10.31.1'));
  await page.click('#open-local-work');await page.waitForSelector('#atlas-local-workspace-content:not([hidden])');
  await page.waitForFunction(()=>!document.querySelector('#atlas-local-file').disabled);
  const localChooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const localPicker=await localChooser;assert.equal(localPicker.isMultiple(),true);await localPicker.setFiles(files);
