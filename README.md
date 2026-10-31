@@ -108,6 +108,7 @@ cd databuddy
 
 | 想了解什么 | 文档 |
 | --- | --- |
+| 完整了解项目、架构与能力边界 | [项目完整介绍](PROJECT-INTRODUCTION.md) |
 | 安装、模型配置与日常维护 | [快速启动](QUICKSTART.md) |
 | 隔离执行、后台任务与文件检查点 | [云端工作模式](WORK-MODE.md) |
 | 联网研究、视觉检查与任务验收 | [通用工作能力](GENERAL-WORK.md) |
