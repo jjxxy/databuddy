@@ -30,6 +30,14 @@ def pair(monkeypatch):
     for kind,existing in memory_before.items():
         for value in all_items(kind):
             if value['id'] not in existing:delete(kind,value['id'])
+    # This fixture creates active turns.  Leaving them behind lets the shared
+    # scheduler execute unrelated mock-model calls in later test modules.
+    for value in all_items('turn'):
+        if value.get('project_id') == pid:delete('turn',value['id'])
+    for value in all_items('context_checkpoint'):
+        if value.get('project_id') == pid:delete('context_checkpoint',value['id'])
+    delete('conversation',sid)
+    delete('project',pid)
 
 
 def test_explicit_history_owner_repairs_actual_new_turn_scope_bug_without_global_search(pair):

@@ -14,7 +14,19 @@ def heartbeat(role,**extra):
     value={'role':role,'instance':INSTANCE,'heartbeat':now(),'version':'0.20.0',**extra,
            'build_fingerprint':build,'runtime_revision':RUNTIME_REVISION}
     if role=='agent' or role=='worker' and os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':
-        value['planner_mode']='opencode' if os.getenv('ATLAS_OPENCODE_RUNTIME')=='1' else 'legacy'
+        # The persisted operator choice governs new tasks; this node's
+        # OpenCode enablement is a separate fact, not a readiness guarantee.
+        value['opencode_enabled_locally']=os.getenv('ATLAS_OPENCODE_RUNTIME')=='1'
+        try:
+            from .agent_runtime import configured_name,runtime_names
+            selected=configured_name()
+            value['agent_runtime_default']=selected
+            value['planner_mode']={'opencode':'opencode','atlas_legacy':'legacy'}.get(selected,'unknown')
+            value['agent_runtime_config_valid']=selected in runtime_names()
+        except Exception:
+            # Do not invent a default when configuration cannot be read. The
+            # regular heartbeat can still be written if storage is available.
+            value.update(agent_runtime_default=None,planner_mode='unknown',agent_runtime_config_valid=False)
     put('runtime_node',value,'node_'+hashlib.sha256((role+':'+INSTANCE).encode()).hexdigest()[:40])
     # Compatibility for earlier clients; aggregate health uses runtime_node.
     put('system',value,role+'-health')

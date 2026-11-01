@@ -176,7 +176,10 @@ def capabilities():
     from .isolation import status as runner_status
     model=provider.status()
     from . import opencode_runtime
-    native=opencode_runtime.is_enabled()
+    # This describes the administrator's default for new tasks; existing turns
+    # retain their own persisted runtime binding.
+    from .agent_runtime import configured_name
+    native=configured_name()=='opencode'
     from .opencode import VERSION
     runtime={'supported_version':VERSION,'active':native and opencode_runtime.ready(),'integration':'native_session_tool_loop' if native else 'legacy_decision_backend','native_tools_restricted':True,'full_coding_harness':False}
     return {'engine':'OpenCode session agent' if native else 'Atlas legacy durable harness','version':'0.20.0','model_configured':model['configured'],'decision_engine':'opencode' if native else model['engine'],'opencode':runtime,'tool_protocol':'native' if native else model['tool_protocol'],'native_tool_calling':model['configured'] and (native or model['tool_protocol']=='native'),'work_tools':len(agent_context.allowed({'interaction_mode':'work'})),'chat_tools':len(agent_context.allowed({'interaction_mode':'chat'})),'features':['tool_discovery','recoverable_tool_results','literal_file_search','optimistic_file_edit','repeat_detection','verified_artifacts','typed_data_workflows','workbook_cell_evidence','reviewed_semantic_alignment','immutable_semantic_catalog','complete_data_handoff','business_finance_reports','data_contract_gates','column_lineage','versioned_metric_confirmation','project_git','durable_activity','encrypted_browser_state','opt_in_web_push','multiple_versioned_attachments','local_folder_workspace','personal_and_preset_skills','personal_and_preset_mcp','actor_scoped_memory','revocable_memory','bounded_context_checkpoints','native_context_compaction','scoped_agent_gateway','bounded_agent_teams','durable_remote_delegation','reversible_project_conversation_deletion','versioned_safe_artifact_preview'],'web_research':web_research.status(),'cloud_browser':browser_tools.status(),'media':media_tools.status(),'visual_input':__import__('agent_service.work_runtime',fromlist=['vision_status']).vision_status(),'work_environment':__import__('agent_service.work_runtime',fromlist=['status']).status(),'code_execution':runner_status(),'real_model_evaluation':'requires_external_task_evaluation','intelligence_score':None}
@@ -965,6 +968,24 @@ graph=StateGraph(GraphState);graph.add_node('plan',_plan_node);graph.add_node('e
 graph.set_entry_point('plan');graph.add_edge('plan','execute');graph.add_edge('execute',END)
 agent_graph=graph.compile()
 
+# Only these writes have a durable, stable operation ID plus an explicit
+# pending/unknown guard before the external call. Unknown tools fail closed.
+_REPLAY_SAFE_STARTED={'run_work_command','generate_image','synthesize_speech'}
+
+def _started_needs_confirmation(step):
+    definition=TOOLS.get(step.get('tool'))
+    return not definition or bool(definition[1]) and step.get('tool') not in _REPLAY_SAFE_STARTED
+
+def _pause_unknown_started(turn):
+    # A crash can happen after a side effect but before its receipt is stored.
+    # Keep the started trace intact for investigation; never invent failure or
+    # success, and never use a new call identifier to repeat the operation.
+    message='上一项操作的执行结果尚未确认；请先核对工作记录和外部系统状态，未自动重试。'
+    patch('turn',turn['id'],state='done',answer=message,finished_at=now(),progress='',
+          outcome='needs_input',resume_available=True)
+    return {'terminal':True,'executed':False,'outcome':'needs_input',
+            'observation':{'executed':False,'code':'OPERATION_RESULT_UNKNOWN','error':message}}
+
 def opencode_step(turn_id,value,call_id):
     """Replay an OpenCode call using Atlas's durable, authorized tool boundary."""
     from .locks import assert_owned
@@ -979,7 +1000,8 @@ def opencode_step(turn_id,value,call_id):
     if prior:
         resumed_started=prior['status']=='started'
         if prior['status']=='started':
-            # Resume the persisted effect, never create a new operation ID.
+            if _started_needs_confirmation(prior):return _pause_unknown_started(turn)
+            # Resume a read or proven idempotent operation, with the same ID.
             step=validate_step(turn,{'kind':'tool','tool':prior['tool'],'arguments':prior['arguments']})
             try:
                 observation=execute(turn,step)
@@ -1040,7 +1062,18 @@ def advance(turn):
     limit=tool_step_limit(turn)
     if limit is not None and len(trace)>=turn.get('agent_budget_base',0)+limit:
         finish(turn,'这项工作尚未全部完成，当前成果与操作记录已保存。回复“继续”后会沿用已有步骤处理，不会从头重复。',resume_available=True,outcome='paused',**{k:turn['agent_'+k] for k in ('result','download') if turn.get('agent_'+k)});return
+    # Validate the durable runtime binding before resuming any persisted tool
+    # call. A mismatched or disabled adapter must not execute side effects.
+    from .agent_runtime import select_for_turn
+    try:
+        runtime=select_for_turn(turn)
+    except provider.ModelServiceError as exc:
+        finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)
+        return
     if turn['state']=='agent_tool' and trace and trace[-1]['status']=='started':
+        if _started_needs_confirmation(trace[-1]):
+            _pause_unknown_started(get('turn',turn['id']))
+            return
         # Resume exactly the persisted call after a worker crash.
         step=Step(kind='tool',tool=trace[-1]['tool'],arguments=trace[-1]['arguments'])
         try:
@@ -1054,23 +1087,7 @@ def advance(turn):
     patch('turn',turn['id'],progress='正在理解需求并规划下一步',state='agent')
     try:
         with provider.task_scope(turn['id']):
-            from . import opencode_runtime
-            if opencode_runtime.is_enabled():
-                while True:
-                    current=get('turn',turn['id'])
-                    if current['state'] not in ('agent','agent_tool'):return
-                    messages,_=planning_context(current,native=False)
-                    prompt=messages[0]['content'].replace('只返回符合response_schema的JSON，不输出思维链。','按工具协议返回结果，不输出思维链。')+'本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。'
-                    try:
-                        receipt=opencode_runtime.run_session(get('turn',turn['id']),prompt,json.loads(messages[1]['content']),
-                            lambda step,call_id:opencode_step(turn['id'],step,call_id))
-                    except provider.ContextWindowExceeded as exc:
-                        from .context_window import recover
-                        if exc.source=='irreducible' or not recover(get('turn',turn['id']),exc):raise
-                        continue
-                    patch('turn',turn['id'],opencode_receipt=receipt)
-                    break
-            else:agent_graph.invoke({'turn_id':turn['id']})
+            runtime.run(turn['id'])
         patch('turn',turn['id'],model_retry_count=0,model_retry_at=None)
     except provider.BudgetExceeded as exc:
         finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)

@@ -263,6 +263,20 @@ TRUSTED_SUBMISSION_FIELDS=frozenset({
     'collaboration_application_ids','collaboration_input_result_ids','collaboration_deadline_at','collaboration_context','collaboration_application_snapshots',
     'task_contract','model_id','model_name','model_catalog_revision'})
 
+def assert_resumable_effects(turn):
+    """A new turn cannot discard an unfinished write of uncertain outcome.
+
+    Read-only calls can be repeated. Existing same-turn recovery with a stable
+    operation identifier is separate; this check concerns continuation into a
+    new turn, where the old started trace would otherwise be discarded.
+    """
+    from .agent import TOOLS
+    for step in turn.get('agent_trace', []):
+        if not isinstance(step,dict) or step.get('status')!='started':continue
+        definition=TOOLS.get(step.get('tool'))
+        if definition is None or definition[1]:
+            raise ValueError('上一项操作的执行结果尚未确认；请先核对工作记录和外部系统状态，未自动重试')
+
 def submit(project_id, value, *, trusted_fields=None):
     # Server-only callers attach grants and frozen child policy before the row
     # is runnable. TurnInput deliberately has no corresponding public field.
@@ -285,6 +299,7 @@ def submit(project_id, value, *, trusted_fields=None):
         if resume_target.get('actor_id','owner')!=actor_id:raise ValueError('只能继续自己发起的任务；其他成员可发起新任务')
         if not resume_target.get('resume_available'):raise ValueError('该任务当前不需要继续，请查看最新进度')
         if value.text.strip() not in ('继续','继续处理','重试','重试上一项任务'):raise ValueError('继续任务请使用明确的继续指令')
+        assert_resumable_effects(resume_target)
     # Interrupts bypass the model's project lock; discard any late model reply.
     if not (trusted_fields.get('gateway_client_id') or trusted_fields.get('collaboration_parent_turn_id')) and value.interaction_mode=='work' and re.fullmatch(r'(停止|取消|停一下|停止处理|取消处理)[。！!\s]*',value.text.strip()):
         try:return public_turn(get('turn',tid))
@@ -339,6 +354,11 @@ def submit(project_id, value, *, trusted_fields=None):
         try:conversation=get('conversation',session_id)
         except KeyError:conversation={}
         selection=select_model(value.model_id,session=conversation,resume_turn=resume_target)
+        from .agent_runtime import snapshot, snapshot_for_turn, binding_origin
+        parent_id=trusted_fields.get('collaboration_parent_turn_id')
+        inherited_runtime = resume_target or (get('turn',parent_id) if parent_id else None)
+        runtime_binding=snapshot_for_turn(inherited_runtime) if inherited_runtime else snapshot()
+        runtime_origin=binding_origin(inherited_runtime) if inherited_runtime else 'submitted_default'
         text = value.text.strip() or ('请结合这些资料，先检查它们的结构、含义和关联，再整理可用的业务记录' if len(identifiers)>1 else '帮我看看这份资料，先整理出可用的业务记录')
         if identifiers and not bound_app:remember_application({'project_id':project_id,'session_id':session_id},None)
         if bound_app:remember_application({'project_id':project_id,'session_id':session_id},bound_app['id'])
@@ -346,7 +366,7 @@ def submit(project_id, value, *, trusted_fields=None):
                             'attached_sources':resume_target.get('attached_sources',[snapshot_attachment(source) for source in attachments]) if resume_target else [snapshot_attachment(source) for source in attachments],
                             'application_id':bound_app['id'] if bound_app else None,
                             'candidate_run': value.candidate_run or (bound_app.get('candidate_run') if bound_app else owned('pipeline', project['pipeline_id'], project_id).get('candidate_run') if project.get('pipeline_id') else None),
-                            'state': 'queued', 'progress': '已收到，正在准备处理', 'created_at': now(),'resume_turn_id':value.resume_turn_id,'requested_model_id':value.model_id,**selection,**trusted_fields}, tid)
+                            'state': 'queued', 'progress': '已收到，正在准备处理', 'created_at': now(),'resume_turn_id':value.resume_turn_id,'requested_model_id':value.model_id,'agent_runtime':runtime_binding,'agent_runtime_origin':runtime_origin,**selection,**trusted_fields}, tid)
         patch('project', project_id, updated_at=now())
         try:
             conversation=get('conversation',session_id)
@@ -816,15 +836,20 @@ def handle(turn):
         if previous:
             if not status()['configured']:finish(turn,'请先恢复模型连接，再回复“继续”。已有步骤和成果会保留。');return
             old=previous[0]
+            try:assert_resumable_effects(old)
+            except ValueError as exc:finish(turn,str(exc),outcome='needs_input');return
             if attachment_ids(turn) and attachment_ids(turn)!=attachment_ids(old):
                 finish(turn,'继续任务会沿用原附件；更换资料请发起新任务。',outcome='needs_input');return
             from .model_catalog import select as select_model
             try:selection=select_model(turn.get('requested_model_id'),resume_turn=old)
             except ValueError as exc:finish(turn,str(exc),outcome='needs_input');return
+            from .agent_runtime import snapshot_for_turn, binding_origin
+            try:runtime_binding=snapshot_for_turn(old)
+            except ValueError as exc:finish(turn,str(exc),outcome='needs_input');return
             if old.get('interaction_mode','work')!=turn.get('interaction_mode','work'):finish(turn,'请切换到原任务的'+('工作' if old.get('interaction_mode','work')=='work' else '聊天')+'模式后继续。');return
             if turn.get('application_id') and old.get('application_id') and turn['application_id']!=old['application_id']:finish(turn,'当前应用与暂停的任务不同，请先回到原应用再继续。');return
             trace=[s for s in old.get('agent_trace',[]) if s['status'] in ('done','failed')]
-            turn=patch('turn',turn['id'],resumed_from=old['id'],agent_origin=old.get('agent_origin',old['id']),work_request=old.get('work_request',old['text']),discovered_tools=old.get('discovered_tools',[]),knowledge_refs=old.get('knowledge_refs',[]),knowledge_read_refs=old.get('knowledge_read_refs',[]),knowledge_slices=old.get('knowledge_slices',{}),web_read_refs=copy.deepcopy(old.get('web_read_refs',{})),web_search_refs=list(old.get('web_search_refs',[])),knowledge_basis=old.get('knowledge_basis',[]),task_contract=old.get('task_contract'),task_plan=copy.deepcopy(old.get('task_plan')),run_id=old.get('run_id'),agent_trace=trace,agent_budget_base=len(trace),source_id=old.get('source_id'),source_ids=attachment_ids(old),attached_sources=old.get('attached_sources',[]),application_id=old.get('application_id'),candidate_run=old.get('candidate_run'),agent_result=old.get('agent_result'),agent_download=old.get('agent_download'),state='agent',**selection)
+            turn=patch('turn',turn['id'],resumed_from=old['id'],agent_origin=old.get('agent_origin',old['id']),work_request=old.get('work_request',old['text']),discovered_tools=old.get('discovered_tools',[]),knowledge_refs=old.get('knowledge_refs',[]),knowledge_read_refs=old.get('knowledge_read_refs',[]),knowledge_slices=old.get('knowledge_slices',{}),web_read_refs=copy.deepcopy(old.get('web_read_refs',{})),web_search_refs=list(old.get('web_search_refs',[])),knowledge_basis=old.get('knowledge_basis',[]),task_contract=old.get('task_contract'),task_plan=copy.deepcopy(old.get('task_plan')),run_id=old.get('run_id'),agent_trace=trace,agent_budget_base=len(trace),source_id=old.get('source_id'),source_ids=attachment_ids(old),attached_sources=old.get('attached_sources',[]),application_id=old.get('application_id'),candidate_run=old.get('candidate_run'),agent_result=old.get('agent_result'),agent_download=old.get('agent_download'),state='agent',agent_runtime=runtime_binding,agent_runtime_origin=binding_origin(old),**selection)
             patch('turn',old['id'],resume_available=False)
         else:finish(turn,'当前没有等待继续的中断任务。你可以直接说明新的需求；重跑已有应用请说“重跑这个应用”。');return
     if turn['state'] in ('queued','agent','agent_tool','waiting_source') and not prepare_attachments(turn):return

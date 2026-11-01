@@ -1,5 +1,5 @@
 """Code revision of this process, independent of mutable user state."""
-RUNTIME_REVISION='2026.10.31.1'
+RUNTIME_REVISION='2026.11.01.1'
 
 
 def public_info():

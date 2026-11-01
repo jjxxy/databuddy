@@ -68,15 +68,16 @@ def test_parallel_or_late_tools_stop_after_task_yields_ownership(turn,state):
     assert not workspace.path_for(turn['project_id'],'reports/native.md').exists()
 
 
-def test_interrupted_call_resumes_same_persisted_trace(turn):
+def test_interrupted_write_with_unknown_result_is_not_replayed(turn):
     patch('turn',turn['id'],state='agent_tool',agent_trace=[{
         'id':'persisted-step','opencode_call_id':'session:write','tool':'write_file',
         'arguments':write()['arguments'],'status':'started','started_at':now()}])
     response=agent.opencode_step(turn['id'],write(),'session:write')
     current=get('turn',turn['id'])
-    assert response['replayed'] and current['agent_trace'][0]['status']=='done'
+    assert response['terminal'] and response['observation']['code']=='OPERATION_RESULT_UNKNOWN'
+    assert current['state']=='done' and current['agent_trace'][0]['status']=='started'
     assert len(current['agent_trace'])==1 and current['agent_trace'][0]['id']=='persisted-step'
-    assert workspace.read_file(turn['project_id'],'reports/native.md')=='receipt'
+    assert not workspace.path_for(turn['project_id'],'reports/native.md').exists()
 
 
 def test_native_tool_burst_is_bounded_even_when_one_model_reply_has_many_calls(turn):
