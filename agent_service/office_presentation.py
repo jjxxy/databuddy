@@ -110,7 +110,14 @@ def _layout(spec):
         lines=_lines(section,index)
         pages.extend({'kind':'text','section':index,'items':lines[i:i+_MAX_LINES]} for i in range(0,len(lines),_MAX_LINES))
         if section.table:pages.extend(_table_pages(section.table,index))
-        if not lines and not section.table:pages.append({'kind':'text','section':index,'items':[]})
+        if section.chart:
+            chart=section.chart
+            if len(_wrapped(chart.title,58))>1 or len(_wrapped(chart.unit,26))>1:
+                raise ValueError('图表标题或单位过长，无法安全排版')
+            if any(len(_wrapped(point.label,20))>1 or len(_wrapped(point.value,25))>1 for point in chart.points):
+                raise ValueError('图表类别或数值过长，请使用完整明细表')
+            pages.append({'kind':'chart','section':index})
+        if not lines and not section.table and not section.chart:pages.append({'kind':'text','section':index,'items':[]})
     if len(pages)+1>_MAX_SLIDES:raise ValueError('演示文稿超过 120 页，请拆分为多个报告；未截断内容')
     return pages
 
@@ -180,7 +187,7 @@ def build(spec,path):
                 y=1.75+i*.41
                 if bullet:_text(slide,.76,y,.22,.32,'•',17,'2A7960')
                 _text(slide,1.02,y,11.55,.34,text,18,'253B34',name=name)
-        else:
+        elif page['kind']=='table':
             table=section.table;indices=page['indices'];count=len(indices);width=11.9/count
             shape=slide.shapes.add_table(len(page['rows'])+1,count,Inches(.7),Inches(1.9),Inches(11.9),Inches(.60*(len(page['rows'])+1)))
             shape.name=f"atlas:table:{page['section']}:{page['group']}:{page['row_offset']}"
@@ -197,6 +204,36 @@ def build(spec,path):
             _text(slide,.72,1.58,11.8,.23,
                   f"完整数据：{page['total']} 行 · 本页 {page['row_offset']+1 if page['rows'] else 0}–{page['row_offset']+len(page['rows'])} 行 · 列组 {page['group']+1}/{page['groups']}",
                   10,'5D756C')
+        else:
+            from pptx.chart.data import ChartData
+            from pptx.enum.chart import XL_CHART_TYPE
+            from pptx.enum.text import PP_ALIGN
+            chart_spec=section.chart
+            _text(slide,.75,1.58,7.35,.45,chart_spec.title,17,'17352D',True,name=f"atlas:chart-title:{page['section']}")
+            data=ChartData();data.categories=[point.label for point in chart_spec.points]
+            data.add_series(chart_spec.title,[float(point.value) for point in chart_spec.points])
+            shape=slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED,Inches(.76),Inches(2.15),Inches(7.15),Inches(4.24),data)
+            shape.name=f"atlas:chart:{page['section']}"
+            chart=shape.chart;chart.has_legend=False;chart.has_title=False
+            # Keep the chart's top-to-bottom order aligned with the adjacent
+            # exact-value list; horizontal Office charts otherwise reverse it.
+            chart.category_axis.reverse_order=True
+            chart.category_axis.tick_labels.font.name='Noto Sans CJK SC';chart.category_axis.tick_labels.font.size=Pt(11)
+            chart.value_axis.tick_labels.font.name='Noto Sans CJK SC';chart.value_axis.tick_labels.font.size=Pt(10)
+            values=[float(point.value) for point in chart_spec.points]
+            if min(values)>=0:chart.value_axis.minimum_scale=0
+            if max(values)<=0 and min(values)<0:chart.value_axis.maximum_scale=0
+            series=chart.series[0]
+            series.format.fill.solid();series.format.fill.fore_color.rgb=RGBColor.from_string('2A7960')
+            _rect(slide,8.15,1.7,4.4,4.68,'F3F8F5')
+            _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,13,'17352D',True,name=f"atlas:chart-unit:{page['section']}")
+            for i,point in enumerate(chart_spec.points):
+                y=2.28+i*.46
+                label=_text(slide,8.38,y,1.85,.40,point.label,11,'435B50',name=f"atlas:chart-label:{page['section']}:{i}")
+                label.text_frame.word_wrap=True
+                value=_text(slide,10.26,y,2.07,.40,point.value,11,'17352D',True,name=f"atlas:chart-value:{page['section']}:{i}")
+                value.text_frame.paragraphs[0].alignment=PP_ALIGN.RIGHT
+            _text(slide,8.38,6.08,3.95,.25,'图形用于比较；请以原始数值核对',9,'5D756C')
         _rect(slide,.7,6.83,11.93,.012,'D8E5DF')
         _text(slide,.72,6.93,10.8,.25,'内容与业务口径请结合实际资料复核',10,'6A8077')
         _text(slide,12.0,6.93,.55,.25,str(page_no),10,'6A8077')
@@ -213,7 +250,7 @@ def verify(spec,deck):
         if page['kind']=='text':
             got=[(s.name,s.text) for s in slide.shapes if s.has_text_frame and s.name.startswith('atlas:text:')]
             if got!=[(name,text) for name,text,_ in page['items']]:raise ValueError('演示文稿正文不完整')
-        else:
+        elif page['kind']=='table':
             tables=[s for s in slide.shapes if s.has_table]
             if len(tables)!=1:raise ValueError('演示文稿数据表不完整')
             actual=tables[0].table;indices=page['indices']
@@ -221,3 +258,39 @@ def verify(spec,deck):
             if len(actual.rows)!=len(expected) or len(actual.columns)!=len(indices):raise ValueError('演示文稿数据表尺寸不一致')
             if [[actual.cell(r,c).text for c in range(len(indices))] for r in range(len(expected))]!=expected:
                 raise ValueError('演示文稿数据单元格不一致')
+        else:
+            chart_spec=section.chart
+            charts=[s for s in slide.shapes if s.has_chart]
+            if len(charts)!=1 or len(charts[0].chart.series)!=1:raise ValueError('演示文稿图表不完整')
+            chart=charts[0].chart
+            if [c.label for c in chart.plots[0].categories]!=[p.label for p in chart_spec.points]:
+                raise ValueError('演示文稿图表类别不一致')
+            from decimal import Decimal
+            if [Decimal(str(v)) for v in chart.series[0].values]!=[Decimal(p.value) for p in chart_spec.points]:
+                raise ValueError('演示文稿图表数值不一致')
+            # PowerPoint edits charts through a separate embedded workbook.
+            # Verify it too, so opening the editor cannot reveal different
+            # numbers from those visible in the slide's chart cache.
+            from io import BytesIO
+            from openpyxl import load_workbook
+            workbook=load_workbook(BytesIO(chart.part.chart_workbook.xlsx_part.blob),read_only=True,data_only=False)
+            try:
+                if len(workbook.worksheets)!=1:raise ValueError('图表数据工作簿不一致')
+                sheet=workbook.worksheets[0]
+                if sheet.max_row!=len(chart_spec.points)+1 or sheet.max_column!=2:
+                    raise ValueError('图表数据工作簿尺寸不一致')
+                rows=list(sheet.iter_rows())
+                if rows[0][1].data_type!='s' or rows[0][1].value!=chart_spec.title:raise ValueError('图表数据系列不一致')
+                for cells,point in zip(rows[1:],chart_spec.points):
+                    if (cells[0].data_type!='s' or cells[0].value!=point.label or cells[1].data_type!='n'
+                            or isinstance(cells[1].value,bool)
+                            or Decimal(str(cells[1].value))!=Decimal(point.value)):
+                        raise ValueError('图表数据工作簿数值不一致')
+            finally:workbook.close()
+            texts={s.name:s.text for s in slide.shapes if s.has_text_frame and s.name.startswith('atlas:chart-')}
+            expected={f"atlas:chart-title:{page['section']}":chart_spec.title,
+                      f"atlas:chart-unit:{page['section']}":'原始数值 · '+chart_spec.unit}
+            for i,point in enumerate(chart_spec.points):
+                expected[f"atlas:chart-label:{page['section']}:{i}"]=point.label
+                expected[f"atlas:chart-value:{page['section']}:{i}"]=point.value
+            if texts!=expected:raise ValueError('演示文稿图表标签或原始数值不一致')

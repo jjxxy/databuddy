@@ -49,3 +49,46 @@ def test_never_silently_truncates_extreme_table_or_allows_incomplete_rows(tmp_pa
     with pytest.raises(ValidationError):make_spec(table={'columns':['a'],'rows':[['1']]*101})
     spec=make_spec(table={'columns':['a','b'],'rows':[['1','9'*200]]})
     with pytest.raises(ValueError,match='未截断'):office._build_file(spec,tmp_path/'report.pptx',[])
+
+
+def test_editable_chart_keeps_original_numeric_text_and_units(tmp_path):
+    spec=make_spec(heading='收入对比',chart={'title':'各区域收入','unit':'万元',
+        'points':[{'label':'华东','value':'1234.50'},{'label':'华南','value':'50.25'},
+                  {'label':'华北','value':'0.00'}]})
+    path=tmp_path/'chart.pptx';deck=render(spec,path)
+    chart_shape=next(s for slide in deck.slides for s in slide.shapes if s.has_chart)
+    assert [c.label for c in chart_shape.chart.plots[0].categories]==['华东','华南','华北']
+    assert chart_shape.chart.category_axis.reverse_order is True
+    assert list(chart_shape.chart.series[0].values)==[1234.5,50.25,0.0]
+    labels={s.name:s.text for s in deck.slides[-1].shapes if s.has_text_frame}
+    assert labels['atlas:chart-value:0:0']=='1234.50'
+    assert labels['atlas:chart-value:0:2']=='0.00'
+    assert labels['atlas:chart-unit:0']=='原始数值 · 万元'
+    next(s for s in deck.slides[-1].shapes if s.name=='atlas:chart-value:0:0').text='1'
+    deck.save(path)
+    with pytest.raises(ValueError,match='完整性验证失败'):office._verify_structure(path,'pptx',spec)
+
+
+def test_chart_rejects_unrepresentable_financial_values_or_ambiguous_categories():
+    for value in ('-1','1234567890123456','0.1234567890123456','1,000','NaN'):
+        with pytest.raises(ValidationError):
+            make_spec(chart={'title':'金额','unit':'元','points':[{'label':'华东','value':value}]})
+    with pytest.raises(ValidationError):
+        make_spec(chart={'title':'金额','unit':'元','points':[{'label':'华东','value':'1'},{'label':'华东','value':'2'}]})
+    with pytest.raises(ValidationError):
+        make_spec(chart={'title':'金额','unit':'元','points':[{'label':'=SUM(1,1)','value':'1'}]})
+    with pytest.raises(ValidationError):
+        make_spec(chart={'title':'=SUM(1,1)','unit':'元','points':[{'label':'华东','value':'1'}]})
+
+
+def test_chart_rejects_different_numbers_in_its_embedded_workbook(tmp_path):
+    from io import BytesIO
+    from openpyxl import load_workbook
+    spec=make_spec(chart={'title':'收入','unit':'元','points':[{'label':'华东','value':'100.50'}]})
+    path=tmp_path/'chart.pptx';deck=render(spec,path)
+    chart=next(s.chart for slide in deck.slides for s in slide.shapes if s.has_chart)
+    part=chart.part.chart_workbook.xlsx_part
+    book=load_workbook(BytesIO(part.blob));book.active['B2']=999
+    data=BytesIO();book.save(data);book.close();part._blob=data.getvalue()
+    deck.save(path)
+    with pytest.raises(ValueError,match='完整性验证失败'):office._verify_structure(path,'pptx',spec)

@@ -570,12 +570,15 @@ def _aggregate(stage: Aggregate, source):
                 values = [r[a.column] for r in selected]
                 if any(v is None for v in values):
                     raise WorkflowError('NULL_VALUE', 'Numeric aggregation contains missing values')
-                if a.function == 'sum':
+                # No observations do not establish a zero financial amount.
+                # Match SQL SUM/MIN/MAX semantics for an empty input: retain
+                # missingness, and let non-null output schemas reject it.
+                if not values:
+                    value = None
+                elif a.function == 'sum':
                     with localcontext() as ctx:
                         ctx.prec = 100
                         value = sum((Decimal(v) for v in values), Decimal(0))
-                elif not values:
-                    value = None
                 else:
                     value = min(values) if a.function == 'min' else max(values)
             output[a.output.name] = _coerce(value, a.output)
@@ -862,7 +865,9 @@ def _filter_reconciliation(stage, source, output, deadline):
                     totals[0]+=amount
                     totals[1 if selected else 2]+=amount
                 except (Inexact,InvalidOperation):exact=False
-            if missing_before:
+            if not before:
+                status='no_input_rows';values=[None,None,None];difference=None
+            elif missing_before:
                 status='missing_values';values=[None,None,None];difference=None
             elif not exact:
                 status='precision_exceeded';values=[None,None,None];difference=None

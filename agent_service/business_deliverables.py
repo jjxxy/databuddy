@@ -369,6 +369,7 @@ def table_report_spec(context,config,inputs):
         notes.append('处理方案摘要：'+table['plan_sha256'])
     refs=table.get('source_refs')
     lineage_complete=table.get('source_lineage_complete') is True
+    selection_complete=table.get('selection_lineage_complete') is True
     if not isinstance(refs,list):refs=[];lineage_complete=False
     for ref in refs:
         if (not isinstance(ref,dict) or not isinstance(ref.get('source_id'),str) or not ref['source_id']
@@ -376,13 +377,46 @@ def table_report_spec(context,config,inputs):
                 or not isinstance(ref.get('content_hash'),str) or not re.fullmatch(r'[a-f0-9]{64}',ref['content_hash'])
                 or not isinstance(ref.get('name'),str) or not ref['name']):
             lineage_complete=False
+            selection_complete=False
             continue
         notes.append('文件来源：'+ref['name']+'；资料 ID：'+ref['source_id']+'；版本：'+str(ref['revision'])+'；内容摘要：'+ref['content_hash'])
+        basis=ref.get('read_basis');basis_hash=ref.get('read_basis_sha256')
+        try:
+            from .business_flow_data import _read_basis
+            if not isinstance(basis_hash,str) or not re.fullmatch(r'[a-f0-9]{64}',basis_hash):raise ValueError('缺少读取依据摘要')
+            _read_basis(basis,basis_hash,ref['content_hash'])
+        except (ValueError,TypeError,UnicodeError,RecursionError):
+            selection_complete=False
+            continue
+        # Keep the actual selection, reader options and mapping together with
+        # this specific source version. Names are untrusted and all renderers
+        # must encode them as text; no inference of business approval is made.
+        field_labels={'kind':'读取方式','file_sha256':'原文件摘要','sheet':'工作表','table':'表格',
+                'range':'范围（起始列、行及结束列、行）','header_rows':'表头行','data_rows':'数据行',
+                'merged_label_columns':'合并标签列','hidden_rows_policy':'隐藏行处理',
+                'subtotal_policy':'小计处理','percentage_columns':'百分比列','cell_range':'指定单元格范围',
+                'data_start_row':'指定数据起始行','data_end_row':'指定数据结束行','hidden_rows':'隐藏行处理',
+                'text_columns':'按文本读取的列','html_table':'网页表格序号','table_id':'网页表格标识'}
+        kinds={'workbook_table':'Excel 工作表','html_table':'网页表格','whole_source_table':'完整来源表'}
+        def describe(mapping):
+            parts=[]
+            for key,value in sorted(mapping.items()):
+                shown=kinds.get(value,value) if key=='kind' and isinstance(value,str) else value
+                text=shown if isinstance(shown,str) else json.dumps(shown,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
+                parts.append(field_labels.get(key,key)+'：'+text)
+            return '；'.join(parts) or '无'
+        notes.append('实际读取选择：'+describe(basis['selection']))
+        notes.append('请求的读取配置（实际范围以读取选择为准）：'+describe(basis['options']))
+        mapping=basis['column_map']
+        notes.append('字段映射：'+('；'.join(str(key)+' → '+str(value) for key,value in sorted(mapping.items())) if mapping else '沿用原字段'))
+        notes.append('读取依据摘要：'+basis_hash)
     if not refs or not lineage_complete:notes.append('文件来源记录不完整，需核对原始资料及版本。')
-    notes.append('工作表、读取范围及字段映射请回查流程运行记录并核对原始资料。')
+    if not refs or not selection_complete:notes.append('读取范围或字段映射记录不完整，请回查流程运行记录并核对原始资料。')
     if table['requires_source_review']:notes.append('来源资料仍需业务核对。')
     if table['requires_semantic_review']:notes.append('数据语义或处理口径仍需业务核对。')
-    sections=[{'heading':'数据与核对状态','body':'\n'.join(notes),'bullets':[]}]
+    review_body='\n'.join(notes)
+    if len(review_body)>20000:raise ValueError('完整来源与读取依据超过报告容量；未截断，请查阅流程运行记录')
+    sections=[{'heading':'数据与核对状态','body':review_body,'bullets':[]}]
     sections.append({'heading':'数据明细','body':'','bullets':[],
                      'table':{'columns':labels,'rows':display_rows}})
     commentary=inputs.get('commentary')
@@ -413,4 +447,4 @@ def handlers():
             'html_report':Handler(render_html,deterministic=True,replay_safe=False,
                                   validate_config=validate_html_config,version=HTML_RENDERER),
             'table_report_spec':Handler(table_report_spec,deterministic=True,replay_safe=True,
-                                        validate_config=validate_table_report_config,version='table-report-v3')}
+                                        validate_config=validate_table_report_config,version='table-report-v4')}

@@ -116,6 +116,7 @@ cd databuddy
 | --- | --- |
 | 完整了解项目、架构与能力边界 | [项目完整介绍](PROJECT-INTRODUCTION.md) |
 | 对话式业务应用、方案确认和版本追溯 | [业务应用闭环](BUSINESS-APPLICATIONS.md) |
+| 财经日常场景、能力边界和逐项验收 | [财经业务场景覆盖与验收](FINANCE-SCENARIO-COVERAGE.md) |
 | Agent 执行器选择、适配与运行边界 | [Agent 执行器指南](AGENT-RUNTIMES.md) |
 | 安装、模型配置与日常维护 | [快速启动](QUICKSTART.md) |
 | 隔离执行、后台任务与文件检查点 | [云端工作模式](WORK-MODE.md) |

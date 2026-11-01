@@ -69,6 +69,29 @@ def test_filter_missing_amount_is_not_treated_as_zero_or_verified():
     assert amount['input_total'] is amount['included_total'] is amount['excluded_total'] is amount['difference'] is None
 
 
+def test_empty_financial_sum_is_missing_not_zero_but_count_is_zero():
+    plan,inputs=base()
+    plan['stages'][0]['conditions'][0]['value']='no matching status'
+    plan['stages'][2]['input']='paid'
+    plan['stages'][2]['by']=[]
+    plan['stages'][2]['aggregations'][0]['column']='amount'
+    plan['stages']=[plan['stages'][0],plan['stages'][2]]
+    output=execute(plan,inputs)['output']['rows']
+    assert output==[{'net_total':None,'orders':0}]
+    # Distinguish absent records from a real observation whose amount is zero.
+    inputs['orders']=[]
+    result=execute(plan,inputs)
+    assert result['output']['rows']==[{'net_total':None,'orders':0}]
+    check=next(c for c in result['stages'][0]['reconciliation']['checks'] if c['column']=='amount')
+    assert check['status']=='no_input_rows' and check['input_total'] is None and check['difference'] is None
+    inputs['orders']=[{'id':'z','office':'East','amount':'0','refund':'0','status':'no matching status'}]
+    assert execute(plan,inputs)['output']['rows']==[{'net_total':'0','orders':1}]
+    # An explicitly non-null output cannot silently convert missing into 0.
+    plan['stages'][1]['aggregations'][0]['output']['nullable']=False
+    inputs['orders']=[]
+    with pytest.raises(WorkflowError,match='missing'):execute(plan,inputs)
+
+
 def test_stage_receipt_callback_is_a_dependency_barrier():
     plan,inputs=base();seen=[]
     def barrier(receipt):

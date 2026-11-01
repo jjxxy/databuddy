@@ -1,5 +1,5 @@
 """Deterministic editable Office deliverables; templates, never generated code."""
-import hashlib,json,re,zipfile
+import hashlib,json,math,re,zipfile
 from decimal import Decimal,InvalidOperation
 from typing import Literal
 from pydantic import Field,ValidationError,model_validator
@@ -8,7 +8,7 @@ from .config import DATA
 from .store import get,put,now
 from . import workspace
 
-RENDERER='office-v3'
+RENDERER='office-v4'
 PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
 MANIFEST_MAX_BYTES=256*1024
 
@@ -27,11 +27,42 @@ class SectionTable(StrictModel):
         if any(len(row)!=len(self.columns) or any(len(value)>2000 for value in row) for row in self.rows):
             raise ValueError('表格行不完整或单元格过长')
         return self
+class ChartPoint(StrictModel):
+    label:str=Field(min_length=1,max_length=48,description='图表类别，来自已确认的数据，不推断')
+    value:str=Field(min_length=1,max_length=24,pattern=r'^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$',
+                    description='原始十进制数值文本，不使用千分位或百分号；请单独填写单位')
+    @model_validator(mode='after')
+    def exact_chart_value(self):
+        value=Decimal(self.value)
+        numeric=float(value)
+        # LibreOffice may reverse negative bar direction for this editable
+        # chart format. Refuse it rather than present a misleading visual.
+        if value<0:raise ValueError('可编辑图表暂不支持负数，请使用完整表格展示')
+        # The embedded workbook uses binary floating point and Excel supports
+        # only 15 significant digits. Reject values it cannot represent
+        # faithfully rather than silently changing a financial figure.
+        if (len(value.normalize().as_tuple().digits)>15 or not math.isfinite(numeric)
+                or Decimal(str(numeric))!=value):
+            raise ValueError('图表数值无法安全写入可编辑工作簿，请保留原始明细表')
+        return self
+class SectionChart(StrictModel):
+    title:str=Field(min_length=1,max_length=80,description='准确描述图表指标，不自动推断结论')
+    unit:str=Field(min_length=1,max_length=20,description='数值实际单位，例如元、万元、%或件')
+    points:list[ChartPoint]=Field(min_length=1,max_length=8)
+    @model_validator(mode='after')
+    def unambiguous_labels(self):
+        labels=[p.label for p in self.points]
+        if any(not label.strip() or label.startswith('=') or any(ord(c)<32 for c in label) for label in labels) or len(set(labels))!=len(labels):
+            raise ValueError('图表类别不能为空、重复、包含控制字符或以公式符号开头')
+        if not self.title.strip() or self.title.startswith('=') or not self.unit.strip() or any(ord(c)<32 for c in self.title+self.unit):
+            raise ValueError('图表标题或单位无效')
+        return self
 class Section(StrictModel):
     heading:str=Field(default='',max_length=300)
     body:str=Field(default='',max_length=20000)
     bullets:list[str]=Field(default_factory=list,max_length=30)
     table:SectionTable|None=None
+    chart:SectionChart|None=None
 class Sheet(StrictModel):
     name:str=Field(min_length=1,max_length=31)
     columns:list[str]=Field(min_length=1,max_length=60)
@@ -107,8 +138,8 @@ def _verify_structure(file,ext,spec=None):
 
 def _build_file(spec,tmp,precision_notes):
     ext=tmp.suffix.lstrip('.')
-    if ext!='pptx' and any(section.table is not None for section in spec.sections):
-        raise ValueError('结构化章节表格目前仅支持演示文稿，请使用工作簿交付完整表格')
+    if ext!='pptx' and any(section.table is not None or section.chart is not None for section in spec.sections):
+        raise ValueError('结构化章节表格或图表目前仅支持演示文稿，请使用工作簿交付完整数据')
     if ext=='docx':
         from docx import Document
         from docx.shared import Pt,Inches

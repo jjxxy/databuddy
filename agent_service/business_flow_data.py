@@ -14,6 +14,7 @@ import os
 import secrets
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -45,6 +46,35 @@ class SourcePin(StrictModel):
     source_id: str = Field(min_length=1,max_length=64)
     revision: int = Field(ge=1,strict=True)
     content_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class ReadBasis(StrictModel):
+    """The actual table selection and declared mapping, not business approval."""
+    version: Literal[1]
+    options: ReadOptions
+    column_map: dict[str,str] = Field(max_length=200)
+    selection: dict
+
+
+def _read_basis(basis,expected_hash=None,source_hash=None):
+    # Refuse oversized or altered lineage rather than silently dropping it.
+    if not isinstance(basis,dict):raise ValueError('资料读取依据无效')
+    raw=canonical(basis)
+    if len(raw)>128*1024:raise ValueError('资料读取依据超出容量')
+    checksum=hashlib.sha256(raw).hexdigest()
+    if expected_hash is not None and checksum!=expected_hash:raise ValueError('资料读取依据摘要不一致')
+    parsed=ReadBasis.model_validate(basis)
+    selection=parsed.selection;kind=selection.get('kind')
+    if kind=='workbook_table':
+        if (selection.get('file_sha256')!=source_hash or not isinstance(selection.get('sheet'),str)
+                or not isinstance(selection.get('range'),list) or len(selection['range'])!=4
+                or not isinstance(selection.get('header_rows'),list) or not isinstance(selection.get('data_rows'),list)):
+            raise ValueError('工作簿实际读取范围无效')
+    elif kind=='html_table':
+        if not isinstance(selection.get('table_id'),str) or not selection['table_id']:
+            raise ValueError('网页表格读取依据无效')
+    elif kind!='whole_source_table':raise ValueError('资料读取类型无效')
+    return checksum
 
 
 class FilterParameterBinding(StrictModel):
@@ -560,12 +590,36 @@ def source_table(context, config, inputs):
     if (source.get('kind')!='file' or source.get('status')!='ready' or source.get('archived')
             or source.get('revision')!=pin.revision or source.get('content_hash')!=pin.content_hash):
         raise FlowStepError('SOURCE_VERSION_CHANGED','资料版本已变化或不可用，请重新确认并运行')
+    # read_input only applies workbook options to XLSX and HTML table/header
+    # options to HTML. Silently accepting a range or sheet on CSV would make
+    # the report imply filtering that never occurred.
+    filename=source['name'].lower()
+    options=cfg.options.model_dump(mode='json',exclude_none=True)
+    defaults=ReadOptions().model_dump(mode='json',exclude_none=True)
+    if filename.endswith('.xlsx'):
+        unsupported={'html_table'}
+    elif filename.endswith(('.html','.htm')):
+        unsupported=set(options)-{'html_table','header_rows'}
+    else:unsupported=set(options)
+    if any(options.get(key)!=defaults.get(key) for key in unsupported):
+        raise ValueError('所选资料格式不支持这些读取选项，未执行；请调整读取范围或格式')
     binding=InputBinding(source_id=pin.source_id,options=cfg.options,column_map=cfg.column_map)
     rows,fields,evidence,provenance=read_input(turn['project_id'],binding,frozen_source=source)
     current=owned(turn['project_id'],'source',pin.source_id)
     if (current.get('revision')!=pin.revision or current.get('content_hash')!=pin.content_hash
             or current.get('archived') or current.get('status')!='ready'):
         raise FlowStepError('SOURCE_VERSION_CHANGED','读取期间资料版本已变化，请重新确认并运行')
+    # Record the reader's resolved selection, not just the requested options:
+    # automatic Excel layout discovery can choose a different effective range.
+    if source['name'].lower().endswith('.xlsx'):
+        if not isinstance(provenance.get('selection'),dict):raise ValueError('工作簿缺少实际读取范围')
+        selection={'kind':'workbook_table',**provenance['selection']}
+    elif source['name'].lower().endswith(('.html','.htm')):
+        selection={'kind':'html_table','table_id':evidence.get('table_id')}
+    else:selection={'kind':'whole_source_table'}
+    read_basis={'version':1,'options':cfg.options.model_dump(mode='json',exclude_none=True),
+                'column_map':dict(cfg.column_map),'selection':selection}
+    read_basis_sha256=_read_basis(read_basis,source_hash=pin.content_hash)
     # Full file reads preserve duplicate transactions. A snapshot-scoped row
     # coordinate gives the typed engine a unique grain without silently
     # identifying equal-valued transactions as duplicates. It is not a
@@ -579,6 +633,7 @@ def source_table(context, config, inputs):
     return _compact_table(context,{'kind':'source_table_v1','source_id':pin.source_id,
         'revision':pin.revision,'content_hash':pin.content_hash,'rows':rows,'fields':fields,
         'row_identity':'snapshot_scoped_ordinal_not_business_key',
+        'read_basis':read_basis,'read_basis_sha256':read_basis_sha256,
         'complete':True,'requires_source_review':bool(evidence.get('requires_source_review')),
         'requires_semantic_review':bool(evidence.get('requires_semantic_review')),
         'evidence':evidence,'provenance':provenance})
@@ -593,7 +648,7 @@ def table_workflow(context, config, inputs):
     if not isinstance(inputs,dict) or set(inputs)!=(set(cfg.plan.inputs)|set(cfg.parameter_bindings)):
         raise ValueError('加工输入与已确认的数据步骤不一致')
     tables={};source_review=False;semantic_review=False
-    source_refs=[];seen_sources=set();source_lineage_complete=True
+    source_refs=[];seen_sources=set();source_lineage_complete=True;selection_lineage_complete=True
     for alias in cfg.plan.inputs:
         value=inputs[alias]
         if (not isinstance(value,dict) or value.get('kind') not in ('source_table_v1','table_workflow_v1')
@@ -605,12 +660,14 @@ def table_workflow(context, config, inputs):
         # processing steps. Older outputs may lack lineage; do not present
         # their references as a complete audit trail.
         if value['kind']=='source_table_v1':
-            refs=[{key:value.get(key) for key in ('source_id','revision','content_hash')}]
+            refs=[{key:value.get(key) for key in ('source_id','revision','content_hash','read_basis','read_basis_sha256')}]
         else:
             refs=value.get('source_refs')
             if value.get('source_lineage_complete') is not True or not isinstance(refs,list) or not refs:
                 source_lineage_complete=False
+                selection_lineage_complete=False
                 refs=refs if isinstance(refs,list) else []
+            if value.get('selection_lineage_complete') is not True:selection_lineage_complete=False
         from .project_data import owned
         for ref in refs:
             if not isinstance(ref,dict):raise ValueError('资料来源引用无效')
@@ -620,12 +677,20 @@ def table_workflow(context, config, inputs):
             if (source.get('kind')!='file' or source.get('status')!='ready' or source.get('archived')
                     or source.get('revision')!=pin.revision or source.get('content_hash')!=pin.content_hash):
                 raise FlowStepError('SOURCE_VERSION_CHANGED','资料版本已变化或不可用，请重新确认并运行')
-            key=(pin.source_id,pin.revision,pin.content_hash)
+            basis=ref.get('read_basis');basis_hash=ref.get('read_basis_sha256')
+            if basis is None and basis_hash is None:
+                selection_lineage_complete=False
+            elif basis is None or not isinstance(basis_hash,str):
+                raise ValueError('资料读取依据摘要不完整')
+            else:_read_basis(basis,basis_hash,pin.content_hash)
+            key=(pin.source_id,pin.revision,pin.content_hash,basis_hash)
             if key not in seen_sources:
                 if len(source_refs)>=200:raise ValueError('资料来源数量超过处理上限')
                 seen_sources.add(key)
-                source_refs.append({'source_id':pin.source_id,'revision':pin.revision,
-                                    'content_hash':pin.content_hash,'name':str(source.get('name') or pin.source_id)})
+                source_ref={'source_id':pin.source_id,'revision':pin.revision,
+                            'content_hash':pin.content_hash,'name':str(source.get('name') or pin.source_id)}
+                if basis is not None:source_ref.update(read_basis=basis,read_basis_sha256=basis_hash)
+                source_refs.append(source_ref)
         tables[alias]=value['rows']
         source_review |= value.get('requires_source_review') is True
         semantic_review |= value.get('requires_semantic_review') is True
@@ -647,6 +712,7 @@ def table_workflow(context, config, inputs):
         'output_sha256':result['output']['sha256'],'plan_sha256':result['plan_sha256'],
         'input_sha256':result['input_sha256'],'stage_receipts':result['stages'],
         'source_refs':source_refs,'source_lineage_complete':source_lineage_complete,
+        'selection_lineage_complete':selection_lineage_complete,
         'requires_source_review':source_review,
         'requires_semantic_review':semantic_review or result.get('requires_semantic_review') is True,
         'financial_evidence_status':'requires_business_review'})

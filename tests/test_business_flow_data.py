@@ -50,17 +50,31 @@ def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts():
     assert output['financial_evidence_status']=='requires_business_review'
     assert output['stage_receipts'][0]['checks']['complete_table'] is True
     assert output['source_lineage_complete'] is True
-    assert output['source_refs']==[{'source_id':source['id'],'revision':source['revision'],
-                                    'content_hash':source['content_hash'],'name':'income.csv'}]
+    assert output['selection_lineage_complete'] is True
+    ref=output['source_refs'][0]
+    assert {k:ref[k] for k in ('source_id','revision','content_hash','name')}=={
+        'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash'],'name':'income.csv'}
+    assert ref['read_basis']['selection']=={'kind':'whole_source_table'}
+    from agent_service.data_workflows import digest
+    assert digest(ref['read_basis'])==ref['read_basis_sha256']
     # Later processing inherits the same pinned inputs; legacy intermediate
     # results without a lineage are explicitly marked incomplete.
     raw=source_table(context,doc['nodes'][0]['config'],{})
-    intermediate=dict(raw,kind='table_workflow_v1',source_refs=output['source_refs'],source_lineage_complete=True)
+    with pytest.raises(ValueError,match='不支持这些读取选项'):
+        source_table(context,{**doc['nodes'][0]['config'],'options':{'data_start_row':2}}, {})
+    intermediate=dict(raw,kind='table_workflow_v1',source_refs=output['source_refs'],source_lineage_complete=True,
+                      selection_lineage_complete=True)
     chained=table_workflow(context,{'plan':plan},{'table':intermediate})
-    assert chained['source_refs']==output['source_refs'] and chained['source_lineage_complete'] is True
+    assert chained['source_refs']==output['source_refs'] and chained['selection_lineage_complete'] is True
+    old_ref={k:ref[k] for k in ('source_id','revision','content_hash','name')}
+    older=table_workflow(context,{'plan':plan},{'table':dict(intermediate,source_refs=[old_ref])})
+    assert older['source_lineage_complete'] is True and older['selection_lineage_complete'] is False
+    corrupt=dict(ref,read_basis=dict(ref['read_basis'],column_map={'c_1':'altered'}))
+    with pytest.raises(ValueError,match='摘要不一致'):
+        table_workflow(context,{'plan':plan},{'table':dict(intermediate,source_refs=[corrupt])})
     intermediate.pop('source_refs');intermediate.pop('source_lineage_complete')
     legacy=table_workflow(context,{'plan':plan},{'table':intermediate})
-    assert legacy['source_refs']==[] and legacy['source_lineage_complete'] is False
+    assert legacy['source_refs']==[] and legacy['source_lineage_complete'] is False and legacy['selection_lineage_complete'] is False
     # The same immutable flow can take an explicitly frozen new source at run
     # time. The exact source version is part of this run's input hash.
     dynamic=doc.copy();dynamic['inputs']=['input_file'];dynamic['nodes']=[dict(n) for n in doc['nodes']]
@@ -93,6 +107,50 @@ def test_model_or_untrusted_user_input_cannot_be_a_table_workflow_source():
             'inputs':{'data':{'source':source,'name':'prior' if kind else 'raw'}},'config':{}})
         with pytest.raises(ValidationError,match='财务数据'):
             BusinessFlow.model_validate(doc)
+
+
+def test_same_workbook_distinct_selections_and_mapping_survive_processing():
+    from io import BytesIO
+    from openpyxl import Workbook
+    workbook=Workbook();first=workbook.active;first.title='上半年'
+    first.append(['办事处','收入']);first.append(['东部',9])
+    second=workbook.create_sheet('下半年');second.append(['办事处','收入']);second.append(['西部',11])
+    stream=BytesIO();workbook.save(stream)
+    client=TestClient(app);headers={'Authorization':'Bearer '+TOKEN}
+    def req(method,path,**kwargs):
+        response=client.request(method,path,headers=headers,**kwargs)
+        assert response.status_code==200,response.text
+        return response.json()
+    pid=req('POST','/api/projects',json={'name':'多页签追溯','request_id':uid()})['id'];root='/api/projects/'+pid
+    source=req('POST',root+'/attachments',files={'file':('income.xlsx',stream.getvalue(),
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')},data={'request_id':uid(),'local_processing':'true'})
+    for _ in range(100):
+        source=get('source',source['id'])
+        if source.get('status') in ('ready','failed'):break
+        assert process_once()
+    assert source['status']=='ready'
+    turn=req('POST',root+'/messages',json={'text':'汇总两张表','request_id':uid(),'source_id':source['id']})
+    context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
+    pin={'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash']}
+    reads=[]
+    for sheet in ('上半年','下半年'):
+        reads.append(source_table(context,{**pin,'options':{'sheet':sheet,'header_rows':[1]},
+                                           'column_map':{'c_1':'branch'}},{}))
+    schema={'meaning':'收入','grain':['branch'],'columns':[
+        {'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+        {'name':'branch','data_type':'text','meaning':'办事处'},
+        {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}
+    plan={'version':1,'name':'合并两页','inputs':{'first':schema,'second':schema},
+          'stages':[{'id':'joined','kind':'union_rows','description':'合并','inputs':['first','second']}],
+          'output':'joined'}
+    result=table_workflow(context,{'plan':plan},{'first':reads[0],'second':reads[1]})
+    assert result['row_count']==2 and result['selection_lineage_complete'] is True
+    refs=result['source_refs']
+    assert len(refs)==2 and {ref['source_id'] for ref in refs}=={source['id']}
+    assert {ref['read_basis']['selection']['sheet'] for ref in refs}=={'上半年','下半年'}
+    assert all(ref['read_basis']['column_map']=={'c_1':'branch'} for ref in refs)
+    assert all(ref['read_basis']['selection']['header_rows']==[1] for ref in refs)
+    assert refs[0]['read_basis_sha256']!=refs[1]['read_basis_sha256']
 
 
 def test_source_node_cannot_take_a_model_output_as_dynamic_file_identity():

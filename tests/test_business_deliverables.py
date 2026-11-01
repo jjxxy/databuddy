@@ -156,6 +156,7 @@ def test_real_uploaded_income_is_processed_and_rendered_to_html_and_ppt():
     ppt_path,_=workspace_artifacts.file(pid,result['outputs']['ppt']['artifact_id'])
     html_content=html_path.read_text(encoding='utf-8')
     assert '18' in html_content and 'income.csv' in html_content and source['content_hash'] in html_content
+    assert '实际读取选择' in html_content and '字段映射' in html_content
     from pptx import Presentation
     presentation=Presentation(ppt_path)
     text=' '.join((shape.text if shape.has_text_frame else ' '.join(cell.text for row in shape.table.rows for cell in row.cells))
@@ -177,7 +178,23 @@ def test_table_report_never_silently_truncates_or_accepts_tampered_rows(executio
     result=delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':table})
     assert result['spec']['sections'][1]['table']['rows']==[['9007199254740993.123456789012']]
     assert '来源记录不完整' in result['spec']['sections'][0]['body']
+    assert '读取范围或字段映射记录不完整' in result['spec']['sections'][0]['body']
     assert result['requires_source_review'] and result['requires_semantic_review']
+    basis={'version':1,'options':{},'column_map':{'c_1':'<script>字段</script>'},
+           'selection':{'kind':'whole_source_table'}}
+    reference={'source_id':'s_test','revision':1,'content_hash':'a'*64,'name':'data.csv',
+               'read_basis':basis,'read_basis_sha256':digest(basis)}
+    with_basis=dict(table,source_refs=[reference],source_lineage_complete=True,selection_lineage_complete=True)
+    report=delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':with_basis})
+    assert '读取依据摘要：'+digest(basis) in report['spec']['sections'][0]['body']
+    rendered=delivery.render_html(execution,config('来源核对',delivery.HTML_RENDERER),{'spec':report})
+    path,_=workspace_artifacts.file(execution['project_id'],rendered['artifact_id'])
+    assert '&lt;script&gt;字段&lt;/script&gt;' in path.read_text(encoding='utf-8')
+    tampered=dict(reference,read_basis_sha256='b'*64)
+    report=delivery.table_report_spec(execution,{'title':'核对','format':'html'},
+                                      {'table':dict(with_basis,source_refs=[tampered])})
+    assert '读取范围或字段映射记录不完整' in report['spec']['sections'][0]['body']
+    assert '实际读取选择' not in report['spec']['sections'][0]['body']
     ai='建议收入为 999 元，需人工核对。'
     commentary={'text':ai,'output_sha256':hashlib.sha256(ai.encode()).hexdigest(),
                 'nondeterministic':True,'evidence_status':'unverified'}
