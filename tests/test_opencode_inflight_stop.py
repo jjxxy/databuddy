@@ -36,7 +36,7 @@ def native_session(monkeypatch, during_context):
         if method == 'POST' and path == '/api/session':
             state['metadata'] = body['metadata']
             return {'data': {'id': 'ses_race'}}
-        if method == 'POST' and path.endswith('/prompt'):return {'data': {'accepted': True}}
+        if method == 'POST' and path.endswith('/prompt'):return {'data': {'id': 'msg_new'}}
         if method == 'POST' and path.endswith('/interrupt'):
             state['interrupts'] += 1
             return {'data': {}}
@@ -46,7 +46,7 @@ def native_session(monkeypatch, during_context):
             state['in_context'] = True;state['events'].append('context-start')
             try:
                 during_context(bridge, state)
-                return {'data': [{'type': 'idle'}]}
+                return {'data': [{'type': 'user', 'id': 'msg_new'}, {'type': 'idle'}]}
             finally:
                 state['events'].append('context-end');state['in_context'] = False
         raise AssertionError('Unexpected native request: ' + method + ' ' + path)
@@ -95,7 +95,7 @@ def test_validated_completion_during_context_poll_is_not_replaced_with_idle_fail
 
 def test_unverified_idle_without_a_concurrent_stop_still_fails_closed(turn, monkeypatch):
     state = native_session(monkeypatch, lambda bridge, state: None)
-    with pytest.raises(provider.ModelOutputError, match='尚未提交通过验收的结果'):
+    with pytest.raises(provider.ModelOutputError, match='未能按当前工具协议'):
         runtime.run_session(turn, 'Do not accept unverified free text', {},
                             lambda *args: pytest.fail('Idle polling must not invent a tool callback'))
     current = get('turn', turn['id'])

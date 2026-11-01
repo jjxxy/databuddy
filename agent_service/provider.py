@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from urllib.parse import urlsplit
 import httpx
 from typing import Literal
-from pydantic import Field,SecretStr
+from pydantic import Field,SecretStr,model_validator
 from .models import StrictModel
 from .config import LLM_BASE,LLM_KEY,LLM_MODEL
 from .provider_compatibility import bounded_request_options,response_token_allowance,configured_input_character_limit
@@ -20,6 +20,16 @@ class ProviderInput(StrictModel):
     share_data:bool=False
     tool_protocol:Literal['json','native']='json'
     upstream_base_url:str=Field(default='',max_length=500)
+    # Optional, per-model provider limits. These are frozen in the same
+    # encrypted catalog revision as model credentials; unknown remains None.
+    context_window_tokens:int|None=Field(default=None,ge=256,le=100000000,strict=True)
+    max_output_tokens:int|None=Field(default=None,ge=1,le=100000000,strict=True)
+
+    @model_validator(mode='after')
+    def validate_window(self):
+        if self.context_window_tokens is not None and self.max_output_tokens is not None and self.max_output_tokens>=self.context_window_tokens:
+            raise ValueError('模型输出上限必须小于上下文窗口')
+        return self
 
 def legacy_settings():
     from .store import get,unseal

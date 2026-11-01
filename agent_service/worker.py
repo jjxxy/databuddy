@@ -1,5 +1,5 @@
 import logging,os,time,threading
-from .locks import FileLock,LockLost
+from .locks import FileLock,LockLost,assert_owned
 from filelock import Timeout
 from sqlalchemy.exc import OperationalError,InterfaceError
 from .config import DATA
@@ -13,11 +13,16 @@ def main():
         from .runtime import preflight
         preflight()
         initialize()
+        if os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':
+            from .conversation_workers import ConversationWorkers,concurrency
+            concurrency()  # validate before starting background threads
         stop=threading.Event()
         collaborators=None
+        conversations=None
         if os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':
             from .collaboration_runtime import start as start_collaboration
             collaborators=start_collaboration(stop)
+            conversations=ConversationWorkers(stop,tick,logger).start()
             from .activity import run as notify
             threading.Thread(target=notify,args=(stop,),daemon=True).start()
         def beat():
@@ -30,19 +35,26 @@ def main():
                 stop.wait(5)
         thread=threading.Thread(target=beat,daemon=True);thread.start()
         try:
-            while True:
+            while not stop.is_set():
                 try:
-                    if os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':tick()
+                    # The supervisor lock belongs to this thread. Check it
+                    # here rather than sharing its PostgreSQL connection with
+                    # the independent project slots.
+                    assert_owned()
+                    if conversations:conversations.raise_if_failed()
                     if os.getenv('SCHEDULER_MODE','worker')=='worker':queue_due()
                     processed=process_once()
-                    if os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':tick()
+                    assert_owned()
+                    if conversations:conversations.raise_if_failed()
                     if not processed:stop.wait(1)
                 except LockLost:raise
                 except (OperationalError,InterfaceError,Timeout):
                     logger.warning('Worker database or scheduler temporarily unavailable; retrying')
                     stop.wait(5)
+            if conversations:conversations.raise_if_failed()
         finally:
             stop.set();thread.join(timeout=6)
+            if conversations:conversations.join()
             if collaborators:collaborators.join(timeout=6)
 
 if __name__=='__main__':main()

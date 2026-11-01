@@ -11,6 +11,8 @@ def main():
         from .runtime import preflight
         preflight()
         initialize()
+        from .conversation_workers import ConversationWorkers,concurrency
+        concurrency()  # fail before starting background threads
         stop=threading.Event()
         from .collaboration_runtime import start as start_collaboration
         collaborators=start_collaboration(stop)
@@ -34,15 +36,16 @@ def main():
                 except (OperationalError,InterfaceError,BlockingIOError):pass
                 stop.wait(5)
         thread=threading.Thread(target=beat,daemon=True);thread.start()
+        workers=ConversationWorkers(stop,tick).start()
         try:
-            while True:
-                try:
-                    worked=tick()
-                    if not worked:stop.wait(.5)
-                except LockLost:raise
-                except (OperationalError,InterfaceError,Timeout):
-                    logging.getLogger(__name__).warning('Agent storage temporarily unavailable')
-                    stop.wait(2)
-        finally:stop.set();thread.join(timeout=6);collaborators.join(timeout=6)
+            while not stop.wait(.5):
+                # Ensure loss of the supervisor's own distributed ownership
+                # also terminates this process, not just individual slots.
+                from .locks import assert_owned
+                assert_owned()
+                workers.raise_if_failed()
+            workers.raise_if_failed()
+        finally:
+            stop.set();workers.join();thread.join(timeout=6);collaborators.join(timeout=6)
 
 if __name__=='__main__':main()

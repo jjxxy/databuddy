@@ -37,3 +37,20 @@ def test_real_resume_keeps_original_attachments_and_one_idempotent_turn(project)
     assert duplicate.status_code==200 and duplicate.json()['id']==accepted['id']
     assert len([t for t in all_items('turn') if t.get('project_id')==pid])==2
     assert client.get(f'/api/projects/{pid}/message-status?request_id={request_id}',headers=H).json()['accepted'] is True
+
+
+def test_two_different_continue_requests_never_queue_same_task_twice(project):
+    pid,client,_=project
+    source=upload(project)
+    original=submit(project,[source['id']])
+    patch('turn',original['id'],state='failed',resume_available=True,outcome='paused')
+    body={'text':'继续','session_id':original['session_id'],'resume_turn_id':original['id'],'source_ids':[]}
+    first=client.post(f'/api/projects/{pid}/messages',headers=H,json={**body,'request_id':'resume-first-'+uid()})
+    assert first.status_code==200,first.text
+    request_id='resume-second-'+uid()
+    second=client.post(f'/api/projects/{pid}/messages',headers=H,json={**body,'request_id':request_id})
+    assert second.status_code==400
+    assert '已经在继续' in second.json()['detail']
+    assert client.get(f'/api/projects/{pid}/message-status?request_id={request_id}',headers=H).json()['accepted'] is False
+    assert len([t for t in all_items('turn') if t.get('project_id')==pid])==2
+    assert chat.public_turn(get('turn',first.json()['id']))['resume_turn_id']==original['id']

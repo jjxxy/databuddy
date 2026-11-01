@@ -70,3 +70,17 @@
 
 #folder-attach-dialog{width:min(640px,calc(100vw - 32px));max-height:min(80vh,720px)}
 .folder-attach-list{max-height:45vh;overflow:auto;margin:10px 0 16px;border:1px solid #e4e8ed;border-radius:8px}.folder-attach-list:empty{display:none}.folder-attach-list label{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border-bottom:1px solid #eef1f4;overflow-wrap:anywhere}.folder-attach-list label:last-child{border-bottom:0}.folder-attach-list input{flex:none;margin-top:4px}.folder-attach-list span{min-width:0}
+
+/* Keep selected and sent documents in a readable vertical list. */
+.attachment-tray{flex-direction:column;align-items:stretch;flex-wrap:nowrap;max-height:180px;overflow-y:auto;overflow-x:hidden}
+.attachment-tray .attachment-chip{display:flex;width:100%;min-width:0;margin:0}
+.attachment-chip .attachment-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.user-row .message-body>.source-file{display:flex;width:100%;max-width:100%;text-align:left}
+.turn-elapsed{display:inline-block;margin-left:9px;color:#89959c;font-size:10px;font-weight:400}
+.work-plan{margin:12px 0 14px;border:1px solid #e3ebe6;border-radius:10px;background:#fbfdfb;padding:12px 14px;font-size:12px;color:#4b5b52}
+.work-plan-heading{font-weight:600;color:#335a49}.work-plan-heading small{font-size:10px;font-weight:400;color:#8b9a90;margin-left:6px}
+.work-plan ol{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:7px}
+.work-plan li{display:flex;gap:8px;align-items:baseline;line-height:1.6}.work-plan li>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}.work-plan li>small{white-space:nowrap;color:#87988d;font-size:10px}.work-plan .plan-done>span:first-child{color:#268366}.work-plan p{margin:9px 0 0;color:#8b9990;font-size:10px;line-height:1.5}
+@media(max-width:480px){.attachment-tray{max-height:150px}.work-plan li{gap:6px}}
+.project-tree-row .resource-more,.session-tree-row .resource-more{opacity:1;color:#586b60}
+.user-row .message-body>.source-file span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}

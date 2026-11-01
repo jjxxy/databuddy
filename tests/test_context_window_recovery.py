@@ -11,6 +11,30 @@ from test_opencode_agent_bridge import turn
 from test_context_working_set import table
 
 
+def test_native_oversized_history_is_a_recoverable_window_error(monkeypatch):
+    from agent_service import opencode_runtime
+    class Response:
+        def __enter__(self):return self
+        def __exit__(self,*_):pass
+        def raise_for_status(self):pass
+        def iter_bytes(self):yield b'x'*129
+    class Client:
+        def __init__(self,**_kwargs):pass
+        def __enter__(self):return self
+        def __exit__(self,*_):pass
+        def stream(self,*_args,**_kwargs):return Response()
+    monkeypatch.setattr(opencode_runtime.httpx,'Client',Client)
+    connection={'base_url':'http://127.0.0.1:12345','api_key':'test'}
+    with pytest.raises(provider.ContextWindowExceeded) as caught:
+        opencode_runtime._request(connection,'GET','/api/session/s/context',limit=128)
+    assert caught.value.source=='native_history_transport'
+    # Other oversized transport responses must not be misclassified as model
+    # context failures or cause session-recovery retries.
+    with pytest.raises(ValueError,match='响应超过读取限制') as unrelated:
+        opencode_runtime._request(connection,'GET','/api/info',limit=128)
+    assert not isinstance(unrelated.value,provider.ContextWindowExceeded)
+
+
 def long_turn(turn):
     trace=[{'id':'input-'+str(i),'tool':'read_source_table','status':'done',
         'arguments':{'source_id':'source-'+str(i)},'observation':table(i)} for i in range(7)]
@@ -32,6 +56,21 @@ def test_no_compression_below_actual_window_and_no_fixed_history_turn_cut(turn,m
     monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':int(size/0.9)}))
     again,_=agent.planning_context(get('turn',turn['id']),native=False)
     assert json.loads(again[1]['content'])['conversation']==info['conversation'],'90% of a cap must not trigger an arbitrary 85% early cut'
+
+
+def test_planning_keeps_old_nondeduplicated_tool_facts_until_a_window_requires_projection(turn,monkeypatch):
+    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    precise='9007199254740993.000000000001'
+    source={'source_id':'old-source','rows':[{'金额':precise,'备注':'x'*12000}]}
+    current=patch('turn',turn['id'],agent_trace=[
+        {'id':'older','tool':'read_source_table','status':'done','arguments':{'source_id':'old-source'},'observation':source},
+        {'id':'next','tool':'list_files','status':'done','arguments':{},'observation':{}},
+        {'id':'latest','tool':'list_files','status':'done','arguments':{},'observation':{}},
+    ])
+    messages,_=agent.planning_context(current,native=False)
+    info=json.loads(messages[1]['content'])
+    assert info['completed_steps'][0]['observation']==source
+    assert 'window_checkpoint' not in info
 
 
 def test_oversized_context_becomes_bound_checkpoint_and_exact_pages_survive(turn,monkeypatch):

@@ -9,6 +9,17 @@ function descriptor(resource,offset,version='a'.repeat(64)){
 }
 const later=()=>[message('plan','set_task_plan',{}),message('files','list_files',{}),message('rules','business_rules',{})];
 
+test('independent financial result versions remain available for exact comparison',async()=>{
+ const {projectRequest}=await projection;
+ const before=message('before','read_tool_result',{
+  content:'收入：9007199254740993.000000000001',recovery:descriptor('result:previous',0,'a'.repeat(64))});
+ const after=message('after','read_tool_result',{
+  content:'收入：9007199254740993.000000000002',recovery:descriptor('result:current',0,'b'.repeat(64))});
+ const result=projectRequest({messages:[before,after,...later()]});
+ assert.deepEqual(result.body.messages[0],before);
+ assert.deepEqual(result.body.messages[1],after);
+});
+
 test('all distinct current-version pages keep exact values and server cursor past unrelated tools',async()=>{
  const {projectRequest}=await projection;
  const old=message('old','read_context_original',{content:'old'.repeat(2500),recovery:descriptor('turn:history',0)},
@@ -51,7 +62,7 @@ test('compacted historical result carries explicit owner and original offset rat
  const {projectRequest}=await projection;
  const page=message('wrapper','read_tool_result',{content:'x'.repeat(9000),source_turn_id:'history'},
   {source_turn_id:'history',step_id:'original',offset:6000,limit:9000});
- const result=projectRequest({messages:[page,...later()]});
+ const result=projectRequest({messages:[page,...later()]},{underPressure:true});
  assert.deepEqual(JSON.parse(result.body.messages[0].content).observation.observation.recover_with,
   {tool:'read_tool_result',step_id:'original',source_turn_id:'history',offset:6000});
 });

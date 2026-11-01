@@ -137,8 +137,11 @@ def test_model_plans_are_validated_and_do_not_authorize_operations(monkeypatch):
         def post(self,*args,**kwargs):captured.append(kwargs['json']);return Response()
     monkeypatch.setattr(chat,'LLM_BASE','https://model.invalid')
     monkeypatch.setattr(chat,'LLM_MODEL','test-model')
-    from agent_service import provider
+    from agent_service import provider,context_compaction
     monkeypatch.setattr(provider,'httpx',SimpleNamespace(Client=ModelClient))
+    # This isolated router test intentionally has no persisted project/turn;
+    # scoped history projection is exercised by test_legacy_model_diagnostics.
+    monkeypatch.setattr(context_compaction,'context_for_turn',lambda *args,**kwargs:{'recent_verbatim':[]})
     p={'id':'isolated-model-project'}
     source={'profile':{'fields':[{'name':'c_1','label':'金额','numeric':True}]},'secret_config':'must-not-be-sent'}
     d=chat.decision(p,{},'你好',source,None)

@@ -243,7 +243,7 @@ def observation_view(value,tool):
     return value
 
 
-def trace_context(turn,clean):
+def trace_context(turn,clean,*,preserve_full=False):
     trace=turn.get('agent_trace',[]);values=[]
     working={};versions={}
     for step in trace:
@@ -289,7 +289,7 @@ def trace_context(turn,clean):
                      and len(json.dumps(view['rows'],ensure_ascii=False,default=str))<=6000
                      and len(encoded)<=16000)
         small_observation=len(encoded)<=6000
-        limit=len(encoded) if canonical or i in retained else 16000 if small_table else 6000 if small_observation else 24000 if recent and bounded_structure else 5000 if recent else 600
+        limit=len(encoded) if preserve_full or canonical or i in retained else 16000 if small_table else 6000 if small_observation else 24000 if recent and bounded_structure else 5000 if recent else 600
         if len(encoded)>limit:
             original=raw.get('step_id') if step['tool']=='read_tool_result' and isinstance(raw,dict) else sid
             observation={'context_excerpt':encoded[:limit],'omitted_characters':len(encoded)-limit,

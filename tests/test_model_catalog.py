@@ -105,6 +105,39 @@ def test_model_is_pinned_per_turn_and_session_choice_is_persistent(managed):
     assert fast['model_id'] == 'fast' and message(pid)['model_id'] == 'fast'
 
 
+def test_configured_model_window_is_pinned_and_loaded_for_each_native_provider(managed, monkeypatch, tmp_path):
+    from agent_service import opencode_runtime
+    pid,_=managed
+    original=configuration()
+    original['models'][0].update(context_window_tokens=128000,max_output_tokens=4096)
+    catalog.provision(original,verify=False)
+    first=message(pid,model_id='finance')
+    changed=configuration()
+    changed['models'][0].update(context_window_tokens=256000,max_output_tokens=8192)
+    catalog.provision(changed,verify=False)
+    with provider.task_scope(first['id']):
+        old=provider.settings()
+        assert (old['context_window_tokens'],old['max_output_tokens'])==(128000,4096)
+    new=catalog.default_settings()
+    assert (new['context_window_tokens'],new['max_output_tokens'])==(256000,8192)
+    assert opencode_runtime._identity(old)!=opencode_runtime._identity(new)
+    monkeypatch.setenv('ATLAS_OPENCODE_BINARY',sys.executable)
+    monkeypatch.setattr(opencode_runtime,'_root',lambda:tmp_path/'runtime')
+    opencode_runtime.prepare(catalog.owner_configuration(),{'type':'object'})
+    providers=json.loads((tmp_path/'runtime/config/opencode/opencode.json').read_text())['providers']
+    for selected,window,output in [(old,128000,4096),(new,256000,8192)]:
+        config=providers[opencode_runtime._identity(selected)]
+        assert config['models'][selected['model']]['limit']=={'context':window,'output':output}
+        assert config['body']['max_tokens']==output
+
+
+@pytest.mark.parametrize('window,output',[(0,100),(1000,1000),(1000,1200),(1000,True)])
+def test_invalid_model_window_configuration_is_rejected(window,output):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        provider.ProviderInput(base_url='https://example.test/v1',model='fixture',context_window_tokens=window,max_output_tokens=output)
+
+
 def test_legacy_connection_selection_has_immutable_snapshot_without_catalog_migration(managed):
     pid, _ = managed
     original = dict(configuration()['models'][0])

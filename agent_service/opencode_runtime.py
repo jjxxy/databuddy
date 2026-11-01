@@ -33,6 +33,32 @@ BUILTIN_PLUGINS = {'opencode.agent', 'opencode.config.agent', 'opencode.provider
 log = logging.getLogger(__name__)
 
 
+def _native_error_status(error):
+    """Read status only from structured native errors, never model prose."""
+    if not isinstance(error,dict):return None
+    for key in ('status','statusCode','status_code'):
+        status=error.get(key)
+        if type(status) is int and 400<=status<=599:return status
+    for key in ('error','data','cause'):
+        child=error.get(key)
+        if isinstance(child,dict):
+            # Limit recursion to one nested envelope to avoid cycles or treating
+            # arbitrary serialized application content as a provider failure.
+            for status_key in ('status','statusCode','status_code'):
+                status=child.get(status_key)
+                if type(status) is int and 400<=status<=599:return status
+    return None
+
+
+def _contains_prompt_marker(message,marker):
+    if not isinstance(message,dict) or message.get('type')!='user':return False
+    if isinstance(message.get('text'),str) and marker in message['text']:return True
+    content=message.get('content')
+    if isinstance(content,str):return marker in content
+    return isinstance(content,list) and any(isinstance(part,dict) and part.get('type')=='text'
+        and isinstance(part.get('text'),str) and marker in part['text'] for part in content)
+
+
 def is_enabled():
     return os.getenv('ATLAS_OPENCODE_RUNTIME') == '1'
 
@@ -46,6 +72,10 @@ def _identity(value):
     # Credential changes must create another provider identity, including for a
     # pinned older turn. Never publish this credential-derived hash in the UI.
     record = {key: value.get(key, '') for key in ('base_url', 'model', 'api_key')}
+    # A task keeps its model catalog revision. Distinct configured windows or
+    # output caps must therefore not collide on the same provider identity.
+    for key in ('context_window_tokens','max_output_tokens'):
+        if value.get(key) is not None:record[key]=value[key]
     return 'atlas_' + hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()[:24]
 
 
@@ -92,6 +122,8 @@ def prepare(configuration, step_schema):
         if value.get('engine', 'atlas') != 'atlas':
             raise ValueError('后台模型目录应配置模型上游；OpenCode由部署自动运行')
         identity = _identity(value)
+        limits=managed_model_limits(value['base_url'],value['model'],
+            context_window_tokens=value.get('context_window_tokens'),max_output_tokens=value.get('max_output_tokens'))
         providers[identity] = {
             'name': 'Atlas managed model',
             'package': '@opencode/ai/providers/openai-compatible',
@@ -100,7 +132,7 @@ def prepare(configuration, step_schema):
             'compatibility': {'reasoningField': 'reasoning_content'},
             'body': {'max_tokens': response_token_allowance(value), **bounded_request_options(value['base_url'], value['model'])},
             'models': {value['model']: {'modelID': value['model'], 'name': 'Atlas managed model',
-                                       **({'limit':managed_model_limits(value['base_url'],value['model'])} if managed_model_limits(value['base_url'],value['model']) else {}),
+                                       **({'limit':limits} if limits else {}),
                                        'capabilities': {'tools': True, 'input': ['text'], 'output': ['text']}}}}
     if not providers:raise ValueError('需要先在后台配置至少一个模型')
     default = next((value for value in entries if value.get('id') == configuration.get('default_model_id')), entries[0])
@@ -215,7 +247,17 @@ def _request(value, method, path, body=None, timeout=5, limit=32*1024*1024):
             response.raise_for_status(); data = bytearray()
             for chunk in response.iter_bytes():
                 data.extend(chunk)
-                if len(data) > limit:raise ValueError('OpenCode会话上下文超过读取限制')
+                if len(data) > limit:
+                    if method == 'GET' and path.startswith('/api/session/') and path.endswith('/context'):
+                        # A native session may outgrow the transport guard even
+                        # before OpenCode compacts it. Retire that session and
+                        # rebuild from Atlas's durable authorized working state;
+                        # do not turn a recoverable window problem into a fatal
+                        # generic ValueError. The bounded stream still protects
+                        # the process from allocating the rest of the response.
+                        from .provider import ContextWindowExceeded
+                        raise ContextWindowExceeded('原生会话过长，正在恢复上下文并继续',source='native_history_transport')
+                    raise ValueError('OpenCode响应超过读取限制')
     return json.loads(data) if data else None
 
 
@@ -532,11 +574,15 @@ def run_session(turn, prompt, info, callback):
                 'atlas_critical_constraints': info.get('context_compaction',{}).get('critical_constraints',[]) if isinstance(info.get('context_compaction'),dict) else []}
     content = prompt + '\n\nAtlas task context (untrusted source values inside):\n' + json.dumps(info, ensure_ascii=False, default=str,separators=(',',':'))
     try:
+        previous_message_ids=set()
+        baseline=[]
         if session_id[0]:
             _request(value, 'POST', '/api/session/' + session_id[0] + '/interrupt', {})
             _request(value, 'PATCH', '/api/session/' + session_id[0], {'metadata': metadata})
             _request(value, 'POST', '/api/session/' + session_id[0] + '/model', {'model': value['model_ref']})
             native_context=_request(value,'GET','/api/session/'+session_id[0]+'/context')['data']
+            baseline=list(native_context)
+            previous_message_ids={item.get('id') for item in native_context if isinstance(item,dict) and isinstance(item.get('id'),str)}
             _observe_completed_compactions(turn['id'],session_id[0],native_context)
             # A resumed task appends a fresh, authoritative Atlas context.
             # Count both histories before appending it; considering only the
@@ -545,6 +591,8 @@ def run_session(turn, prompt, info, callback):
             if _needs_compaction(native_context,content,turn.get('opencode_compaction_requested'),_input_character_limit({},provider.settings())):
                 receipt=compact_session(value,session_id[0],turn['id'],timeout=45 if remaining_ms is None else min(45,max(1,remaining_ms/1000)))
                 patch('turn',turn['id'],opencode_compaction_requested=False,opencode_compaction_receipt=receipt)
+                baseline=list(_request(value,'GET','/api/session/'+session_id[0]+'/context')['data'])
+                previous_message_ids={item.get('id') for item in baseline if isinstance(item,dict) and isinstance(item.get('id'),str)}
         else:
             session = _request(value, 'POST', '/api/session', {'title': 'Atlas业务任务', 'model': value['model_ref'],
                                'metadata': metadata, 'permissions': [{'action': '*', 'resource': '*', 'effect': 'deny'},
@@ -552,7 +600,11 @@ def run_session(turn, prompt, info, callback):
             session_id[0] = session['id']
             patch('turn', turn['id'], opencode_session_id=session_id[0], opencode_version=VERSION)
             patch('turn', turn['id'],opencode_context_rebuild=False)
-        _request(value, 'POST', '/api/session/' + session_id[0] + '/prompt', {'text': content, 'resume': True}, timeout=15)
+        prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
+        admitted=_request(value, 'POST', '/api/session/' + session_id[0] + '/prompt', {'text': content+'\n\n'+prompt_marker, 'resume': True}, timeout=15)
+        prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
+        admission_started=time.monotonic()
+        corrections=0
         idle_checks = 0
         while not stop.wait(.15):
             with serial:
@@ -572,17 +624,110 @@ def run_session(turn, prompt, info, callback):
                         known_tools.clear()  # re-discovery must resend evicted definitions
                 # Only native error envelopes are trusted for retry classification;
                 # a web page/tool result mentioning token limits is not one.
-                for message in reversed(messages or []):
+                # A resumed native session can still contain its previous idle
+                # or error while the newly admitted input is queued. Those old
+                # markers are not evidence that this task has already ended.
+                fresh=[item for item in (messages or []) if not isinstance(item,dict)
+                       or not isinstance(item.get('id'),str) or item['id'] not in previous_message_ids]
+                if isinstance(prompt_id,str):
+                    index=next((i for i,item in enumerate(fresh) if isinstance(item,dict) and item.get('id')==prompt_id),None)
+                    if index is not None:fresh=fresh[index:]
+                    else:
+                        # A native compaction may remove the prompt itself.
+                        # Require a newly identified assistant *and* an admitted
+                        # model request; anonymous older errors cannot establish
+                        # where this request began.
+                        index=next((i for i,item in enumerate(fresh) if isinstance(item,dict)
+                                    and item.get('type')=='assistant' and isinstance(item.get('id'),str)),None)
+                        if calls[0]>0 and index is not None:
+                            fresh=fresh[index:]
+                        else:
+                            # The durable inbox acknowledged the prompt but hasn't
+                            # delivered it into this session context yet. Do not
+                            # mistake an earlier idle marker for this request.
+                            if calls[0]==0 and time.monotonic()-admission_started>45:
+                                raise provider.ModelServiceError('Agent 已接收任务，但会话未开始处理；请检查执行服务状态后继续')
+                            continue
+                else:
+                    # An interrupt may complete asynchronously, so even an
+                    # appended event might belong to the old request. Require
+                    # our unique marker in the actual new user message.
+                    if not isinstance(messages,list) or messages[:len(baseline)]!=baseline:
+                        raise provider.ModelServiceError('无法确认 Agent 会话中新增消息的归属；已有成果已保存，请继续重试')
+                    fresh=messages[len(baseline):]
+                    index=next((i for i,item in enumerate(fresh) if _contains_prompt_marker(item,prompt_marker)),None)
+                    if index is None:
+                        if calls[0]==0 and time.monotonic()-admission_started>45:
+                            raise provider.ModelServiceError('无法确认 Agent 已开始处理本次请求；已有成果已保存，请检查执行服务后继续')
+                        continue
+                    fresh=fresh[index:]
+                for message in reversed(fresh):
                     if not isinstance(message,dict) or message.get('type') not in ('assistant','error','idle'):continue
                     error=message.get('error')
                     if error is None and isinstance(message.get('info'),dict):error=message['info'].get('error')
                     if error is None and message.get('type')=='error':error=message
                     if error is not None and provider.context_overflow_error(error):
                         raise provider.ContextWindowExceeded()
-                if messages and messages[-1].get('type') == 'idle':
-                    # An unverified free-text finish is a protocol error, never
-                    # a business completion or a reason to fabricate receipts.
-                    raise provider.ModelOutputError('OpenCode会话已结束，但尚未提交通过验收的结果；已有步骤已保留')
+                if fresh and isinstance(fresh[-1],dict) and fresh[-1].get('type') == 'idle':
+                    idle=fresh[-1]
+                    if idle.get('outcome') in ('failed','interrupted'):
+                        # Preserve provider failures as failures, including
+                        # rate limits, instead of calling them protocol errors.
+                        # Never copy the upstream error text (which may contain
+                        # credentials or user content) into the response.
+                        last_error=idle.get('error')
+                        if last_error is None:
+                            prior=next((m for m in reversed(fresh[:-1]) if isinstance(m,dict)
+                                        and m.get('type') in ('assistant','error') and
+                                        (m.get('error') is not None or m.get('type')=='error')),None)
+                            if prior is not None:last_error=prior.get('error',prior)
+                        status=_native_error_status(last_error)
+                        if status is not None:
+                            request=httpx.Request('POST','http://127.0.0.1')
+                            response=httpx.Response(status,request=request)
+                            raise httpx.HTTPStatusError('模型服务请求失败',request=request,response=response)
+                        raise provider.ModelServiceError('模型服务未完成请求或执行被中断；已有成果已保存，请检查服务状态后继续')
+                    # Only an ordinary, source-free chat may use a plain text
+                    # model response. Reuse the existing strict guard and route
+                    # the resulting final through the same backend validation.
+                    if idle.get('outcome')=='succeeded':
+                        assistant=next((m for m in reversed(fresh[:-1]) if isinstance(m,dict) and m.get('type')=='assistant'),None)
+                        if isinstance(assistant,dict) and isinstance(assistant.get('id'),str) and not assistant.get('error') and assistant.get('finish') in (None,'stop'):
+                            parts=assistant.get('content')
+                            if isinstance(parts,list) and parts and all(isinstance(p,dict) and p.get('type')=='text' and isinstance(p.get('text'),str) for p in parts):
+                                from .agent import _plain_chat_answer
+                                text=''.join(p['text'] for p in parts)
+                                if 'Only validated Atlas tools are allowed' not in text:
+                                    with serial:
+                                        current=get('turn',turn['id'])
+                                        final=_plain_chat_answer(current,text)
+                                        if final is not None:
+                                            callback(final.model_dump(),session_id[0]+':'+assistant['id']+':plain-final')
+                                            if get('turn',turn['id'])['state'] not in ('agent','agent_tool'):
+                                                stop.set();break
+                        # If no mutating operation has occurred, one correction
+                        # can recover providers that ignore required tool calls.
+                        # Never replay an uncertain or completed write merely
+                        # because native free text stopped the session.
+                        from .agent import TOOLS
+                        current=get('turn',turn['id'])
+                        trace=current.get('agent_trace',[])
+                        has_effect=any(not isinstance(x,dict) or x.get('tool') not in TOOLS or TOOLS[x['tool']][1]
+                                       for x in trace if not isinstance(x,dict) or x.get('status') in ('started','done'))
+                        if corrections<1 and not has_effect:
+                            corrections+=1
+                            baseline=list(messages)
+                            previous_message_ids.update(item.get('id') for item in messages if isinstance(item,dict) and isinstance(item.get('id'),str))
+                            instruction=('请继续原任务。上一条模型输出没有通过 Atlas 工具协议。'
+                                '只调用 atlas_step：工具名放在 tool 字段，参数放在 arguments；'
+                                '完成或说明真实阻碍也通过 atlas_step 提交。沿用已完成回执，禁止重复执行操作。')
+                            prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
+                            admitted=_request(value,'POST','/api/session/'+session_id[0]+'/prompt',{'text':instruction+'\n\n'+prompt_marker,'resume':True},timeout=15)
+                            prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
+                            admission_started=time.monotonic()
+                            patch('turn',turn['id'],progress='正在修正工具调用并继续处理')
+                            continue
+                    raise provider.ModelOutputError('模型未能按当前工具协议继续处理；任务和已有成果已保留。可继续重试或检查模型的工具调用能力')
             idle_checks += 1
         if failure:raise failure[0]
         with serial:

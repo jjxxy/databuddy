@@ -11,22 +11,46 @@ WORKFLOWS={
  'change_safely':{'version':1,'goal':'修改已有应用并保留可恢复结果','steps':['application_info 确认目标和当前版本','versions 读取项目检查点','revise_data_application 或 write_file 修改','查看真实结果、质量与定义差异','确认版本化结果和未完成项'], 'checks':['只有用户明确要求才重跑、发布、改调度','同一项目的其他应用不能隐式修改','文件已保存不代表文件代码已经执行']},
 }
 
-def rules(pid):
+def _stored_rules(pid):
     try:
         value=json.loads(workspace.read_file(pid,'notes/business-rules.json'))
         return value if isinstance(value,list) else []
     except (FileNotFoundError,ValueError):return []
+
+def rules(pid):
+    # Only the currently confirmed wording is automatically injected into the
+    # model. Prior versions remain stored for an explicit human/Git review.
+    return [{key:value for key,value in item.items() if key!='superseded_versions'}
+            for item in _stored_rules(pid) if isinstance(item,dict)]
 
 def remember(turn,key,quote,application_id=None):
     from .tasks import check_target
     from .intents import require
     require(turn,'write')
     text=turn.get('work_request',turn['text'])
-    if not re.search(r'记住|以后|今后|约定|口径',text) or quote not in text:
+    if not re.search(r'记住|以后|今后|约定|口径|更正|修改|调整|改为|改成',text) or quote not in text:
         raise ValueError('业务记忆必须引用用户本轮明确约定的原话，不能保存模型推测')
     if application_id:check_target(turn,application_id)
-    value=[r for r in rules(turn['project_id']) if not (r.get('key')==key and r.get('application_id')==application_id)]
-    value.append({'key':key,'quote':quote,'application_id':application_id,'source_turn_id':turn['id'],'updated_at':now()})
+    stored=_stored_rules(turn['project_id'])
+    existing=next((r for r in stored if isinstance(r,dict) and r.get('key')==key and r.get('application_id')==application_id),None)
+    if existing and existing.get('quote')!=quote:
+        # A model-selected key alone is not evidence that the user intended to
+        # change that particular existing decision. Require the exact key and a
+        # correction verb in the same user request; otherwise ask the user.
+        if key not in text or not re.search(r'更正|修改|调整|更新|改为|改成|替换',text):
+            raise ValueError('已有同名业务规则；请明确指出规则名称并说明如何更正，未覆盖原规则')
+    value=[r for r in stored if not isinstance(r,dict) or not (r.get('key')==key and r.get('application_id')==application_id)]
+    record={'key':key,'quote':quote,'application_id':application_id,'source_turn_id':turn['id'],'updated_at':now()}
+    if existing:
+        previous=list(existing.get('superseded_versions') or [])
+        if existing.get('quote')!=quote:
+            previous.append({k:v for k,v in existing.items() if k!='superseded_versions'})
+            record['version']=existing.get('version',1)+1
+        else:
+            record['version']=existing.get('version',1)
+        if previous:record['superseded_versions']=previous
+    else:record['version']=1
+    value.append(record)
     if len(value)>100:raise ValueError('业务规则已达100条，请先整理现有规则')
     workspace.write_file(turn['project_id'],'notes/business-rules.json',json.dumps(value,ensure_ascii=False,indent=2)+'\n')
-    return value[-1]
+    return {name:item for name,item in record.items() if name!='superseded_versions'}

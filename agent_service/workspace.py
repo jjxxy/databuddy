@@ -229,4 +229,12 @@ def _apply_restore(journal):
 def recover():
     for journal in all_items('restore'):
         if journal['state']=='applying':
-            with lock(journal['project_id']),FileLock(str(DATA/'scheduler.lock'),timeout=10):_apply_restore(journal)
+            # Multiple conversation slots can observe the same applying record
+            # before any of them acquires the project lock.  Re-read only after
+            # locking, otherwise a stale observation could delete files again
+            # after another slot already finished recovery.
+            with lock(journal['project_id']):
+                try:current=get('restore',journal['id'])
+                except KeyError:continue
+                if current.get('state')!='applying' or current.get('project_id')!=journal['project_id']:continue
+                with FileLock(str(DATA/'scheduler.lock'),timeout=10):_apply_restore(current)

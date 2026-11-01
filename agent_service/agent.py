@@ -251,7 +251,7 @@ def planning_context(turn, *, native=None):
     recent=sorted((t for t in all_items('turn') if t['project_id']==pid and t.get('session_id',default_session(pid))==turn.get('session_id',default_session(pid)) and t['created_at']<turn['created_at'] and t['state']=='done'),key=lambda t:t['created_at'])[-10:]
     info={'project':p['name'],'mode':mode,'request':turn.get('work_request',turn['text']),'continuation_request':turn['text'] if turn.get('resumed_from') else None,'target_application_id':turn.get('application_id'),'attached_source_id':turn.get('source_id'),'current_source_id':p.get('source_id'),'current_pipeline_id':turn.get('application_id') or p.get('pipeline_id'),
           'project_history_matches':search_history(pid,turn['text'],5),'conversation':[{'user':t['text'],'agent':t.get('answer','')[:3500]} for t in recent],
-          'completed_steps':agent_context.trace_context(turn,public_observation),
+          'completed_steps':agent_context.trace_context(turn,public_observation,preserve_full=True),
           'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':response_schema(Step)}
     active_names={tool['name'] for tool in tools}
     if active_names & {'company_search_status','search_company_documents','read_company_document'} or turn.get('knowledge_refs') or turn.get('knowledge_read_refs'):
@@ -663,8 +663,18 @@ def execute(turn,step):
         return run(turn,**args)
     if name=='set_task_plan':
         if any(i<0 or i>=len(args['steps']) for i in args['completed_steps']):raise ValueError('计划完成索引超出步骤范围')
+        if _requires_user_work_plan(turn) and len(args['steps'])<2:
+            raise ValueError('这项多步骤工作至少需要两项可理解的计划步骤')
+        prior=set((turn.get('task_plan') or {}).get('completed_steps') or [])
+        added=set(args['completed_steps'])-prior
+        if added and not any(s.get('status')=='done' and s.get('tool') not in ('set_task_plan','discover_tools')
+                             and not (isinstance(s.get('observation'),dict) and s['observation'].get('executed') is False)
+                             for s in turn.get('agent_trace',[])):
+            raise ValueError('尚无实际工作回执，不能提前标记计划步骤完成')
         value={'steps':[s[:500] for s in args['steps']],'missing_information':[s[:500] for s in args['missing_information']],'completed_steps':sorted(set(args['completed_steps']))}
-        patch('turn',turn['id'],task_plan=value)
+        updates={'task_plan':value}
+        if (turn.get('verification_feedback') or {}).get('code')=='WORK_PLAN_REQUIRED':updates['verification_feedback']=None
+        patch('turn',turn['id'],**updates)
         return value
     if name=='load_workflow':
         from .knowledge import WORKFLOWS
@@ -839,13 +849,17 @@ def _tool_request_key(step):
 
 def _unresolved_failures(trace):
     from .agent_progress import BLOCKED_CODES
-    completed=set();unresolved=[]
+    completed=set();unresolved=[];corrected_plan=False
     for step in reversed(trace):
         key=_tool_request_key(step)
         if step.get('status')=='done':
+            if step.get('tool')=='set_task_plan':corrected_plan=True
             if key is not None:completed.add(key)
             continue
         if step.get('status')!='failed':continue
+        # A corrected plan supersedes a failed attempt to record the plan; no
+        # business operation or side effect was executed by that failed call.
+        if step.get('tool')=='set_task_plan' and corrected_plan:continue
         observation=step.get('observation')
         if (isinstance(observation,dict) and observation.get('executed') is False
                 and observation.get('code') in BLOCKED_CODES):continue
@@ -868,12 +882,66 @@ def _record_guard_block(turn,step,state,observation,*,pause=False):
         finish(get('turn',turn['id']),observation['error']+'。已有成果已保存，可补充要求后继续。',
                outcome='paused',resume_available=True)
 
+def _requires_user_work_plan(turn):
+    """Recognize explicit multi-stage work, leaving ordinary chat unblocked.
+
+    This is intentionally narrow: uncertainty should not turn a simple action
+    or a missing-data question into an artificial planning requirement.
+    """
+    if turn.get('interaction_mode','work')!='work' or turn.get('collaboration_parent_turn_id') or turn.get('gateway_client_id'):
+        return False
+    # Existing in-flight or resumed work may have started on an older version
+    # without a plan. Preserve its continuation semantics; only enforce the
+    # new rule before the first write in a fresh interactive task.
+    if turn.get('resumed_from') or any(
+            step.get('status')=='done' and bool(TOOLS.get(step.get('tool'),(None,False))[1])
+            for step in turn.get('agent_trace',[]) if isinstance(step,dict)):
+        return False
+    text=turn.get('work_request',turn.get('text',''))
+    if not isinstance(text,str):return False
+    # A prohibition is a constraint, not an extra stage of work.  For
+    # classification only, discard explicitly negated clauses; the original
+    # request and its full constraints remain unchanged in model context.
+    text=re.sub(r'(?:不要|不得|禁止|不允许|别|无需|不必)[^，,。；;\n]*', '', text)
+    text=re.sub(r'\b(?:do not|don.t|never|must not)\b[^,.;\n]*', '', text,flags=re.I)
+    groups=(r'读取|查看|检查|分析|核对|比对|整理|加工|合并|汇总|处理|调研|调查|搜索|审查|验证|测试|read|inspect|analy[sz]e|review|test',
+            r'生成|创建|制作|编写|写入|保存|导出|输出|交付|报告|报表|create|generate|write|export',
+            r'发布|发送|提交|部署|调度|publish|send|submit|deploy')
+    stages=sum(bool(re.search(group,text,re.I)) for group in groups)
+    multi_output=bool(re.search(r'生成|创建|制作|编写|写入|保存|导出|输出|交付|create|generate|write|export',text,re.I)
+                      and len(re.findall(r'Excel|Word|PPT|\.xlsx|\.docx|\.pptx',text,re.I))>=2)
+    explicit_sequence=bool(re.search(r'先.{1,200}(?:再|然后|之后)|(?:then|after that)',text,re.I))
+    return bool(stages>=2 or multi_output or explicit_sequence)
+
+
+def _request_missing_plan(turn):
+    """Ask the actual model to supply a plan; never manufacture one."""
+    from .conversation import finish
+    boundary=len(turn.get('agent_trace',[]))
+    prior=turn.get('plan_required_rejections') or {}
+    count=prior.get('attempts',0)+1 if prior.get('trace_length')==boundary else 1
+    feedback={'code':'WORK_PLAN_REQUIRED','executed':False,
+              'error':'这项工作包含多个步骤。请先调用 set_task_plan 记录具体的工作计划，再执行或宣告完成；计划不等于实际成果。'}
+    patch('turn',turn['id'],plan_required_rejections={'trace_length':boundary,'attempts':count},
+          verification_feedback=feedback,state='agent',progress='正在制定工作计划')
+    if count>=3:
+        finish(get('turn',turn['id']),'模型暂未给出可执行的工作计划，任务尚未完成；已有资料和成果已保留。可以继续或更换模型。',
+               outcome='blocked',resume_available=True)
+
+
 def _execute_node(state):
     from .conversation import finish
     turn=get('turn',state['turn_id']);step=Step.model_validate(state['step'])
     if turn['state'] in ('done','failed'):return {}
     from . import agent_gateway,agent_team
     assert_turn_live(turn);agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn)
+    # Allow harmless inspection before planning, but do not run a mutation or
+    # claim completion of an explicit multi-stage job until the model supplies
+    # a plan. This also applies to the OpenCode tool bridge.
+    if _requires_user_work_plan(turn) and not turn.get('task_plan'):
+        if step.kind=='final' and step.status=='complete' or step.kind=='tool' and TOOLS[step.tool][1]:
+            _request_missing_plan(turn)
+            return {}
     if step.kind=='final':
         from .task_budget import unsupported_round_stop
         if unsupported_round_stop(turn,step.answer):
@@ -1061,6 +1129,9 @@ def opencode_step(turn_id,value,call_id):
             'active_tool_names':selected,'capability_context':capability_context(current,selected),
             'outcome':current.get('outcome')}
     if actual and isinstance(actual.get('observation'),dict) and actual['observation'].get('executed') is False:result['executed']=False
+    if (current.get('verification_feedback') or {}).get('code')=='WORK_PLAN_REQUIRED':
+        result['executed']=False
+        if current.get('state') in ('done','failed'):result['terminal']=True
     return result
 
 def advance(turn):

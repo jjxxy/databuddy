@@ -213,7 +213,10 @@ function shareWorkflowDocuments(messages){
  return {messages:rewritten,count};
 }
 
-export function projectRequest(body){
+// Lossy receipt projection is opt-in: an arbitrary age/size is not evidence
+// that a request exceeds the selected model's token window. Native OpenCode
+// owns window-aware compaction, while Atlas has a recoverable overflow path.
+export function projectRequest(body,{underPressure=false}={}){
  const workflows=shareWorkflowDocuments(Array.isArray(body.messages)?body.messages:[]),layouts=shareLayoutCandidates(workflows.messages),messages=layouts.messages;
  const references=slots(messages),rewritten=messages.slice(),byId=new Map(),latestTables=new Map(),working=new Map(),versions=new Map(),pages=new Map();
  let compacted=0,duplicateResults=0;
@@ -254,7 +257,7 @@ export function projectRequest(body){
   }else if(original&&completeTable(original)&&keptTables.has(original)){
    const duplicate=referenceTo({...value,parsed:{...value.parsed,reply}},original);
    if(duplicate.length<text.length){text=duplicate;duplicateResults++;}
-  }else if(index<references.length-2&&observationCharacters(value)>6000&&!PRESERVE.has(step.tool)&&!keptTables.has(value)&&!retainedPages.has(value)&&![...working.values()].includes(value)){
+  }else if(underPressure&&index<references.length-2&&observationCharacters(value)>6000&&!PRESERVE.has(step.tool)&&!keptTables.has(value)&&!retainedPages.has(value)&&![...working.values()].includes(value)){
   // Saving a generic file or plan does not finish a guide's purpose. Keep
   // requested canonical reference material until native token-window
   // compaction, rather than forcing it into repeated recovery string pages.

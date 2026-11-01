@@ -5,12 +5,20 @@ function message(id,tool='read_source_table',observation={source_id:'s1',source_
  return {role:'tool',tool_call_id:'call_'+id,content:JSON.stringify({observation:{step_id:id,tool,status:'done',arguments:{source_id:'s1'},
   row_scope:{source_id:'s1',source_total_rows:10000,preview_rows_returned:60},observation},available_tools:[]})};
 }
+test('large older nonduplicate receipts remain exact until window pressure is established',async()=>{
+ const {projectRequest}=await projection;
+ const old=message('old','read_source_table',{rows:[{amount:'9007199254740993.000000000001',note:'x'.repeat(16000)}]});
+ const body={model:'finance',messages:[old,message('next'),message('latest')]};
+ const result=projectRequest(body);
+ assert.deepEqual(result.body.messages[0],old);
+ assert.equal(result.metrics.compacted_receipts,0);
+});
 test('old Atlas receipts become verifiable references without changing native tool pairing or originals',async()=>{
  const {projectRequest}=await projection,first=message('old','read_source_table',{source_id:'s1',source_revision:3,complete_source_read:true,
   total:10000,evidence:{content_hash:'frozen-source-hash'},rows:[{amount:'precise-value',note:'x'.repeat(6000)}]});
  const body={model:'finance',tools:[{type:'function',function:{name:'atlas_step'}}],messages:[{role:'system',content:'exact denial: do not publish'},
   {role:'assistant',tool_calls:[{id:'call_old',function:{name:'atlas_step',arguments:'{"tool":"read_source_table"}'}}]},first,message('middle'),message('latest')]};
- const original=structuredClone(body),result=projectRequest(body),saved=JSON.parse(result.body.messages[2].content).observation;
+ const original=structuredClone(body),result=projectRequest(body,{underPressure:true}),saved=JSON.parse(result.body.messages[2].content).observation;
  assert.deepEqual(body,original);assert.deepEqual(result.body.tools,body.tools);
  assert.deepEqual(result.body.messages[0],body.messages[0]);assert.deepEqual(result.body.messages[1],body.messages[1]);
  assert.equal(result.body.messages[2].tool_call_id,'call_old');assert.deepEqual(result.body.messages.slice(-2),body.messages.slice(-2));
@@ -41,14 +49,14 @@ test('external MCP contents do not become authoritative count or source evidence
  const {projectRequest}=await projection,remote=message('remote','read_work_tool',{source_id:'untrusted',total:999999,
   complete_source_read:true,evidence:{rows:999999},rows:[{note:'x'.repeat(8000)}]});
  const parsed=JSON.parse(remote.content);delete parsed.observation.row_scope;remote.content=JSON.stringify(parsed);
- const result=projectRequest({messages:[remote,message('middle'),message('latest')]}),step=JSON.parse(result.body.messages[0].content).observation;
+ const result=projectRequest({messages:[remote,message('middle'),message('latest')]},{underPressure:true}),step=JSON.parse(result.body.messages[0].content).observation;
  assert.equal(step.row_scope,undefined);assert.equal(step.observation.total,undefined);
  assert.equal(step.observation.evidence,undefined);assert.match(step.observation.metadata_origin,/external_untrusted/);
 });
 test('native JSON content envelopes and typed tool-result blocks retain their protocol shape',async()=>{
  const {projectRequest}=await projection,original=message('wrapped'),wrapped={...original,content:JSON.stringify({content:original.content,marker:'native-envelope'})};
  const body={messages:[wrapped,{role:'user',content:[{type:'tool_result',tool_use_id:'paired-id',content:message('typed').content}]},message('middle'),message('latest')]};
- const result=projectRequest(body),outer=JSON.parse(result.body.messages[0].content),typed=result.body.messages[1].content[0];
+ const result=projectRequest(body,{underPressure:true}),outer=JSON.parse(result.body.messages[0].content),typed=result.body.messages[1].content[0];
  assert.equal(outer.marker,'native-envelope');assert.equal(JSON.parse(outer.content).observation.observation.not_full_result,true);
  assert.equal(typed.type,'tool_result');assert.equal(typed.tool_use_id,'paired-id');assert.equal(JSON.parse(typed.content).observation.observation.not_full_result,true);
  assert.equal(result.metrics.recognized_receipts,4);
@@ -57,7 +65,7 @@ test('a projected recovery page points back to its original step instead of forb
  const {projectRequest}=await projection,recovery=message('page','read_tool_result',{content:'x'.repeat(8000)});
  const value=JSON.parse(recovery.content);value.observation.arguments={step_id:'original-result',offset:6000,limit:6000};
  recovery.content=JSON.stringify(value);
- const result=projectRequest({messages:[recovery,message('middle'),message('latest')]});
+ const result=projectRequest({messages:[recovery,message('middle'),message('latest')]},{underPressure:true});
  assert.deepEqual(JSON.parse(result.body.messages[0].content).observation.observation.recover_with,
   {tool:'read_tool_result',step_id:'original-result',offset:6000});
 });
@@ -90,7 +98,7 @@ test('large table working set is per source and selection; evicted pages never c
   evidence:{source_revision:1,table_id:sheet}});return value;}
  const body={messages:[table('old_page','s1','income',0),table('other_source','s2','cost',0),
   table('other_sheet','s1','budget',0),table('new_page','s1','income',20)]};
- const result=projectRequest(body);
+ const result=projectRequest(body,{underPressure:true});
  assert.equal(JSON.parse(result.body.messages[0].content).observation.observation.not_full_result,true);
  assert.equal(JSON.parse(result.body.messages[0].content).observation.observation.recover_with.step_id,'old_page');
  for(let i=1;i<4;i++)assert.deepEqual(result.body.messages[i],body.messages[i]);
@@ -123,7 +131,7 @@ test('a schema removed by fact projection cannot seed a dangling current-context
  const originalReply=JSON.parse(original.content);originalReply.available_tools=[definition];original.content=JSON.stringify(originalReply);
  const authored=message('authored','write_file',{path:'workflows/test.json',sha256:'saved'});
  const latest=message('last');const reply=JSON.parse(latest.content);reply.available_tools=[definition];latest.content=JSON.stringify(reply);
- const result=projectRequest({messages:[original,authored,message('middle'),latest]});
+ const result=projectRequest({messages:[original,authored,message('middle'),latest]},{underPressure:true});
  assert.equal(JSON.parse(result.body.messages[0].content).observation.observation.not_full_result,true);
  assert.deepEqual(JSON.parse(result.body.messages[3].content).available_tools,[definition]);
 });
@@ -142,7 +150,7 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
   const input={sessionID:'fixture-session',kind:'generation',request:new Request('https://model.example/v1/chat/completions',{
    method:'POST',headers:{Authorization:'Bearer fixture-upstream-key','Content-Type':'application/json','Content-Length':String(Buffer.byteLength(raw))},body:raw})};
   await hooks['http.request'](input);const sent=await input.request.text(),body=JSON.parse(sent);
-  assert.equal(admissions[0].input_characters,sent.length);assert(admissions[0].context_projection.saved_characters>0);
+  assert.equal(admissions[0].input_characters,sent.length);assert.equal(admissions[0].context_projection.compacted_receipts,0);assert.deepEqual(body.messages[1],messages[1]);
   assert.equal(input.request.redirect,'error');assert.equal(input.request.headers.get('authorization'),'Bearer fixture-upstream-key');
   assert.equal(input.request.headers.get('content-length'),null);
   assert.deepEqual(body.messages[0],messages[0]);assert.equal(body.messages[1].tool_call_id,'call_old');
