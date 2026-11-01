@@ -319,7 +319,13 @@ def canonical(value) -> bytes:
 
 
 def digest(value) -> str:
-    return hashlib.sha256(canonical(value)).hexdigest()
+    # The exact same canonical JSON bytes, without a second whole-table byte
+    # allocation just to hash a large result.
+    encoder=json.JSONEncoder(ensure_ascii=False,sort_keys=True,separators=(',', ':'),
+                             default=_json_value,allow_nan=False)
+    h=hashlib.sha256()
+    for fragment in encoder.iterencode(value):h.update(fragment.encode('utf-8'))
+    return h.hexdigest()
 
 
 def decimal_value(value) -> Decimal:
@@ -384,6 +390,9 @@ def _table(schema: TableSchema, rows, budget: Budget, deadline: float):
         raise WorkflowError('ROW_BUDGET', 'Complete table exceeds the row/cell budget; no truncated result was produced')
     fields = _columns(schema)
     converted, keys = [], set()
+    encoded_size=len(canonical({'schema':schema.model_dump(),'rows':[]}))
+    if encoded_size>budget.max_bytes:
+        raise WorkflowError('BYTE_BUDGET', 'Complete table exceeds the byte budget; no truncated result was produced')
     for index, row in enumerate(rows):
         if index % 1000 == 0 and time.monotonic() > deadline:
             raise WorkflowError('TIMEOUT', 'Workflow exceeded its execution time budget')
@@ -402,12 +411,13 @@ def _table(schema: TableSchema, rows, budget: Budget, deadline: float):
             raise WorkflowError('GRAIN_NULL', 'A row-grain key contains a missing value')
         if key in keys:
             raise WorkflowError('GRAIN_DUPLICATE', 'Declared row-grain keys are not unique')
+        # Check each full, normalized row before retaining it. The two bytes of
+        # the empty rows array are already included; commas separate later rows.
+        encoded_size += len(canonical(result)) + (1 if converted else 0)
+        if encoded_size>budget.max_bytes:
+            raise WorkflowError('BYTE_BUDGET', 'Complete table exceeds the byte budget; no truncated result was produced')
         keys.add(key)
         converted.append(result)
-    value = {'schema': schema.model_dump(), 'rows': converted}
-    encoded_size = len(canonical(value))
-    if encoded_size > budget.max_bytes:
-        raise WorkflowError('BYTE_BUDGET', 'Complete table exceeds the byte budget; no truncated result was produced')
     return {'schema': schema, 'rows': converted, '_bytes': encoded_size}
 
 

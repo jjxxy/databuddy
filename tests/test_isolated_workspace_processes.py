@@ -88,7 +88,8 @@ def test_two_real_backends_keep_projects_sources_artifacts_and_jobs_separate(tmp
                        HOME=str(data), APP_TOKEN='fixture-only-distinct-' + subject + '-token',
                        ATLAS_AUTH_MODE='oidc', OIDC_ISSUER=ISSUER, OIDC_AUDIENCE=AUDIENCE,
                        OIDC_ALLOWED_SUBJECTS=subject, OIDC_JWKS_URL=ISSUER + '/jwks',
-                       OIDC_ACCEPT_PROXY_HEADER='0', TEST_JWKS=str(jwks), TEST_PORT=str(ports[subject]))
+                       OIDC_ACCEPT_PROXY_HEADER='0', ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT='1',
+                       TEST_JWKS=str(jwks), TEST_PORT=str(ports[subject]))
             bootstrap = """
 import json, os
 from agent_service import identity

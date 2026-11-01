@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import base64
 import hashlib
+import hmac
 import os
 import secrets
 import tempfile
@@ -97,6 +98,8 @@ _INLINE_ROWS_LIMIT=1024*1024
 _MAX_TABLE_BYTES=64*1024*1024
 _MAX_RUN_BYTES=256*1024*1024
 _DEFAULT_TOTAL_MB=2048
+_DEFAULT_ACTOR_MB=1024
+_DEFAULT_PROJECT_MB=512
 
 
 def _table_scope(context):
@@ -127,6 +130,84 @@ def _table_key(scope):
                 info=b'atlas-business-flow-table-v1').derive(master)
 
 
+def _index_key():
+    from .store import cipher
+    from .config import DATA
+    cipher()
+    master=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
+    return HKDF(algorithm=hashes.SHA256(),length=32,salt=None,
+                info=b'atlas-business-flow-owner-index-v1').derive(master)
+
+
+def _owner_claim(context,scope,key):
+    # Opaque keyed identities do not put account or project names on disk.
+    actor=hmac.new(key,canonical(['actor',context['actor_id']]),hashlib.sha256).hexdigest()
+    project=hmac.new(key,canonical(['project',context['actor_id'],context['project_id']]),hashlib.sha256).hexdigest()
+    value={'version':1,'scope':scope,'actor':actor,'project':project}
+    value['mac']=hmac.new(key,canonical(value),hashlib.sha256).hexdigest()
+    return value
+
+
+def _scope_bytes(folder):
+    """Only regular files in an exact scope directory contribute to quota."""
+    total=0
+    for item in folder.iterdir():
+        if item.is_symlink():raise ValueError('数据快照目录包含不可用的链接')
+        if item.is_file():total+=item.stat().st_size
+        elif item.is_dir():raise ValueError('数据快照目录结构无效')
+    return total
+
+
+def _indexed_usage(root,claim,key):
+    """Report attributed usage; unindexed legacy bytes remain global-only."""
+    actor_bytes=project_bytes=unindexed_bytes=0
+    for folder in root.iterdir():
+        if folder.is_symlink():raise ValueError('数据快照目录包含不可用的链接')
+        if not folder.is_dir():continue
+        size=_scope_bytes(folder);marker=folder/'.owner.json'
+        if not marker.exists():
+            unindexed_bytes+=size;continue
+        try:
+            if marker.is_symlink() or marker.stat().st_size>2048:raise ValueError()
+            saved=json.loads(marker.read_bytes())
+            if set(saved)!={'version','scope','actor','project','mac'} or saved['version']!=1 or saved['scope']!=folder.name:
+                raise ValueError()
+            msg={k:saved[k] for k in ('version','scope','actor','project')}
+            actual=hmac.new(key,canonical(msg),hashlib.sha256).hexdigest()
+            if not isinstance(saved['mac'],str) or not hmac.compare_digest(saved['mac'],actual):raise ValueError()
+        except (ValueError,TypeError,KeyError,OSError):
+            raise ValueError('数据快照归属索引损坏，请管理员核对；未删除数据') from None
+        if saved['actor']==claim['actor']:
+            actor_bytes+=size
+            if saved['project']==claim['project']:project_bytes+=size
+    return actor_bytes,project_bytes,unindexed_bytes
+
+
+def _quota_mb(name,default):
+    try:value=int(os.getenv(name,str(default)))
+    except ValueError:raise ValueError('数据快照存储配额配置无效') from None
+    if not 1<=value<=131072:raise ValueError('数据快照存储配额配置无效')
+    return value
+
+
+def snapshot_storage_usage(project_id,actor_id):
+    """Caller must authenticate current actor and project before invoking."""
+    from .config import DATA
+    from .locks import FileLock
+    if not all(isinstance(x,str) and x for x in (project_id,actor_id)):raise ValueError('数据快照身份无效')
+    root=DATA/'business-flow-tables';key=_index_key()
+    claim=_owner_claim({'project_id':project_id,'actor_id':actor_id},'0'*64,key)
+    with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
+        if root.exists() and (root.is_symlink() or root.resolve()!=root.absolute()):
+            raise ValueError('数据快照目录无效')
+        actor,project,unindexed=_indexed_usage(root,claim,key) if root.is_dir() else (0,0,0)
+        return {'actor_bytes':actor,'project_bytes':project,'has_unindexed_legacy':bool(unindexed),
+                'actor_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024,
+                'project_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024,
+                'global_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024,
+                'note':'未归属历史快照只计入全局配额；不会自动清除历史。'}
+
+
 def _save_rows(context,rows,raw):
     if len(raw)>_MAX_TABLE_BYTES:
         raise FlowStepError('BYTE_BUDGET','完整数据超过当前步骤的安全容量，未截断或发布')
@@ -136,29 +217,47 @@ def _save_rows(context,rows,raw):
     ref={'version':1,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'scope':scope}
     from .locks import FileLock
     from .config import DATA
-    try:total_mb=int(os.getenv('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',str(_DEFAULT_TOTAL_MB)))
-    except ValueError:raise ValueError('数据快照存储配额配置无效') from None
-    if not 1<=total_mb<=131072:raise ValueError('数据快照存储配额配置无效')
+    total_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)
+    actor_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)
+    project_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)
     root=DATA/'business-flow-tables'
     # One cross-process lock serializes quota accounting and atomic publication,
     # including across workers when the configured shared filesystem/DB locks
     # are available. We never evict retained snapshots to make room.
     with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
+        key=_index_key();claim=_owner_claim(context,scope,key);marker=folder/'.owner.json'
+        actor_used,project_used,_=_indexed_usage(root,claim,key)
+        if marker.exists():
+            if marker.is_symlink() or json.loads(marker.read_bytes())!=claim:
+                raise ValueError('数据快照归属与当前用户或项目不一致')
+        else:
+            # Legacy scopes are attributed when next used with the exact run
+            # identity. Other unindexed legacy scopes remain in the global
+            # quota until they can be attributed; do not invent their owner.
+            own_legacy=_scope_bytes(folder)
+            actor_used+=own_legacy;project_used+=own_legacy
         if target.exists():
             # A corrupt or altered existing snapshot must not be silently reused.
             _read_rows(context,ref)
+            if not marker.exists():_write_owner(marker,claim)
             return ref
         used=sum(p.stat().st_size for p in folder.iterdir() if p.is_file() and not p.is_symlink())
         if used+len(raw)+28>_MAX_RUN_BYTES:
             raise FlowStepError('BYTE_BUDGET','本次运行的完整数据快照超过安全容量，未截断或发布')
+        additional=len(raw)+28+(0 if marker.exists() else len(canonical(claim)))
+        if actor_used+additional>actor_mb*1024*1024:
+            raise FlowStepError('BYTE_BUDGET','当前用户的数据快照容量不足；未删除历史结果')
+        if project_used+additional>project_mb*1024*1024:
+            raise FlowStepError('BYTE_BUDGET','当前项目的数据快照容量不足；未删除历史结果')
         total=0
         for parent,dirs,files in os.walk(root,followlinks=False):
             dirs[:]=[d for d in dirs if not (Path(parent)/d).is_symlink()]
             for name in files:
                 item=Path(parent)/name
                 if item.is_file() and not item.is_symlink():total+=item.stat().st_size
-        if total+len(raw)+28>total_mb*1024*1024:
+        if total+additional>total_mb*1024*1024:
             raise FlowStepError('BYTE_BUDGET','数据快照存储容量不足，请按保留策略处理空间后重试；未删除历史结果')
+        if not marker.exists():_write_owner(marker,claim)
         nonce=secrets.token_bytes(12)
         encrypted=nonce+AESGCM(_table_key(scope)).encrypt(nonce,raw,scope.encode())
         fd,name=tempfile.mkstemp(prefix='.pending-',dir=folder)
@@ -171,6 +270,17 @@ def _save_rows(context,rows,raw):
         finally:
             if os.path.exists(name):os.unlink(name)
     return ref
+
+
+def _write_owner(path,claim):
+    fd,name=tempfile.mkstemp(prefix='.owner-pending-',dir=path.parent)
+    try:
+        os.fchmod(fd,0o600)
+        with os.fdopen(fd,'wb') as out:
+            out.write(canonical(claim));out.flush();os.fsync(out.fileno())
+        os.replace(name,path)
+    finally:
+        if os.path.exists(name):os.unlink(name)
 
 
 def _read_rows(context,ref):
@@ -200,7 +310,18 @@ def _read_rows(context,ref):
 def _compact_table(context,value):
     rows=value.get('rows')
     if not isinstance(rows,list):raise ValueError('数据快照行格式无效')
-    raw=canonical(rows)
+    # Enforce the bound while serializing instead of first allocating an
+    # arbitrarily large canonical representation and checking afterward.
+    from .data_workflows import _json_value
+    encoder=json.JSONEncoder(ensure_ascii=False,sort_keys=True,separators=(',', ':'),
+                             default=_json_value,allow_nan=False)
+    data=bytearray()
+    for fragment in encoder.iterencode(rows):
+        chunk=fragment.encode('utf-8')
+        if len(data)+len(chunk)>_MAX_TABLE_BYTES:
+            raise FlowStepError('BYTE_BUDGET','完整数据超过当前步骤的安全容量，未截断或发布')
+        data.extend(chunk)
+    raw=bytes(data)
     if len(raw)<=_INLINE_ROWS_LIMIT:
         return json.loads(canonical(value))
     ref=_save_rows(context,rows,raw)

@@ -60,6 +60,7 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert saved['candidate_commit'] and saved['published_run'] is None
     assert len(req('GET',base+'/business-flows')['items'])==1
     flow=base+'/business-flows/'+saved['id'];run_request=uid();body={'request_id':run_request,'expected_digest':saved['candidate_digest'],'inputs':{}}
+    usage=req('GET',flow+'/storage');assert usage['project_limit_bytes']>0 and usage['actor_limit_bytes']>0
     run=req('POST',flow+'/runs',json=body)
     assert req('POST',flow+'/runs',json=body)['run_id']==run['run_id']
     conflict=client.post(flow+'/runs',headers=h,json={**body,'request_id':uid()});assert conflict.status_code==400
@@ -68,6 +69,14 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert process_once();status=req('GET',flow+'/runs/'+run['run_id']);assert status['status']=='succeeded',status
     assert status['plan_digest']==saved['candidate_digest'] and status['commit']==saved['candidate_commit']
     assert len(status['steps'])==4 and len(status['artifacts'])==1
+    assert status['steps'][1]['table_available']
+    page=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
+    assert page['total']==1 and page['next_offset'] is None and page['rows'][0]['amount']=='18.00'
+    assert page['financial_verified'] is False and page['run_id']==run['run_id']
+    bad=client.get(flow+'/runs/'+run['run_id']+'/tables/read',headers=h)
+    assert bad.status_code==400
+    invalid=client.get(flow+'/runs/'+run['run_id']+'/tables/aggregate?limit=101',headers=h)
+    assert invalid.status_code==400
     result=client.get(status['artifacts'][0]['download_url'],headers=h)
     assert result.status_code==200 and '18.00' in result.text and '未经' not in result.text
     record=unseal(get('run',run['run_id'])['secret_flow_checkpoint'])

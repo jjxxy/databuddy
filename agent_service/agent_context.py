@@ -50,7 +50,7 @@ DATA_WORKING_SET=('source_schema','inspect_source_tables','read_source_table','d
                   'write_file','read_file','register_data_workflow','run_data_workflow',
                   'read_data_workflow_result','export_data_workflow_result','list_data_workflows')
 GROUPS=[
- (r'浏览器|登录|网页操作|网站操作|browser|登录态|(?:网页|网站|页面).{0,30}(?:下载|导出|取数|采集|获取)|(?:下载|导出|取数|采集).{0,30}(?:网页|网站|页面)',{'browser_capabilities','open_browser','observe_browser','navigate_browser','follow_browser_link','scroll_browser','capture_browser_screenshot','request_browser_takeover','browser_interact','download_browser_source','close_browser'}),
+ (r'浏览器|登录|网页操作|网站操作|browser|登录态|(?:网页|网站|页面).{0,30}(?:下载|导出|取数|采集|获取)|(?:下载|导出|取数|采集).{0,30}(?:网页|网站|页面)',{'browser_capabilities','open_browser','observe_browser','navigate_browser','follow_browser_link','scroll_browser','capture_browser_screenshot','request_browser_takeover','browser_interact','prepare_browser_fill','download_browser_source','close_browser'}),
  (r'画|绘制|配图|图片|图像|海报|插画|朗读|语音|音频|image|speech',{'media_capabilities','generate_image','synthesize_speech'}),
  (r'成果|文件|预览|渲染|截图|版式|设计|视觉|图片|看图|PNG|JPEG|PDF|PPT|Word|Excel|html|png|jpeg|pdf|ppt|docx',{'list_project_artifacts','render_work_preview','inspect_visual_artifact'}),
  (r'联网|互联网|公开|网页|网站|搜索|检索|研究|调研|查资料|最新|web|research',{'web_research_status','search_web','read_web_page'}),

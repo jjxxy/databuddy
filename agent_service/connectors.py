@@ -15,6 +15,9 @@ import sqlalchemy as sa
 from .config import DATA, MAX_ROWS, MAX_UPLOAD
 from .store import unseal
 
+_CSV_MAX_COLUMNS=200
+_CSV_MAX_CELLS=2_000_000
+
 class SourceError(ValueError):
     def __init__(self,message,code='SOURCE_INVALID',retryable=False):
         super().__init__(message);self.code=code;self.retryable=retryable
@@ -176,9 +179,17 @@ def _file_rows(source, limit, path, content):
             if (not reader.fieldnames or any(not name.strip() for name in reader.fieldnames)
                     or len(reader.fieldnames)!=len(set(reader.fieldnames))):
                 raise SourceError('CSV 表头为空或有重复列名')
+            # Bound object amplification before materializing records. A small
+            # CSV with many short fields can occupy hundreds of times its file
+            # size as Python dictionaries; file-size limits alone are not a
+            # useful memory bound. Never return an incomplete table as complete.
+            if len(reader.fieldnames)>_CSV_MAX_COLUMNS:
+                raise SourceError('CSV 字段超过 200 列的安全处理上限，未截断数据','SOURCE_CELL_BUDGET')
             for row in reader:
                 if None in row or any(value is missing for value in row.values()):
                     raise SourceError('CSV 第 %s 行列数与表头不一致，请核对原文件' % reader.line_num)
+                if (len(rows)+1)*len(reader.fieldnames)>_CSV_MAX_CELLS:
+                    raise SourceError('CSV 完整数据超过单次处理的单元格容量，未截断或发布','SOURCE_CELL_BUDGET')
                 rows.append(row)
                 if len(rows)>limit:break
         except csv.Error as exc:

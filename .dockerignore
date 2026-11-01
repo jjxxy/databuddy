@@ -16,3 +16,6 @@ verification/
 *.atlas
 *.zip
 .atlas-local-folder
+deploy/isolated/secrets/
+deploy/isolated/manifest.json
+deploy/isolated/gateway.json

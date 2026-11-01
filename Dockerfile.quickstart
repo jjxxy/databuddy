@@ -2,7 +2,8 @@ FROM node:22-bookworm-slim AS node
 FROM python:3.12.14-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends git libpq5 libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -g 10001 atlas && useradd -u 10001 -g 10001 -m atlas
+    && groupadd -g 10001 atlas && useradd -u 10001 -g 10001 -m atlas \
+    && install -d -m 0700 -o 10001 -g 10001 /data /data/home
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY requirements.lock /tmp/requirements.lock

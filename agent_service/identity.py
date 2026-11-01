@@ -11,13 +11,22 @@ _cache={};_lock=threading.Lock()
 
 def mode():return os.getenv('ATLAS_AUTH_MODE','token')
 def validate_config():
+    single=os.getenv('ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT','0')
+    if single not in ('0','1'):raise ValueError('单用户身份策略配置无效')
     if mode() not in ('token','oidc'):raise ValueError('未知认证模式')
+    if single=='1' and mode()!='oidc':raise ValueError('单用户隔离工作空间必须启用 OIDC')
     if mode()=='oidc':
         for name in ('OIDC_ISSUER','OIDC_AUDIENCE','OIDC_JWKS_URL','OIDC_ALLOWED_SUBJECTS'):
             if not os.getenv(name):raise ValueError('OIDC配置不完整：'+name)
         for name in ('OIDC_ISSUER','OIDC_JWKS_URL'):
             p=urlsplit(os.environ[name])
             if p.scheme!='https' or not p.hostname or p.username or p.password or p.fragment:raise ValueError('OIDC端点必须为HTTPS且无凭证')
+        if single=='1':
+            subjects=[s.strip() for s in os.environ['OIDC_ALLOWED_SUBJECTS'].split(',') if s.strip()]
+            if len(subjects)!=1 or subjects[0]=='*':
+                raise ValueError('单用户隔离工作空间必须且只能配置一个明确的 OIDC 主体')
+            if os.getenv('OIDC_ACCEPT_PROXY_HEADER','0')!='0':
+                raise ValueError('单用户隔离工作空间必须直接验证用户令牌')
 
 def keys(refresh=False):
     with _lock:

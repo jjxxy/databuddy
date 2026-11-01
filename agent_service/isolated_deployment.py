@@ -81,7 +81,7 @@ def render(manifest):
     ids, subjects, secret_paths = set(), set(), {jwks_file}
     checked = []
     for workspace in workspaces:
-        _object(workspace, ('id', 'subjects', 'model_config_file'))
+        _object(workspace, ('id', 'subjects', 'model_config_file'), ('sharing',))
         wid = _text(workspace['id'])
         if not re.fullmatch(r'[a-z][a-z0-9-]{0,30}', wid) or wid in ids:
             raise ManifestError('Workspace IDs must be unique safe lowercase names')
@@ -89,6 +89,11 @@ def render(manifest):
         entries = workspace['subjects']
         if not isinstance(entries, list) or not 1 <= len(entries) <= 100:
             raise ManifestError('Expected explicit subject list')
+        sharing=workspace.get('sharing','shared')
+        if sharing not in ('personal','shared'):
+            raise ManifestError('Workspace sharing must be personal or shared')
+        if sharing=='personal' and len(entries)!=1:
+            raise ManifestError('Personal workspaces require exactly one OIDC subject')
         for subject in entries:
             _text(subject)
             if ',' in subject or '*' in subject or subject in subjects or any(c.isspace() for c in subject):
@@ -116,8 +121,12 @@ def render(manifest):
             'ATLAS_OPENCODE_RUNTIME': '1', 'ATLAS_NETWORK_MODE': 'connected',
             'APP_TOKEN': '${' + env_name + ':?Set a distinct random token of at least 16 characters}',
         }
+        if workspace.get('sharing','shared')=='personal':
+            # The backend independently enforces the same boundary even if
+            # its environment is later accidentally widened after rendering.
+            environment['ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT']='1'
         service = {
-            'build': {'context': '../..', 'dockerfile': 'Dockerfile.enterprise'},
+            'build': {'context': '../..', 'dockerfile': 'Dockerfile.quickstart'},
             'command': ['python', '-m', 'agent_service.isolated_runtime'],
             'user': '10001:10001', 'init': True, 'read_only': True,
             'environment': environment, 'volumes': [volume + ':/data'],
@@ -137,7 +146,7 @@ def render(manifest):
         networks[network] = {'driver': 'bridge'}
         gateway_workspaces.append({'id': wid, 'backend_url': 'http://' + backend + ':8000', 'subjects': sorted(workspace['subjects'])})
     services['gateway'] = {
-        'build': {'context': '../..', 'dockerfile': 'Dockerfile.enterprise'},
+        'build': {'context': '../..', 'dockerfile': 'Dockerfile.quickstart'},
         'command': ['python', '-m', 'uvicorn', 'agent_service.workspace_gateway:app', '--host', '0.0.0.0', '--port', '8080', '--no-proxy-headers'],
         'user': '10001:10001', 'init': True, 'read_only': True,
         'environment': {'ATLAS_WORKSPACE_GATEWAY_CONFIG': '/run/atlas/gateway.json'},

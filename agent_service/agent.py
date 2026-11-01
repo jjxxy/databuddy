@@ -918,13 +918,22 @@ def _unresolved_failures(trace):
     return list(reversed(unresolved))
 
 
+def _trace_arguments(step):
+    """Never retain proposed browser input in the ordinary turn trace."""
+    if step.tool=='prepare_browser_fill':
+        args=dict(step.arguments);args.pop('text',None)
+        args['text_protected']=True
+        return args
+    return step.arguments
+
+
 def _record_guard_block(turn,step,state,observation,*,pause=False):
     """Persist the actual rejected call, never borrow a previous tool receipt."""
     from .conversation import finish
     turn=get('turn',turn['id'])
     if turn['state'] not in ('agent','agent_tool') or turn.get('outcome')=='cancelled':return
     trace=list(turn.get('agent_trace',[]))
-    trace.append({'id':uid(),'tool':step.tool,'arguments':step.arguments,'status':'failed',
+    trace.append({'id':uid(),'tool':step.tool,'arguments':_trace_arguments(step),'status':'failed',
                   'started_at':now(),'finished_at':now(),'observation':observation,
                   **({'opencode_call_id':state['opencode_call_id']} if state.get('opencode_call_id') else {})})
     patch('turn',turn['id'],agent_trace=trace,verification_feedback=observation,state='agent',
@@ -1105,7 +1114,7 @@ def _execute_node(state):
              'next_step':'使用已有工具结果、修复输入或方案，或说明当前阻碍'},pause=count>=2)
         return {}
     source_before=agent_context.inspection_source_version(turn,step.tool,step.arguments)
-    trace.append({'id':uid(),'tool':step.tool,'arguments':step.arguments,'status':'started','started_at':now(),
+    trace.append({'id':uid(),'tool':step.tool,'arguments':_trace_arguments(step),'status':'started','started_at':now(),
                   **({'inspection_source_before':source_before} if source_before is not None else {}),
                   **({'opencode_call_id':state['opencode_call_id']} if state.get('opencode_call_id') else {})})
     patch('turn',turn['id'],agent_trace=trace,progress='正在'+TOOLS[step.tool][2].split('，')[0][:40],state='agent_tool')
@@ -1114,6 +1123,9 @@ def _execute_node(state):
         value=prepared_value if prepared else execute(get('turn',turn['id']),step)
         if value is not None:
             observe(turn,value)
+            if isinstance(value,dict) and value.get('browser_fill_pending') is True:
+                finish(get('turn',turn['id']),'页面操作已准备，请打开浏览器面板核对具体目标和内容后批准或拒绝。尚未执行；批准后可继续这项工作。',outcome='needs_input',resume_available=True)
+                return {}
             if isinstance(value,dict) and value.get('proposal_pending') is True:
                 finish(get('turn',turn['id']),'业务处理方案已整理，请核对资料和口径。确认后才会生成代码并试运行；正式发布还需另行确认。',outcome='needs_input',resume_available=False)
                 return {}
@@ -1136,7 +1148,10 @@ agent_graph=graph.compile()
 # pending/unknown guard before the external call. Unknown tools fail closed.
 _REPLAY_SAFE_STARTED={'run_work_command','generate_image','synthesize_speech'}
 
-def _started_needs_confirmation(step):
+def _started_needs_confirmation(step,turn=None):
+    if turn is not None and step.get('tool')=='download_browser_source':
+        from .browser_downloads import can_resume_started
+        if can_resume_started(turn,step):return False
     definition=TOOLS.get(step.get('tool'))
     return not definition or bool(definition[1]) and step.get('tool') not in _REPLAY_SAFE_STARTED
 
@@ -1169,7 +1184,7 @@ def opencode_step(turn_id,value,call_id):
     if prior:
         resumed_started=prior['status']=='started'
         if prior['status']=='started':
-            if _started_needs_confirmation(prior):return _pause_unknown_started(turn)
+            if _started_needs_confirmation(prior,turn):return _pause_unknown_started(turn)
             # Resume a read or proven idempotent operation, with the same ID.
             step=validate_step(turn,{'kind':'tool','tool':prior['tool'],'arguments':prior['arguments']})
             try:
@@ -1243,7 +1258,7 @@ def advance(turn):
         finish(get('turn',turn['id']),str(exc),outcome='paused',resume_available=True)
         return
     if turn['state']=='agent_tool' and trace and trace[-1]['status']=='started':
-        if _started_needs_confirmation(trace[-1]):
+        if _started_needs_confirmation(trace[-1],turn):
             _pause_unknown_started(get('turn',turn['id']))
             return
         # Resume exactly the persisted call after a worker crash.

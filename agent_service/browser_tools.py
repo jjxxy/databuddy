@@ -4,6 +4,7 @@ Only the independent service runs Chromium. Password input is transient and is
 never persisted in action receipts, tool traces or model observations.
 """
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -58,6 +59,13 @@ class AgentAction(Session):
     action: Literal['click', 'select']
     ref: int = Field(ge=1,le=160)
     option_index: int = Field(default=0,ge=0,le=79)
+class PrepareFill(Session):
+    revision: str = Field(pattern=r'^[a-f0-9]{64}$')
+    ref: int = Field(ge=1,le=160)
+    text: str = Field(min_length=1,max_length=4000)
+class FillDecision(StrictModel):
+    digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    approve: bool
 
 
 
@@ -69,6 +77,7 @@ DEFINITIONS = {
     'follow_browser_link': (Follow, True, '按当前页面revision和控件ref直接访问真实锚点链接，不执行网页点击脚本；仅GET/HEAD。按钮、登录和提交须用户接管'),
     'scroll_browser': (Scroll, True, '滚动真实浏览器视口并重新观察页面，适合长页面和动态加载的公开内容；不提交表单'),
     'browser_interact': (AgentAction, True, '在用户明确授权的当前站点选择非敏感控件、点击页面控件；文本输入由用户接管；先观察并使用真实 revision 与 ref。模型不得输入密码验证码；不可假称提交成功；异常不自动重试。网络仅 GET/HEAD，登录和正式提交须用户接管'),
+    'prepare_browser_fill': (PrepareFill, True, '准备向真实页面非密码控件填入文本；先观察并提供页面revision和ref。此工具仅准备，不发送文本：用户须在浏览器面板查看具体内容和目标后逐次批准。密码、验证码和凭证必须由用户接管，不得写入。批准后才执行填写，不代表表单已提交。'),
     'capture_browser_screenshot': (Session, True, '把当前真实浏览器截图保存为PNG成果，返回wa_编号，供inspect_visual_artifact读取实际图像；用户接管期间禁止捕获'),
     'request_browser_takeover': (Proposal, True, '遇到登录、验证码、填写或提交表单、点击控件时，请求用户在浏览器面板接管。立即暂停模型对该会话的读取和操作，返回接管原因；用户主动交还后才继续'),
     'close_browser': (Session, True, '关闭本项目浏览器会话并清除该会话的内存登录状态'),
@@ -184,6 +193,92 @@ def _body(value):
     return {'workspace_id': value['workspace_id'], 'action_id': secrets.token_hex(32)}
 
 
+_FILL_SECRET_LABEL=re.compile(r'密码|口令|验证码|动态码|安全码|密钥|令牌|证件号|password|passcode|otp|secret|api.?key|token',re.I)
+
+
+def _fill_owned(pid,sid,fill_id):
+    record=get('browser_fill',fill_id)
+    if record.get('project_id')!=pid or record.get('session_id')!=sid or record.get('actor_id')!=current_actor():
+        raise KeyError(fill_id)
+    return record
+
+
+def _fill_view(record):
+    result={k:record[k] for k in ('id','origin','label','ref','digest','state','created_at','expires_at')}
+    result['kind']=record.get('kind','fill')
+    if record.get('post_target'):result['post_target']=record['post_target']
+    return result
+
+
+def _fill_digest(payload):
+    """Keyed commitment prevents guessing short financial values from hashes."""
+    import base64
+    from .store import cipher
+    cipher()
+    key=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
+    encoded=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+    return hmac.new(key,b'atlas-browser-fill-v1\0'+encoded,hashlib.sha256).hexdigest()
+
+
+def _update_fill_trace(record,state):
+    """Keep the original task resumable with the real human decision."""
+    turn=get('turn',record['turn_id']);trace=list(turn.get('agent_trace') or [])
+    changed=False
+    for index,step in enumerate(trace):
+        observation=step.get('observation') if isinstance(step,dict) else None
+        if isinstance(observation,dict) and observation.get('fill_id')==record['id']:
+            notice={'applied':'用户已批准并执行页面填写；仍需核对页面业务结果。',
+                    'rejected':'用户已拒绝页面填写，没有执行。',
+                    'unknown':'页面填写执行结果未知，必须先接管核对，未自动重试。'}[state]
+            trace[index]=dict(step,observation=dict(observation,state=state,awaiting_user=False,
+                                                   browser_fill_pending=False,notice=notice))
+            changed=True
+    if changed:
+        values={'agent_trace':trace}
+        if turn.get('state')=='done' and turn.get('outcome')=='needs_input':
+            values['answer']=notice+' 可继续这项工作。'
+        patch('turn',turn['id'],**values)
+
+
+def _prepare_fill(turn,value,args):
+    import time
+    from .intents import require
+    require(turn,'prepare_browser_fill')
+    if value.get('mode')!='agent' or value.get('state')!='open' or value.get('unknown_pending'):
+        raise ValueError('浏览器尚未处于可操作状态，请先核对并交还')
+    snapshot=unseal(value['snapshot_secret']);parsed=urlsplit(snapshot['url']);origin=f'{parsed.scheme}://{parsed.netloc}'
+    if value.get('agent_grant_origin')!=origin or value.get('agent_grant_expires',0)<time.time():
+        raise ValueError('请先授权 Agent 操作当前网站')
+    if snapshot['revision']!=args['revision']:raise ValueError('页面已变化，请先重新观察')
+    controls=snapshot.get('controls') or [];ref=args['ref']
+    if ref>len(controls):raise ValueError('页面控件不存在')
+    control=controls[ref-1];label=str(control.get('label') or '')[:180]
+    if (not control.get('visible') or control.get('disabled') or control.get('sensitive')
+        or control.get('tag') not in ('input','textarea') or control.get('type','').lower() in ('hidden','password','file','submit','button','checkbox','radio')
+        or _FILL_SECRET_LABEL.search(label)):
+        raise ValueError('此控件需用户接管，不能由 Agent 填写')
+    trace=get('turn',turn['id']).get('agent_trace') or []
+    if not trace or trace[-1].get('status')!='started':raise ValueError('填写准备缺少执行回执')
+    text=args['text']
+    if len(text.encode('utf-8'))>16000:raise ValueError('填写内容超过安全容量')
+    fill_id='bfill_'+hashlib.sha256((turn['id']+'\0'+trace[-1]['id']).encode()).hexdigest()[:48]
+    payload={'kind':'fill','project_id':turn['project_id'],'actor_id':current_actor(),'turn_id':turn['id'],
+             'session_id':value['id'],'revision':args['revision'],'ref':ref,'origin':origin,'text':text}
+    digest=_fill_digest(payload)
+    try:
+        old=_fill_owned(turn['project_id'],value['id'],fill_id)
+        if old['digest']!=digest:raise ValueError('同一操作不能更换填写内容或目标')
+        return _fill_view(old)
+    except KeyError:pass
+    record=put('browser_fill',{'project_id':turn['project_id'],'actor_id':current_actor(),'turn_id':turn['id'],
+        'session_id':value['id'],'origin':origin,'ref':ref,'revision':args['revision'],'label':label,
+        'kind':'fill','digest':digest,'length':len(text),'state':'pending','created_at':now(),
+        'expires_at':min(time.time()+900,value['expires_at']/1000,value['agent_grant_expires']),
+        'secret_payload':seal(payload)},fill_id)
+    return _fill_view(record)
+
+
+
 def observation(turn, value):
     _scope(turn)
     if value['mode'] != 'agent': return {'session_id': value['id'], 'awaiting_user': True, 'notice': '用户正在接管；不要重复调用，等待用户交还浏览器'}
@@ -262,6 +357,10 @@ def execute(turn, name, args):
         value = owned(turn['project_id'], value['id'])
         if value['mode'] != 'agent': return {'session_id': value['id'], 'awaiting_user': True}
         if value.get('unknown_pending') or value['state']=='action_unknown':raise ValueError('上次页面操作结果未确认，请用户接管核对，未自动重试')
+        if name=='prepare_browser_fill':
+            result=_prepare_fill(turn,value,args)
+            return {'fill_id':result['id'],'state':result['state'],'awaiting_user':True,
+                    'browser_fill_pending':True,'notice':'填写内容已准备；请在浏览器面板核对目标和内容后决定是否批准。尚未填写或提交。'}
         if name=='browser_interact':
             import time
             snap=unseal(value['snapshot_secret']);current=urlsplit(snap['url']);origin=f'{current.scheme}://{current.netloc}'
@@ -278,9 +377,9 @@ def execute(turn, name, args):
             aid=hashlib.sha256((turn['id']+'\0'+trace[-1]['id']).encode()).hexdigest()
             body=_body(value)|{'action_id':aid,'agent_authorized':True,'action':args['action'],
                                'revision':args['revision'],'ref':args['ref'],'option_index':args['option_index']}
-            patch('browser_session',value['id'],state='action_unknown',unknown_pending=True)
+            patch('browser_session',value['id'],state='action_unknown',unknown_pending=True,unknown_pending_owner='browser-action:'+aid)
             value=_save(value,_request(value['id'],'action',body))
-            value=patch('browser_session',value['id'],unknown_pending=False)
+            value=patch('browser_session',value['id'],unknown_pending=False,unknown_pending_owner=None)
             return observation(turn,value)
         if name=='capture_browser_screenshot':
             import base64
@@ -340,8 +439,67 @@ def install(app, auth):
             value=owned(pid,sid)
             if value.get('mode')!='human' or not value.get('unknown_pending'):
                 raise ValueError('请先接管浏览器并核对待确认的页面操作')
-            patch('browser_session',sid,unknown_pending=False,unknown_reviewed_at=now())
+            patch('browser_session',sid,unknown_pending=False,unknown_pending_owner=None,unknown_reviewed_at=now())
             return {'reviewed':True,'notice':'用户已核对页面，系统未假定上次操作成功'}
+
+    @app.get('/api/projects/{pid}/browsers/{sid}/pending-actions', dependencies=[Depends(auth)])
+    def pending_actions(pid: str, sid: str):
+        import time
+        owned(pid,sid)
+        return {'items':[_fill_view(x) for x in all_items('browser_fill')
+                if x.get('project_id')==pid and x.get('session_id')==sid and x.get('actor_id')==current_actor()
+                and x.get('state')=='pending' and x.get('expires_at',0)>time.time()]}
+
+    @app.post('/api/projects/{pid}/browsers/{sid}/pending-actions/{fill_id}/reveal', dependencies=[Depends(auth)])
+    def reveal_action(pid: str, sid: str, fill_id: str):
+        import time
+        owned(pid,sid);record=_fill_owned(pid,sid,fill_id)
+        if record.get('state')!='pending' or record.get('expires_at',0)<=time.time():raise ValueError('操作已失效')
+        _scope(get('turn',record['turn_id']))
+        payload=unseal(record['secret_payload'])
+        patch('browser_fill',fill_id,revealed_at=now())
+        return _fill_view(record) | ({'text':payload['text']} if record.get('kind')=='fill' else {})
+
+    @app.post('/api/projects/{pid}/browsers/{sid}/pending-actions/{fill_id}/decision', dependencies=[Depends(auth)])
+    def decide_action(pid: str, sid: str, fill_id: str, request: FillDecision):
+        import time
+        with FileLock(str(DATA / ('browser-' + sid + '.lock')), timeout=2):
+            value=owned(pid,sid);record=_fill_owned(pid,sid,fill_id)
+            if request.digest!=record['digest']:raise ValueError('操作内容已变化，请重新核对')
+            if record['state']=='applied':return {'state':'applied','notice':'此操作已有执行回执，未重复执行'}
+            if record['state']!='pending':raise ValueError('此操作结果未确认或已取消，未重复执行')
+            if not request.approve:
+                patch('browser_fill',fill_id,state='rejected',secret_payload=None,finished_at=now())
+                _update_fill_trace(record,'rejected')
+                return {'state':'rejected'}
+            if not record.get('revealed_at'):raise ValueError('请先查看具体操作内容再确认')
+            if record['expires_at']<=time.time():raise ValueError('操作已过期，请重新准备')
+            turn=get('turn',record['turn_id']);_scope(turn)
+            from . import agent_gateway,agent_team
+            agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn)
+            if value.get('mode')!='agent' or value.get('state')!='open' or value.get('unknown_pending'):
+                raise ValueError('浏览器尚未处于可操作状态，请先核对并交还')
+            snapshot=unseal(value['snapshot_secret']);parsed=urlsplit(snapshot['url']);origin=f'{parsed.scheme}://{parsed.netloc}'
+            if (snapshot['revision']!=record['revision'] or origin!=record['origin']
+                or value.get('agent_grant_origin')!=origin or value.get('agent_grant_expires',0)<time.time()):
+                raise ValueError('页面或站点授权已变化，请重新准备')
+            payload=unseal(record['secret_payload'])
+            actual=_fill_digest(payload)
+            if actual!=record['digest']:raise ValueError('操作内容校验失败，未执行')
+            body=_body(value)|{'action_id':hashlib.sha256(fill_id.encode()).hexdigest(),
+                'agent_authorized':True,'revision':record['revision'],'ref':record['ref']}
+            if record.get('kind')!='fill':raise ValueError('提交需要用户接管浏览器并核对完整业务数据')
+            body.update(action='fill',fill_confirmed=True,text=payload['text'])
+            # Before contacting the browser, persist uncertainty. A timeout or
+            # crash must never repeat a possibly effective page action.
+            patch('browser_fill',fill_id,state='unknown',approved_at=now())
+            patch('browser_session',sid,state='action_unknown',unknown_pending=True,unknown_pending_owner='fill:'+fill_id)
+            _update_fill_trace(record,'unknown')
+            result=_request(sid,'action',body)
+            _save(value,result);patch('browser_session',sid,unknown_pending=False,unknown_pending_owner=None)
+            patch('browser_fill',fill_id,state='applied',secret_payload=None,finished_at=now())
+            _update_fill_trace(record,'applied')
+            return {'state':'applied','notice':'页面动作已执行，请继续核对业务系统的实际结果'}
 
     @app.post('/api/projects/{pid}/browsers/{sid}/agent-grant', dependencies=[Depends(auth)])
     def grant_agent(pid: str, sid: str, request: AgentGrant):

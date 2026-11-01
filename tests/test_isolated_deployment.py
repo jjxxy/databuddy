@@ -47,6 +47,22 @@ def test_topology_and_independent_auth(manifest):
     assert 'docker.sock' not in serialized and 'privileged' not in serialized
 
 
+def test_rendered_build_recipe_exists_and_excludes_operator_secrets(manifest):
+    root = Path(__file__).parents[1]
+    compose, _ = render(manifest)
+    for service in compose['services'].values():
+        build = service['build']
+        # Compose paths resolve from deploy/isolated, the documented output.
+        context = (root / 'deploy/isolated' / build['context']).resolve()
+        assert context == root
+        assert (context / build['dockerfile']).is_file()
+    dockerignore = set((root / '.dockerignore').read_text().splitlines())
+    # Provisioning documents place real model config files here; COPY . must
+    # never bake those host files into a shared backend/gateway image.
+    assert 'deploy/isolated/secrets/' in dockerignore
+    assert 'deploy/isolated/manifest.json' in dockerignore
+
+
 def test_deterministic_order(manifest):
     first = render(manifest)
     manifest['workspaces'].reverse()
@@ -115,11 +131,17 @@ def test_no_manifest_mutation(manifest):
     assert manifest == original
 
 
-def test_committed_templates_match_renderer(manifest):
-    root = Path(__file__).parents[1] / 'deploy/isolated'
+def test_generated_templates_match_renderer(manifest, tmp_path, monkeypatch):
+    import sys
+    from agent_service.isolated_deployment import main
     compose, gateway = render(manifest)
-    assert json.loads((root / 'compose.json').read_text()) == compose
-    assert json.loads((root / 'gateway.json').read_text()) == gateway
+    source=tmp_path / 'manifest.json'
+    source.write_text(json.dumps(manifest))
+    output=tmp_path / 'output'
+    monkeypatch.setattr(sys, 'argv', ['isolated_deployment',str(source),'--output-dir',str(output)])
+    main()
+    assert json.loads((output / 'compose.json').read_text()) == compose
+    assert json.loads((output / 'gateway.json').read_text()) == gateway
 
 
 def test_fresh_instance_requires_model_provisioning(manifest):

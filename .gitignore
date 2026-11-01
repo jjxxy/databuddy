@@ -14,3 +14,7 @@ runtime/
 dist/
 node_modules/
 ui/dist/
+deploy/isolated/compose.json
+deploy/isolated/gateway.json
+deploy/isolated/manifest.json
+deploy/isolated/secrets/

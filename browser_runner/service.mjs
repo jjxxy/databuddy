@@ -1,7 +1,8 @@
 import http from 'node:http';
 import {createRequire} from 'node:module';
 import {createHash, timingSafeEqual} from 'node:crypto';
-import {stat, readFile} from 'node:fs/promises';
+import {stat, open as openFile} from 'node:fs/promises';
+import {createReadStream} from 'node:fs';
 import {basename, extname} from 'node:path';
 const require = createRequire(process.env.ATLAS_BROWSER_PLAYWRIGHT_ROOT || '/opt/atlas-work/package.json');
 const {chromium} = require('playwright-core');
@@ -10,6 +11,9 @@ if(token.length < 32) throw Error('A dedicated browser service token is required
 const proxy = process.env.ATLAS_BROWSER_PROXY;
 const testMode = process.env.ATLAS_BROWSER_TEST_MODE === '1';
 const allowDownloads = process.env.ATLAS_BROWSER_ALLOW_DOWNLOADS === '1';
+const maxDownloadMb=Number(process.env.ATLAS_BROWSER_MAX_DOWNLOAD_MB||25);
+if(!Number.isSafeInteger(maxDownloadMb)||maxDownloadMb<1||maxDownloadMb>256)throw Error('Invalid download budget');
+const maxDownloadBytes=maxDownloadMb*1024*1024,downloadChunkBytes=512*1024;
 if(!proxy && !testMode) throw Error('A restricted egress proxy is mandatory');
 const expectedWorkspace=process.env.ATLAS_BROWSER_WORKSPACE_ID||'';
 if(!testMode&&!/^[a-f0-9]{64}$/.test(expectedWorkspace))throw Error('Bind this container to one actor/project workspace');
@@ -65,7 +69,7 @@ async function open(id,scope,url){
     args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--disable-extensions','--disable-background-networking',
       '--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']});
     const context=await browser.newContext({viewport:{width:1280,height:800},acceptDownloads:allowDownloads,serviceWorkers:'block',permissions:[]});
-    const s={browser,context,page:await context.newPage(),scope,mode:'agent',expires:Date.now()+lifetime,results:new Map(),busy:true};
+    const s={browser,context,page:await context.newPage(),scope,mode:'agent',expires:Date.now()+lifetime,results:new Map(),downloads:new Map(),busy:true};
     sessions.set(id,s);
     s.page.setDefaultTimeout(12000);
     context.on('page',page=>{if(page!==s.page)page.close().catch(()=>{})});
@@ -86,7 +90,7 @@ async function open(id,scope,url){
 }
 async function action(s,body){
   if(s.mode!=='human' && !(s.mode==='agent' && body.agent_authorized===true))throw Error('Browser interaction not authorized');
-  if(s.mode==='agent' && !['click','select'].includes(body.action))throw Error('Action denied');
+  if(s.mode==='agent' && !['click','select','fill'].includes(body.action))throw Error('Action denied');
   const fresh=await state(s,false);
   if(body.revision!==fresh.revision)throw Error('Page changed; refresh before acting');
   const a=body.action;
@@ -95,6 +99,7 @@ async function action(s,body){
     if(!Number.isInteger(ref)||ref<1||ref>fresh.controls.length)throw Error('Invalid control reference');
     const item=fresh.controls[ref-1];if(!item.visible||item.disabled)throw Error('Control is unavailable');
     if(s.mode==='agent'&&item.sensitive)throw Error('Sensitive controls require user takeover');
+    if(s.mode==='agent'&&a==='fill'&&body.fill_confirmed!==true)throw Error('Text fill requires confirmation');
     if(s.mode==='agent'&&a==='click'&&!/^(?:查询|搜索|筛选|查找|展开|收起|下一页|上一页|切换|search|filter|find|expand|collapse|next|previous)(?:\s|$)/i.test((item.label||'').trim()))throw Error('Only query and navigation controls are allowed; take over for other clicks');
     const el=s.page.locator('a,button,input,textarea,select,[role="button"],[role="link"]').nth(ref-1);
     if(a==='select'){
@@ -134,10 +139,31 @@ async function download(s,body){
     const filename=basename(file.suggestedFilename());
     if(!['.csv','.xlsx','.json','.jsonl','.pdf','.docx','.pptx','.txt','.md'].includes(extname(filename).toLowerCase()))throw Error('File type denied');
     const path=await file.path();const size=(await stat(path)).size;
-    if(size<1||size>2*1024*1024)throw Error('Download size denied');
-    const bytes=await readFile(path);if(bytes.length!==size)throw Error('Download size changed');
-    return {filename,bytes:size,content_base64:bytes.toString('base64'),content_sha256:hash(bytes)};
+    if(size<1||size>maxDownloadBytes||[...s.downloads.values()].reduce((n,item)=>n+item.size,0)+size>maxDownloadBytes)throw Error('Download size denied');
+    const digest=createHash('sha256');let read=0;
+    for await(const chunk of createReadStream(path)){read+=chunk.length;if(read>size)throw Error('Download size changed');digest.update(chunk)}
+    if(read!==size||(await stat(path)).size!==size)throw Error('Download size changed');
+    const id=checkId(body.action_id);
+    s.downloads.set(id,{file,path,size,digest:digest.digest('hex')});file=null;
+    const item=s.downloads.get(id);
+    return {download_id:id,filename,bytes:size,content_sha256:item.digest};
   }finally{s.expectedDownload=false;if(file)await file.delete().catch(()=>{})}
+}
+async function downloadChunk(s,body){
+  const id=checkId(body.download_id),item=s.downloads.get(id);
+  if(!item)throw Error('Download unavailable');
+  const {offset,length}=body;
+  if(!Number.isSafeInteger(offset)||offset<0||offset>item.size||!Number.isSafeInteger(length)||length<1||length>downloadChunkBytes)throw Error('Invalid chunk range');
+  if((await stat(item.path)).size!==item.size)throw Error('Download size changed');
+  const count=Math.min(length,item.size-offset),buffer=Buffer.alloc(count),f=await openFile(item.path,'r');
+  try{const {bytesRead}=await f.read(buffer,0,count,offset);if(bytesRead!==count)throw Error('Short download read')}
+  finally{await f.close()}
+  return {download_id:id,offset,bytes:count,content_base64:buffer.toString('base64')};
+}
+async function releaseDownload(s,body){
+  const id=checkId(body.download_id),item=s.downloads.get(id);
+  if(item){s.downloads.delete(id);await item.file.delete().catch(()=>{})}
+  return {download_id:id,released:true};
 }
 async function bodyOf(req){let parts=[],length=0;for await(const b of req){length+=b.length;if(length>256*1024)throw Error('Request too large');parts.push(b)}return JSON.parse(Buffer.concat(parts).toString()||'{}')}
 const server=http.createServer(async(req,res)=>{
@@ -146,7 +172,7 @@ const server=http.createServer(async(req,res)=>{
   if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){res.writeHead(401);return res.end('{}')}
   try{
     if(req.url==='/v1/health'&&req.method==='GET'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ready:true,production_policy:!testMode,workspace_id:expectedWorkspace,restricted_proxy:!!proxy,active:sessions.size}))}
-    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|download|close))?$/);
+    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|download|download-chunk|download-release|close))?$/);
     if(!match||req.method!=='POST')throw Error('Route denied');
     const [,id,operation]=match,body=await bodyOf(req);checkId(body.workspace_id);
     if(expectedWorkspace&&body.workspace_id!==expectedWorkspace){res.writeHead(404);return res.end('{}')}
@@ -161,7 +187,15 @@ const server=http.createServer(async(req,res)=>{
     }
     if(s.scope!==body.workspace_id){res.writeHead(404);return res.end('{}')}
     if(Date.now()>s.expires){await close(id);res.writeHead(404);return res.end('{}')}
-    if(s.busy)throw Error('Session busy');
+    if(operation==='download-chunk'||operation==='download-release'){
+      if(s.busy||s.chunkBusy)throw Error('Session busy');
+      s.chunkBusy=true;
+      try{
+        const result=operation==='download-chunk'?await downloadChunk(s,body):await releaseDownload(s,body);
+        res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({session_id:id,...result}));
+      }finally{s.chunkBusy=false}
+    }
+    if(s.busy||s.chunkBusy)throw Error('Session busy');
     const actionId=checkId(body.action_id),fingerprint=hash(JSON.stringify(body));
     if(s.results.has(actionId)){
       const old=s.results.get(actionId);if(old.fingerprint!==fingerprint)throw Error('Action identifier was reused');

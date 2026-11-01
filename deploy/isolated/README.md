@@ -8,6 +8,17 @@ is the recommended independent-user configuration. Multiple subjects on one
 workspace deliberately share **all** that owner's business content; they are
 trusted collaborators, not isolated tenants.
 
+To prevent a personal workspace being accidentally configured for multiple
+users, set `"sharing": "personal"` on that workspace in the manifest. Rendering
+then requires exactly one explicit OIDC subject and enables
+`ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT=1` on its backend. The backend independently
+validates this policy at startup and each authentication request: it requires
+OIDC, exactly one subject, and direct token verification without the forwarded
+access-token header. Invalid or widened configuration is rejected. Existing
+manifest entries without `sharing` remain explicitly shared-owner workspaces.
+This prevents one common identity misconfiguration; it does not prove the host,
+network, storage, gateway, IdP or model deployment isolates users.
+
 The gateway serves the local browser shell and routes browser `/api` requests
 only after verifying a signed access token and resolving its exact subject to a
 configured backend. Each backend independently verifies the original token's
@@ -44,8 +55,12 @@ python -m agent_service.isolated_deployment deploy/isolated/manifest.json --outp
 
 The output is `compose.json` (valid Compose JSON/YAML) and `gateway.json`. Keep
 these in `deploy/isolated`: the fixed build context `../..` points to the repo.
-Generation neither reads secret files nor contacts any service. Run it on trusted
-local paths; it replaces those two output files. It rejects unknown fields,
+Generation neither reads secret files nor contacts any service. The generated
+services build from the repository’s `Dockerfile.quickstart`; Docker excludes
+`deploy/isolated/secrets/` and the local manifest from its build context. The
+image prepares `/data` for UID 10001, but existing volumes retain their prior
+ownership and need separate verification. Run generation on trusted local
+paths; it replaces those two output files. It rejects unknown fields,
 duplicate JSON fields/workspace IDs/subjects, interpolation in inputs, wildcard
 subjects, path traversal and unsafe secret filenames. Backend, volume, database,
 network and token-variable names are derived; arbitrary shared storage, network,

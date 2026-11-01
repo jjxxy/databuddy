@@ -452,6 +452,8 @@ def get_run(pid,flow_id,run_id,actor_id=None):
     for item in state.get('steps',[]):
         steps.append({k:item.get(k) for k in ('node_id','title','status','started_at','finished_at','input_sha256','output_sha256','error_code','error_message')})
         output=item.get('output')
+        steps[-1]['table_available']=bool(job.get('status')=='succeeded' and item.get('status')=='succeeded' and
+                                         isinstance(output,dict) and output.get('kind')=='table_workflow_v1' and output.get('complete') is True)
         if isinstance(output,dict) and isinstance(output.get('artifact_id'),str):
             from .workspace_artifacts import _record,_public
             # An artifact link is returned only if separately authorized and present.
@@ -467,6 +469,48 @@ def get_run(pid,flow_id,run_id,actor_id=None):
             'commit':job.get('project_commit'),'steps':steps,'artifacts':artifacts,'created_at':job.get('created_at'),
             'finished_at':job.get('finished_at'),'message':job.get('public_error') or messages.get(job.get('error_code')),'financial_verified':False,
             'review':_review_view(pid,job,state),'unknown_resolution':_resolution_view(job,state)}
+
+
+def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
+    """Page an actual completed table, with run identity and integrity checks.
+
+    Access is limited to the flow owner. Intermediate AI content and raw source
+    tables are not exposed through this endpoint. Snapshot decoding currently
+    materializes the table; this is not a streaming or large-concurrency claim.
+    """
+    actor=current_actor();_owned(pid,flow_id,actor);job=get_job(run_id)
+    if (job.get('project_id')!=pid or job.get('target')!=flow_id or job.get('kind')!='business_flow'
+            or job.get('actor_id')!=actor or job.get('status')!='succeeded'):
+        raise ValueError('运行记录不属于当前项目或尚未完成')
+    turn=_turn(pid,actor,job.get('flow_turn_id'))
+    from . import agent_gateway,agent_team
+    agent_gateway.assert_turn_allowed(turn)
+    agent_team.assert_turn_allowed(turn,'run_data_workflow',{})
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}',node_id or ''):
+        raise ValueError('步骤标识无效')
+    if type(offset) is not int or type(limit) is not int or offset<0 or not 1<=limit<=100:
+        raise ValueError('分页参数无效')
+    state=unseal(job['secret_flow_checkpoint']);_verify_completed_state(pid,job,state)
+    match=[item for item in state['steps'] if item.get('node_id')==node_id]
+    output=match[0].get('output') if len(match)==1 else None
+    if (not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
+        raise ValueError('该步骤没有完整可查看的数据结果')
+    from .business_flow_data import materialize_table
+    from .data_workflows import TableSchema, digest as table_digest
+    context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],
+             'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+    table=materialize_table(context,output);rows=table.get('rows');schema=table.get('schema')
+    parsed=TableSchema.model_validate(schema)
+    if (not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows)
+            or table.get('output_sha256')!=table_digest({'schema':schema,'rows':rows})):
+        raise ValueError('完整数据结果与回执不一致')
+    page=rows[offset:offset+limit]
+    if len(json.dumps(page,ensure_ascii=False).encode('utf-8'))>1024*1024:
+        raise ValueError('本页数据过大，请减少每页行数')
+    return {'run_id':run_id,'node_id':node_id,'columns':[{'name':c.name,'label':c.label or c.name,'unit':c.unit} for c in parsed.columns],
+            'rows':page,'total':len(rows),'offset':offset,'next_offset':offset+len(page) if offset+len(page)<len(rows) else None,
+            'output_sha256':table['output_sha256'],'financial_verified':False,
+            'notice':'展示实际完整结果的分页；财务口径和数据仍需业务复核。'}
 
 
 def request_status(pid,flow_id,request_id,actor_id=None):
@@ -683,12 +727,19 @@ def install(app,auth):
     def detail(pid:str,fid:str):return get_view(pid,fid)
     @app.get('/api/projects/{pid}/business-flows/{fid}/input-sources',dependencies=[Depends(auth)])
     def source_options(pid:str,fid:str,use_published:bool=False):return input_sources(pid,fid,use_published=use_published)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/storage',dependencies=[Depends(auth)])
+    def storage_usage(pid:str,fid:str):
+        actor=current_actor();_owned(pid,fid,actor)
+        from .business_flow_data import snapshot_storage_usage
+        return snapshot_storage_usage(pid,actor)
     @app.put('/api/projects/{pid}/business-flows/{fid}',dependencies=[Depends(auth)])
     def update_route(pid:str,fid:str,value:UpdateInput):return update(pid,fid,current_actor(),value.turn_id,value.document.model_dump(mode='json'),value.request_id,value.expected_digest)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs',dependencies=[Depends(auth)])
     def start(pid:str,fid:str,value:RunInput):return submit_run(pid,fid,current_actor(),value.request_id,value.expected_digest,value.inputs,value.use_published)
     @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}',dependencies=[Depends(auth)])
     def status(pid:str,fid:str,rid:str):return get_run(pid,fid,rid)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/tables/{node_id}',dependencies=[Depends(auth)])
+    def table(pid:str,fid:str,rid:str,node_id:str,offset:int=0,limit:int=50):return get_run_table(pid,fid,rid,node_id,offset,limit)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/review',dependencies=[Depends(auth)])
     def review(pid:str,fid:str,rid:str,value:ReviewInput):return review_run(pid,fid,rid,current_actor(),value.expected_checkpoint_sha256,value.items)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/resolve-unknown',dependencies=[Depends(auth)])

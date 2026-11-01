@@ -10,6 +10,7 @@ services:
       ATLAS_BROWSER_PROXY: http://egress:8092
       ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
       ATLAS_BROWSER_ALLOW_DOWNLOADS: ${ATLAS_BROWSER_ALLOW_DOWNLOADS:-0}
+      ATLAS_BROWSER_MAX_DOWNLOAD_MB: ${ATLAS_BROWSER_MAX_DOWNLOAD_MB:-25}
     ports: ["127.0.0.1:${ATLAS_BROWSER_PORT:-8091}:8091"]
     networks: [restricted]
     depends_on: [egress]

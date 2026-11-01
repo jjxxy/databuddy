@@ -47,9 +47,44 @@
   $('[data-browser-resolve]').hidden=!result.unknown_pending;$('[data-browser-resolve]').disabled=!human;
   $('[data-browser-notice]').textContent=human?'你正在接管。点击页图或选择控件操作，输入会发送给网页；模型暂停读取。完成登录或表单后点击“交还 Agent”。':'Agent 可读取此页。登录、验证码及提交请先接管；页面是独立云浏览器，不是你的本机浏览器。';
  }
+ async function pendingActions(mark,project,session){
+  const result=await b.api(base()+'/pending-actions');
+  if(!current(mark,project)||sid!==session||!browserDialog.open)return;
+  const container=$('[data-browser-controls]');container.replaceChildren();
+  for(const item of result.items||[]){
+   if(!/^bfill_[a-f0-9]{48}$/.test(item.id||'')||!/^[a-f0-9]{64}$/.test(item.digest||''))continue;
+   const card=node('section',''),title=node('strong',item.kind==='submit'?'待确认页面提交':'待确认页面填写');
+   card.append(title,node('p','网站：'+(item.origin||'')+'；控件：'+(item.label||'未命名')+'（'+item.ref+'）'));
+   const detail=node('div',''),open=node('button','查看具体内容');open.type='button';card.append(detail,open);
+   open.onclick=async()=>{
+    open.disabled=true;
+    try{
+     const reviewed=await b.api(base()+'/pending-actions/'+encodeURIComponent(item.id)+'/reveal',{method:'POST',body:{}});
+     if(!current(mark,project)||sid!==session||!browserDialog.open)return;
+     if(reviewed.digest!==item.digest)throw Error('操作内容已变化，请刷新重试');
+     detail.replaceChildren();
+     if(item.kind==='fill')detail.append(node('p','准备填写以下内容：'),node('pre',reviewed.text||''));
+     else detail.append(node('p','准备点击控件并允许一次 POST 请求至：'),node('pre',(reviewed.post_target?.origin||'')+(reviewed.post_target?.path||'')),node('p','请同时核对页面全部表单内容；请求发送不代表业务处理成功。'));
+     const approve=node('button','确认执行'),reject=node('button','拒绝');approve.type=reject.type='button';detail.append(approve,reject);
+     const decide=async accepted=>{
+      if(busy)return;
+      if(accepted&&!window.confirm(item.kind==='submit'?'确认点击此控件并发送到所示系统？请先核对页面和业务数据。':'确认将上面显示的内容填入所示页面控件？'))return;
+      busy=true;approve.disabled=reject.disabled=true;
+      try{
+       const r=await b.api(base()+'/pending-actions/'+encodeURIComponent(item.id)+'/decision',{method:'POST',body:{digest:item.digest,approve:accepted}});
+       if(current(mark,project)&&sid===session){detail.replaceChildren();open.remove();$('[data-browser-notice]').textContent=r.notice||(accepted?'操作已执行，请核对实际结果。':'已拒绝该操作。')}
+      }catch(error){if(current(mark,project)&&sid===session){detail.replaceChildren();$('[data-browser-notice]').textContent=error.message+' 请刷新并核对实际页面，不要盲目重试。'}}
+      finally{if(current(mark,project))busy=false}
+     };
+     approve.onclick=()=>decide(true);reject.onclick=()=>decide(false);
+    }catch(error){if(current(mark,project)&&sid===session){open.disabled=false;$('[data-browser-notice]').textContent=error.message}}
+   };
+   container.append(card);
+  }
+ }
  async function observe(){
-  if(busy||!sid)return;busy=true;const mark=generation,project=pid;
-  try{const result=await b.api(base()+'/observe',{method:'POST',body:{}});if(current(mark,project)&&browserDialog.open)paint(result)}
+  if(busy||!sid)return;busy=true;const mark=generation,project=pid,session=sid;
+  try{const result=await b.api(base()+'/observe',{method:'POST',body:{}});if(current(mark,project)&&sid===session&&browserDialog.open){paint(result);await pendingActions(mark,project,session)}}
   catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
   finally{if(current(mark,project))busy=false}
  }

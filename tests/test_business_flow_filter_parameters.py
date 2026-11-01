@@ -16,7 +16,10 @@ def test_parameter_changes_exact_sum_without_changing_formula_or_schema():
         r=client.request(method,path,headers=headers,**kw);assert r.status_code==200,r.text;return r.json()
     pid=req('POST','/api/projects',json={'name':'业务参数','request_id':uid()})['id'];base='/api/projects/'+pid
     s=req('POST',base+'/attachments',files={'file':('income.csv','办事处,收入\n东部,9.00\n西部,15.00\n'.encode(),'text/csv')},data={'request_id':uid(),'local_processing':'true'})
-    assert process_once();s=get('source',s['id'])
+    for _ in range(50):
+        if get('source',s['id']).get('status') in ('ready','failed'):break
+        assert process_once()
+    s=get('source',s['id']);assert s['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处生成汇总报告','request_id':uid(),'source_id':s['id']})
     context={'project_id':pid,'actor_id':'owner','turn_id':turn['id'],'run_id':uid()}
     plan={'version':1,'name':'收入','inputs':{'table':{'meaning':'明细','grain':['atlas_row'],'columns':[
