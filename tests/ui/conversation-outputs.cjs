@@ -19,8 +19,9 @@ const reply=value=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSO
    if(route.endsWith('/download'))return {ok:true,status:200,blob:async()=>new w.Blob(['file bytes'])};
    throw Error('Unexpected route '+route);
   };
-  w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8'));w.eval(fs.readFileSync(path.join(root,'workspace-shell.js'),'utf8'));
+  w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testResultCard=card;');w.eval(fs.readFileSync(path.join(root,'workspace-shell.js'),'utf8'));
   await wait(()=>d.querySelectorAll('#messages .conversation-artifact').length===4);
+  const resultCard=d.createElement('div');resultCard.innerHTML=w.testResultCard({title:'收入',candidate:true,fields:[],summary:[],rows:[],records:0,run_id:'r1',application:{id:'a1',name:'收入应用',url:'/data-app.html?project=p&app=a1'}});const planLink=resultCard.querySelector('.application-inline a');assert(planLink.textContent.includes('查看处理方案与预览'));assert.equal(new URL(planLink.href).searchParams.get('run'),'r1');
   assert(d.querySelector('[data-filename="经营报告.md"]').dataset.download.endsWith('?format=md'),'selected download bytes match the displayed extension');
   assert.equal(d.querySelectorAll('.conversation-artifact img').length,0);assert(d.querySelector('.conversation-artifact').textContent.includes('<img>'));
   assert.equal(requests.filter(url=>url.endsWith('/artifacts')).length,0,'inline delivery does not require opening the catalog');

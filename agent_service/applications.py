@@ -87,12 +87,89 @@ def info(project_id,application_id,preview=False,run_id=None):
         from .releases import semantic_warning
         warning=semantic_warning(run,m)
         result.update(freshness=freshness(p,m),sources=provenance(m),definition=m['spec'].get('metric_definition',''),semantic_warning=warning)
+        from .run_provenance import describe as describe_run
+        result['run_evidence']=describe_run(p,run,m)
         if warning:result['metric_status']='requires_review'
     except ApplicationNotReady:
         result['status']='failed' if result.get('last_run_status')=='failed' else 'building'
     except ValueError:
         if p.get('published_run') or p.get('candidate_run'):raise
     return result
+
+
+_BUSINESS_RULE_LABELS={
+    'filters':'筛选条件','computations':'计算规则','joins':'来源关联',
+    'group_by':'汇总维度','amount_field':'汇总字段','primary_key':'业务主键',
+    'metric_definition':'指标口径','currency':'币种与单位','amount_label':'指标名称',
+    'required_fields':'必填字段','nonnegative_fields':'非负检查','min_rows':'最少记录数',
+    'trim_fields':'字段清理','field_labels':'字段名称','object_label':'业务对象',
+    'metric_status':'指标状态',
+}
+
+
+def business_plan_view(project_id,application_id,preview=False,run_id=None):
+    """Expose only Git-frozen definitions and their exact bound run receipts.
+
+    The selected historical run is never substituted with the latest draft.
+    Sources in the plan describe design-time inputs; run_evidence records the
+    actual frozen input versions and does not expose connector credentials.
+    """
+    from .business_plan import for_commit
+    from .run_provenance import describe as describe_run
+    p=owned(project_id,application_id)
+
+    def version(commit,rid,role):
+        if not commit:return None
+        plan=for_commit(p,commit)
+        result={'commit':commit,'run_id':rid,'role':role,'plan':plan,
+                'source_status':plan.get('origin'),'run_evidence':None}
+        if rid:
+            run=get_job(rid)
+            if run.get('target')!=p['id'] or run.get('commit')!=commit:
+                raise ValueError('业务方案与运行版本不一致')
+            if not run.get('artifact_removed'):
+                _,manifest=manifest_for(run)
+                result['run_evidence']=describe_run(p,run,manifest)
+        return result
+
+    candidate_commit=p.get('commit')
+    # A completed automatic refresh may temporarily point both fields at the
+    # same run; do not present the already published result as a candidate.
+    candidate_run=p.get('candidate_run') if p.get('candidate_run')!=p.get('published_run') else None
+    has_candidate=bool(candidate_run or (candidate_commit and candidate_commit!=p.get('active_commit')))
+    selected=None
+    if run_id:
+        _,run,_,_,_=snapshot(project_id,application_id,preview,run_id)
+        # Published wins if two pointers transiently reference the same run.
+        role=('published' if run['id']==p.get('published_run') else
+              'candidate' if run['id']==candidate_run else 'history')
+        selected=version(run['commit'],run['id'],role)
+    warnings=[]
+    def optional_version(commit,rid,role):
+        if not commit:return None
+        if selected and selected['commit']==commit and selected['run_id']==rid:
+            return selected
+        try:return version(commit,rid,role)
+        except (ValueError,KeyError,FileNotFoundError):
+            # An unrelated damaged current candidate must not hide a valid
+            # historical version. Never silently claim it was compared.
+            if not run_id:raise
+            warnings.append(('正式' if role=='published' else '候选')+'版本的业务方案暂不可用，未进行版本差异对比。')
+            return None
+    published=optional_version(p.get('active_commit'),p.get('published_run'),'published') if p.get('published_run') else None
+    candidate=optional_version(candidate_commit,candidate_run,'candidate' if candidate_run else 'draft') if has_candidate else None
+    if not run_id:selected=(candidate or published) if preview else (published or candidate)
+    changes=[]
+    if candidate and published:
+        before=published['plan'];after=candidate['plan']
+        old=before.get('rules') or {};new=after.get('rules') or {}
+        for key in sorted(set(old)|set(new)):
+            if old.get(key)!=new.get(key):
+                changes.append({'field':key,'label':_BUSINESS_RULE_LABELS.get(key,key),'before':old.get(key),'after':new.get(key)})
+        for key,label in (('identity_policy','明细去重与记录标识'),('sources','设计资料'),('application','成果展示')):
+            if before.get(key)!=after.get(key):
+                changes.append({'field':key,'label':label,'before':before.get(key),'after':after.get(key)})
+    return {'selected':selected,'candidate':candidate,'published':published,'changes':changes,'warnings':warnings}
 
 
 def quoted(name):return '"'+name.replace('"','""')+'"'

@@ -21,10 +21,17 @@ def upload(text,name='orders.csv'):
     s=get('source',s['id']);assert s['status']=='ready',s
     return s
 
-def create(s,spec=None):
+def create(s,spec=None,*,publish=True):
     r=client.post('/api/pipelines',headers=headers,json={'source_id':s['id'],'name':'客户分析','spec':spec or s['proposed_spec'],'release_mode':'auto'})
     assert r.status_code==200,r.text
     p=r.json();assert process_once()
+    p=get('pipeline',p['id']);assert p.get('candidate_run') and not p.get('published_run')
+    if not publish:return p
+    preview=client.get('/api/pipelines/'+p['id']+'/preview',headers=headers).json()
+    confirm=client.post('/api/pipelines/'+p['id']+'/publish',headers=headers,json={'run_id':p['candidate_run'],
+        'confirm_source_review':bool(preview.get('requires_source_review')),'expected_commit':preview['manifest']['commit'],
+        'expected_parquet_sha256':preview['manifest']['parquet_hash']})
+    assert confirm.status_code==200,confirm.text
     return get('pipeline',p['id'])
 
 def result(p):return client.get('/api/pipelines/'+p['id']+'/result',headers=headers)
@@ -65,10 +72,10 @@ def test_complete_csv_git_dlt_dbt_notes_queries_and_refresh():
     assert [r for r in all_items('run') if r['target']==p['id']][-1]['status']=='failed'
 
 
-def test_dedup_without_primary_and_schema_failure():
+def test_preserve_identical_rows_without_primary_and_schema_failure():
     s=upload('客户,金额\n甲,10\n甲,10\n乙,20\n')
     spec=dict(s['proposed_spec'],primary_key=None)
-    p=create(s,spec);assert result(p).json()['total']==2
+    p=create(s,spec);assert result(p).json()['total']==3
     old=p['published_run']
     path=DATA/'uploads'/unseal(s['secret_config'])['stored_name']
     path.write_text('其他字段,金额\n甲,10\n')
@@ -128,7 +135,7 @@ def test_pdf_provenance_and_stable_special_primary_key(tmp_path):
     assert s['profile']['evidence']['parser']=='pypdf'
     assert any(f['label']=='页码' for f in s['profile']['fields'])
     assert client.get(f'/api/sources/{s["id"]}/original',headers=headers).content==path.read_bytes()
-    p=create(s)
+    p=create(s,publish=False)
     assert not p.get('published_run') and p.get('candidate_run')
     candidate=client.get(f'/api/pipelines/{p["id"]}/preview',headers=headers)
     assert candidate.status_code==200 and candidate.json()['requires_source_review'] is True
@@ -154,6 +161,9 @@ def test_task_revision_uses_same_git_repo_and_preserves_previous_result():
     revised=r.json();assert revised['repository']==p['repository'] and revised['commit']!=p['commit']
     assert result(p).json()['manifest']['commit']==p['commit']
     assert process_once()
+    candidate=get('pipeline',p['id']);assert candidate['published_run']==p['published_run'] and candidate['candidate_run']
+    confirm=client.post(f'/api/pipelines/{p["id"]}/publish',headers=headers,json={'run_id':candidate['candidate_run']})
+    assert confirm.status_code==200,confirm.text
     newer=result(p).json();assert newer['manifest']['commit']==revised['commit']
     assert newer['manifest']['summary']==[]
     assert newer['notes'][oid]['note']=='版本之间保留'

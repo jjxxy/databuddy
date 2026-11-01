@@ -828,8 +828,12 @@ def execute(turn,step):
         basis=company_search.manifest(get('turn',turn['id']))
         patch('turn',turn['id'],knowledge_basis=basis)
         source=owned('source',args['source_id'],pid)
-        from .planner import validate_spec
-        validate_spec(args['spec'],source['profile'])
+        from .models import TransformSpec
+        from .codegen import merged_fields
+        from .rules import validate_legacy_numeric
+        validated_spec=TransformSpec.model_validate(args['spec']).model_dump()
+        validate_legacy_numeric(validated_spec)
+        merged_fields(source,validated_spec,source_lookup=lambda sid:owned('source',sid,pid))
         current=get('project',pid)
         target=args.get('pipeline_id') or turn.get('application_id') or (current.get('pipeline_id') if not args.get('create_new') else None)
         if args.get('create_new'):target=None
@@ -839,9 +843,16 @@ def execute(turn,step):
         existing=owned('pipeline',target,pid) if target else None
         if existing and existing['source_id']!=source['id'] and not args.get('pipeline_id'):existing=None
         if existing and existing['source_id']!=source['id']:raise ValueError('修改分析时必须使用原来源')
-        patch('project',pid,source_id=source['id'],pipeline_id=existing['id'] if existing else None)
-        patch('turn',turn['id'],source_id=source['id'])
-        d={'action':'analyze','spec':args['spec'],'name':args.get('name',''),'application':args.get('application')}
+        # Generate neither code nor a data run until the person approves the
+        # concrete, version-bound business plan. Existing explicit REST and
+        # legacy flows keep their own contracts.
+        from .conversation import stable
+        from .business_proposals import propose
+        operation_id=stable('op_',turn.get('agent_origin',turn['id']),get('turn',turn['id'])['agent_trace'][-1]['id'])
+        proposal=propose(turn,source,existing,args,operation_id)
+        patch('turn',turn['id'],business_proposal_id=proposal['id'])
+        return {'proposal_pending':True,'proposal_id':proposal['id'],'executed':False,
+                'message':'业务方案待用户确认；确认前不会生成代码或运行数据'}
     elif name=='rename_project':d={'action':'rename','name':args['name']}
     elif name=='switch_source':
         owned('source',args['source_id'],pid);d={'action':'switch','source_id':args['source_id']}
@@ -1094,6 +1105,9 @@ def _execute_node(state):
         value=prepared_value if prepared else execute(get('turn',turn['id']),step)
         if value is not None:
             observe(turn,value)
+            if isinstance(value,dict) and value.get('proposal_pending') is True:
+                finish(get('turn',turn['id']),'业务处理方案已整理，请核对资料和口径。确认后才会生成代码并试运行；正式发布还需另行确认。',outcome='needs_input',resume_available=False)
+                return {}
             if step.tool=='prepare_work_action' and value.get('state')=='pending':
                 finish(get('turn',turn['id']),'外部系统操作已准备好，请核对确认卡中的目标和参数。确认前不会提交；确认后会继续这项工作。',outcome='needs_input',resume_available=True)
     except Exception as exc:

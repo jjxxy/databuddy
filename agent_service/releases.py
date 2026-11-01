@@ -22,6 +22,19 @@ def verify_semantics(pipeline,run,manifest,folder):
         raise ValueError('运行产物版本标识不一致')
     plan=json.loads(git(pipeline['repository'],'show',run['commit']+':plan.json'))
     if manifest.get('spec')!=plan['spec']:raise ValueError('指标口径与冻结代码版本不一致')
+    if 'identity_policy' in plan and manifest.get('identity_policy')!=plan['identity_policy']:
+        raise ValueError('明细身份与去重策略与冻结代码版本不一致')
+    # The user-facing business plan must be a faithful projection of the
+    # same committed rules. Historical commits without the new document are
+    # derived from their frozen plan instead of requiring a fabricated file.
+    from .business_plan import for_commit as business_plan_for_commit
+    business_plan=business_plan_for_commit(pipeline,run['commit'])
+    if business_plan.get('origin')=='generated':
+        path=folder/'code'/'business-plan.json'
+        if not path.is_file():raise ValueError('业务方案产物缺失，禁止发布')
+        try:artifact=json.loads(path.read_text(encoding='utf-8'))
+        except (ValueError,UnicodeError):raise ValueError('业务方案产物格式无效，禁止发布') from None
+        if artifact!=business_plan:raise ValueError('业务方案产物与冻结代码版本不一致，禁止发布')
     if manifest.get('metric_aggregation')!=plan.get('metric_aggregation'):raise ValueError('指标精度与冻结代码版本不一致')
     if plan.get('column_lineage_version')==1:
         from .column_lineage import digest
@@ -178,6 +191,10 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False,*,confirm_source_
         if not p_row:raise KeyError(pipeline_id)
         p=json.loads(p_row[0])
         if not rollback and run['commit']!=p['commit'] and run['commit']!=p.get('active_commit'):raise ValueError('候选代码已被新版本替代，请重新验证或明确回滚')
+        # Recheck under the locked pipeline row: the active version may have
+        # changed after the worker decided this was a safe automatic refresh.
+        if lease_token and p.get('business_plan_confirmation_required') and run['commit']!=p.get('active_commit'):
+            raise ValueError('该业务方案尚未确认发布，后台运行只能生成候选结果')
         if run.get('artifact_removed'):raise ValueError('该历史产物已按保留策略清理，无法回滚')
         folder,manifest=manifest_for(run)
         actual=hashlib.sha256((folder/'business_objects.parquet').read_bytes()).hexdigest()

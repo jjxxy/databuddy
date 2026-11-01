@@ -408,6 +408,13 @@ def public_turn(turn):
     value={k:v for k,v in turn.items() if k in {'id','project_id','text','source_id','state','progress','created_at','finished_at','answer','result','download','plan','mode','session_id','interaction_mode','work_version','agent_trace','application_id','resume_available','outcome','resumed_from','resume_turn_id','suggestions','task_contract','verification','model_usage','knowledge_usage','context_metrics','task_plan','execution_node','model_id','model_name','web_citations'}}
     value['source_ids']=attachment_ids(turn)
     value['attached_sources']=attachment_details(turn)
+    if turn.get('business_proposal_id'):
+        from .actor_context import current_actor
+        from .business_proposals import public as public_proposal
+        try:proposal=get('business_proposal',turn['business_proposal_id'])
+        except KeyError:proposal=None
+        if proposal and proposal.get('project_id')==turn.get('project_id') and proposal.get('session_id')==(turn.get('session_id') or default_session(turn['project_id'])) and proposal.get('actor_id')==current_actor():
+            value['business_proposal']=public_proposal(proposal)
     if turn.get('resumed_from'):
         inherited=turn.get('agent_budget_base',0)
         value['inherited_step_count']=max(0,min(inherited,len(turn.get('agent_trace',[])))) if type(inherited) is int else 0
@@ -462,8 +469,8 @@ def finish(turn, answer, **values):
     patch('turn', turn['id'], state='done', answer=answer, finished_at=now(), secret_text=None, progress='', **values)
 
 
-def describe(spec, source):
-    labels = {f['name']: f['label'] for f in source['profile']['fields']}
+def describe(spec, source, fields=None):
+    labels = {f['name']: f['label'] for f in (fields if fields is not None else source['profile']['fields'])}
     labels.update({c['name']: c['label'] for c in spec.get('computations', [])})
     parts = ['整理为' + spec['object_label']]
     for c in spec.get('computations', []):
@@ -857,30 +864,50 @@ def legacy_handle(turn):
         patch('project', project['id'], source_id=s['id'], pipeline_id=ps[-1]['id'] if ps else None)
         finish(turn, '已切换到“' + s['name'] + '”。你想怎样分析？'); return
     if d.action == 'analyze':
+        approved=None
+        if turn.get('agent_pending') and turn.get('business_proposal_id'):
+            from .business_proposals import assert_approved
+            approved=assert_approved(turn)
+            # Use the exact source objects the person approved, including the
+            # joined-source profiles and retained file/config references.
+            source=approved['source_snapshots'][approved['source_id']]
         if not source: finish(turn, '先把要分析的文件放进对话，或提供数据连接。'); return
         spec = d.spec.model_dump()
-        from .planner import validate_spec
-        validate_spec(spec, source['profile'])
+        description_fields=None
+        if approved:
+            from .codegen import merged_fields
+            from .rules import validate_legacy_numeric
+            validate_legacy_numeric(spec)
+            description_fields,_=merged_fields(source,spec,source_lookup=lambda sid:approved['source_snapshots'][sid])
+        else:
+            from .planner import validate_spec
+            validate_spec(spec, source['profile'])
         # Persist the decision before side effects. An interrupted turn reuses its
         # origin-tagged commit, never substitutes a different model response.
-        patch('turn', turn['id'], state='generating', decision=d.model_dump(), plan=describe(spec, source), progress='正在生成处理方案')
-        existing = pipeline if pipeline and pipeline['source_id'] == source['id'] else None
+        patch('turn', turn['id'], state='generating', decision=d.model_dump(), plan=describe(spec, source,description_fields), progress='正在生成处理方案')
+        existing = (owned('pipeline',approved['target_id'],project['id']) if approved and approved.get('target_id') else None) if approved else (pipeline if pipeline and pipeline['source_id'] == source['id'] else None)
         generated = next((p for p in all_items('pipeline') if p.get('origin_turn') == turn.get('operation_id',turn['id'])), None)
         if not generated:
             if existing and any(r['status'] in ACTIVE for r in list_jobs(target=existing['id'])):
                 finish(turn, '这份分析正在更新，请等待当前处理完成，再调整口径。'); return
             from .codegen import generate
             from .company_search import manifest
-            basis=manifest(get('turn',turn['id'])) if turn.get('knowledge_read_refs') or get('project',project['id']).get('company_private') else None
+            basis=(approved['knowledge_basis'] if approved else
+                   manifest(get('turn',turn['id'])) if turn.get('knowledge_read_refs') or get('project',project['id']).get('company_private') else None)
+            frozen_options=({'frozen_sources':approved['source_snapshots'],'expected_commit':approved.get('target_commit'),
+                             'runtime':approved['draft']['runtime']} if approved else {})
             generated = generate(source, d.name or (existing['name'] if existing else spec['object_label']+'数据应用'), spec, existing=existing, release_mode='manual',
-                                 pipeline_id=stable('a_', turn.get('operation_id',turn['id'])), project_id=project['id'], origin_turn=turn.get('operation_id',turn['id']),application=d.application.model_dump() if d.application else None,knowledge_basis=basis)
+                                 pipeline_id=stable('a_', turn.get('operation_id',turn['id'])), project_id=project['id'], origin_turn=turn.get('operation_id',turn['id']),application=approved['draft']['application'] if approved else (d.application.model_dump() if d.application else None),knowledge_basis=basis,request_turn_id=turn['id'],**frozen_options)
+        if approved:
+            from .business_proposals import assert_generated
+            assert_generated(generated,approved)
         # Preserve an explicitly requested daily cadence across the initial
         # preview/confirmation boundary; it is not active before publication.
         from .cadence import parse
         cadence=parse(text,embedded=True)
         if cadence:patch('pipeline',generated['id'],pending_schedule={'cron':cadence['cron'],'label':cadence['label'],'commit':generated['commit'],'authorized_turn':turn['id']})
         patch('project', project['id'], pipeline_id=generated['id'])
-        run = enqueue('pipeline', generated['id'], generated['commit'], scheduled_key='chat:' + turn.get('operation_id',turn['id']))
+        run = enqueue('pipeline', generated['id'], generated['commit'], scheduled_key='chat:' + turn.get('operation_id',turn['id']),**({'frozen_source_snapshot':approved['source_snapshots']} if approved else {}))
         patch('turn', turn['id'], state='waiting_run', run_id=run['id'], secret_text=None, progress='正在采集和整理数据，并检查结果质量'); return
     if d.action == 'status':
         names = '、'.join(s['name'] for s in all_items('source') if s.get('project_id') == project['id'] and not s.get('archived'))
@@ -927,6 +954,20 @@ def legacy_handle(turn):
 def handle(turn):
     from .workspace_lifecycle import assert_turn_live
     assert_turn_live(turn)
+    if turn.get('business_proposal_id'):
+        proposal=get('business_proposal',turn['business_proposal_id'])
+        if proposal.get('state') in ('pending','rejected'):
+            # Recover even if the worker stopped between creating the proposal,
+            # recording its tool observation, and marking the turn as waiting.
+            # No model/tool continuation is permitted before a decision.
+            trace=list(turn.get('agent_trace',[]))
+            if trace and trace[-1].get('status')=='started':
+                trace[-1]=dict(trace[-1],status='done',finished_at=now(),observation={
+                    'proposal_pending':True,'proposal_id':proposal['id'],'executed':False})
+            patch('turn',turn['id'],agent_trace=trace,agent_pending=False,state='done',outcome='needs_input',
+                  answer='业务处理方案等待确认。确认后才生成代码并试运行；正式发布需要另行确认。',
+                  finished_at=now(),progress='',resume_available=False)
+            return
     from .work_runtime import resume as resume_work_command
     if resume_work_command(turn):return
     if turn.get('gateway_client_id') or turn.get('collaboration_parent_turn_id'):

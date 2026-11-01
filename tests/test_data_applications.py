@@ -24,6 +24,15 @@ def done(tid):
 def tool(tool_name,**args):return {'kind':'tool','tool':tool_name,'arguments':args}
 def final(text):return {'kind':'final','answer':text}
 
+def approve_plan(pid,tid):
+    turn=get('turn',tid)
+    assert turn['state']=='done' and turn['outcome']=='needs_input'
+    proposal=get('business_proposal',turn['business_proposal_id'])
+    call('POST',f"/api/projects/{pid}/business-proposals/{proposal['id']}/decision",
+         json={'digest':proposal['digest'],'session_id':turn['session_id'],'approve':True})
+    tick()
+    assert get('turn',tid)['state']=='waiting_run'
+
 
 def test_data_application_generate_use_rerun_revise_schedule_and_question(monkeypatch):
     pid=call('POST','/api/projects',json={'name':'应用验收','request_id':'data-app-project'})['id']
@@ -38,7 +47,7 @@ def test_data_application_generate_use_rerun_revise_schedule_and_question(monkey
         return json.dumps(steps.pop(0),ensure_ascii=False)
     monkeypatch.setattr(provider,'complete',complete)
     tid=say(pid,'做一个收款追踪应用，只统计已付款订单，金额减退款，按客户汇总，每天上午9点采集更新','data-app-create',source_id=s['id'])
-    tick();tick();assert get('turn',tid)['state']=='waiting_run'
+    tick();tick();approve_plan(pid,tid)
     assert process_once();t=done(tid);assert t['state']=='done',t
     aid=t['result']['application']['id'];url=root+'/applications/'+aid;p=get('pipeline',aid);repo=p['repository']
     assert t['work_version']['changed'] and t['result']['application']['name']=='收款追踪'
@@ -68,7 +77,7 @@ def test_data_application_generate_use_rerun_revise_schedule_and_question(monkey
     runtime={'timeout_seconds':180,'max_attempts':1,'freshness_minutes':60};patch('pipeline',aid,runtime=runtime)
     steps.extend([tool('revise_data_application',application_id=aid,name='客户收款明细',application={'title':'客户收款明细','layout':'table','chart':'none','columns':['c_2']}),final('新应用界面已验证，原应用继续可用。')])
     revised=say(pid,'调整这个应用为客户收款明细，只显示客户字段','data-app-revise',application_id=aid)
-    tick();assert get('turn',revised)['state']=='waiting_run'
+    tick();approve_plan(pid,revised)
     assert process_once();revision=done(revised);assert revision['state']=='done',revision
     p=get('pipeline',aid);assert p['repository']==repo and p['commit']!=first_commit and p['runtime']==runtime
     assert call('GET',url)['config']['title']=='收款追踪'
@@ -119,7 +128,7 @@ def test_data_application_generate_use_rerun_revise_schedule_and_question(monkey
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://model.invalid/v1','model':'simulated','api_key':'disposable','share_data':True})
     steps.extend([tool('create_data_application',source_id=s['id'],name='第二个收款应用',spec=spec),final('第二个应用已生成，原应用保留。')])
     second=say(pid,'另做一个收款应用','data-app-create-another',source_id=s['id'])
-    tick();assert process_once();another=done(second)
+    tick();approve_plan(pid,second);assert process_once();another=done(second)
     second_id=another['result']['application']['id']
     assert second_id!=aid and get('pipeline',aid)['commit']==first_commit
     assert len(call('GET',root+'/applications'))==2

@@ -26,8 +26,14 @@ def pipeline(s,spec,runtime=None):
     body={'source_id':s['id'],'name':'业务规则验证','release_mode':'auto','spec':spec}
     if runtime:body['runtime']=runtime
     r=client.post('/api/pipelines',headers=headers,json=body);assert r.status_code==200,r.text
-    assert process_once();p=get('pipeline',r.json()['id']);assert p['published_run'],q.list_jobs(target=p['id'])
-    return p
+    assert process_once();p=get('pipeline',r.json()['id'])
+    assert p['candidate_run'] and not p.get('published_run'),q.list_jobs(target=p['id'])
+    preview=client.get('/api/pipelines/'+p['id']+'/preview',headers=headers).json()
+    confirm=client.post('/api/pipelines/'+p['id']+'/publish',headers=headers,json={'run_id':p['candidate_run'],
+        'confirm_source_review':bool(preview.get('requires_source_review')),'expected_commit':preview['manifest']['commit'],
+        'expected_parquet_sha256':preview['manifest']['parquet_hash']})
+    assert confirm.status_code==200,confirm.text
+    return get('pipeline',p['id'])
 
 def replace(s,text):
     r=client.post('/api/sources/'+s['id']+'/replace-file',headers=headers,files={'file':('rules-new.csv',text.encode(),'text/csv')});assert r.status_code==200,r.text

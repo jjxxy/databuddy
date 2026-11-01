@@ -16,13 +16,40 @@ from .process_control import spawn,stop,executable
 
 RUN_TIMEOUT=int(os.getenv('MAX_RUN_TIMEOUT_SECONDS','3600'))
 
-def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3):
+
+def _automatic_adoption_allowed(pipeline,commit):
+    """Keep new rule changes in candidate state until a user adopts them."""
+    active=pipeline.get('active_commit')
+    return bool((active and commit==active) or
+                (not pipeline.get('business_plan_confirmation_required') and
+                 pipeline.get('release_mode','auto')=='auto'))
+
+
+def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,*,frozen_source_snapshot=None):
     sources={}
     if kind=='pipeline':
         p=get('pipeline',target)
         # Freeze the source configurations used by this specific execution, outside Git.
         plan=json.loads(subprocess.run([executable('git'),'-C',p['repository'],'show',(commit or p['commit'])+':plan.json'],capture_output=True,text=True,encoding='utf-8',check=True).stdout)
-        sources=snapshot([plan['source_id']]+[j['source_id'] for j in plan.get('joins',[])])
+        source_ids=[plan['source_id']]+[j['source_id'] for j in plan.get('joins',[])]
+        if frozen_source_snapshot is None:
+            sources=snapshot(source_ids)
+        else:
+            # This path is reserved for an already-confirmed Agent proposal.
+            # Preserve exactly its approved configurations, including retained
+            # file bytes; never silently recapture a later source version.
+            if not isinstance(frozen_source_snapshot,dict) or set(frozen_source_snapshot)!=set(source_ids):
+                raise ValueError('已确认方案的来源快照不完整')
+            sources=frozen_source_snapshot
+            for sid in source_ids:
+                source=sources.get(sid)
+                if (not isinstance(source,dict) or source.get('id')!=sid or
+                        source.get('project_id')!=p.get('project_id') or source.get('archived')):
+                    raise ValueError('已确认方案的来源快照不属于该项目')
+            revisions={plan['source_id']:plan.get('source_revision')}
+            revisions.update({j['source_id']:j.get('source_revision') for j in plan.get('joins',[])})
+            if any(revision is not None and sources[sid].get('revision')!=revision for sid,revision in revisions.items()):
+                raise ValueError('来源快照与确认的代码版本不一致')
     if kind=='pipeline':max_attempts=plan.get('runtime',{}).get('max_attempts',max_attempts)
     return queue_enqueue(kind,target,commit,scheduled_key,max_attempts,extra={'source_snapshot':sources,'runtime_snapshot':plan.get('runtime',{}) if kind=='pipeline' else {}})
 
@@ -158,6 +185,9 @@ def execute(run):
         source_review=any(source_interpretation_needs_review(frozen_sources.get(item['source_id']),item.get('evidence'))
                           for item in inputs['sources'])
         m={'data_contract':contract_result,'knowledge_basis':plan.get('knowledge_basis',[]),'application':plan.get('application'),'run_id':run['id'],'pipeline_id':p['id'],'commit':run['commit'],'semantic_version':3,'runtime':run.get('runtime_snapshot',{}),'records':count,'columns':columns,'output_schema':output_schema,'summary':summary,'fields':plan['fields'],'spec':plan['spec'],'relationships':relationships,'inputs':inputs['sources'],'quality':quality_report(folder),'published_at':now(),'versions':{x:importlib.metadata.version(x) for x in ['dlt','duckdb','dbt-core','dbt-duckdb','langgraph']},'data_as_of':min((s.get('collected_at',run['started_at']) for s in inputs['sources']),default=run['started_at']),'input_hash':inputs['input_hash'],'parquet_hash':hashlib.sha256((folder/'business_objects.parquet').read_bytes()).hexdigest()}
+        # Only new plans explicitly record row identity behavior; keep older
+        # manifests absent rather than guessing how historical code behaved.
+        if 'identity_policy' in plan:m['identity_policy']=plan['identity_policy']
         m['requires_source_review']=source_review
         from .releases import _requires_fact_alignment
         fact_alignment=_requires_fact_alignment(run,m)
@@ -174,7 +204,11 @@ def execute(run):
         latest=get('pipeline',p['id'])
         if run['commit']==latest['commit']:
             patch_run(run,target_patch={'kind':'pipeline','expected':{'commit':run['commit']},'values':{'candidate_run':run['id']}})
-        auto=(latest.get('release_mode','auto')=='auto' or run['commit']==latest.get('active_commit')) and not source_review and not fact_alignment
+        # New business-plan versions require explicit confirmation before the
+        # first adoption. Only a refresh of the already adopted commit may
+        # update the published result automatically. Historic pipelines retain
+        # their pre-existing auto policy until a new business plan is created.
+        auto=_automatic_adoption_allowed(latest,run['commit']) and not source_review and not fact_alignment
         if auto:
             publish(p['id'],run['id'],lease_token=run['lease_token'])
             patch_run(run,status='succeeded',finished_at=now(),stage='已发布')
@@ -206,7 +240,7 @@ def _queue_due():
             except (ValueError,TypeError,KeyError):
                 patch('pipeline',p['id'],cron=None,schedule_error='定时配置无效，已停用');continue
             if due>current:continue
-            commit=p.get('active_commit') or (p.get('commit') if p.get('release_mode','auto')=='auto' else None)
+            commit=p.get('active_commit') or (p.get('commit') if p.get('release_mode','auto')=='auto' and not p.get('business_plan_confirmation_required') else None)
             if commit:
                 try:enqueue('pipeline',p['id'],commit,f"{p['id']}:{p['next_due']}")
                 except ValueError:patch('pipeline',p['id'],schedule_error='来源已归档，需修复连接')

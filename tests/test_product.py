@@ -48,7 +48,12 @@ def test_multi_source_join_quality_search_views_and_raw_versions():
     customers=source('客户编号,行业\nC1,制造\nC2,服务\n','customers.csv')
     orders=source('订单号,客户编号,金额\nJ1,C1,10.25\nJ2,C2,20.50\nJ3,C1,1.25\n','join-orders.csv')
     spec=dict(orders['proposed_spec'],primary_key='c_1',group_by='j1_c_2',amount_field='c_3',joins=[{'source_id':customers['id'],'left_field':'c_2','right_field':'c_1','label':'客户','required_match':True}],metric_status='confirmed',metric_definition='订单金额字段合计',currency='CNY',required_fields=['c_1','c_2'],nonnegative_fields=['c_3'])
-    p=create(orders,spec,'auto');assert p.get('published_run'),q.list_jobs(target=p['id'])
+    # Newly generated versions remain candidates even if the legacy auto
+    # release option was requested; explicit review promotes that exact run.
+    p=create(orders,spec,'auto');assert p.get('candidate_run') and not p.get('published_run')
+    response=client.post(f'/api/pipelines/{p["id"]}/publish',headers=headers,json={'run_id':p['candidate_run']})
+    assert response.status_code==200,response.text
+    p=get('pipeline',p['id']);assert p.get('published_run')
     result=client.get(f'/api/pipelines/{p["id"]}/result',headers=headers).json();assert result['total']==3
     from decimal import Decimal
     sums={x['category']:Decimal(x['amount_total']) for x in result['manifest']['summary']};assert sums=={'制造':Decimal('11.50'),'服务':Decimal('20.50')}

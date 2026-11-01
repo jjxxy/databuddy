@@ -60,9 +60,18 @@ def comparison(p,run_id=None):
     labels={'filters':'筛选条件','computations':'计算口径','group_by':'汇总维度','amount_field':'汇总数值','primary_key':'记录标识','metric_definition':'指标说明','currency':'币种/单位','joins':'关联关系'}
     for key,label in labels.items():
         if old['spec'].get(key)!=new['spec'].get(key):differences.append(label)
+    if old.get('identity_policy')!=new.get('identity_policy'):
+        differences.append('明细去重与记录标识')
     if old.get('application')!=new.get('application'):differences.append('应用页面')
-    result={'kind':'compared','run_id':rid,'previous_run_id':previous,'before_records':old['records'],'after_records':new['records'],'added':len(after.keys()-before.keys()),'removed':len(before.keys()-after.keys()),'changed':changed,'definition_changes':differences,'identity_changed':old['spec'].get('primary_key')!=new['spec'].get('primary_key'),'identity_note':'使用稳定主键匹配；没有主键时内容变化可能显示为删除及新增' if not new['spec'].get('primary_key') else '按稳定主键匹配，字段变化计为修改'}
-    same_metric=all(old['spec'].get(k)==new['spec'].get(k) for k in ('amount_field','group_by','currency','computations','filters','metric_definition'))
+    identity_changed=(old['spec'].get('primary_key')!=new['spec'].get('primary_key') or
+                      old.get('identity_policy')!=new.get('identity_policy'))
+    identity_note=('记录标识或去重策略已变化，差异不能简单视作同口径增减' if identity_changed else
+                   '没有业务主键，内容变化或重复明细的出现顺序变化可能显示为删除及新增' if not new['spec'].get('primary_key') else
+                   '按业务主键匹配，字段变化计为修改')
+    result={'kind':'compared','run_id':rid,'previous_run_id':previous,'before_records':old['records'],'after_records':new['records'],'added':len(after.keys()-before.keys()),'removed':len(before.keys()-after.keys()),'changed':changed,'definition_changes':differences,'identity_changed':identity_changed,'identity_note':identity_note}
+    # A change in row identity/deduplication changes the aggregation basis.
+    # A missing legacy policy is not evidence of equivalence to a new policy.
+    same_metric=(old.get('identity_policy')==new.get('identity_policy') and all(old['spec'].get(k)==new['spec'].get(k) for k in ('amount_field','group_by','currency','computations','filters','metric_definition')))
     if same_metric and new['spec'].get('amount_field'):
         try:
             a=_metric_total(old_folder)

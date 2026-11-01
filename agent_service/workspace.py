@@ -20,7 +20,7 @@ from .platform_files import assert_plain_path,fsync_directory,open_regular_read,
 from .process_control import executable
 
 PROJECT_KEYS=('name','source_id','pipeline_id')
-PIPE_KEYS=('name','spec','commit','release_mode','runtime','source_id','source_ids','candidate_run','published_run','active_commit','active_runtime','status','cron','data_as_of','last_success','archived','strategy','schedule_error','application_spec','application_customized','pending_schedule','knowledge_basis')
+PIPE_KEYS=('name','spec','commit','release_mode','runtime','source_id','source_ids','candidate_run','published_run','active_commit','active_runtime','status','cron','data_as_of','last_success','archived','strategy','schedule_error','application_spec','application_customized','pending_schedule','knowledge_basis','business_plan_confirmation_required')
 SOURCE_KEYS=('name','kind','secret_config','revision','revision_id','content_hash','bytes','status','profile','proposed_spec','planner_mode','archived','error','error_code','warning','schema_diff','suggestions','goal')
 
 def folder(pid):
@@ -112,7 +112,7 @@ def _mirror(repo,snapshot):
         original=get('pipeline',pid)
         names=git(original['repository'],'ls-tree','-r','--name-only',p['commit']).splitlines()
         for name in names:
-            if not (name in ('plan.json','README.md','knowledge-evidence.json','data-contract.json','column-lineage.json') or name.startswith(('dbt/','semantics/','connectors/','application/'))):continue
+            if not (name in ('plan.json','business-plan.json','README.md','knowledge-evidence.json','data-contract.json','column-lineage.json') or name.startswith(('dbt/','semantics/','connectors/','application/'))):continue
             rel=Path(name)
             if rel.is_absolute() or '..' in rel.parts:raise ValueError('代码路径无效')
             content=git_content(original['repository'],p['commit'],name)

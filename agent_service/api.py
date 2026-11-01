@@ -758,6 +758,11 @@ def data_application(project_id:str,application_id:str,preview:bool=False,run_id
     from .applications import info
     return info(project_id,application_id,preview,run_id)
 
+@app.get('/api/projects/{project_id}/applications/{application_id}/business-plan',dependencies=[Depends(auth)])
+def application_business_plan(project_id:str,application_id:str,preview:bool=False,run_id:str|None=None):
+    from .applications import business_plan_view
+    return business_plan_view(project_id,application_id,preview,run_id)
+
 @app.get('/api/projects/{project_id}/applications/{application_id}/data',dependencies=[Depends(auth)])
 def application_data(project_id:str,application_id:str,preview:bool=False,search:str='',offset:int=0,limit:int=25,sort:str|None=None,descending:bool=False,run_id:str|None=None):
     from .applications import data
@@ -885,6 +890,8 @@ install_workspace_lifecycle(app,auth)
 install_workspace_artifacts(app,auth)
 from .runtime_config_api import install as install_runtime_config
 install_runtime_config(app,auth,operator_auth)
+from .business_proposals import install as install_business_proposals
+install_business_proposals(app,auth)
 
 @app.get('/api/desktop/runtime',dependencies=[Depends(auth)])
 def desktop_runtime_status():
