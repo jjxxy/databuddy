@@ -85,8 +85,26 @@ def turn_identity(project_id,request_id,actor_id=None):
 def redact(text):
     # Entire credential/config messages are concealed, rather than attempting to
     # recognize every possible secret in their headers, query string or body.
-    if re.search(r'(?i)(postgres(?:ql)?|mysql)(?:\+\w+)?://|https?://|["\']?(?:password|api[_-]?key|authorization|secret|token|connection_string|headers)["\']?\s*[:=]|\bBearer\s+|\bsk-[A-Za-z0-9-]{12,}', text):
+    if re.search(r'(?i)(postgres(?:ql)?|mysql)(?:\+\w+)?://|["\']?(?:password|api[_-]?key|authorization|secret|token|connection_string|headers)["\']?\s*[:=]|\bBearer\s+|\bsk-[A-Za-z0-9-]{12,}', text):
         return '已提供连接信息（内容已隐藏并加密保存）'
+    # URLs may themselves be credentials (signed downloads, OAuth codes,
+    # opaque cursors or userinfo). Keep ordinary URLs and numeric paging useful,
+    # but never try to guess whether arbitrary query values or fragments are
+    # secrets. The encrypted original remains available to the authorized path.
+    from urllib.parse import parse_qsl, urlsplit
+    for match in re.finditer(r'(?i)https?://[^\s<>"\'`，。；）\]\)]+', text):
+        try:
+            parsed = urlsplit(match.group())
+            if parsed.username is not None or parsed.password is not None or parsed.fragment:
+                return '已提供连接信息（内容已隐藏并加密保存）'
+            if parsed.query:
+                items = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+                safe_paging = {'page', 'page_size', 'pagesize', 'per_page', 'limit', 'offset'}
+                if not items or any(key.lower() not in safe_paging or not value.isascii() or not value.isdigit()
+                                    for key, value in items):
+                    return '已提供连接信息（内容已隐藏并加密保存）'
+        except ValueError:
+            return '已提供连接信息（内容已隐藏并加密保存）'
     return text
 
 

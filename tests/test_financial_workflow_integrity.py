@@ -108,7 +108,10 @@ def test_source_unit_change_cannot_replace_the_published_financial_result():
     document = normalize_document(source['id'], declared_unit='万元', source_unit='万元', multiplier='10000')
     result = queued_result(pid, document)
     assert result['status'] == 'validated', result
-    data.publish_result(pid, result['id'], result['commit'])
+    with pytest.raises(ValueError, match='业务语义和处理口径需要在工作台明确确认'):
+        data.publish_result(pid, result['id'], result['commit'])
+    data.publish_result(pid, result['id'], result['commit'], semantic_review_actor='owner',
+                        review_handoff_sha256=result['data_result']['handoff_sha256'])
     replacement = workbook_source(pid, [['编号', '金额（元）'], ['A', '2']])
     revision(patch('source', source['id'], secret_config=replacement['secret_config'],
         content_hash=replacement['content_hash'], bytes=replacement['bytes']))
@@ -136,6 +139,11 @@ def test_cached_formula_unknown_freshness_is_preserved_through_downstream_result
     assert evidence['formula_cache_freshness'] == 'unknown'
     assert evidence['special_cells']['2']['c_2']['cache_freshness'] == 'unknown'
     document['bindings'] = {'raw': {'result_id': first['id']}}
+    blocked = queued_result(pid, document)
+    assert blocked['status'] == 'failed'
+    assert blocked['workflow_failure']['code'] == 'DATA_CONTRACT_EXACTNESS'
+    data.publish_result(pid, first['id'], first['commit'], review_actor='owner', semantic_review_actor='owner',
+                        review_handoff_sha256=first['data_result']['handoff_sha256'])
     second = queued_result(pid, document)
     assert second['status'] == 'validated', second
     assert data.read_result(pid, second['id'])['context']['requires_semantic_review'] is True
@@ -159,15 +167,21 @@ def test_excel_precision_history_risk_keeps_exact_stored_value_and_blocks_unadop
     page = data.read_result(pid, first['id'])
     assert page['rows'][0]['amount'] == '1234567890123456'
     assert page['context']['requires_semantic_review'] is True
-    assert page['context']['semantic_review_reasons'] == ['EXCEL_PRECISION_LIMIT']
-    assert first['data_result']['semantic_review_reasons'] == ['EXCEL_PRECISION_LIMIT']
+    reasons = ['EXCEL_PRECISION_LIMIT', 'SOURCE_INTERPRETATION_REVIEW_REQUIRED']
+    assert page['context']['semantic_review_reasons'] == reasons
+    assert first['data_result']['semantic_review_reasons'] == reasons
     with pytest.raises(ValueError, match='待核对'):
         business_reports.inspect_result(pid, first['id'])
     document['bindings'] = {'raw': {'result_id': first['id']}}
+    blocked = queued_result(pid, document)
+    assert blocked['status'] == 'failed'
+    assert blocked['workflow_failure']['code'] == 'DATA_CONTRACT_EXACTNESS'
+    data.publish_result(pid, first['id'], first['commit'], review_actor='owner', semantic_review_actor='owner',
+                        review_handoff_sha256=first['data_result']['handoff_sha256'])
     second = queued_result(pid, document)
     assert second['status'] == 'validated', second
     downstream = data.read_result(pid, second['id'])
-    assert downstream['context']['semantic_review_reasons'] == ['EXCEL_PRECISION_LIMIT']
+    assert downstream['context']['semantic_review_reasons'] == reasons
     assert downstream['context']['requires_semantic_review'] is True
     with pytest.raises(ValueError, match='待核对'):
         business_reports.inspect_result(pid, second['id'])

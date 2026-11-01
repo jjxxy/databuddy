@@ -87,7 +87,7 @@ def provision(value, *, verify=True):
     for record, entry in zip(canonical['models'], parsed.models):
         record['api_key'] = entry.api_key.get_secret_value()
         record['name'] = entry.name.strip()
-        if entry.engine == 'atlas':record['tool_protocol'] = 'native'
+        if entry.engine == 'atlas' and not entry.vision:record['tool_protocol'] = 'native'
     digest = hashlib.sha256(json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     try:
         if _active().get('configuration_sha256') == digest:
@@ -99,7 +99,7 @@ def provision(value, *, verify=True):
         provider_input = ProviderInput.model_validate(entry.model_dump(exclude={'id', 'name'}))
         # OpenCode's native agent loop requires real function/tool calling.
         # A successful plain-text connectivity probe is insufficient.
-        if provider_input.engine == 'atlas':provider_input.tool_protocol = 'native'
+        if provider_input.engine == 'atlas' and not provider_input.vision:provider_input.tool_protocol = 'native'
         if verify:
             raw = validate_configuration(provider_input, old={})
         else:
@@ -132,6 +132,17 @@ def default_settings():
     entry = next((entry for entry in configuration['models']
                   if entry['id'] == configuration['default_model_id']), None)
     return {key: value for key, value in entry.items() if key not in ('id', 'name')} if entry else None
+
+
+def vision_settings():
+    """Return the first vision-capable catalog entry, or None if none is configured.
+
+    A vision entry performs text-only image reading and is therefore not forced
+    into the native tool-calling protocol or its connectivity probe.
+    """
+    configuration = owner_configuration()
+    entry = next((entry for entry in configuration['models'] if entry.get('vision')), None)
+    return {key: value for key, value in entry.items() if key not in ('id', 'name', 'vision')} if entry else None
 
 
 def active_selection():

@@ -46,6 +46,17 @@ def test_official_finance_prompt_queues_real_workflow_without_granting_publicati
         for action in ('analyze','refresh','run_data_workflow'):intents.require(turn,action)
         step={'kind':'tool','tool':'run_data_workflow','arguments':{'workflow_id':wid}}
         agent.validate_step(turn,step,selected_only=True)
+        # The official request is multi-stage: execution without a plan must
+        # be rejected, then a real plan tool call enables the workflow.
+        agent._execute_node({'turn_id':turn['id'],'step':step})
+        rejected=get('turn',turn['id'])
+        assert rejected['state']=='agent'
+        assert rejected['verification_feedback']['code']=='WORK_PLAN_REQUIRED'
+        assert rejected['verification_feedback']['executed'] is False
+        assert not rejected.get('data_workflow_job')
+        plan={'kind':'tool','tool':'set_task_plan','arguments':{'steps':['核对资料和口径','运行加工流程','核对成果'], 'completed_steps':[], 'missing_information':[]}}
+        agent._execute_node({'turn_id':turn['id'],'step':plan})
+        assert get('turn',turn['id'])['task_plan']['steps']==['核对资料和口径','运行加工流程','核对成果']
         agent._execute_node({'turn_id':turn['id'],'step':step})
         waiting=get('turn',turn['id']);assert waiting['state']=='waiting_data_workflow'
         job_id=waiting['data_workflow_job'];run=get_job(job_id)

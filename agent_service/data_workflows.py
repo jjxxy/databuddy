@@ -143,6 +143,8 @@ class Calculation(StrictModel):
     right: str = Field(pattern=NAME)
     operation: Literal['add', 'subtract', 'multiply', 'divide']
     rounding_scale: int | None = Field(default=None, ge=0, le=12)
+    constant_scaling: bool = Field(default=False,
+        description='Right operand is a reviewed constant scaling factor (e.g. a fixed tax divisor 1.13), not a row-varying measure. Scaling an additive measure by a constant preserves additivity. Business correctness requires review.')
 
 
 class Compute(Stage):
@@ -582,10 +584,22 @@ def _calculation_semantics(rule: Calculation, fields):
         raise WorkflowError('VALUE_FORMAT_MISMATCH', 'Arithmetic output cannot silently change the input value representation')
     if rule.output.data_type not in ('integer', 'decimal') or rule.output.unit != expected_unit or rule.output.period != left.period:
         raise WorkflowError('SEMANTIC_MISMATCH', 'Arithmetic output unit, period, or type is incompatible')
-    if rule.output.aggregation == 'additive' and (
-            rule.operation not in ('add', 'subtract') or
-            left.aggregation != 'additive' or right.aggregation != 'additive'):
-        raise WorkflowError('NON_ADDITIVE', 'Arithmetic cannot establish additive output from unproven or non-additive measures')
+    if rule.output.aggregation == 'additive':
+        if rule.constant_scaling and rule.operation in ('multiply', 'divide'):
+            # A declared constant scaling factor applied to an additive measure
+            # may produce additive per-row outputs, subject to business review.
+            # Per-row rounding is not equivalent to rounding an aggregated sum.
+            # A unit of 1 alone is not proof of a constant — it may be a
+            # row-varying rate — so this path is only reachable through an
+            # explicit, reviewed constant_scaling declaration.
+            if (right.unit != '1' or right.aggregation != 'non_additive'
+                    or left.aggregation != 'additive'):
+                raise WorkflowError('NON_ADDITIVE', 'Constant scaling requires a dimensionless non-additive factor and an additive measure')
+        elif rule.operation in ('add', 'subtract'):
+            if left.aggregation != 'additive' or right.aggregation != 'additive':
+                raise WorkflowError('NON_ADDITIVE', 'Arithmetic cannot establish additive output from unproven or non-additive measures')
+        else:
+            raise WorkflowError('NON_ADDITIVE', 'Arithmetic cannot establish additive output from unproven or non-additive measures')
 
 
 def _calculate(rule: Calculation, row, fields):
@@ -748,6 +762,10 @@ def validate_sql(sql: str, allowed_tables: set[str], *, allowed_schema: str | No
     if not base_tables:
         raise WorkflowError('UNSAFE_SQL', 'SQL must reference an explicitly supplied input table')
     for function in tree.find_all(exp.Func):
+        # AND/OR are boolean connectors, not scalar functions; sqlglot models
+        # them as Func subclasses but they carry no function-call semantics.
+        if isinstance(function, exp.Connector):
+            continue
         name = function.name.upper() if isinstance(function, exp.Anonymous) else function.sql_name().upper()
         if name not in SQL_FUNCTIONS:
             raise WorkflowError('UNSAFE_SQL', 'SQL contains a function outside the approved deterministic set')
@@ -873,6 +891,12 @@ def _operate(stage, tables, budget, deadline):
             if rule.output.name in fields:
                 raise WorkflowError('DUPLICATE_COLUMN', 'Arithmetic output cannot overwrite an existing field')
             _calculation_semantics(rule, fields)
+            if rule.constant_scaling and rule.operation in ('multiply', 'divide'):
+                # A declared constant must actually be constant across rows;
+                # a row-varying rate silently breaks the sum-distributivity
+                # the additive output relies on.
+                if len({row[rule.right] for row in result}) > 1:
+                    raise WorkflowError('NON_CONSTANT_SCALE', 'Declared constant scaling factor varies across rows and cannot be treated as constant')
             for row in result:
                 row[rule.output.name] = _calculate(rule, row, fields)
             columns.append(rule.output)
@@ -1181,5 +1205,7 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
     return {'version': 1, 'plan_sha256': digest(plan.model_dump()), 'input_sha256': input_hashes,
             'output': {**exported, 'row_count': len(output['rows']), 'sha256': result_hash},
             'stages': receipts, 'complete': True,
-            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti, LookupEffective, FxConvert)) for stage in plan.stages),
+            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti, LookupEffective, FxConvert))
+                                              or (isinstance(stage, Compute) and any(c.constant_scaling for c in stage.calculations))
+                                              for stage in plan.stages),
             'scope': 'explicit_semantic_tables; isolated_typed_operations; full_bounded_output; not_arbitrary_python'}

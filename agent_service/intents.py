@@ -77,9 +77,50 @@ def denied(text,action):
     # Instructions quoted for discussion cannot grant authority. Remove quotes
     # before detecting a positive imperative, but still reject an explicit veto.
     intent_text=_without_user_code_burden(text) if action=='write' else text
+    # A concrete deliverable request (列出 Excel/Word/PPT 等交付物) is an execution
+    # intent, not "only discuss". Its surrounding 不要/不能 clauses are then
+    # content-quality constraints (无法可靠计算的数字不要生成 / 不能将未经确认的
+    # 解释写成结论), not vetoes of the deliverable itself — only a veto whose verb
+    # targets an artifact blocks, and the 如何/说明/假设 wording is requirement
+    # prose, not a discussion-only question.
+    _deliverable=r'(?:Excel|Word|PPT|报告|工作簿|报表|文档|表格|\.xlsx|\.docx|\.pptx)'
+    _produce=r'(?:需要交付的成果|输出成果|交付成果|需交付|要交付|请生成|请制作|请创建|请输出|请导出|请编写)'
+    # A deliverable request is execution intent for produce/run actions, but the
+    # same wording must not waive the discussion check for publish/delete/schedule
+    # and other sensitive operations.
+    unquoted_intent=re.sub(r'[“「『"].*?[”」』"]','',intent_text,flags=re.S)
+    production=re.search(_produce,unquoted_intent)
+    # A quoted example or hypothetical question is not an actual request to
+    # execute, even if it contains a literal "请生成报告".
+    discussion_prefix=bool(production and re.search(
+        r'解释|说明|什么意思|如何|怎么|为什么|假如|假设|如果|举例|是否|有没有',
+        unquoted_intent[:production.start()]))
+    # A hypothetical about someone saying a request is discussion of that
+    # request, rather than authorization to perform it. Keep ordinary
+    # conditionals about the availability of data distinct from this case.
+    if discussion_prefix and re.search(
+            r'(?:如果|假如|假设)\s*(?:用户|我|他|她|有人|对方)\s*(?:说|问|写|输入|提出|要求)',
+            unquoted_intent[:production.start()]):
+        return True
+    deliverable_request=(action in ('write','analyze','refresh','local_export') and
+                         bool(production and re.search(_deliverable,unquoted_intent)) and
+                         not discussion_prefix)
     clauses=re.split(r'[，,。；;\n]|但是|而是|不过|只要',intent_text)
+    _veto_head=r'(?:'+_DONT+r'|不用|不必|不需要|不允许|不准|没让你|没叫你|禁止|不能|暂不|先不|不(?=执行|运行|重跑|发布|删除|修改|暂停))'
     for clause in clauses:
-        if re.search(r'(?:'+_DONT+r'|不用|不必|不需要|不允许|不准|没让你|没叫你|禁止|不能|暂不|先不|不(?=执行|运行|重跑|发布|删除|修改|暂停)).{0,14}(?:'+verbs+r')',clause):return True
+        # Exempt only explicit restrictions on unreliable content, not a veto
+        # of an operation or data source. A deliverable elsewhere in the same
+        # request never authorizes an operation the user explicitly prohibited.
+        quality_constraint=(
+            r'\s*(?:(?:无法可靠计算|无法核实|未经确认|缺乏依据)的(?:数字|数值|数据|结论|解释|原因)'
+            r'(?:不要|不能|不得|不应)(?:生成|输出|展示|编造|写入)'
+            r'|(?:不要|不能|不得|不应)(?:将|把)(?:未经确认|无法核实|缺乏依据)的'
+            r'(?:数字|数值|数据|结论|解释|原因)(?:写成|当作|作为|编造成)(?:事实|结论))\s*'
+        )
+        if deliverable_request and re.fullmatch(quality_constraint,clause):continue
+        veto=_veto_head+r'.{0,14}(?:'+verbs+r')'
+        if re.search(veto,clause):return True
+    if deliverable_request:return False
     unquoted=re.sub(r'[“「『"].*?[”」』"]','',text,flags=re.S)
     if action=='write':unquoted=_without_user_code_burden(unquoted)
     if re.search(r'解释|说明|什么意思|如何|怎么|为什么|假如|假设|如果|举例|是否已经|有没有',unquoted):

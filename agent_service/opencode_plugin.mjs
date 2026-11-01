@@ -70,15 +70,19 @@ export default {
       const offered=Array.isArray(parsed.tools)?parsed.tools:[];
       const atlasOnly=offered.length===1&&offered[0]?.type==='function'&&offered[0]?.function?.name==='atlas_step';
       const forced=generation&&atlasOnly&&parsed.tool_choice!=='required';
+      // One atlas_step per response keeps Atlas's ordered planning/verification
+      // loop intact. Parallel calls would exhaust the plan-required retry budget
+      // inside a single model response, before the model can see the feedback.
+      const parallelDisabled=generation&&atlasOnly&&parsed.parallel_tool_calls!==false;
       // Final answers and needs-input questions also have a validated
       // atlas_step variant. Free text is never a substitute for that receipt.
-      if(generation&&atlasOnly)parsed.tool_choice='required';
+      if(generation&&atlasOnly){parsed.tool_choice='required';parsed.parallel_tool_calls=false;}
       const choice=typeof parsed.tool_choice==='string'&&['auto','none','required'].includes(parsed.tool_choice)
         ?parsed.tool_choice:parsed.tool_choice&&typeof parsed.tool_choice==='object'?'named':parsed.tool_choice==null?'absent':'other';
       const protocol={tool_choice:choice,function_count:offered.filter(tool=>tool?.type==='function').length,
         atlas_step_only:atlasOnly,choice_forced:forced};
       const projected = generation ? projectRequest(parsed) : null;
-      let body = forced||summaryOutputAdjusted||(projected?.metrics.saved_characters??0)>0 ? JSON.stringify(projected?.body??parsed) : originalBody;
+      let body = forced||parallelDisabled||summaryOutputAdjusted||(projected?.metrics.saved_characters??0)>0 ? JSON.stringify(projected?.body??parsed) : originalBody;
       const admission=await endpoint(input.sessionID, { op: "model_request", kind, input_characters: body.length,
         max_output_tokens:requestedOutput,
         target_url: input.request.url, model_id: parsed.model, context_projection: projected?.metrics,

@@ -158,14 +158,19 @@ def discover(turn,value):
     names=allowed(turn)
     explicit=[(match.start(),name) for name in names
               if (match:=re.search(r'(?<![a-z0-9_])'+re.escape(name)+r'(?![a-z0-9_])',query))]
+    fallback=False
     if explicit:matches=[name for _,name in sorted(explicit)][:value.limit]
     else:
         ranked=sorted(names,key=lambda n:(sum(5 if w in n else 1 for w in words if w in n+' '+TOOLS[n][2]),n),reverse=True)
         matches=[n for n in ranked if any(w in n+' '+TOOLS[n][2] for w in words)][:value.limit]
-        if not matches:matches=[n for n in ranked if n not in CORE][:value.limit]
+        fallback=not matches
+        if fallback:matches=[n for n in ranked if n not in CORE][:value.limit]
     current=get('turn',turn['id'])
     focus=list(dict.fromkeys(current.get('discovered_tools',[])+matches))[-16:]
     patch('turn',turn['id'],discovered_tools=focus,tool_focus=matches)
+    if fallback and not explicit:
+        return {'tools':[definition(n) for n in matches],'not_found':True,
+                'next_step':'未找到与该目标直接匹配的工具。若确实缺少这项能力（例如访问外部网页/接口需要已配置的工作连接器，或需要用户另行提供数据），请停止继续搜索，直接向用户说明具体阻碍和需要的输入，等待确认；不要反复用不同关键词搜索同一能力。'}
     return {'tools':[definition(n) for n in matches],'next_step':'下一步可调用这些工具；目录匹配不代表已经执行'}
 
 def row_scope(value,tool):

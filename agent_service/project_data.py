@@ -325,10 +325,13 @@ def read_input(pid,binding,*,frozen_source=None):
             if s.get('fact_review_id'):evidence['fact_review_id']=s['fact_review_id']
         evidence.update(source_id=s['id'],source_revision=s.get('revision',1),content_hash=s.get('content_hash'),rows=len(rows))
     if binding.column_map:
+        # __-prefixed keys name engine-injected synthetic columns (e.g. atlas_row)
+        # and are not source fields; they never participate in column mapping.
+        column_map={k:v for k,v in binding.column_map.items() if not str(k).startswith('__')}
         names={f['name'] for f in fields}
-        if not set(binding.column_map)<=names or len({binding.column_map.get(n,n) for n in names})!=len(names):raise ValueError('输入列映射无效或目标重复')
-        rows=[{binding.column_map.get(k,k):v for k,v in r.items()} for r in rows]
-        fields=[dict(f,name=binding.column_map.get(f['name'],f['name'])) for f in fields]
+        if not set(column_map)<=names or len({column_map.get(n,n) for n in names})!=len(names):raise ValueError('输入列映射无效或目标重复')
+        rows=[{column_map.get(k,k):v for k,v in r.items()} for r in rows]
+        fields=[dict(f,name=column_map.get(f['name'],f['name'])) for f in fields]
     if len(rows)>MAX_ROWS:raise ValueError('输入超过部署行数预算，未截断或发布')
     return rows,fields,evidence,provenance
 
@@ -1037,6 +1040,19 @@ def execute_job(run,folder):
                                 details['column']=b.column_map.get(key,key)
                         except (ValueError,TypeError):pass
                 fail_input(error.code,' '.join(str(error).split())[:1000],details)
+            # A snapshot-scoped physical row ordinal gives the typed engine a
+            # unique grain so fully-duplicate physical rows (an identical
+            # business row entered twice) can still be loaded and then be
+            # deduplicated or flagged as conflicts inside the workflow — the
+            # same convention the business-flow reader uses. It is not a
+            # business key and is not stable if a later source snapshot is
+            # reordered. Only applied when the plan declares an atlas_row column.
+            if any(c.name == 'atlas_row' for c in doc.plan.inputs[alias].columns):
+                if any(f.get('name') == 'atlas_row' for f in fields) or any('atlas_row' in row for row in rows):
+                    fail_input('INPUT_SCHEMA_MISMATCH',
+                        '输入数据已有 atlas_row 字段，不能覆盖原始数据生成行号；请将该字段映射为其他名称后重试')
+                rows=[dict(row, atlas_row=str(index)) for index, row in enumerate(rows, 1)]
+                fields=fields+[{'name':'atlas_row','label':'本次资料行号','numeric':False}]
             names={f['name'] for f in fields};expected={f.name for f in doc.plan.inputs[alias].columns}
             if names!=expected:fail_input('INPUT_SCHEMA_MISMATCH','输入字段与冻结计划不一致，请修改方案后重新运行')
             upstream=proof.get('output_semantics')

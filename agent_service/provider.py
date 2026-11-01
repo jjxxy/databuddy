@@ -18,6 +18,7 @@ class ProviderInput(StrictModel):
     model:str=Field(min_length=1,max_length=120)
     api_key:SecretStr=Field(default=SecretStr(''))
     share_data:bool=False
+    vision:bool=False
     tool_protocol:Literal['json','native']='json'
     upstream_base_url:str=Field(default='',max_length=500)
     # Optional, per-model provider limits. These are frozen in the same

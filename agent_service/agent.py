@@ -1051,14 +1051,23 @@ def _request_missing_plan(turn,call_id=None):
     from .conversation import finish
     boundary=len(turn.get('agent_trace',[]))
     prior=turn.get('plan_required_rejections') or {}
-    count=prior.get('attempts',0)+1 if prior.get('trace_length')==boundary else 1
+    # A provider may ignore parallel_tool_calls and answer one response with
+    # several parallel tool calls; those land as multiple rejected calls inside a
+    # single message. That is one failed planning decision, not several refusals —
+    # count it once so the model still gets a later round to read the feedback
+    # and supply a plan before the retry budget is exhausted.
+    message_id=call_id.split(':')[1] if isinstance(call_id,str) and call_id.count(':')>=2 else None
+    if message_id and prior.get('message_id')==message_id:
+        count=prior.get('attempts',0)
+    else:
+        count=prior.get('attempts',0)+1 if prior.get('trace_length')==boundary else 1
     feedback={'code':'WORK_PLAN_REQUIRED','executed':False,
               'error':'这项工作包含多个步骤。请先调用 set_task_plan 记录具体的工作计划，再执行或宣告完成；计划不等于实际成果。'}
     # A rejected native call has no tool receipt; retain its call ID separately
     # so transport replays cannot consume retries or later execute it as new.
     rejected_ids=list(turn.get('plan_required_call_ids') or [])
     if isinstance(call_id,str) and call_id and call_id not in rejected_ids:rejected_ids.append(call_id)
-    patch('turn',turn['id'],plan_required_rejections={'trace_length':boundary,'attempts':count},
+    patch('turn',turn['id'],plan_required_rejections={'trace_length':boundary,'attempts':count,'message_id':message_id},
           plan_required_call_ids=rejected_ids,verification_feedback=feedback,state='agent',progress='正在制定工作计划')
     if count>=3:
         finish(get('turn',turn['id']),'模型暂未给出可执行的工作计划，任务尚未完成；已有资料和成果已保留。可以继续或更换模型。',
