@@ -284,6 +284,42 @@ def assert_resumable_effects(turn):
         if definition is None or definition[1]:
             raise ValueError('上一项操作的执行结果尚未确认；请先核对工作记录和外部系统状态，未自动重试')
 
+def _legacy_plan_protocol_error(turn):
+    """Recognize only an unfinished historical plan emitted as final text.
+
+    This grants a continuation, never execution of the historical text. Keep
+    legitimate requests for a JSON example visible and untouched.
+    """
+    if (turn.get('interaction_mode','work')!='work' or turn.get('state') not in TERMINAL
+            or turn.get('outcome') not in (None,'blocked','needs_input','partial','answered')
+            or turn.get('task_plan')):
+        return False
+    text=turn.get('work_request') or turn.get('text') or ''
+    from .agent import TaskPlan,_tool_envelope,_wants_tool_json_example
+    if not isinstance(text,str) or _wants_tool_json_example(turn):
+        return False
+    if turn.get('outcome') in (None,'answered'):
+        contract=turn.get('task_contract') or {}
+        work_contract=isinstance(contract,dict) and contract.get('kind') not in (None,'answer')
+        source_work=bool(attachment_ids(turn)) and bool(re.search(r'分析|处理|核对|汇总|加工|生成|制作|交付|整理|运行|读取',text))
+        if not (work_contract or source_work):return False
+    answer=turn.get('answer')
+    if not isinstance(answer,str) or len(answer)>16000:return False
+    value=_tool_envelope(answer)
+    if not value or value.get('tool')!='set_task_plan':
+        return False
+    try:
+        plan=TaskPlan.model_validate(value['arguments'])
+        return len(plan.steps)>=2 and all(isinstance(s,str) and s.strip() for s in plan.steps)
+    except (ValueError,TypeError):return False
+
+
+def _can_resume_turn(turn, *, explicit=False):
+    # Historical recovery is always tied to the specific button/turn id; a
+    # free-text "继续" must not unexpectedly select an old malformed answer.
+    return bool(turn.get('resume_available')) or bool(explicit and not turn.get('protocol_recovery_consumed') and _legacy_plan_protocol_error(turn))
+
+
 def submit(project_id, value, *, trusted_fields=None):
     # Server-only callers attach grants and frozen child policy before the row
     # is runnable. TurnInput deliberately has no corresponding public field.
@@ -304,7 +340,7 @@ def submit(project_id, value, *, trusted_fields=None):
             raise ValueError('待继续的任务不存在，请刷新对话后再点原任务的“继续”。输入和附件已保留。') from None
         if resume_target['project_id']!=project_id or resume_target.get('session_id',default_session(project_id))!=session_id:raise ValueError('只能继续当前对话里的任务')
         if resume_target.get('actor_id','owner')!=actor_id:raise ValueError('只能继续自己发起的任务；其他成员可发起新任务')
-        if not resume_target.get('resume_available'):raise ValueError('该任务当前不需要继续，请查看最新进度')
+        if not _can_resume_turn(resume_target,explicit=True):raise ValueError('该任务当前不需要继续，请查看最新进度')
         if value.text.strip() not in ('继续','继续处理','重试','重试上一项任务'):raise ValueError('继续任务请使用明确的继续指令')
         assert_resumable_effects(resume_target)
     # Interrupts bypass the model's project lock; discard any late model reply.
@@ -353,7 +389,7 @@ def submit(project_id, value, *, trusted_fields=None):
                     resume_target.get('session_id',default_session(project_id))!=session_id or
                     resume_target.get('actor_id','owner')!=actor_id):
                 raise ValueError('只能继续当前对话中自己发起的任务')
-            if not resume_target.get('resume_available'):
+            if not _can_resume_turn(resume_target,explicit=True):
                 raise ValueError('该任务当前不需要继续，请查看最新进度')
             assert_resumable_effects(resume_target)
             if any(t.get('resume_turn_id')==resume_target['id'] and t.get('state') not in TERMINAL
@@ -426,6 +462,12 @@ def public_turn(turn):
         inherited=turn.get('agent_budget_base',0)
         value['inherited_step_count']=max(0,min(inherited,len(turn.get('agent_trace',[])))) if type(inherited) is int else 0
     if 'answer' in value:value['answer']=visible_answer(turn)
+    if _legacy_plan_protocol_error(turn):
+        from .actor_context import current_actor
+        value['answer']=('此前模型没有正常调用工作计划工具，该次任务未完成；请查看后续继续记录。'
+                         if turn.get('protocol_recovery_consumed') else
+                         '此前模型没有正常调用工作计划工具，这项任务尚未完成。可以继续原任务，已有工作记录会保留。')
+        if not turn.get('protocol_recovery_consumed') and turn.get('actor_id','owner')==current_actor():value['resume_available']=True
     from .task_budget import unsupported_round_stop
     if value.get('state') in ('done','failed') and unsupported_round_stop(turn,value.get('answer')):
         value['obsolete_budget_pause']=True
@@ -1020,7 +1062,7 @@ def handle(turn):
         finish(turn,health_answer(turn['project_id']));return
     if re.fullmatch(r'(?:请)?(?:继续|继续处理|重试|重试上一项任务)[。！!\s]*',turn['text']) and not turn.get('resumed_from'):
         from .actor_context import current_actor
-        previous=sorted((t for t in all_items('turn') if t['project_id']==turn['project_id'] and t.get('session_id',default_session(turn['project_id']))==turn.get('session_id',default_session(turn['project_id'])) and t.get('actor_id','owner')==current_actor() and t['created_at']<turn['created_at'] and t.get('resume_available') and (not turn.get('resume_turn_id') or t['id']==turn['resume_turn_id'])),key=lambda t:(t['created_at'],t['id']),reverse=True)
+        previous=sorted((t for t in all_items('turn') if t['project_id']==turn['project_id'] and t.get('session_id',default_session(turn['project_id']))==turn.get('session_id',default_session(turn['project_id'])) and t.get('actor_id','owner')==current_actor() and t['created_at']<turn['created_at'] and _can_resume_turn(t,explicit=bool(turn.get('resume_turn_id'))) and (not turn.get('resume_turn_id') or t['id']==turn['resume_turn_id'])),key=lambda t:(t['created_at'],t['id']),reverse=True)
         if previous:
             if not status()['configured']:finish(turn,'请先恢复模型连接，再回复“继续”。已有步骤和成果会保留。');return
             old=previous[0]
@@ -1038,7 +1080,7 @@ def handle(turn):
             if turn.get('application_id') and old.get('application_id') and turn['application_id']!=old['application_id']:finish(turn,'当前应用与暂停的任务不同，请先回到原应用再继续。');return
             trace=[s for s in old.get('agent_trace',[]) if s['status'] in ('done','failed')]
             turn=patch('turn',turn['id'],resumed_from=old['id'],agent_origin=old.get('agent_origin',old['id']),work_request=old.get('work_request',old['text']),discovered_tools=old.get('discovered_tools',[]),knowledge_refs=old.get('knowledge_refs',[]),knowledge_read_refs=old.get('knowledge_read_refs',[]),knowledge_slices=old.get('knowledge_slices',{}),web_read_refs=copy.deepcopy(old.get('web_read_refs',{})),web_search_refs=list(old.get('web_search_refs',[])),knowledge_basis=old.get('knowledge_basis',[]),task_contract=old.get('task_contract'),task_plan=copy.deepcopy(old.get('task_plan')),run_id=old.get('run_id'),agent_trace=trace,agent_budget_base=len(trace),source_id=old.get('source_id'),source_ids=attachment_ids(old),attached_sources=old.get('attached_sources',[]),application_id=old.get('application_id'),candidate_run=old.get('candidate_run'),agent_result=old.get('agent_result'),agent_download=old.get('agent_download'),state='agent',agent_runtime=runtime_binding,agent_runtime_origin=binding_origin(old),**selection)
-            patch('turn',old['id'],resume_available=False)
+            patch('turn',old['id'],resume_available=False,**({'protocol_recovery_consumed':True} if _legacy_plan_protocol_error(old) else {}))
         else:finish(turn,'当前没有等待继续的中断任务。你可以直接说明新的需求；重跑已有应用请说“重跑这个应用”。');return
     if turn['state'] in ('queued','agent','agent_tool','waiting_source') and not prepare_attachments(turn):return
     if turn.get('application_id') and turn.get('interaction_mode','work')=='work':

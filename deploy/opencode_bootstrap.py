@@ -5,12 +5,30 @@ from pathlib import Path
 VERSION='2.1.2'
 BINARY_SHA256='cf5841e6666aeb469abec8b39ca494cef07a637756454a34a742b2f4996e1675'
 
+def _timeout_seconds(name, default):
+    raw=os.getenv(name)
+    if raw is None:return default
+    if not raw.isascii() or not raw.isdecimal() or not 1<=int(raw)<=86400:
+        raise ValueError(name+' 需要 1 到 86400 之间的整数秒')
+    return int(raw)
+
+
+def _upstream_timeouts():
+    idle=_timeout_seconds('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
+    settings={'headerTimeout':idle*1000,'chunkTimeout':idle*1000}
+    # OpenCode defines timeout as an additional *whole request* deadline.
+    # Do not kill an otherwise healthy, active stream by default.
+    if os.getenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
+        settings['timeout']=_timeout_seconds('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
+    return settings
+
+
 def config(base):
     return {'update':'disable','permissions':[{'action':'*','resource':'*','effect':'deny'}],
             'plugins':[],'mcp':{'servers':{}},'instructions':[],
             'providers':{'atlas':{'name':'Atlas model','env':['ATLAS_MODEL_KEY'],
                 'package':'@opencode/ai/providers/openai-compatible',
-                'settings':{'baseURL':base,'timeout':45000,'headerTimeout':45000,'chunkTimeout':45000,'encoding':'none'},
+                'settings':{'baseURL':base,**_upstream_timeouts(),'encoding':'none'},
                 'compatibility':{'reasoningField':'reasoning_content'},
                 'body':{'max_tokens':8192,'thinking':{'type':'enabled'},'reasoning_effort':'high'},
                 'models':{'deepseek-v4-pro':{'modelID':'deepseek-v4-pro','name':'DeepSeek V4 Pro'}}}},

@@ -4,7 +4,7 @@ const root=path.resolve(__dirname,'../../agent_service/static');
 const until=async predicate=>{const end=Date.now()+4000;while(!predicate()){if(Date.now()>end)throw Error('resume UI did not settle');await new Promise(resolve=>setTimeout(resolve,5))}};
 const response=(value,status=200)=>({ok:status>=200&&status<300,status,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(value))});
 const turnId='t_25300e8519874c4ebf0dbad07be20b1365030869';
-async function boot({failureStatus=0,statusResult=false,statusFailure=false,message='资源不存在',includeResumed=false,originalMode='work'}={}){
+async function boot({failureStatus=0,statusResult=false,statusFailure=false,message='资源不存在',includeResumed=false,originalMode='work',historicalPlanError=false}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,posts=[],statusQueries=[];
  let fail=failureStatus;
  w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','fixture-owner');
@@ -14,7 +14,7 @@ async function boot({failureStatus=0,statusResult=false,statusFailure=false,mess
   if(route==='/api/projects')return response([{id:'p',name:'月结亲测'}]);
   if(route.endsWith('/conversation'))return response({project:{id:'p',name:'月结亲测'},session_id:'c',sessions:[{id:'c',name:'原对话'}],
    sources:[{id:'s_1',name:'业务源表.xlsx'},{id:'s_2',name:'口径.txt'}],applications:[],mode:'llm',
-   turns:[{id:turnId,text:'分析原始完整资料',answer:'AI运行服务暂不可用',state:'failed',outcome:'paused',resume_available:true,model_id:'careful',interaction_mode:originalMode,source_ids:['s_1','s_2'],created_at:'2026-01-01T00:00:00Z'},
+   turns:[{id:turnId,text:'分析原始完整资料',answer:historicalPlanError?'此前模型没有正常调用工作计划工具，这项任务尚未完成。可以继续原任务，已有工作记录会保留。':'AI运行服务暂不可用',state:'failed',outcome:'paused',resume_available:true,model_id:'careful',interaction_mode:originalMode,source_ids:['s_1','s_2'],created_at:'2026-01-01T00:00:00Z'},
     ...(includeResumed?[{id:'t_resumed',text:'继续',state:'queued',resume_turn_id:turnId,source_ids:['s_1','s_2'],created_at:'2026-01-01T00:01:00Z'}]:[])]});
   if(route.endsWith('/message-status')){statusQueries.push(u.searchParams.get('request_id'));return response({accepted:statusResult},statusFailure?503:200)}
   if(route.endsWith('/messages')){posts.push(JSON.parse(options.body));return fail?response({detail:message},fail):response({id:'t_accepted'})}
@@ -26,6 +26,7 @@ async function boot({failureStatus=0,statusResult=false,statusFailure=false,mess
  return {dom,w,d,posts,statusQueries,accept:()=>{fail=0},async click(){d.querySelector('[data-continue]').click();await until(()=>posts.length>0&&!w.resumeTest.state().sending)}};
 }
 (async()=>{
+ const legacy=await boot({historicalPlanError:true});try{assert(legacy.d.querySelector(`[data-turn="${turnId}"]`).textContent.includes('没有正常调用工作计划工具'));await legacy.click();assert.equal(legacy.posts[0].resume_turn_id,turnId);assert.deepEqual(legacy.posts[0].source_ids,[])}finally{legacy.dom.window.close()}
  const inherited=await boot({includeResumed:true});try{
   const original=inherited.d.querySelector(`[data-turn="${turnId}"] .user-row`);
   const resumed=inherited.d.querySelector('[data-turn="t_resumed"] .user-row');

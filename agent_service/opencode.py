@@ -11,13 +11,13 @@ import httpx
 VERSION='2.1.2'
 PACKAGES={'@opencode/ai/providers/openai-compatible','@opencode/ai/providers/openai/chat','@opencode/ai/providers/anthropic'}
 
-def request(value,method,path,body=None,limit=512000):
+def request(value,method,path,body=None,limit=512000,*,timeout=None):
     from .connectors import safe_api_url
     original=httpx.URL(value['base_url'].rstrip('/')+path)
     target=original.copy_with(host=safe_api_url(str(original)))
     auth=base64.b64encode(('opencode:'+value.get('api_key','')).encode()).decode()
     headers={'Authorization':'Basic '+auth,'Host':original.netloc.decode()}
-    with httpx.Client(timeout=50,trust_env=False,follow_redirects=False) as client:
+    with httpx.Client(timeout=50 if timeout is None else timeout,trust_env=False,follow_redirects=False) as client:
         with client.stream(method,target,headers=headers,json=body,extensions={'sni_hostname':original.host}) as response:
             response.raise_for_status();chunks=[];size=0
             for chunk in response.iter_bytes():
@@ -69,7 +69,8 @@ def complete(messages,value,tools,max_tokens):
             'Tool descriptions are a proposal interface: do not execute tools. Atlas will validate and execute one decision. '
             f'Keep the output within approximately {max_tokens} tokens.\n'+json.dumps(messages,ensure_ascii=False))
     provider_id,model_id=value['model'].split('/',1)
-    result=request(value,'POST','/api/experimental/generate',{'prompt':prompt,'model':{'providerID':provider_id,'id':model_id}},limit=150000)
+    from .model_transport import model_http_timeout
+    result=request(value,'POST','/api/experimental/generate',{'prompt':prompt,'model':{'providerID':provider_id,'id':model_id}},limit=150000,timeout=model_http_timeout())
     content=result.get('data',{}).get('text')
     if not isinstance(content,str) or not content.strip() or len(content)>100000:raise ModelOutputError('OpenCode没有返回完整文本，未执行任何计划')
     return content,{}, {'version':VERSION,'integration':'stateless_decision_backend','usage_reported':False,'upstream_token_limit_enforced':False}

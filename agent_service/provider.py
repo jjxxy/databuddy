@@ -153,50 +153,72 @@ def _native_tool_unsupported(error):
                 or re.search('(?:'+unsupported+').{0,80}(?:'+subject+')',message))
 
 
-def _stream_response_payload(body):
-    """Normalize a bounded OpenAI-compatible SSE response, without guessing.
+class _SSEParser:
+    """Incrementally reconstruct a complete SSE decision without retaining reasoning."""
+    # Bound any one event while allowing arbitrarily many heartbeat/thinking
+    # events without buffering the entire stream. User-facing content and
+    # executable tool arguments have their own independent bounds.
+    EVENT_LIMIT=4*1024*1024
 
-    A provider may ignore stream=false. Only complete assistant choices and
-    tool argument fragments are reconstructed; content is never executed here.
-    """
-    try:text=body.decode('utf-8-sig')
-    except UnicodeDecodeError:raise ModelOutputError('模型服务返回了无效响应',code='invalid_response_json') from None
-    blocks=re.split(r'\r?\n\r?\n',text)
-    if len(blocks)>10000:raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
-    content=[];content_size=0;calls={};finish=None;usage={};done=False;seen=False
-    for block in blocks:
-        lines=[line[5:].lstrip(' ') for line in block.splitlines() if line.startswith('data:')]
-        if not lines:continue
+    def __init__(self):
+        self.buffer=bytearray();self.content=[];self.content_size=0
+        self.calls={};self.finish=None;self.usage={};self.done=False;self.seen=False
+        self.ended=False;self.first=True;self.error=None
+
+    def feed(self,data):
+        if self.done:return
+        # Process bounded pieces even if an upstream yields an enormous chunk.
+        for offset in range(0,len(data),65536):
+            self.buffer.extend(data[offset:offset+65536])
+            while True:
+                match=re.search(rb'\r?\n\r?\n',self.buffer)
+                if not match:break
+                if match.start()>self.EVENT_LIMIT:raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
+                raw=bytes(self.buffer[:match.start()]);del self.buffer[:match.end()]
+                self.ended=True;self._block(raw)
+                if self.done:
+                    self.buffer.clear();return
+            if len(self.buffer)>self.EVENT_LIMIT:raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
+            if self.buffer:self.ended=False
+
+    def _block(self,raw):
+        try:
+            text=raw.decode('utf-8-sig' if self.first else 'utf-8')
+        except UnicodeDecodeError:raise ModelOutputError('模型服务返回了无效响应',code='invalid_response_json') from None
+        self.first=False
+        lines=[line[5:].lstrip(' ') for line in text.splitlines() if line.startswith('data:')]
+        if not lines:return
         data='\n'.join(lines)
-        if data.strip()=='[DONE]':done=True;break
+        if not data.strip():return
+        if data.strip()=='[DONE]':self.done=True;return
         try:event=json.loads(data)
         except (ValueError,TypeError):raise ModelOutputError('模型流式响应格式不完整',code='invalid_response_json') from None
         if not isinstance(event,dict):raise ModelOutputError('模型流式响应格式不完整',code='invalid_response_json')
-        if event.get('error'):return {'error':event['error']}
-        if isinstance(event.get('usage'),dict):usage=event['usage']
+        if event.get('error'):
+            self.error=event['error'];self.done=True;return
+        if isinstance(event.get('usage'),dict):self.usage=event['usage']
         choices=event.get('choices',[])
         if not isinstance(choices,list) or len(choices)>1:raise ModelOutputError('模型流式响应包含多个结果',code='invalid_model_response')
-        if not choices:continue
-        if finish is not None:raise ModelOutputError('模型流式响应结束后仍有内容',code='invalid_model_response')
+        if not choices:return
+        if self.finish is not None:raise ModelOutputError('模型流式响应结束后仍有内容',code='invalid_model_response')
         choice=choices[0]
         if not isinstance(choice,dict) or choice.get('index',0)!=0:raise ModelOutputError('模型流式响应格式不完整',code='invalid_model_response')
-        seen=True
-        delta=choice.get('delta') or {}
+        self.seen=True;delta=choice.get('delta') or {}
         if not isinstance(delta,dict):raise ModelOutputError('模型流式响应格式不完整',code='invalid_model_response')
         piece=delta.get('content')
         if piece is not None:
             if not isinstance(piece,str):raise ModelOutputError('模型流式响应内容无效',code='invalid_model_response')
-            content_size+=len(piece)
-            if content_size>100000:raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
-            content.append(piece)
+            self.content_size+=len(piece)
+            if self.content_size>100000:raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
+            if piece:self.content.append(piece)
         fragments=delta.get('tool_calls') or []
         if not isinstance(fragments,list) or len(fragments)>64:raise ModelOutputError('模型工具调用格式无效',code='native_invalid_response')
         for fragment in fragments:
             if not isinstance(fragment,dict):raise ModelOutputError('模型工具调用格式无效',code='native_invalid_response')
             index=fragment.get('index',0)
             if type(index) is not int or not 0<=index<64:raise ModelOutputError('模型工具调用格式无效',code='native_invalid_response')
-            if index not in calls:calls[index]={'type':'function','function':{'name':'','arguments':''}}
-            item=calls[index]
+            if index not in self.calls:self.calls[index]={'type':'function','function':{'name':'','arguments':''}}
+            item=self.calls[index]
             if fragment.get('type') not in (None,'function'):raise ModelOutputError('模型工具调用格式无效',code='native_invalid_response')
             call_id=fragment.get('id')
             if call_id:
@@ -213,12 +235,24 @@ def _stream_response_payload(body):
         reason=choice.get('finish_reason')
         if reason is not None:
             if reason not in ('stop','tool_calls','length','content_filter'):raise ModelOutputError('模型流式响应未正常完成',code='invalid_model_response')
-            finish=reason
-    if not seen or finish is None or not (done or text.endswith(('\n\n','\r\n\r\n'))):
-        raise ModelOutputError('模型流式响应未完整结束',code='invalid_model_response')
-    message={'content':''.join(content) if content else None}
-    if calls:message['tool_calls']=[calls[index] for index in sorted(calls)]
-    return {'choices':[{'finish_reason':finish,'message':message}],'usage':usage}
+            self.finish=reason
+
+    def result(self):
+        if self.error is not None:return {'error':self.error}
+        if not self.seen or self.finish is None or not (self.done or self.ended):
+            raise ModelOutputError('模型流式响应未完整结束',code='invalid_model_response')
+        # A stop completion is not confirmation of a tool-call completion.
+        # Never execute even syntactically complete arguments when a gateway
+        # ends a partial tool response as ordinary text.
+        if self.calls and self.finish=='stop':raise ModelOutputError('模型工具调用未完整结束，未执行操作',code='native_invalid_response')
+        message={'content':''.join(self.content) if self.content else None}
+        if self.calls:message['tool_calls']=[self.calls[index] for index in sorted(self.calls)]
+        return {'choices':[{'finish_reason':self.finish,'message':message}],'usage':self.usage}
+
+
+def _stream_response_payload(body):
+    """Normalize a bounded SSE response; a tool call is data until validated."""
+    parser=_SSEParser();parser.feed(body);return parser.result()
 
 
 def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning',tools=None):
@@ -288,24 +322,62 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
         body={'model':value['model'],'messages':messages,'max_tokens':max_tokens,'temperature':0,'stream':False}
         body.update(bounded_request_options(value['base_url'],value['model']))
         if tools:body.update(tools=tools,tool_choice='required',parallel_tool_calls=False)
-        with httpx.Client(timeout=50,trust_env=False) as client:
+        from .model_transport import model_http_timeout
+        with httpx.Client(timeout=model_http_timeout(),trust_env=False) as client:
             request_headers={'Authorization':'Bearer '+value['api_key']} if value.get('api_key') else {}
             with client.stream('POST',value['base_url'].rstrip('/')+'/chat/completions',headers=request_headers,json=body) as incoming:
-                raw=bytearray()
+                raw=bytearray();pending=bytearray()
+                streaming=incoming.status_code<400 and 'text/event-stream' in incoming.headers.get('content-type','').lower()
+                parser=_SSEParser() if streaming else None
+                decided=streaming or incoming.status_code>=400
+                # Non-streaming DeepSeek gateways may send leading blank lines
+                # as keepalives while waiting for the model. They carry no JSON
+                # information and must not exhaust the response size limit.
+                oversized_error=False;last_liveness_check=time.monotonic()
                 for chunk in incoming.iter_bytes():
-                    if len(raw)+len(chunk)>4*1024*1024:
-                        # Retain the HTTP failure class without retaining an
-                        # unbounded, potentially sensitive upstream error page.
-                        if incoming.status_code>=400:raw.clear();break
-                        raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
-                    raw.extend(chunk)
+                    # A heartbeat is network progress, not permission to keep
+                    # consuming a cancelled or revoked task. A fully silent
+                    # socket can only be interrupted when its read times out.
+                    if tid and time.monotonic()-last_liveness_check>=2:
+                        current=get('turn',tid)
+                        if turn.get('state') not in ('done','failed') and current.get('state') in ('done','failed'):
+                            raise httpx.ReadError('模型任务已停止',request=incoming.request)
+                        assert_turn_live(current);agent_gateway.assert_turn_allowed(current);agent_team.assert_turn_allowed(current)
+                        last_liveness_check=time.monotonic()
+                    for offset in range(0,len(chunk),65536):
+                        part=chunk[offset:offset+65536]
+                        if parser is not None:
+                            parser.feed(part)
+                            if parser.done:break
+                            continue
+                        if not decided:
+                            pending.extend(part)
+                            pending[:]=pending.lstrip(b' \t\r\n')
+                            prefix=bytes(pending)
+                            if prefix.startswith(b'\xef\xbb\xbf'):
+                                prefix=prefix[3:]
+                            elif prefix and b'\xef\xbb\xbf'.startswith(prefix):continue
+                            if not prefix:continue
+                            event_prefixes=(b'data:',b'event:',b'id:',b'retry:')
+                            if prefix.startswith((b'data:',b'event:',b'id:',b'retry:',b':')):
+                                parser=_SSEParser();parser.feed(prefix);pending.clear();decided=True
+                                if parser.done:break
+                                continue
+                            if any(candidate.startswith(prefix) for candidate in event_prefixes):continue
+                            decided=True;part=bytes(pending);pending.clear()
+                        elif incoming.status_code<400 and not raw:
+                            part=part.lstrip(b' \t\r\n')
+                        if len(raw)+len(part)>4*1024*1024:
+                            if incoming.status_code>=400:raw.clear();oversized_error=True;break
+                            raise ModelOutputError('模型响应过长，任务尚未完成',code='response_too_large')
+                        raw.extend(part)
+                    if oversized_error or parser is not None and parser.done:break
                 headers=httpx.Headers(incoming.headers)
                 # iter_bytes() has already decoded content encoding.
                 headers.pop('content-encoding',None);headers.pop('content-length',None)
-                r=httpx.Response(incoming.status_code,headers=headers,content=bytes(raw),request=incoming.request)
+                r=httpx.Response(incoming.status_code,headers=headers,content=bytes(raw or pending),request=incoming.request)
             r.raise_for_status()
-            if 'text/event-stream' in r.headers.get('content-type','').lower() or r.content.lstrip().startswith(b'data:'):
-                payload=_stream_response_payload(r.content)
+            if parser is not None:payload=parser.result()
             else:
                 try:payload=r.json()
                 except (ValueError,UnicodeError):raise ModelOutputError('模型服务返回了无效响应',code='invalid_response_json') from None

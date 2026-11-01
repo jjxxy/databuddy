@@ -120,7 +120,7 @@ def test_idless_prompt_does_not_attribute_delayed_old_idle_to_new_request(turn,m
     delayed=prior+[{'type':'assistant','error':{'code':'context_length_exceeded'}},
                    {'type':'idle','outcome':'failed'}]
     def advance_clock(_,number):
-        if number==2:clock[0]=60
+        if number==2:clock[0]=121
     session(monkeypatch,[prior,delayed],reused=True,prompt_has_id=False,on_context=advance_clock)
     with pytest.raises(provider.ModelServiceError,match='无法确认 Agent 已开始处理'):
         runtime.run_session(get('turn',turn['id']),'work',{},lambda *_:pytest.fail('no new result'))
@@ -160,7 +160,7 @@ def test_active_model_request_does_not_hit_admission_timeout(turn,monkeypatch):
 def test_unstarted_admitted_prompt_reports_stall_after_wait(turn,monkeypatch):
     clock=[0]
     monkeypatch.setattr(runtime,'time',SimpleNamespace(monotonic=lambda:clock[0]))
-    _,events=session(monkeypatch,[[{'type':'idle'}]],on_context=lambda *_:clock.__setitem__(0,60))
+    _,events=session(monkeypatch,[[{'type':'idle'}]],on_context=lambda *_:clock.__setitem__(0,121))
     with pytest.raises(provider.ModelServiceError,match='会话未开始处理'):
         runtime.run_session(turn,'work',{},lambda *_:pytest.fail('no valid tool call'))
     assert len(events)==1

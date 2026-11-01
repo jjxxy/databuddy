@@ -95,6 +95,57 @@ def _write(path, value):
     path.chmod(0o600)
 
 
+def _timeout_seconds(name, default, *, minimum=1, maximum=86400):
+    """Bound a network/availability timeout, not the total task duration."""
+    raw=os.getenv(name)
+    if raw is None:return default
+    try:
+        if not raw.isascii() or not raw.isdecimal():raise ValueError()
+        value=int(raw)
+    except (ValueError,TypeError):
+        raise ValueError(name+' 需要整数秒') from None
+    if not minimum<=value<=maximum:
+        raise ValueError(name+' 超出允许范围')
+    return value
+
+
+def _upstream_timeouts():
+    idle=_timeout_seconds('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
+    settings={'headerTimeout':idle*1000,'chunkTimeout':idle*1000}
+    # OpenCode defines timeout as an additional *whole request* deadline.
+    # Do not kill an otherwise healthy, active stream by default.
+    if os.getenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
+        settings['timeout']=_timeout_seconds('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
+    return settings
+
+
+class _ContextPoller:
+    """Reduce unchanged native context reads; never delay the cancellation loop."""
+    def __init__(self):
+        self.next_tick=0
+        self.signature=None
+        self.unchanged=0
+        self.activity=None
+
+    def due(self, tick, activity):
+        return tick>=self.next_tick or activity!=self.activity
+
+    def recorded(self, tick, activity, messages):
+        digest=hashlib.sha256(json.dumps(messages,ensure_ascii=False,sort_keys=True,
+                                            default=str,separators=(',',':')).encode()).digest()
+        if activity!=self.activity or digest!=self.signature:self.unchanged=0
+        else:self.unchanged+=1
+        self.signature=digest
+        self.activity=activity
+        # A tick is 150 ms. Limit waiting to ~5 seconds even with no changes.
+        interval=34 if self.unchanged>=6 else 14 if self.unchanged>=3 else 5
+        self.next_tick=tick+interval
+
+    def wake(self):
+        self.next_tick=0
+        self.unchanged=0
+
+
 def prepare(configuration, step_schema):
     """Return a supervisor command spec, called after dropping privileges."""
     binary = os.getenv('ATLAS_OPENCODE_BINARY') or shutil.which('opencode')
@@ -138,7 +189,7 @@ def prepare(configuration, step_schema):
             'name': 'Atlas managed model',
             'package': '@opencode/ai/providers/openai-compatible',
             'settings': {'baseURL': value['base_url'].rstrip('/'), 'apiKey': value.get('api_key', ''),
-                         'timeout': 45000, 'headerTimeout': 45000, 'chunkTimeout': 45000},
+                         **_upstream_timeouts()},
             'compatibility': {'reasoningField': 'reasoning_content'},
             'body': {'max_tokens': response_token_allowance(value), **bounded_request_options(value['base_url'], value['model'])},
             'models': {value['model']: {'modelID': value['model'], 'name': 'Atlas managed model',
@@ -599,7 +650,8 @@ def run_session(turn, prompt, info, callback):
             # old history lets two individually small contexts exceed the next
             # ordinary request's hard limit. ASCII escaping is conservative.
             if _needs_compaction(native_context,content,turn.get('opencode_compaction_requested'),_input_character_limit({},provider.settings())):
-                receipt=compact_session(value,session_id[0],turn['id'],timeout=45 if remaining_ms is None else min(45,max(1,remaining_ms/1000)))
+                compaction_wait=_timeout_seconds('ATLAS_OPENCODE_COMPACTION_TIMEOUT_SECONDS',1200)
+                receipt=compact_session(value,session_id[0],turn['id'],timeout=compaction_wait if remaining_ms is None else min(compaction_wait,max(1,remaining_ms/1000)))
                 patch('turn',turn['id'],opencode_compaction_requested=False,opencode_compaction_receipt=receipt)
                 baseline=list(_request(value,'GET','/api/session/'+session_id[0]+'/context')['data'])
                 previous_message_ids={item.get('id') for item in baseline if isinstance(item,dict) and isinstance(item.get('id'),str)}
@@ -610,21 +662,28 @@ def run_session(turn, prompt, info, callback):
             session_id[0] = session['id']
             patch('turn', turn['id'], opencode_session_id=session_id[0], opencode_version=VERSION)
             patch('turn', turn['id'],opencode_context_rebuild=False)
+        admission_timeout=_timeout_seconds('ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS',120)
         prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
         admitted=_request(value, 'POST', '/api/session/' + session_id[0] + '/prompt', {'text': content+'\n\n'+prompt_marker, 'resume': True}, timeout=15)
         prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
         admission_started=time.monotonic()
         corrections=0
         idle_checks = 0
+        poller=_ContextPoller()
         while not stop.wait(.15):
+            # Increment before any early continue so waiting for prompt admission
+            # never turns the normal interval into a 150 ms polling storm.
+            idle_checks += 1
             with serial:
                 assert_owned()
                 current = get('turn', turn['id'])
             if remaining_ms is not None and (time.monotonic() - started) * 1000 >= remaining_ms:
                 raise provider.BudgetExceeded('此任务已达到配置的处理时长上限，已有成果和步骤已保存')
             if current['state'] in ('done', 'failed') or current['state'] not in ('agent', 'agent_tool'):break
-            if idle_checks % 5 == 0:
+            activity=(calls[0],len(current.get('agent_trace') or []))
+            if poller.due(idle_checks,activity):
                 messages = _request(value, 'GET', '/api/session/' + session_id[0] + '/context')['data']
+                poller.recorded(idle_checks,activity,messages)
                 # A bridge callback may have stopped/completed the task while
                 # the context request was in flight. Preserve its real result.
                 if stop.is_set():break
@@ -655,7 +714,7 @@ def run_session(turn, prompt, info, callback):
                             # The durable inbox acknowledged the prompt but hasn't
                             # delivered it into this session context yet. Do not
                             # mistake an earlier idle marker for this request.
-                            if calls[0]==0 and time.monotonic()-admission_started>45:
+                            if calls[0]==0 and time.monotonic()-admission_started>admission_timeout:
                                 raise provider.ModelServiceError('Agent 已接收任务，但会话未开始处理；请检查执行服务状态后继续')
                             continue
                 else:
@@ -667,7 +726,7 @@ def run_session(turn, prompt, info, callback):
                     fresh=messages[len(baseline):]
                     index=next((i for i,item in enumerate(fresh) if _contains_prompt_marker(item,prompt_marker)),None)
                     if index is None:
-                        if calls[0]==0 and time.monotonic()-admission_started>45:
+                        if calls[0]==0 and time.monotonic()-admission_started>admission_timeout:
                             raise provider.ModelServiceError('无法确认 Agent 已开始处理本次请求；已有成果已保存，请检查执行服务后继续')
                         continue
                     fresh=fresh[index:]
@@ -701,6 +760,7 @@ def run_session(turn, prompt, info, callback):
                     # model response. Reuse the existing strict guard and route
                     # the resulting final through the same backend validation.
                     if idle.get('outcome')=='succeeded':
+                        recovered_plan=False
                         assistant=next((m for m in reversed(fresh[:-1]) if isinstance(m,dict) and m.get('type')=='assistant'),None)
                         if isinstance(assistant,dict) and isinstance(assistant.get('id'),str) and not assistant.get('error') and assistant.get('finish') in (None,'stop'):
                             parts=assistant.get('content')
@@ -710,6 +770,22 @@ def run_session(turn, prompt, info, callback):
                                 if 'Only validated Atlas tools are allowed' not in text:
                                     with serial:
                                         current=get('turn',turn['id'])
+                                        from .agent import _recover_plan_envelope,TOOLS
+                                        trace=current.get('agent_trace',[])
+                                        has_effect=any(not isinstance(x,dict) or x.get('tool') not in TOOLS or TOOLS[x['tool']][1]
+                                                       for x in trace if not isinstance(x,dict) or x.get('status') in ('started','done'))
+                                        # Only a complete, authorized planning object can be
+                                        # recovered from this fresh assistant message. Its
+                                        # stable message-derived ID goes through the same
+                                        # durable Atlas bridge as an actual native tool call.
+                                        candidate=_recover_plan_envelope(current,text,selected_only=True)
+                                        if candidate is not None and not has_effect and corrections<1:
+                                            call_id=session_id[0]+':'+assistant['id']+':text-plan'
+                                            callback(candidate.model_dump(),call_id)
+                                            current=get('turn',turn['id'])
+                                            recovered_plan=any(item.get('opencode_call_id')==call_id
+                                                and item.get('tool')=='set_task_plan' and item.get('status')=='done'
+                                                for item in current.get('agent_trace',[]) if isinstance(item,dict))
                                         final=_plain_chat_answer(current,text)
                                         if final is not None:
                                             callback(final.model_dump(),session_id[0]+':'+assistant['id']+':plain-final')
@@ -728,7 +804,7 @@ def run_session(turn, prompt, info, callback):
                             corrections+=1
                             baseline=list(messages)
                             previous_message_ids.update(item.get('id') for item in messages if isinstance(item,dict) and isinstance(item.get('id'),str))
-                            instruction=('请继续原任务。上一条模型输出没有通过 Atlas 工具协议。'
+                            instruction=(('工作计划已记录，请按计划继续执行。' if recovered_plan else '请继续原任务。上一条模型输出没有通过 Atlas 工具协议。')+
                                 '只调用 atlas_step：工具名放在 tool 字段，参数放在 arguments；'
                                 '完成或说明真实阻碍也通过 atlas_step 提交。沿用已完成回执，禁止重复执行操作。')
                             prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
@@ -736,9 +812,9 @@ def run_session(turn, prompt, info, callback):
                             prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
                             admission_started=time.monotonic()
                             patch('turn',turn['id'],progress='正在修正工具调用并继续处理')
+                            poller.wake()
                             continue
                     raise provider.ModelOutputError('模型未能按当前工具协议继续处理；任务和已有成果已保留。可继续重试或检查模型的工具调用能力')
-            idle_checks += 1
         if failure:raise failure[0]
         with serial:
             assert_owned()

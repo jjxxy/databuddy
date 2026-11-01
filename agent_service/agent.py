@@ -324,8 +324,78 @@ def planning_context(turn, *, native=None):
     return messages,native_tools
 
 
+def _tool_envelope(raw):
+    """Recognize a complete tool-shaped object, never JSON embedded in prose."""
+    if not isinstance(raw,str) or len(raw)>100000:return None
+    raw=raw.strip()
+    if raw.startswith('```'):
+        fence=re.fullmatch(r'```(?:json)?\s*\n([\s\S]*?)\n```\s*',raw,re.I)
+        if not fence:return None
+        raw=fence.group(1).strip()
+    def unique(pairs):
+        result={}
+        for key,value in pairs:
+            if key in result:raise ValueError('duplicate JSON field')
+            result[key]=value
+        return result
+    try:value=json.loads(raw,object_pairs_hook=unique)
+    except (ValueError,TypeError,RecursionError):return None
+    if (not isinstance(value,dict) or set(value)!={'kind','tool','arguments'}
+            or value.get('kind')!='tool' or not isinstance(value.get('tool'),str)
+            or not isinstance(value.get('arguments'),dict)):return None
+    return value
+
+
+def _wants_tool_json_example(turn):
+    text=turn.get('work_request',turn.get('text',''))
+    if not isinstance(text,str):return False
+    # A user can explicitly ask to see the protocol itself. That is a literal
+    # answer, not authority to run the displayed example.
+    return bool(re.search(r'(?:展示|显示|输出|查看|返回|打印|解释|说明|show|print|explain)\s*(?:一个|一段|一下|下|the|an?)?\s*(?:JSON(?![\w\u4e00-\u9fff])|工具调用|工具协议|tool\s*call)|(?:JSON|工具调用|工具协议|tool\s*call)\s*(?:的)?\s*(?:示例|样例|格式|例子|example|format)',text,re.I))
+
+
+def _looks_like_tool_envelope(raw):
+    """Reject malformed protocol objects as answers, without executing them."""
+    if not isinstance(raw,str) or len(raw)>100000:return False
+    raw=raw.strip()
+    if raw.startswith('```'):
+        fence=re.fullmatch(r'```(?:json)?\s*\n([\s\S]*?)\n```\s*',raw,re.I)
+        if fence:raw=fence.group(1).strip()
+        else:
+            # An unfinished fence is never executable, but an incomplete
+            # tool-protocol object inside should not be shown as a result.
+            opening=re.match(r'```(?:json)?[ \t]*\r?\n',raw,re.I)
+            if not opening:return False
+            raw=raw[opening.end():].lstrip()
+    try:value=json.loads(raw)
+    except (ValueError,TypeError,RecursionError):value=None
+    if isinstance(value,dict) and value.get('kind')=='tool' and ('tool' in value or 'arguments' in value):return True
+    # Truncated or duplicate-key protocol objects must not appear as an
+    # answer, but never infer an operation from an incomplete value.
+    return bool(raw.startswith('{') and re.search(r'"kind"\s*:\s*"tool"',raw)
+                and re.search(r'"(?:tool|arguments)"\s*:',raw))
+
+
+def _recover_plan_envelope(turn,raw,*,selected_only=True):
+    """Accept only the harmless plan tool, through ordinary schema/grant checks."""
+    if (turn.get('interaction_mode','work')!='work' or _wants_tool_json_example(turn)
+            or turn.get('task_plan')):return None
+    value=_tool_envelope(raw)
+    if (not value or value['tool']!='set_task_plan'
+            or value['arguments'].get('completed_steps',[])!=[]):return None
+    try:return validate_step(turn,value,selected_only=selected_only)
+    except (ValueError,TypeError):return None
+
+
 def validate_step(turn, value, *, selected_only=False):
     step=Step.model_validate(value)
+    if step.kind=='final' and turn.get('interaction_mode','work')=='work' and not _wants_tool_json_example(turn):
+        # Some gateways wrap a tool call as the literal text of a final answer.
+        # Only the plan can be recovered; never execute arbitrary final text.
+        if _looks_like_tool_envelope(step.answer):
+            recovered=_recover_plan_envelope(turn,step.answer,selected_only=True)
+            if recovered is None:raise ValueError('回答包含未经验证的工具调用，请按工具协议继续')
+            return recovered
     if step.kind=='tool':
         if step.tool not in TOOLS:raise ValueError('未知工具')
         if step.tool not in agent_context.allowed(turn) or selected_only and step.tool not in agent_context.selected(turn):
@@ -415,6 +485,8 @@ def plan(turn):
             if exc.code=='native_tool_call_missing':
                 answer=_plain_chat_answer(turn,exc.candidate)
                 if answer is not None:return answer
+                recovered=_recover_plan_envelope(turn,exc.candidate,selected_only=True)
+                if recovered is not None:return recovered
             last_code=exc.code
             diagnostic={'attempt':attempt+1,'validation':[],'code':exc.code}
             if native and exc.code.startswith('native_'):
