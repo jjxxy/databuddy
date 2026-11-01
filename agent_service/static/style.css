@@ -84,3 +84,45 @@
 @media(max-width:480px){.attachment-tray{max-height:150px}.work-plan li{gap:6px}}
 .project-tree-row .resource-more,.session-tree-row .resource-more{opacity:1;color:#586b60}
 .user-row .message-body>.source-file span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
+
+/* A compact workspace sidebar: projects and the current project's chats are
+   separate sections in one scroll area; action controls stay reachable. */
+#sidebar{padding:22px 12px 12px;background:#f8f8f8;border-right:1px solid #ededed}
+#sidebar .brand{gap:9px;padding:0 10px;font-size:21px;letter-spacing:-.8px}
+#sidebar .brand-mark{width:30px;height:30px;border-radius:9px;font-size:19px;letter-spacing:-1px}
+.sidebar-actions{display:flex;flex-direction:column;gap:3px;margin:24px 0 23px;flex:none}
+.sidebar-actions .sidebar-action{display:flex;align-items:center;gap:11px;width:100%;min-height:38px;margin:0;padding:8px 10px;border:0;border-radius:8px;background:transparent;box-shadow:none;text-align:left;color:#303633;font-size:13px;font-weight:500}
+.sidebar-actions .sidebar-action:hover:not(:disabled){background:#eceeec}
+.sidebar-actions .sidebar-action:disabled{opacity:.45;cursor:not-allowed}
+.sidebar-actions .sidebar-action .sidebar-action-icon{display:grid;place-items:center;flex:none;width:20px;height:20px;font-size:20px;font-weight:400;line-height:1;color:#59635d}
+.sidebar-actions .sidebar-action span:last-child{font-size:13px;font-weight:500}
+.sidebar-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#c9ceca transparent;padding:0 0 10px}
+.sidebar-scroll .section-label{margin:0 0 7px;padding:0 10px;font-size:11px;letter-spacing:0;font-weight:600;color:#858c87}
+#sidebar #project-list,#sidebar #session-list{display:flex;flex:none;gap:2px;max-height:none;min-height:0;overflow:visible;margin:0;padding:0;border:0}
+#sidebar #session-home{margin-top:25px;min-width:0}
+#sidebar .conversation-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+#session-project-name{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:400;color:#909891}
+#sidebar .project-tree-node{margin:0}
+#sidebar .project-tree-row,#sidebar .session-tree-row{gap:0;min-height:38px;border-radius:8px}
+#sidebar .project-tree-row:hover,#sidebar .session-tree-row:hover{background:#edeeed}
+#sidebar .project-open,#sidebar .session-open{min-width:0;min-height:38px;padding:8px 9px;color:#4a504c;font-size:13px;font-weight:400;border-radius:8px}
+#sidebar .project-open:hover,#sidebar .session-open:hover{background:transparent}
+#sidebar .project-open.active,#sidebar .session-open.active{background:#e6e9e6;color:#202723;font-weight:550}
+#sidebar .project-marker{width:15px;height:12px;border:1.4px solid #89938b;border-radius:3px;background:transparent}
+#sidebar .project-open.active .project-marker{background:transparent;border-color:#608371}
+#sidebar .project-tree-row .resource-more,#sidebar .session-tree-row .resource-more{width:32px;min-height:34px;padding:4px 0;color:#78827a;opacity:.8}
+#sidebar .project-tree-row .resource-more:hover,#sidebar .session-tree-row .resource-more:hover{background:#dedfdd;opacity:1}
+#sidebar .resource-more:focus-visible{opacity:1}
+.sidebar-search{display:flex;align-items:center;gap:7px;margin:4px 2px 8px;padding:0 9px;min-height:34px;border:1px solid #e5e8e5;border-radius:8px;background:#fff;color:#858e87}
+.sidebar-search:focus-within{border-color:#79a38d;box-shadow:0 0 0 2px #d9e9df}
+.sidebar-search span{font-size:18px;line-height:1}.sidebar-search input{width:100%;min-width:0;border:0;outline:none;padding:7px 0;background:transparent;color:#3e4941;font-size:12px}.sidebar-search input::placeholder{color:#a4aaa5}
+#sidebar .empty-projects{margin:0;padding:8px 10px;font-size:12px;line-height:1.6;color:#909791}
+#sidebar .workspace-utilities{margin:7px 1px}
+#sidebar .workspace-settings-button{border:0;background:transparent;color:#555f57;padding:10px;font-size:13px}
+#sidebar .workspace-settings-button:hover{background:#eceeec}
+#sidebar .sidebar-bottom{margin-top:7px;padding:12px 5px 2px;border-top:1px solid #e8eae8}
+@media(max-width:600px){#sidebar{padding:20px 12px 12px}.sidebar-actions{margin:19px 0}.sidebar-scroll{padding-bottom:8px}#sidebar #project-list{max-height:none}#sidebar .resource-more{opacity:1}}
+@media(max-height:520px){.sidebar-actions{margin:10px 0}.sidebar-scroll #session-home{margin-top:14px}#sidebar .sidebar-bottom{margin-top:4px;padding-top:7px}}
+/* Keep conversations discoverable even when the workspace has many projects. */
+#sidebar #project-list{max-height:min(34vh,260px);overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#c9ceca transparent}
+.sidebar-action-icon svg{width:19px;height:19px}

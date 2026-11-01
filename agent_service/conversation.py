@@ -128,7 +128,11 @@ def sessions(pid):
     rows=[s for s in all_items('conversation') if s['project_id']==pid]
     default={'id':default_session(pid),'project_id':pid,'name':'项目对话','created_at':get('project',pid)['created_at']}
     if not any(s['id']==default['id'] for s in rows):rows.append(default)
-    return sorted((public_session(s) for s in rows if not s.get('deleted_at') and not s.get('internal')),key=lambda s:s['created_at'])
+    # last_activity_at is recorded once when a user submits a message, so
+    # polling the sidebar never needs to rescan the entire turn history.
+    # Sessions created before this field existed retain a stable fallback.
+    return sorted((public_session(s) for s in rows if not s.get('deleted_at') and not s.get('internal')),
+                  key=lambda s:(s.get('last_activity_at') or s.get('created_at') or '',s['id']),reverse=True)
 
 def create_session(pid,value,*,internal=False):
     from .workspace_lifecycle import assert_project_live,WorkspaceDeleted
@@ -390,9 +394,12 @@ def submit(project_id, value, *, trusted_fields=None):
         patch('project', project_id, updated_at=now())
         try:
             conversation=get('conversation',session_id)
-            patch('conversation',session_id,last_mode=value.interaction_mode,name=(text[:24] if conversation['name']=='新对话' and redact(text)==text else conversation['name']),**({'model_id':selection['model_id']} if selection else {}))
+            patch('conversation',session_id,last_mode=value.interaction_mode,last_activity_at=turn['created_at'],name=(text[:24] if conversation['name']=='新对话' and redact(text)==text else conversation['name']),**({'model_id':selection['model_id']} if selection else {}))
         except KeyError:
-            if selection:put('conversation',{'project_id':project_id,'name':'项目对话','created_at':project['created_at'],'last_mode':value.interaction_mode,'model_id':selection['model_id']},session_id)
+            # The default session can be virtual until its first message.
+            put('conversation',{'project_id':project_id,'name':'项目对话','created_at':project['created_at'],
+                                'last_mode':value.interaction_mode,'last_activity_at':turn['created_at'],
+                                **({'model_id':selection['model_id']} if selection else {})},session_id)
         return public_turn(get('turn', tid))
 
 

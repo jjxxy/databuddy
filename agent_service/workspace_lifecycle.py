@@ -60,7 +60,7 @@ def public_project(value):
 
 
 def public_session(value):
-    keys=('id','project_id','name','created_at','last_mode','model_id','application_id','deleted_at','deleted_by')
+    keys=('id','project_id','name','created_at','last_activity_at','last_mode','model_id','application_id','deleted_at','deleted_by')
     return {key:value[key] for key in keys if key in value}|{'revision':int(value.get('lifecycle_revision',0))}
 
 
