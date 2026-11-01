@@ -74,6 +74,10 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert status['steps'][1]['table_available']
     page=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
     assert page['total']==1 and page['next_offset'] is None and page['rows'][0]['amount']=='18.00'
+    assert status['steps'][1]['contribution_available'] is True
+    contribution=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate/contributions?row_index=0')
+    assert contribution['group']=={'c_1':'东部'} and contribution['total']==2
+    assert [row['c_2'] for row in contribution['rows']]==['9.00','9.00']
     assert page['financial_verified'] is False and page['run_id']==run['run_id']
     reconciliation=req('GET',flow+'/runs/'+run['run_id']+'/reconciliation')
     assert reconciliation['financial_verified'] is False and reconciliation['sources'][0]['content_hash']==source['content_hash']

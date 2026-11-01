@@ -10,7 +10,7 @@ def pipeline(monkeypatch, due=None, **overrides):
     due=due or datetime.now(timezone.utc)-timedelta(seconds=1)
     value={'project_id':'project_'+uid(),'cron':'0 9 * * *','next_due':due.isoformat(),
            'active_commit':'a'*40,'commit':'a'*40,'published_run':'published',
-           'candidate_run':'candidate','release_mode':'manual'}
+           'candidate_run':'candidate','release_mode':'manual','schedule_actor_id':'owner'}
     value.update(overrides)
     saved=put('pipeline',value,'pipeline_'+uid())
     import agent_service.store as store

@@ -391,6 +391,7 @@ def inspect_workflow(pid,wid):
             'inputs':{k:{'binding':b.model_dump(),'schema':doc.plan.inputs[k].model_dump()} for k,b in doc.bindings.items()},
             'steps':[s.model_dump() for s in doc.plan.stages],'output':doc.plan.output,'contract':doc.contract,'document':doc.model_dump(),
             'cron':w.get('cron'),'watch_sources':w.get('watch_sources',False),'next_due':w.get('next_due'),
+            'schedule_uncertain_run':w.get('schedule_uncertain_run'),'schedule_resume_required':w.get('schedule_resume_required',False),
             'refresh_error':w.get('refresh_error'),'validation':'typed_plan_valid; not_executed',
             'latest_run':workflow_run_diagnostic(pid,wid,draft_sha256=digest(doc.model_dump())),
             'edit':'告诉Agent需要修改的业务要求，Agent生成新草稿并重新校验；正式计划保持固定版本'}
@@ -584,10 +585,12 @@ def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
 def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None):
     if authority and authority['project_id']!=pid:raise ValueError('加工任务不属于原调用授权项目')
     w=owned(pid,'data_workflow',wid)
+    if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs'):
+        raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
     doc=WorkflowDocument.model_validate(w['active_document']) if use_published and w.get('active_document') else load_document(pid,w['path'])
     if use_published and not w.get('active_document'):raise ValueError('流程尚未正式发布')
     from .sources import snapshot
-    from .jobs import enqueue
+    from .jobs import enqueue,is_scheduler_key
     ids=[b.source_id for b in doc.bindings.values() if b.source_id]
     frozen=snapshot(ids)
     if any(s.get('project_id')!=pid for s in frozen.values()):raise ValueError('输入来源跨项目')
@@ -598,6 +601,9 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
         extra={**({'gateway_authority':authority} if authority else {}),'project_id':pid,'workflow_document':doc.model_dump(),'source_snapshot':frozen,
                'originating_turn_id':originating_turn_id,
                'workflow_pointer_snapshot':{'published_run':w.get('published_run'),'candidate_run':w.get('candidate_run')},
+               'schedule_snapshot':({'kind':'data_workflow','generation':w.get('schedule_generation'),'project_id':pid,'actor_id':w.get('schedule_actor_id'),
+                                     'published_run':w.get('published_run'),'candidate_run':w.get('candidate_run')}
+                                    if use_published and is_scheduler_key('data_workflow',wid,scheduled_key) else None),
                'workflow_refresh_published':bool(use_published),
                'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
                'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
@@ -1221,7 +1227,7 @@ def _schedule_now():
 
 def _schedule_patch_if_current(snapshot,**values):
     """Do not overwrite a concurrently edited schedule or adopted version."""
-    fields=('project_id','archived','cron','next_due','watch_sources','published_run','active_sha256','schedule_gap_pending')
+    fields=('project_id','archived','cron','next_due','watch_sources','published_run','active_sha256','schedule_gap_pending','refresh_error','schedule_generation','schedule_uncertain_run','schedule_resume_required','schedule_actor_id')
     with transaction() as connection:
         row=connection.execute(select(items.c.body).where(items.c.id==snapshot['id'],
             items.c.kind=='data_workflow').with_for_update()).first()
@@ -1235,6 +1241,7 @@ def _schedule_patch_if_current(snapshot,**values):
 
 
 def schedule(pid,wid,cron=None,watch_sources=False):
+    from .actor_context import current_actor
     from croniter import croniter
     from datetime import datetime,timezone
     from zoneinfo import ZoneInfo
@@ -1244,7 +1251,9 @@ def schedule(pid,wid,cron=None,watch_sources=False):
     if cron and (not croniter.is_valid(cron) or len(cron.split())!=5):raise ValueError('需要有效五段cron')
     next_due=croniter(cron,_schedule_now().astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat() if cron else None
     patch('data_workflow',wid,cron=cron,watch_sources=watch_sources,next_due=next_due,
-          refresh_error=None,refresh_retry_after=None,schedule_gap_pending=False)
+          refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if w.get('schedule_uncertain_run') else None),
+          refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),schedule_actor_id=current_actor(),
+          schedule_resume_required=bool(w.get('schedule_uncertain_run')))
     return {'workflow_id':wid,'cron':cron,'watch_sources':watch_sources,'next_due':next_due,
             'scope':'file_revision_events_or_scheduled_full_snapshot; database_CDC_not_configured'}
 
@@ -1260,6 +1269,10 @@ def queue_due():
         for w in all_items('data_workflow'):
             if w.get('archived') or not w.get('active_document') or not w.get('published_run'):continue
             if not w.get('cron') and not w.get('watch_sources'):continue
+            if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs') or w.get('schedule_resume_required'):continue
+            if not w.get('schedule_actor_id'):
+                _schedule_patch_if_current(w,refresh_error='历史自动更新缺少设置者身份，请重新设置后启用')
+                continue
             try:
                 retry=w.get('refresh_retry_after')
                 if retry and datetime.fromisoformat(retry)>current:continue

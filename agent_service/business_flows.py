@@ -22,7 +22,7 @@ from fastapi import Depends
 from pydantic import Field,field_validator
 
 from .models import StrictModel
-from .store import get,put,patch,all_items,seal,unseal,now
+from .store import get,put,patch,all_items,seal,unseal,now,uid
 from .business_flow_engine import BusinessFlow,digest,run as run_engine
 from .actor_context import current_actor,actor_scope
 from .workspace_lifecycle import assert_project_live,assert_turn_live
@@ -212,7 +212,8 @@ def get_view(pid,flow_id,actor_id=None):
     jobs=list_jobs(limit=1,target=flow_id)
     latest=get_run(pid,flow_id,jobs[0]['id'],actor) if jobs and jobs[0].get('project_id')==pid and jobs[0].get('actor_id')==actor else None
     return {k:flow.get(k) for k in ('id','name','candidate_digest','candidate_commit','candidate_run',
-             'published_digest','published_commit','published_run','created_at','updated_at','cron','next_due','refresh_error')}|{
+             'published_digest','published_commit','published_run','created_at','updated_at','cron','next_due','refresh_error',
+             'schedule_uncertain_run','schedule_resume_required')}|{
              'candidate_document':candidate,'published_document':published,'latest_run':latest,
              'timezone':TIMEZONE,'schedule_source_bindings':flow.get('schedule_source_bindings') or {},
              'notice':'流程说明是声明式定义，运行成功不等于财经结果已核验。'}
@@ -301,7 +302,7 @@ def _review_items(pid,state):
 
 
 
-def _verify_completed_state(pid,job,state,*,verify_evidence=True):
+def _verify_completed_state(pid,job,state,*,verify_evidence=True,page_request=None):
     """Review the actual immutable receipts, never just a success flag."""
     if state.get('status')!='succeeded' or state.get('flow_sha256')!=job.get('commit'):
         raise ValueError('流程执行回执不完整')
@@ -310,7 +311,7 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True):
     if state.get('inputs_sha256')!=digest(payload.get('inputs')):raise ValueError('运行输入回执不一致')
     steps=state.get('steps')
     if not isinstance(steps,list) or len(steps)!=len(doc.nodes):raise ValueError('流程步骤回执不完整')
-    outputs={}
+    outputs={};requested_page=None
     for node,step in zip(doc.nodes,steps):
         if (not isinstance(step,dict) or step.get('node_id')!=node.id or step.get('kind')!=node.kind
             or step.get('status')!='succeeded' or digest(step.get('output'))!=step.get('output_sha256')):
@@ -319,10 +320,18 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True):
         if isinstance(output,dict) and 'rows_ref' in output:
             # The JSON reference alone is not evidence the encrypted table is
             # still present or belongs to this run. Verify the complete data.
-            from .business_flow_data import verify_table_snapshot
+            from .business_flow_data import verify_table_snapshot,get_table_page
             context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
                      'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
-            verify_table_snapshot(context,output)
+            if page_request is not None and node.id==page_request[0]:
+                ref=output.get('rows_ref')
+                if not isinstance(ref,dict) or ref.get('version')!=2:
+                    raise ValueError('所请求的数据快照不支持分页校验')
+                # Page reading itself authenticates the full ciphertext, index,
+                # and requested blocks, so do not rescan the same file. All
+                # other tables still receive full-snapshot verification.
+                requested_page=get_table_page(context,output,page_request[1],page_request[2])
+            else:verify_table_snapshot(context,output)
         if verify_evidence and isinstance(output,dict) and 'evidence_tables' in output:
             entries=output['evidence_tables']
             if not isinstance(entries,list) or not entries or len(entries)>30:
@@ -335,9 +344,18 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True):
                 if not isinstance(entry,dict):raise ValueError('换算明细回执无效')
                 verified=_fx_evidence(output,entry.get('stage_id'))
                 verify_table_snapshot(context,{**verified,'kind':'table_workflow_v1'})
+        if verify_evidence and isinstance(output,dict) and 'contribution_evidence' in output:
+            entry,_=_aggregate_contribution(job,node.id,output)
+            from .business_flow_data import verify_table_snapshot
+            context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
+                     'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+            verify_table_snapshot(context,{**entry,'kind':'table_workflow_v1'})
         outputs[node.id]=output
     if state.get('outputs')!={name:outputs[name] for name in doc.outputs}:
         raise ValueError('流程最终结果回执不一致')
+    if page_request is not None and requested_page is None:
+        raise ValueError('所请求的数据快照不存在')
+    return requested_page
 
 def _review_view(pid,job,state):
     if job.get('status')!='succeeded' or state.get('status')!='succeeded':return None
@@ -410,9 +428,11 @@ def resolve_unknown(pid,flow_id,run_id,actor_id,expected_checkpoint_sha256,outco
                 'checkpoint_sha256':expected_checkpoint_sha256,'outcome':outcome,'secret_note':seal(note),'reviewed_at':now()},ident)
     return get_run(pid,flow_id,run_id,actor_id)
 
-def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_published=False):
+def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_published=False,schedule_snapshot=None):
     from .business_flow_engine import _prepare
     flow=_owned(pid,flow_id,actor_id)
+    if flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs'):
+        raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
     tid=flow.get('published_turn_id') if use_published else flow['turn_id']
     turn=_turn(pid,actor_id,tid)
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',request_id or ''):raise ValueError('请求标识无效')
@@ -449,7 +469,7 @@ def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_publis
             if _uncertain(previous[0],state) and not (_resolution_view(previous[0],state) or {}).get('confirmed_not_executed'):
                 raise ValueError('上次流程操作结果未知，请先核对外部状态；不能自动重复')
         job=enqueue('business_flow',flow_id,commit=sha,scheduled_key=key,max_attempts=2,
-                    extra={'project_id':pid,'actor_id':actor_id,'flow_turn_id':turn['id'],'project_commit':commit,'secret_flow_payload':seal(payload)})
+                    extra={'project_id':pid,'actor_id':actor_id,'flow_turn_id':turn['id'],'project_commit':commit,'secret_flow_payload':seal(payload),'schedule_snapshot':schedule_snapshot})
     if (job.get('target')!=flow_id or job.get('commit')!=sha or job.get('actor_id')!=actor_id or
             unseal(job.get('secret_flow_payload',''))!=payload):
         raise ValueError('同一请求标识已用于其他流程或输入')
@@ -474,6 +494,10 @@ def get_run(pid,flow_id,run_id,actor_id=None):
                 steps[-1]['evidence_stages']=[{'stage_id':entry['stage_id'],'row_count':entry['row_count']}
                     for entry in entries if _fx_evidence(output,entry.get('stage_id')) is entry]
             except (KeyError,TypeError,ValueError):steps[-1]['evidence_stages']=[]
+            try:
+                _aggregate_contribution(job,item['node_id'],output)
+                steps[-1]['contribution_available']=True
+            except (KeyError,TypeError,ValueError):steps[-1]['contribution_available']=False
         if isinstance(output,dict) and isinstance(output.get('artifact_id'),str):
             from .workspace_artifacts import _record,_public
             # An artifact link is returned only if separately authorized and present.
@@ -510,8 +534,10 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
         raise ValueError('步骤标识无效')
     if type(offset) is not int or type(limit) is not int or offset<0 or not 1<=limit<=100:
         raise ValueError('分页参数无效')
-    state=unseal(job['secret_flow_checkpoint']);_verify_completed_state(pid,job,state,verify_evidence=False)
-    match=[item for item in state['steps'] if item.get('node_id')==node_id]
+    state=unseal(job['secret_flow_checkpoint'])
+    if not isinstance(state,dict) or not isinstance(state.get('steps'),list):
+        raise ValueError('流程步骤回执不完整')
+    match=[item for item in state['steps'] if isinstance(item,dict) and item.get('node_id')==node_id]
     output=match[0].get('output') if len(match)==1 else None
     if (not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
         raise ValueError('该步骤没有完整可查看的数据结果')
@@ -524,10 +550,12 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
     if isinstance(ref,dict) and ref.get('version')==2:
         # v2 binds an authenticated index and full ciphertext hash to the
         # receipt. Only pages intersecting this request are decrypted.
-        total=output.get('row_count');page=get_table_page(context,output,offset,limit)
+        total=output.get('row_count')
         if type(total) is not int or total<0:raise ValueError('数据结果行数无效')
+        page=_verify_completed_state(pid,job,state,verify_evidence=False,page_request=(node_id,offset,limit))
     else:
         # Inline and legacy v1 records still need full data verification.
+        _verify_completed_state(pid,job,state,verify_evidence=False)
         table=materialize_table(context,output);rows=table.get('rows')
         if (not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows)
                 or table.get('output_sha256')!=table_digest({'schema':schema,'rows':rows})):
@@ -626,6 +654,81 @@ def _fx_evidence_plan(job,node_id,output):
                 or not isinstance(receipt.get('inputs'),list)
                 or [item.get('table') if isinstance(item,dict) else None for item in receipt['inputs']]!=dependencies_for(stage)):
             raise ValueError('加工步骤与冻结方案不一致')
+    return actual
+
+
+def _aggregate_contribution(job,node_id,output):
+    """Bind an eligible final aggregate's complete input to the frozen plan."""
+    from .data_workflows import Aggregate,TableSchema,digest as table_digest
+    item=output.get('contribution_evidence')
+    if not isinstance(item,dict) or set(item)!={'stage_id','input_id','schema','row_count','output_sha256','rows_ref'}:
+        raise ValueError('该结果没有可用的逐笔汇总依据')
+    plan=_fx_evidence_plan(job,node_id,output)
+    stages={stage.id:stage for stage in plan.stages};stage=stages.get(plan.output)
+    if (not isinstance(stage,Aggregate) or item['stage_id']!=stage.id or item['input_id']!=stage.input
+            or any(a.function!='sum' and not (a.function=='count' and a.column is None)
+                   for a in stage.aggregations)):
+        raise ValueError('该汇总规则不支持逐笔贡献查看')
+    receipts=output.get('stage_receipts');receipt=next((r for r in receipts if r.get('stage_id')==stage.id),None)
+    if (not isinstance(receipt,dict) or receipt.get('output_sha256')!=output.get('output_sha256')
+            or receipt.get('output_rows')!=output.get('row_count') or len(receipt.get('inputs',[]))!=1):
+        raise ValueError('汇总结果与执行回执不一致')
+    dep=receipt['inputs'][0]
+    previous=next((r for r in receipts if r.get('stage_id')==stage.input),None)
+    expected_hash=previous.get('output_sha256') if previous else output.get('input_sha256',{}).get(stage.input)
+    expected_count=previous.get('output_rows') if previous else dep.get('rows')
+    expected_schema=previous.get('schema_sha256') if previous else table_digest(plan.inputs[stage.input].model_dump(mode='json'))
+    schema=TableSchema.model_validate(item['schema'])
+    if (type(item.get('row_count')) is not int or item['row_count']<0 or dep.get('table')!=stage.input
+            or dep.get('sha256')!=expected_hash or item.get('output_sha256')!=expected_hash
+            or dep.get('rows')!=expected_count or item['row_count']!=expected_count
+            or table_digest(schema.model_dump(mode='json'))!=expected_schema):
+        raise ValueError('汇总输入与冻结步骤回执不一致')
+    return item,stage
+
+
+def _matching_aggregate_rows(rows,group,schema,stage):
+    from .data_workflows import _coerce
+    fields={c.name:c for c in schema.columns}
+    wanted=tuple(_coerce(group[name],fields[name]) for name in stage.by)
+    return [row for row in rows if tuple(_coerce(row[name],fields[name]) for name in stage.by)==wanted]
+
+
+def get_run_contributions(pid,flow_id,run_id,node_id,row_index,offset=0,limit=50):
+    """Return rows actually consumed by this final sum/COUNT(*) aggregate group."""
+    if type(row_index) is not int or row_index<0 or type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
+        raise ValueError('逐笔依据分页参数无效')
+    # This also validates project/user/turn scope and the completed result.
+    output_page=get_run_table(pid,flow_id,run_id,node_id,offset=row_index,limit=1)
+    if row_index>=output_page['total'] or len(output_page['rows'])!=1:raise ValueError('汇总结果行不存在')
+    actor=current_actor();job=get_job(run_id);state=unseal(job['secret_flow_checkpoint'])
+    steps=[step for step in state['steps'] if step.get('node_id')==node_id]
+    output=steps[0]['output'] if len(steps)==1 else None
+    if not isinstance(output,dict):raise ValueError('汇总结果不存在')
+    entry,stage=_aggregate_contribution(job,node_id,output)
+    from .business_flow_data import materialize_table
+    from .data_workflows import TableSchema,digest as table_digest
+    context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],
+             'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+    table=materialize_table(context,{**entry,'kind':'table_workflow_v1'});rows=table.get('rows')
+    if (not isinstance(rows,list) or len(rows)!=entry['row_count']
+            or table_digest({'schema':entry['schema'],'rows':rows})!=entry['output_sha256']):
+        raise ValueError('汇总输入快照与执行回执不一致')
+    schema=TableSchema.model_validate(entry['schema'])
+    result_row=output_page['rows'][0]
+    group={name:result_row[name] for name in stage.by}
+    matched=_matching_aggregate_rows(rows,group,schema,stage)
+    page=matched[offset:offset+limit]
+    if len(json.dumps(page,ensure_ascii=False).encode('utf-8'))>1024*1024:
+        raise ValueError('本页数据过大，请减少每页行数')
+    return {'run_id':run_id,'node_id':node_id,'row_index':row_index,
+            'columns':[{'name':col.name,'label':col.label or col.name,'unit':col.unit} for col in schema.columns],
+            'rows':page,'total':len(matched),'offset':offset,
+            'next_offset':offset+len(page) if offset+len(page)<len(matched) else None,
+            'group':group,'aggregations':[a.model_dump(mode='json') for a in stage.aggregations],
+            'input_sha256':entry['output_sha256'],'output_sha256':output['output_sha256'],
+            'financial_verified':False,
+            'notice':'这些行是本次汇总步骤的实际同组输入；仅支持求和及逐行计数。业务口径和原始资料仍需复核，后续其他流程步骤不在此范围。'}
 
 
 def get_run_fx_evidence(pid,flow_id,run_id,node_id,stage_id,offset=0,limit=50):
@@ -770,7 +873,7 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
     with workspace.lock(pid),FileLock(str(DATA/'scheduler.lock'),timeout=10):
         flow=_owned(pid,flow_id,actor_id)
         if flow.get('published_digest')!=expected_published_digest:raise ValueError('正式版本已变化，请重新查看再设置定时')
-        if flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending'):
+        if flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending') and not flow.get('refresh_error') and not flow.get('schedule_resume_required'):
             return get_view(pid,flow_id,actor_id)
         if cron and not flow.get('published_run'):raise ValueError('请先确认正式版本，再设置定时运行')
         if cron:
@@ -787,9 +890,28 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
             next_due=croniter(cron,datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
         else:schedule_inputs=None;next_due=None;source_bindings={}
         patch('business_flow',flow_id,cron=cron,next_due=next_due,schedule_inputs=schedule_inputs,
-              schedule_source_bindings=source_bindings,refresh_error=None,refresh_retry_after=None,schedule_gap_pending=False,updated_at=now())
+              schedule_source_bindings=source_bindings,refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if flow.get('schedule_uncertain_run') else None),
+              refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),
+              schedule_resume_required=bool(flow.get('schedule_uncertain_run')),updated_at=now())
         workspace._checkpoint(pid,flow['turn_id'],'设置业务流程定时运行')
     return get_view(pid,flow_id,actor_id)
+
+
+def _patch_schedule_if_current(flow, **updates):
+    from sqlalchemy import select,update
+    from .store import transaction,items
+    fields=('project_id','actor_id','archived','cron','next_due','schedule_generation',
+            'published_digest','published_commit','published_turn_id','published_run','refresh_error','schedule_uncertain_run','schedule_resume_required')
+    with transaction() as connection:
+        row=connection.execute(select(items.c.body).where(items.c.id==flow['id'],
+            items.c.kind=='business_flow').with_for_update()).first()
+        if not row:return False
+        current=json.loads(row[0])
+        if any(current.get(field)!=flow.get(field) for field in fields):return False
+        current.update(updates)
+        connection.execute(update(items).where(items.c.id==flow['id'],items.c.kind=='business_flow')
+                           .values(body=json.dumps(current,ensure_ascii=False,default=str)))
+        return True
 
 
 def queue_due():
@@ -805,6 +927,7 @@ def queue_due():
             with workspace.lock(snapshot['project_id']),FileLock(str(DATA/'scheduler.lock'),timeout=5):
                 flow=get('business_flow',snapshot['id'])
                 if not flow.get('cron') or flow.get('archived') or not flow.get('published_digest'):continue
+                if flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs') or flow.get('schedule_resume_required'):continue
                 current=datetime.now(timezone.utc)
                 try:
                     retry=flow.get('refresh_retry_after')
@@ -817,8 +940,11 @@ def queue_due():
                         source=get('source',sid);_source_pin(flow['project_id'],sid,source.get('revision'),source.get('content_hash'))
                         inputs[key]={'source_id':sid,'revision':source['revision'],'content_hash':source['content_hash']}
                     request_id='scheduled_'+hashlib.sha256((flow['id']+flow['next_due']).encode()).hexdigest()
+                    schedule_snapshot={'kind':'business_flow','generation':flow.get('schedule_generation'),'project_id':flow['project_id'],
+                                       'actor_id':actor,'published_run':flow.get('published_run'),'published_commit':flow.get('published_commit'),
+                                       'published_turn_id':flow.get('published_turn_id')}
                     with actor_scope(actor):
-                        admitted=submit_run(flow['project_id'],flow['id'],actor,request_id,flow['published_digest'],inputs,True)
+                        admitted=submit_run(flow['project_id'],flow['id'],actor,request_id,flow['published_digest'],inputs,True,schedule_snapshot)
                     # A recovered submission may point to a failed/cancelled
                     # job. It is not an accepted occurrence, and repeating it
                     # blindly may duplicate uncertain external side effects.
@@ -827,13 +953,13 @@ def queue_due():
                     following=croniter(flow['cron'],due.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
                     gap=bool(flow.get('schedule_gap_pending') or following<=current)
                     next_due=croniter(flow['cron'],current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
-                    patch('business_flow',flow['id'],next_due=next_due,refresh_retry_after=None,schedule_gap_pending=gap,
+                    _patch_schedule_if_current(flow,next_due=next_due,refresh_retry_after=None,schedule_gap_pending=gap,
                           refresh_error='存在多个未执行的计划时间；本次仅安排一次运行，请核对缺失期间后重新设置定时' if gap else None)
                 except Exception:
                     # Do not advance a due occurrence when source validation,
                     # admission, or the time configuration fails.
                     notice=('历史计划缺口尚待核对；' if flow.get('schedule_gap_pending') else '')+'定时运行未启动或历史运行未成功，请核对资料、授权和执行状态；正式成果未变'
-                    patch('business_flow',flow['id'],refresh_error=notice,
+                    _patch_schedule_if_current(flow,refresh_error=notice,
                           refresh_retry_after=(current+timedelta(seconds=30)).isoformat())
         except (KeyError,TimeoutError):
             # A removed project or an occupied lock must not block other flows.
@@ -957,6 +1083,9 @@ def install(app,auth):
     def status(pid:str,fid:str,rid:str):return get_run(pid,fid,rid)
     @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/tables/{node_id}',dependencies=[Depends(auth)])
     def table(pid:str,fid:str,rid:str,node_id:str,offset:int=0,limit:int=50):return get_run_table(pid,fid,rid,node_id,offset,limit)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/tables/{node_id}/contributions',dependencies=[Depends(auth)])
+    def contributions(pid:str,fid:str,rid:str,node_id:str,row_index:int,offset:int=0,limit:int=50):
+        return get_run_contributions(pid,fid,rid,node_id,row_index,offset,limit)
     @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/tables/{node_id}/evidence/{stage_id}',dependencies=[Depends(auth)])
     def fx_evidence(pid:str,fid:str,rid:str,node_id:str,stage_id:str,offset:int=0,limit:int=50):
         return get_run_fx_evidence(pid,fid,rid,node_id,stage_id,offset,limit)

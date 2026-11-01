@@ -86,16 +86,82 @@ def _enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,extra=Non
         c.execute(jobs.insert().values(id=job_id,kind=kind,target=target,commit_sha=commit,status='queued',dedup_key=scheduled_key,attempts=0,max_attempts=max_attempts,available_at=t,created=t,updated=t,body=json.dumps(body,ensure_ascii=False)))
     return get_job(job_id)
 
+def is_scheduler_key(kind,target,key):
+    """Recognize only the server-generated scheduler keys, not chat keys."""
+    if kind not in ('pipeline','data_workflow') or not isinstance(target,str) or not isinstance(key,str) or not key.startswith(target+':'):
+        return False
+    suffix=key[len(target)+1:]
+    if kind=='data_workflow' and len(suffix)==64 and all(c in '0123456789abcdef' for c in suffix):
+        return True
+    try:return datetime.fromisoformat(suffix).tzinfo is not None
+    except (TypeError,ValueError):return False
+
+
+def _legacy_snapshot(connection,run):
+    if not is_scheduler_key(run.get('kind'),run.get('target',''),run.get('scheduled_key')):return None
+    row=connection.execute(select(items.c.body).where(items.c.id==run['target'],items.c.kind==run['kind'])).first()
+    if not row:return None
+    target=json.loads(row[0]);project=target.get('project_id')
+    if not project or (run.get('project_id') and run.get('project_id')!=project):return None
+    # Old jobs did not record who configured the schedule. Never invent a
+    # user; reconfiguration is required before someone can reconcile it.
+    return {'kind':run['kind'],'project_id':project,'actor_id':None,'legacy_unattributed':True,
+            'generation':None,'published_run':target.get('published_run'),'candidate_run':target.get('candidate_run')}
+
+
+def _quarantine_legacy_job(job_id,target_id):
+    # This is performed only after identifying the selected job and releasing
+    # its queue lock; target then job remains the global mutation lock order.
+    with transaction() as c:
+        c.execute(select(items.c.id).where(items.c.id==target_id).with_for_update()).first()
+        row=c.execute(select(jobs).where(jobs.c.id==job_id,jobs.c.target==target_id,
+            jobs.c.status.in_(('queued','retrying'))).with_for_update()).mappings().first()
+        if not row:return
+        body=render(row)
+        if isinstance(body.get('schedule_snapshot'),dict) or not is_scheduler_key(body.get('kind'),target_id,body.get('scheduled_key')):return
+        snap=_legacy_snapshot(c,body)
+        if not snap:
+            # Never start a legacy job whose target or ownership can no longer
+            # be checked. Keep its durable failure instead of guessing a scope.
+            body.update(status='failed',error='旧版计划的目标或项目无法核对，请联系管理员检查运行记录',
+                        error_code='LEGACY_SCHEDULE_TARGET_UNVERIFIABLE',stage='等待管理员核对')
+            c.execute(update(jobs).where(jobs.c.id==job_id).values(status='failed',body=json.dumps(body,ensure_ascii=False,default=str),updated=time.time()))
+            return
+        body['schedule_snapshot']=snap
+        attempted=row['attempts']>0
+        status='failed' if attempted else 'cancelled'
+        body.update(status=status,error='旧版任务的设置者身份未记录；请先核对运行记录并重新设置定时',
+                    error_code='LEGACY_SCHEDULE_REVIEW_REQUIRED',stage='等待核对' if attempted else '需重新设置定时')
+        if attempted:_notify_scheduled_outcome(c,body,status,lost=True)
+        else:
+            target=c.execute(select(items.c.body).where(items.c.id==target_id,items.c.kind==body['kind']).with_for_update()).first()
+            if target:
+                state=json.loads(target[0]);field='schedule_error' if body['kind']=='pipeline' else 'refresh_error'
+                state[field]='旧版排队任务未执行；请重新设置定时后启用'
+                state['schedule_resume_required']=True
+                c.execute(update(items).where(items.c.id==target_id,items.c.kind==body['kind']).values(body=json.dumps(state,ensure_ascii=False,default=str)))
+        c.execute(update(jobs).where(jobs.c.id==job_id).values(status=status,body=json.dumps(body,ensure_ascii=False,default=str),updated=time.time()))
+
+
 def claim(lease_seconds=30):
     recover_expired()
-    t=time.time()
-    with transaction() as c:
-        q=select(jobs).where(jobs.c.status.in_(('queued','retrying')),jobs.c.available_at<=t).order_by(jobs.c.created).limit(1).with_for_update(skip_locked=True)
-        row=c.execute(q).mappings().first()
-        if not row:return None
-        token=uid()
-        c.execute(update(jobs).where(jobs.c.id==row['id']).values(status='running',attempts=row['attempts']+1,lease_token=token,lease_until=t+lease_seconds,updated=t))
-    return get_job(row['id'])
+    while True:
+        selected=None
+        with transaction() as c:
+            q=select(jobs).where(jobs.c.status.in_(('queued','retrying')),jobs.c.available_at<=time.time()).order_by(jobs.c.created).limit(1).with_for_update(skip_locked=True)
+            row=c.execute(q).mappings().first()
+            if not row:return None
+            body=render(row)
+            legacy=(not isinstance(body.get('schedule_snapshot'),dict) and
+                    is_scheduler_key(body.get('kind'),body.get('target'),body.get('scheduled_key')))
+            if legacy:selected=(row['id'],row['target'])
+            else:
+                token=uid();t=time.time()
+                c.execute(update(jobs).where(jobs.c.id==row['id']).values(status='running',attempts=row['attempts']+1,lease_token=token,lease_until=t+lease_seconds,updated=t))
+                selected=(row['id'],None)
+        if selected[1] is None:return get_job(selected[0])
+        _quarantine_legacy_job(*selected)
+
 
 def heartbeat(job_id,token,lease_seconds=30):
     t=time.time()
@@ -113,8 +179,12 @@ def fenced_update(job_id,token,*,target_patch=None,**values):
 
 
 def _fenced_update(job_id,token,*,target_patch=None,**values):
+    target_id=get_job(job_id)['target']
     with transaction() as c:
+        # All writers lock target before job; lifecycle deletion uses that order.
+        c.execute(select(items.c.id).where(items.c.id==target_id).with_for_update()).first()
         row=c.execute(select(jobs).where(jobs.c.id==job_id).with_for_update()).mappings().first()
+        if row and row['target']!=target_id:raise RuntimeError('任务目标已变更，请重新处理')
         if not row or not token or row['lease_token']!=token or row['status']!='running' or (row['lease_until'] or 0)<=time.time():raise RuntimeError('任务租约已失效，禁止发布')
         body=render(row);body.update(values)
         if target_patch:
@@ -134,24 +204,103 @@ def _fenced_update(job_id,token,*,target_patch=None,**values):
         if 'available_at' in values:columns['available_at']=values['available_at']
         if (row['lease_until'] or 0)<=time.time():raise RuntimeError('任务租约已失效，禁止发布')
         c.execute(update(jobs).where(jobs.c.id==job_id).values(**columns))
+        if values.get('status') in ('failed','cancelled'):_notify_scheduled_outcome(c,body,values['status'])
     return get_job(job_id)
 
+def _notify_scheduled_outcome(connection, run, status, *, lost=False):
+    """Atomically publish terminal schedule status only to its frozen version."""
+    snap=run.get('schedule_snapshot')
+    kind=run.get('kind')
+    if not isinstance(snap,dict) or snap.get('kind')!=kind or kind not in ('pipeline','data_workflow','business_flow'):
+        return
+    row=connection.execute(select(items.c.body).where(items.c.id==run['target'],items.c.kind==kind).with_for_update()).first()
+    if not row:return
+    target=json.loads(row[0])
+    if target.get('project_id')!=snap.get('project_id'):return
+    if kind=='business_flow' and target.get('actor_id')!=snap.get('actor_id'):return
+    # An unknown external outcome survives plan edits, version adoption and
+    # pause. A new schedule must not silently erase an unresolved old action.
+    uncertain=lost or (status=='cancelled' and run.get('attempts',0)>0)
+    field='schedule_error' if kind=='pipeline' else 'refresh_error'
+    if uncertain:
+        pending=target.get('schedule_uncertain_runs')
+        if not isinstance(pending,list):pending=[]
+        pending=[value for value in pending if isinstance(value,str) and value]
+        old=target.get('schedule_uncertain_run')
+        if old and old not in pending:pending.insert(0,old)
+        if run['id'] not in pending:pending.append(run['id'])
+        target['schedule_uncertain_runs']=pending
+        target['schedule_uncertain_run']=pending[0]
+        target[field]='自动更新已停止，运行 '+target['schedule_uncertain_run']+' 的外部操作状态可能未知；请核对外部回执并记录结论，之前正式结果保留'
+        connection.execute(update(items).where(items.c.id==run['target'],items.c.kind==kind)
+                           .values(body=json.dumps(target,ensure_ascii=False,default=str)))
+        return
+    if (target.get('archived') or not (target.get('cron') or target.get('watch_sources'))
+            or target.get('schedule_generation')!=snap.get('generation')
+            or target.get('published_run')!=snap.get('published_run')):return
+    if kind in ('pipeline','data_workflow') and target.get('candidate_run')!=snap.get('candidate_run'):return
+    if kind=='pipeline':
+        active=target.get('active_commit')
+        if not ((active and active==run.get('commit')) or (not active and not target.get('business_plan_confirmation_required')
+                and target.get('release_mode','auto')=='auto' and target.get('commit')==run.get('commit'))):return
+        field='schedule_error'
+    elif kind=='data_workflow':
+        if not run.get('workflow_refresh_published') or target.get('active_sha256')!=run.get('commit'):return
+        field='refresh_error'
+    else:
+        if (target.get('actor_id')!=snap.get('actor_id') or target.get('published_digest')!=run.get('commit')
+                or target.get('published_commit')!=snap.get('published_commit')
+                or target.get('published_turn_id')!=snap.get('published_turn_id')):return
+        field='refresh_error'
+    if lost:
+        notice='自动更新执行进程失联，外部操作状态可能未知；请核对运行记录及外部回执，之前正式结果保留'
+    elif status=='cancelled' and run.get('attempts',0)>0:
+        notice='自动更新已停止，之前执行的外部操作状态需核对；之前正式结果保留'
+    else:
+        notice='自动更新%s；之前正式结果保留，请检查运行记录'%('已取消' if status=='cancelled' else '失败')
+    if target.get('schedule_gap_pending'):notice+='；历史计划缺口尚待核对'
+    target[field]=notice
+    connection.execute(update(items).where(items.c.id==run['target'],items.c.kind==kind)
+                       .values(body=json.dumps(target,ensure_ascii=False,default=str)))
+
+
 def request_cancel(job_id):
+    target_id=get_job(job_id)['target']
     with transaction() as c:
+        c.execute(select(items.c.id).where(items.c.id==target_id).with_for_update()).first()
         row=c.execute(select(jobs).where(jobs.c.id==job_id).with_for_update()).mappings().first()
         if not row:raise KeyError(job_id)
+        if row['target']!=target_id:raise RuntimeError('任务目标已变更，请重新处理')
         body=render(row);body['cancel_requested']=True
         status='cancelled' if row['status'] in ('queued','retrying') else row['status']
         c.execute(update(jobs).where(jobs.c.id==job_id).values(status=status,body=json.dumps(body,ensure_ascii=False),updated=time.time()))
+        if status=='cancelled':_notify_scheduled_outcome(c,body,status)
     return get_job(job_id)
 
 def recover_expired():
-    with transaction() as c:
-        rows=c.execute(select(jobs).where(jobs.c.status=='running',jobs.c.lease_until<time.time()).with_for_update(skip_locked=True)).mappings().all()
-        for row in rows:
+    # Discover without locks, then lock target before job in each short
+    # transaction; recheck expiry under the lock to avoid racing heartbeat.
+    with engine.connect() as c:
+        candidates=c.execute(select(jobs.c.id,jobs.c.target).where(jobs.c.status=='running',jobs.c.lease_until<time.time())).all()
+    for job_id,target_id in candidates:
+        with transaction() as c:
+            c.execute(select(items.c.id).where(items.c.id==target_id).with_for_update()).first()
+            row=c.execute(select(jobs).where(jobs.c.id==job_id,jobs.c.target==target_id,
+                jobs.c.status=='running',jobs.c.lease_until<time.time()).with_for_update(skip_locked=True)).mappings().first()
+            if not row:continue
             body=render(row);cancel=body.get('cancel_requested')
-            status='cancelled' if cancel else 'retrying' if row['attempts']<row['max_attempts'] else 'failed'
-            body.update(error='执行进程失联，按重试策略恢复',error_code='WORKER_LOST',stage='等待恢复' if status=='retrying' else '已结束',status=status)
+            snap=body.get('schedule_snapshot')
+            if not isinstance(snap,dict):
+                snap=_legacy_snapshot(c,body)
+                if snap:body['schedule_snapshot']=snap
+            scheduled=isinstance(snap,dict)
+            # Pre-upgrade business flows had opaque request keys. Never guess
+            # whether they were scheduled: stop and retain their checkpoints.
+            legacy_business=body.get('kind')=='business_flow' and not scheduled
+            status='cancelled' if cancel else 'failed' if scheduled or legacy_business else 'retrying' if row['attempts']<row['max_attempts'] else 'failed'
+            needs_review=scheduled or legacy_business
+            body.update(error='执行进程失联，外部状态可能未知，请核对后处理' if needs_review else '执行进程失联，按重试策略恢复',error_code='WORKER_LOST',stage='等待恢复' if status=='retrying' else '已结束',status=status)
+            if scheduled:_notify_scheduled_outcome(c,body,status,lost=True)
             c.execute(update(jobs).where(jobs.c.id==row['id']).values(status=status,lease_token=None,lease_until=None,available_at=time.time(),updated=time.time(),body=json.dumps(body,ensure_ascii=False)))
 
 # Idempotent upgrade of v0.1 JSON run records; old records remain read-only for rollback compatibility.

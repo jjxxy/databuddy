@@ -53,7 +53,7 @@ def card(p):
     jobs=list_jobs(limit=1,target=p['id']);last=jobs[0] if jobs else None
     state='updating' if last and last['status'] in ACTIVE else 'ready' if p.get('published_run') else 'preview' if p.get('candidate_run') else 'failed' if last and last['status']=='failed' else 'building'
     from .experience import freshness
-    return {'id':p['id'],'project_id':p['project_id'],'name':p['application_spec']['title'],'description':p['application_spec'].get('description',''),'status':state,'last_run_status':last['status'] if last else None,'has_published':bool(p.get('published_run')),'has_candidate':bool(p.get('candidate_run')),'data_as_of':p.get('data_as_of'),'freshness':freshness(p),'schedule':p.get('cron'),'next_due':p.get('next_due'),'pending_schedule':(p.get('pending_schedule') or {}).get('cron'),'timezone':TIMEZONE,'source_id':p['source_id'],'code_commit':p['commit'],'url':'/data-app.html?project='+p['project_id']+'&app='+p['id']}
+    return {'id':p['id'],'project_id':p['project_id'],'name':p['application_spec']['title'],'description':p['application_spec'].get('description',''),'status':state,'last_run_status':last['status'] if last else None,'has_published':bool(p.get('published_run')),'has_candidate':bool(p.get('candidate_run')),'data_as_of':p.get('data_as_of'),'freshness':freshness(p),'schedule':p.get('cron'),'next_due':p.get('next_due'),'schedule_error':p.get('schedule_error'),'schedule_uncertain_run':p.get('schedule_uncertain_run'),'schedule_resume_required':p.get('schedule_resume_required',False),'pending_schedule':(p.get('pending_schedule') or {}).get('cron'),'timezone':TIMEZONE,'source_id':p['source_id'],'code_commit':p['commit'],'url':'/data-app.html?project='+p['project_id']+'&app='+p['id']}
 
 
 def catalog(project_id):

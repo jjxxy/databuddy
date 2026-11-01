@@ -332,13 +332,16 @@ def run_pipeline(pipeline_id:str):
     return public_run(enqueue('pipeline',pipeline_id,p['commit']))
 
 def _schedule(pipeline_id:str,value:ScheduleInput):
+    from .actor_context import current_actor
     p=get('pipeline',pipeline_id)
     if value.cron:
         if not croniter.is_valid(value.cron) or len(value.cron.split())!=5:raise HTTPException(400,'需要有效的五段 cron，例如 0 9 * * *')
         p['next_due']=croniter(value.cron,datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
     else:p.pop('next_due',None)
     return patch('pipeline',pipeline_id,cron=value.cron,next_due=p.get('next_due'),pending_schedule=None,
-                 schedule_gap_pending=False,schedule_error=None,schedule_retry_after=None)
+                 schedule_gap_pending=False,schedule_error=('上次自动更新结果未知，请核对外部回执并记录结论' if p.get('schedule_uncertain_run') else None),
+                 schedule_retry_after=None,schedule_generation=uid(),schedule_actor_id=current_actor(),
+                 schedule_resume_required=bool(p.get('schedule_uncertain_run')))
 
 @app.post('/api/pipelines/{pipeline_id}/schedule',dependencies=[Depends(auth)])
 def schedule(pipeline_id:str,value:ScheduleInput):

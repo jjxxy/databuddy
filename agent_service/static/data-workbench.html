@@ -6,7 +6,7 @@
   <title>我的业务工作空间 · Atlas</title>
   <link rel="stylesheet" href="/data-workbench.css?v=21">
   <script src="/workspace-session.js?v=1" defer></script>
-  <script src="/data-workbench.js?v=25-review-landing" defer></script>
+  <script src="/data-workbench.js?v=26-schedule-review" defer></script>
 </head>
 <body>
 <section id="workbench-login" class="login" hidden>
@@ -64,6 +64,7 @@
         <div><span class="task-kicker">接下来</span><h2 id="workbench-next-title">选择一项常做的工作</h2><p id="workbench-next-text">任务会保留来源和做法，方便下次继续使用。</p></div>
         <div class="task-actions"><button id="workbench-open-result" type="button" disabled>查看结果</button><a id="workbench-task-chat" class="text-action" href="/">回到对话继续</a></div>
       </section>
+      <section id="workbench-schedule-review" class="panel" hidden aria-labelledby="workbench-schedule-review-title"><div class="panel-heading"><div><h2 id="workbench-schedule-review-title">核对上次自动运行</h2><p>上次自动运行的结果不确定，自动更新已暂停。请先到目标系统核对完整执行状态和外部回执；如果无法确认或只执行了一部分，请勿提交确认。暂停或重新设置计划本身不能代替核对。</p></div></div><div class="panel-body"><p id="workbench-schedule-review-run"></p><label for="workbench-schedule-review-outcome">核对后的完整执行状态</label> <select id="workbench-schedule-review-outcome"><option value="">请选择</option><option value="executed">已完整执行</option><option value="not_executed">确定未执行</option></select><label for="workbench-schedule-review-note">在哪个系统、依据哪些回执核对（至少 4 个字）</label><textarea id="workbench-schedule-review-note" rows="3" maxlength="500"></textarea><div class="task-actions"><button type="button" id="workbench-schedule-review-submit">记录核对</button></div><p id="workbench-schedule-review-message" role="status" aria-live="polite"></p></div></section>
       <section id="workbench-failure" class="run-failure" aria-labelledby="workbench-failure-title" hidden>
         <span class="task-kicker">最近一次运行</span><h2 id="workbench-failure-title">这次任务没有完成</h2><p id="workbench-failure-reason"></p><p id="workbench-failure-next" class="failure-next"></p><p id="workbench-failure-stage" class="muted"></p>
         <a id="workbench-failure-chat" class="text-action" href="/">回到对话让 Agent 检查</a>

@@ -48,6 +48,8 @@ def put(kind, value, item_id=None):
         encoded=_encode(kind,value,c)
         stmt=(pg_insert if engine.dialect.name=='postgresql' else sqlite_insert)(items).values(id=item_id,kind=kind,body=encoded)
         c.execute(stmt.on_conflict_do_update(index_elements=['id'],set_={'body':encoded}))
+        # Ownership can be lost while the transaction is doing work.
+        assert_owned()
     return value
 
 def get(kind, item_id):
@@ -73,6 +75,7 @@ def delete(kind, item_id):
     assert_owned()
     with engine.begin() as c:
         c.execute(items.delete().where(items.c.id == item_id, items.c.kind == kind))
+        assert_owned()
 
 # All processes share the persistent encryption key. Exclusive creation avoids startup races.
 def cipher():
@@ -105,6 +108,7 @@ def patch(kind, item_id, **values):
             c.rollback();raise KeyError(item_id)
         body=_decode(row[0]);body.update(values)
         c.execute(update(items).where(items.c.id==item_id).values(body=_encode(kind,body,c)))
+        assert_owned()
         c.commit()
     return body
 
@@ -117,6 +121,7 @@ def transaction():
         else:c.begin()
         try:
             yield c
+            assert_owned()
             c.commit()
         except BaseException:
             c.rollback();raise

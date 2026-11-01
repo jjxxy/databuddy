@@ -770,7 +770,27 @@ def table_workflow(context, config, inputs):
         ref=_save_rows_paged(context,rows,raw,checksum)
         evidence.append({'stage_id':stage.id,'kind':'fx_convert','schema':schema,
                          'row_count':len(rows),'output_sha256':checksum,'rows_ref':ref})
-    result=execute(validated_plan,tables,on_evidence=keep_fx_evidence)
+    contribution=[]
+    def keep_aggregate_input(stage,schema,rows,receipt):
+        if not context.get('run_id'):return  # Direct engine calls do not have a durable run scope.
+        # All rows in a group contribute to a sum or COUNT(*). Other
+        # aggregates have different inclusion semantics and are deliberately
+        # excluded from the row-contribution view.
+        if any(a.function!='sum' and not (a.function=='count' and a.column is None)
+               for a in stage.aggregations):return
+        dependencies=receipt.get('inputs')
+        checksum=digest({'schema':schema,'rows':rows})
+        if (not isinstance(dependencies,list) or len(dependencies)!=1
+                or dependencies[0].get('table')!=stage.input
+                or dependencies[0].get('sha256')!=checksum
+                or dependencies[0].get('rows')!=len(rows)):
+            raise ValueError('汇总输入与执行回执不一致')
+        raw=_serialized_table_rows(rows)
+        ref=_save_rows_paged(context,rows,raw,checksum)
+        contribution.append({'stage_id':stage.id,'input_id':stage.input,'schema':schema,
+                             'row_count':len(rows),'output_sha256':checksum,'rows_ref':ref})
+    result=execute(validated_plan,tables,on_evidence=keep_fx_evidence,
+                   on_aggregate_input=keep_aggregate_input)
     value={'kind':'table_workflow_v1','complete':result['complete'],'rows':result['output']['rows'],
         'schema':result['output']['schema'],'row_count':result['output']['row_count'],
         'output_sha256':result['output']['sha256'],'plan_sha256':result['plan_sha256'],
@@ -782,5 +802,8 @@ def table_workflow(context, config, inputs):
         'financial_evidence_status':'requires_business_review'}
     if evidence:
         value['evidence_tables']=evidence
+    if contribution:
+        value['contribution_evidence']=contribution[0]
+    if evidence or contribution:
         value['workflow_output_stage']=validated_plan.output
     return _compact_table(context,value)

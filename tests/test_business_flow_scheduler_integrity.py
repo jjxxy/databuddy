@@ -27,6 +27,10 @@ def scheduler(monkeypatch):
     monkeypatch.setattr(bf, 'all_items', lambda _kind: [dict(v) for v in flows.values()])
     monkeypatch.setattr(bf, 'get', lambda _kind, ident: dict(flows[ident]))
     monkeypatch.setattr(bf, 'patch', lambda _kind, ident, **updates: flows[ident].update(updates))
+    def patch_current(flow, **updates):
+        if flows[flow['id']] != flow:return False
+        flows[flow['id']].update(updates);return True
+    monkeypatch.setattr(bf, '_patch_schedule_if_current', patch_current)
     monkeypatch.setattr(bf, 'unseal', lambda _value: {})
     def submit(*args):
         submitted.append(args)

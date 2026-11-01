@@ -10,6 +10,11 @@ from .config import DATA
 from . import project_data as data,workspace
 
 
+class ScheduleResolution(StrictModel):
+    outcome:Literal['executed','not_executed']
+    note:str=Field(min_length=4,max_length=500)
+
+
 class EditWorkflow(StrictModel):
     expected_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     document:data.WorkflowDocument
@@ -59,6 +64,13 @@ def install(app,auth):
     def actor(request):
         identity=getattr(request.state,'identity',{})
         return identity.get('subject') or 'owner_workspace'
+
+    @app.post('/api/projects/{pid}/scheduled-runs/{run_id}/resolve',dependencies=dependencies)
+    def resolve_scheduled_run(pid:str,run_id:str,value:ScheduleResolution,request:Request):
+        from .actor_context import actor_from_identity
+        from .schedule_resolution import resolve
+        actor_id=actor_from_identity(getattr(request.state,'identity',{}))
+        return resolve(pid,run_id,actor_id,value.outcome,value.note)
 
     @app.get('/api/deployment/qualification',dependencies=dependencies)
     def deployment_qualification():

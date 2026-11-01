@@ -44,8 +44,17 @@ class FileLock:
                     time.sleep(.05)
                 self.backend=self.connection.execute(text('SELECT pg_backend_pid()')).scalar()
             except BaseException:
-                if self.connection:self.connection.close();self.connection=None
-                self.local.release();raise
+                # PostgreSQL advisory locks are session-scoped. A failure may
+                # occur after acquisition but before we recorded the backend;
+                # returning that session to the pool would retain the lock.
+                try:
+                    if self.connection:
+                        try:self.connection.invalidate()
+                        finally:self.connection.close()
+                finally:
+                    self.connection=None
+                    self.local.release()
+                raise
         self.generation+=1
         self.token=_owned.set((*_owned.get(),(self,self.generation)));self.depth=1;return self
     def release(self,force=False):

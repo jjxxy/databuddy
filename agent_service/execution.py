@@ -7,7 +7,7 @@ from croniter import croniter
 from .config import DATA,TIMEZONE
 from .store import get,patch,now,transaction,items
 from sqlalchemy import select,update
-from .jobs import enqueue as queue_enqueue,claim,get_job,fenced_update,heartbeat,ACTIVE
+from .jobs import enqueue as queue_enqueue,claim,get_job,fenced_update,heartbeat,ACTIVE,is_scheduler_key
 from .codegen import checkout
 from .errors import TaskError,Cancelled
 from .sources import snapshot
@@ -30,6 +30,8 @@ def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,*,frozen_s
     sources={}
     if kind=='pipeline':
         p=get('pipeline',target)
+        if p.get('schedule_uncertain_run') or p.get('schedule_uncertain_runs'):
+            raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
         # Freeze the source configurations used by this specific execution, outside Git.
         plan=json.loads(subprocess.run([executable('git'),'-C',p['repository'],'show',(commit or p['commit'])+':plan.json'],capture_output=True,text=True,encoding='utf-8',check=True).stdout)
         source_ids=[plan['source_id']]+[j['source_id'] for j in plan.get('joins',[])]
@@ -52,7 +54,10 @@ def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,*,frozen_s
             if any(revision is not None and sources[sid].get('revision')!=revision for sid,revision in revisions.items()):
                 raise ValueError('来源快照与确认的代码版本不一致')
     if kind=='pipeline':max_attempts=plan.get('runtime',{}).get('max_attempts',max_attempts)
-    return queue_enqueue(kind,target,commit,scheduled_key,max_attempts,extra={'source_snapshot':sources,'runtime_snapshot':plan.get('runtime',{}) if kind=='pipeline' else {}})
+    return queue_enqueue(kind,target,commit,scheduled_key,max_attempts,extra={'source_snapshot':sources,'runtime_snapshot':plan.get('runtime',{}) if kind=='pipeline' else {},
+        'schedule_snapshot':({'kind':'pipeline','generation':p.get('schedule_generation'),'project_id':p.get('project_id'),'actor_id':p.get('schedule_actor_id'),
+                              'published_run':p.get('published_run'),'candidate_run':p.get('candidate_run')}
+                             if kind=='pipeline' and is_scheduler_key(kind,target,scheduled_key) else None)})
 
 def patch_run(run,**values):
     updated=fenced_update(run['id'],run['lease_token'],**values);run.update(updated);return updated
@@ -229,7 +234,7 @@ def execute(run):
         status='cancelled' if isinstance(error,Cancelled) else 'retrying' if error.retryable and run['attempts']<run['max_attempts'] else 'failed'
         try:patch_run(run,status=status,finished_at=now(),stage='等待重试' if status=='retrying' else '已取消' if status=='cancelled' else '失败',error=str(error),error_code=error.code,available_at=time.time()+min(300,2**run['attempts']),quality=quality_report(folder))
         except RuntimeError:return
-        if run.get('scheduled_key') and status in ('failed','cancelled'):
+        if run.get('scheduled_key') and not run.get('schedule_snapshot') and status in ('failed','cancelled'):
             _scheduled_failure_notice(run,status)
         if run['kind']=='probe' and status=='failed':patch('source',run['target'],status='failed',error=str(error),error_code=error.code)
         record('run.'+status,run['target'],{'run_id':run['id'],'code':error.code,'attempt':run['attempts']})
@@ -256,7 +261,7 @@ def _scheduled_failure_notice(run,status):
     if kind not in ('data_workflow','pipeline'):return
     try:current=get(kind,run['target'])
     except KeyError:return
-    if current.get('archived') or not (current.get('cron') or current.get('watch_sources')):return
+    if current.get('archived') or current.get('schedule_generation') is not None or not (current.get('cron') or current.get('watch_sources')):return
     if kind=='data_workflow':
         pointers=run.get('workflow_pointer_snapshot') or {}
         if (not run.get('workflow_refresh_published') or current.get('active_sha256')!=run.get('commit')
@@ -281,9 +286,13 @@ def _queue_due():
         current=datetime.now(timezone.utc)
         from .store import all_items
         fields=('project_id','archived','cron','next_due','active_commit','commit','release_mode',
-                'business_plan_confirmation_required','schedule_gap_pending')
+                'business_plan_confirmation_required','schedule_gap_pending','schedule_error','schedule_generation','schedule_uncertain_run','schedule_resume_required','schedule_actor_id')
         for p in all_items('pipeline'):
             if not p.get('cron') or p.get('archived'):continue
+            if p.get('schedule_uncertain_run') or p.get('schedule_uncertain_runs') or p.get('schedule_resume_required'):continue
+            if not p.get('schedule_actor_id'):
+                _patch_schedule_if_current('pipeline',p,fields,schedule_error='历史自动更新缺少设置者身份，请重新设置后启用')
+                continue
             if (p.get('schedule_retry_after') or 0)>current.timestamp():continue
             try:
                 due=datetime.fromisoformat(p['next_due'])

@@ -11,6 +11,7 @@ const wbState = {
   proposals: new Map(), proposalOffset: null, proposalTotal: 0, factsLoaded: false,
   facts: new Map(), factsOffset: null, factsLoading: false, factsGeneration: 0,
   sourceReviewKey:'',sourceReviewAcknowledged:'',semanticReviewAcknowledged:'',
+  scheduleReviewKey:'',scheduleReviewBusy:false,scheduleReviewUncertain:false,
   catalogs: new Map(), catalogsLoaded: false, catalogsLoading: false,
   catalogOffset: null, catalogTotal: 0, catalogActions: new Set(),
 };
@@ -152,6 +153,7 @@ function wbFailure(job) {
   return {code,reason,next,stage_id:failure.stage_id || null,message:detail};
 }
 function wbRenderTask() {
+  wbRenderScheduleReview();
   const workflow = wbState.workflow, result = wbState.result, job = wbState.latestJob;
   const steps = wbPlanSteps(), inputs = workflow?.inputs || {}, entries = Array.isArray(inputs) ? inputs.map((v,i) => [v.name || '来源 '+(i+1),v]) : Object.entries(inputs);
   const failure = wbFailure(job), candidate = !!result && result.run_id===wbState.resultId && wbState.resultId === wbRunId(workflow?.candidate_run);
@@ -161,7 +163,7 @@ function wbRenderTask() {
   // rather than inviting the user to treat it as ready for financial reuse.
   const semanticReviewPending = !!result && !candidate && result.context?.requires_semantic_review===true && result.semantic_review_confirmed!==true;
   const taskState = wbState.workflowLoading && !workflow ? '正在读取任务' : !workflow ? '尚未选择任务' : wbState.activeJob ? ({queued:'等待执行',retrying:'等待重试'}[job?.status] || '正在运行') :
-    wbState.editorConflict ? '做法需要合并' : wbState.editorDirty ? '做法待保存' : failure ? (job.status === 'cancelled' ? '已取消' : '需要检查') :
+    workflow.schedule_uncertain_run ? '自动更新待核对' : wbState.editorConflict ? '做法需要合并' : wbState.editorDirty ? '做法待保存' : failure ? (job.status === 'cancelled' ? '已取消' : '需要检查') :
     workflow.refresh_error ? '自动更新需处理' : result&&wbFactSemanticBlocked()?'需业务语义对齐':candidate ? '新结果待确认' : semanticReviewPending ? '业务口径待核对' : result ? '可以继续使用' : '可以开始';
   wbEl('#workbench-task-state').textContent = taskState;
   const time = wbDateTime(job?.finished_at || job?.started_at || job?.created_at);
@@ -171,6 +173,7 @@ function wbRenderTask() {
   wbEl('#workbench-description').textContent = workflow ? '查看这项任务的来源、运行进展和保留结果；有变化时继续让 Agent 调整。' : '把常做的核对、汇总与报表保存成任务，需要时继续运行。';
   const next = !workflow ? ['从对话开始一项业务工作','告诉 Agent 你的目标，并提供相关资料；保存为任务后会出现在这里。'] :
     wbState.activeJob ? ['任务正在处理','可以稍后刷新状态。完成后会保留新结果，供你继续核对与使用。'] :
+    workflow.schedule_uncertain_run ? ['先核对上次自动运行','到目标系统核对完整执行状态和外部回执。状态不确定或仅部分执行时，请勿提交确认。'] :
     wbState.editorConflict ? ['先合并其他会话的修改','本页内容已保留。请先复制要保留的修改，再重新载入最新做法后合并。'] :
     wbState.editorDirty ? ['先保存本页的做法修改','保存后再运行；如果不需要这些修改，可以在“任务做法”中重新载入。'] :
     failure ? ['先检查这次未完成的地方',failure.next] :
@@ -200,13 +203,39 @@ function wbRenderTask() {
   if (failure) {
     wbEl('#workbench-failure-title').textContent = job.status === 'cancelled' ? '这次运行已取消' : '这次任务没有完成';
     wbEl('#workbench-failure-reason').textContent = failure.reason;
-    wbEl('#workbench-failure-next').textContent = '下一步：' + failure.next;
+    wbEl('#workbench-failure-next').textContent = '下一步：' + (workflow?.schedule_uncertain_run ? '请先核对上次自动运行的完整状态与外部回执，再决定是否重新运行。' : failure.next);
     const frozenSteps = job.workflow_document?.plan?.stages;
     const failureSteps = Array.isArray(frozenSteps) ? frozenSteps : job.commit && job.commit === workflow?.draft_sha256 ? steps : [];
     const index = failureSteps.findIndex(step => step.id === failure.stage_id);
     wbEl('#workbench-failure-stage').textContent = failure.stage_id?.startsWith('input:') ? '停在来源读取与核对阶段。' : index >= 0 ? '停在当次任务的第 ' + (index+1) + ' 步：' + wbStageName(failureSteps[index]) : '本页无法确认当次运行的具体步骤，可展开运行详情查看记录。';
     wbEl('#workbench-failure-details').textContent = JSON.stringify({run_id:job.id,stage_id:failure.stage_id,code:failure.code,message:failure.message},null,2);
   }
+}
+function wbRenderScheduleReview(){
+  const run=wbState.workflow?.schedule_uncertain_run,valid=typeof run==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(run);
+  const key=valid?JSON.stringify([wbProject,wbState.workflowId,run]):'';
+  if(key!==wbState.scheduleReviewKey){wbState.scheduleReviewKey=key;wbState.scheduleReviewUncertain=false;wbEl('#workbench-schedule-review-outcome').value='';wbEl('#workbench-schedule-review-note').value='';wbEl('#workbench-schedule-review-message').textContent=''}
+  wbEl('#workbench-schedule-review').hidden=!valid;
+  if(valid){wbEl('#workbench-schedule-review-run').textContent='待核对运行编号：'+run;for(const selector of ['#workbench-schedule-review-submit','#workbench-schedule-review-outcome','#workbench-schedule-review-note'])wbEl(selector).disabled=wbState.scheduleReviewBusy||wbState.scheduleReviewUncertain}
+}
+async function wbSubmitScheduleReview(){
+  const run=wbState.workflow?.schedule_uncertain_run,workflowId=wbState.workflowId,key=wbState.scheduleReviewKey,token=wbState.token,generation=wbState.loading;
+  if(!wbCurrentProject()||wbState.scheduleReviewBusy||wbState.scheduleReviewUncertain||!key||typeof run!=='string')return;
+  const outcome=wbEl('#workbench-schedule-review-outcome').value,note=wbEl('#workbench-schedule-review-note').value.trim(),message=wbEl('#workbench-schedule-review-message');
+  if(!['executed','not_executed'].includes(outcome)||note.length<4){message.textContent='请选择确认后的完整状态，并填写至少 4 个字的回执核对依据。';return}
+  const current=()=>wbCurrentProject()&&token===wbState.token&&workflowId===wbState.workflowId&&key===wbState.scheduleReviewKey&&generation===wbState.loading;
+  wbState.scheduleReviewBusy=true;wbRenderScheduleReview();message.textContent='正在保存核对记录…';
+  try{
+    const receipt=await wbRequest(wbRoot()+'/scheduled-runs/'+wbEnc(run)+'/resolve',{method:'POST',body:{outcome,note}});if(!current())return;
+    try{await wbLoadWorkflow(workflowId,{preserveEditor:true,keepOffset:true})}catch(error){
+      if(wbCurrentProject()&&token===wbState.token&&workflowId===wbState.workflowId){wbState.scheduleReviewUncertain=true;wbNotice('已记录核对，但未能刷新最新状态；请刷新后再操作。',true)}return;
+    }
+    if(wbCurrentProject()&&token===wbState.token&&workflowId===wbState.workflowId){
+      if(wbState.workflow?.schedule_uncertain_run===run){wbState.scheduleReviewUncertain=true;wbNotice('已记录核对，但未能确认最新状态；请刷新后再操作。',true)}
+      else wbNotice(wbState.workflow?.schedule_uncertain_run||receipt.remaining_count>0?'已记录当前运行的核对，仍有其他运行待核对。':'已记录核对；请回到项目对话重新设置定时或来源变化更新。原运行不会自动重跑。');
+    }
+  }catch(error){if(current()){wbState.scheduleReviewUncertain=!(error.status>=400&&error.status<500);message.textContent=wbState.scheduleReviewUncertain?'未确认核对记录是否保存，请先刷新状态，不要重复提交。':typeof error.detail==='string'&&error.detail.length<=300&&/[\u3400-\u9fff]/.test(error.detail)&&!/[\u0000-\u001f]/.test(error.detail)?error.detail:error.message;}}
+  finally{wbState.scheduleReviewBusy=false;if(wbCurrentProject()&&workflowId===wbState.workflowId)wbRenderScheduleReview()}
 }
 function wbSetBusy(value) { wbState.busy = value;wbRenderButtons(); }
 function wbCurrentProject(){return !wbAuthClosed && new URLSearchParams(location.search).get('project')===wbProject;}
@@ -245,7 +274,7 @@ function wbSyncSourceReview(){
 function wbRenderButtons() {
   const hasWorkflow = !!wbState.workflow && !wbState.workflowLoading;
   for (const button of document.querySelectorAll('[data-workflow]')) button.disabled = wbState.busy || wbState.workflowLoading;
-  wbEl('#workbench-run').disabled = !hasWorkflow || wbState.busy || wbState.editorDirty || !!wbState.activeJob;
+  wbEl('#workbench-run').disabled = !hasWorkflow || wbState.busy || wbState.editorDirty || !!wbState.activeJob || !!wbState.workflow?.schedule_uncertain_run;
   wbEl('#workbench-save').disabled = !hasWorkflow || !wbState.editorDirty || wbState.editorConflict || wbState.busy;
   wbEl('#workbench-reset').disabled = !hasWorkflow || wbState.busy;
   wbEl('#workbench-refresh').disabled = wbState.busy || wbState.workflowLoading;
@@ -376,7 +405,7 @@ function wbRenderResult() {
   wbEl('#workbench-record-count').textContent = result ? wbValue(result.total) + ' 条完整记录' : '';
   wbEl('#workbench-schedule').textContent = workflow?.cron ? '按计划重复' : workflow?.watch_sources ? '来源变化后运行' : '按需运行';
   const nextDue = wbDateTime(workflow?.next_due);
-  wbEl('#workbench-schedule-note').textContent = workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
+  wbEl('#workbench-schedule-note').textContent = workflow?.schedule_uncertain_run ? '上次自动运行状态不确定，请先核对外部回执。' : workflow?.schedule_resume_required ? '已记录核对；请回到项目对话重新设置定时或来源变化更新。' : workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
     (nextDue ? '下次：' + nextDue : '按已保存的时间安排执行') + (workflow.watch_sources ? '；同时跟踪已接入的来源版本' : '') :
     workflow?.watch_sources ? '跟踪已接入的来源版本变化' : '也可以回到对话安排定时执行';
   wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();wbSyncSingleFact();
@@ -484,6 +513,7 @@ async function wbRestoreRunningState() {
   }
 }
 async function wbRefresh() {
+  wbState.scheduleReviewUncertain=false;
   const list = await wbRequest(wbRoot() + '/data-workflows');wbState.workflows = list.items || [];
   wbRenderNav();
   const id = wbState.workflowId || wbState.workflows[0]?.workflow_id || wbState.workflows[0]?.id || '';
@@ -536,7 +566,7 @@ async function wbPoll() {
   } finally {wbRenderButtons();}
 }
 async function wbRun() {
-  if (!wbState.workflow || wbState.workflowLoading || wbState.busy || wbState.editorDirty || wbState.activeJob) return;
+  if (!wbState.workflow || wbState.workflowLoading || wbState.busy || wbState.editorDirty || wbState.activeJob || wbState.workflow.schedule_uncertain_run) return;
   wbSetBusy(true);
   try {
     const run = await wbRequest(wbWorkflowUrl() + '/run', {method:'POST',body:{}});
@@ -1312,3 +1342,5 @@ function wbRenderCatalogRecord(record, details, body) {
 }
 wbEl('#workbench-refresh-catalogs').onclick = () => wbLoadCatalogs(false);
 wbEl('#workbench-more-catalogs').onclick = () => wbLoadCatalogs(true);
+
+wbEl('#workbench-schedule-review-submit').addEventListener('click',wbSubmitScheduleReview);

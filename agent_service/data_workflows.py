@@ -1102,7 +1102,8 @@ def _filter_reconciliation(stage, source, output, deadline):
 
 def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], *,
             on_stage: Callable[[dict], None] | None = None,
-            on_evidence: Callable[[Any, dict, list, dict], None] | None = None) -> dict:
+            on_evidence: Callable[[Any, dict, list, dict], None] | None = None,
+            on_aggregate_input: Callable[[Any, dict, list, dict], None] | None = None) -> dict:
     """Execute a complete plan against explicit full inputs in an isolated run.
 
     Monetary inputs and returned values use exact decimal strings at the public
@@ -1168,6 +1169,9 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
             receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
         if on_evidence is not None and isinstance(stage,FxConvert):
             on_evidence(stage, schema.model_dump(mode='json'), table['rows'], receipt)
+        if on_aggregate_input is not None and isinstance(stage,Aggregate) and stage.id==plan.output:
+            source=tables[stage.input]
+            on_aggregate_input(stage,source['schema'].model_dump(mode='json'),source['rows'],receipt)
         if on_stage is not None:
             on_stage(json.loads(canonical(receipt)))
     output = tables[plan.output]

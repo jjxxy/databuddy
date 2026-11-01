@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>业务流程 · Atlas</title>
 <link rel="stylesheet" href="/business-flows.css?v=3"><link rel="stylesheet" href="/business-flow-view.css?v=2">
-<script src="/secure-id.js?v=1" defer></script><script src="/workspace-session.js?v=1" defer></script><script src="/business-flow-view.js?v=3" defer></script><script src="/business-flows.js?v=7-fx-evidence" defer></script></head>
+<script src="/secure-id.js?v=1" defer></script><script src="/workspace-session.js?v=1" defer></script><script src="/business-flow-view.js?v=3" defer></script><script src="/business-flows.js?v=9-schedule-review" defer></script></head>
 <body>
 <section id="flow-login" class="login" hidden><form id="flow-login-form"><h1>打开业务流程</h1><p>输入工作空间访问口令。</p><label for="flow-token">访问口令</label><input id="flow-token" type="password" autocomplete="current-password" required><button type="submit">进入项目</button><a href="/">返回工作空间使用企业账号登录</a><p id="flow-login-error" role="alert"></p></form></section>
 <section id="flow-missing" class="missing" hidden><h1>请从项目打开</h1><p>当前链接缺少项目标识。</p><a href="/">返回项目对话</a></section>
@@ -14,6 +14,7 @@
  <section id="flow-detail" class="panel" hidden><div class="flow-role-picker"><label for="flow-role">查看版本</label><select id="flow-role"></select></div><div id="flow-definition"></div><div id="flow-inputs" class="flow-inputs"></div><div class="flow-actions"><button id="flow-run" type="button" disabled>运行此版本</button><button id="flow-publish" type="button" disabled>确认采用候选版本</button></div><p id="flow-input-note" class="flow-input-note" hidden>此流程需要明确输入，请回到项目对话准备输入后再运行。</p></section>
  <section id="flow-review" class="panel" hidden></section>
  <section id="flow-schedule" class="panel" hidden><h2>定时运行</h2><p id="flow-schedule-current"></p><p>定时运行使用正式方案；选定的资料每次运行时会读取其最新版本。其他输入沿用正式方案验收时的输入。</p><label for="flow-schedule-time">每天运行时间</label> <input id="flow-schedule-time" type="time"><div class="flow-actions"><button id="flow-schedule-save" type="button">设置或修改定时</button><button id="flow-schedule-pause" type="button">暂停定时</button></div></section>
+ <section id="flow-schedule-review" class="panel" hidden aria-labelledby="flow-schedule-review-title"><h2 id="flow-schedule-review-title">核对上次自动运行</h2><p>上次自动运行的结果不确定，自动更新已暂停。请先到目标系统核对完整执行状态和外部回执；如果无法确认或只执行了一部分，请勿提交确认。暂停或重新设置计划本身不能代替核对。</p><p id="flow-schedule-review-run"></p><label for="flow-schedule-review-outcome">核对后的完整执行状态</label> <select id="flow-schedule-review-outcome"><option value="">请选择</option><option value="executed">已完整执行</option><option value="not_executed">确定未执行</option></select><label for="flow-schedule-review-note">在哪个系统、依据哪些回执核对（至少 4 个字）</label><textarea id="flow-schedule-review-note" rows="3" maxlength="500"></textarea><div class="flow-actions"><button type="button" id="flow-schedule-review-submit">记录核对</button></div><p id="flow-schedule-review-message" role="status" aria-live="polite"></p></section>
  <section id="flow-outputs" class="panel" hidden><h2>本次成果</h2><p>只列出本次运行实际返回的成果。</p><ul id="flow-output-list"></ul><div id="flow-preview" hidden></div></section>
  <p id="flow-placeholder" class="placeholder">从左侧选择一个已保存的业务流程。</p>
  </main>
