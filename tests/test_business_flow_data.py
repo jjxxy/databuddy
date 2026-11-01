@@ -49,6 +49,18 @@ def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts():
     assert Decimal(output['rows'][0]['amount'])==Decimal('18.00')
     assert output['financial_evidence_status']=='requires_business_review'
     assert output['stage_receipts'][0]['checks']['complete_table'] is True
+    assert output['source_lineage_complete'] is True
+    assert output['source_refs']==[{'source_id':source['id'],'revision':source['revision'],
+                                    'content_hash':source['content_hash'],'name':'income.csv'}]
+    # Later processing inherits the same pinned inputs; legacy intermediate
+    # results without a lineage are explicitly marked incomplete.
+    raw=source_table(context,doc['nodes'][0]['config'],{})
+    intermediate=dict(raw,kind='table_workflow_v1',source_refs=output['source_refs'],source_lineage_complete=True)
+    chained=table_workflow(context,{'plan':plan},{'table':intermediate})
+    assert chained['source_refs']==output['source_refs'] and chained['source_lineage_complete'] is True
+    intermediate.pop('source_refs');intermediate.pop('source_lineage_complete')
+    legacy=table_workflow(context,{'plan':plan},{'table':intermediate})
+    assert legacy['source_refs']==[] and legacy['source_lineage_complete'] is False
     # The same immutable flow can take an explicitly frozen new source at run
     # time. The exact source version is part of this run's input hash.
     dynamic=doc.copy();dynamic['inputs']=['input_file'];dynamic['nodes']=[dict(n) for n in doc['nodes']]

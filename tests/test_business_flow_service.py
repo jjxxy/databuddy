@@ -217,3 +217,15 @@ def test_fact_alignment_cannot_be_dismissed_as_generic_source_review():
         items,blocked=_review_items(pid,state)
         assert items and '事实语义' in blocked
     finally:delete('source',sid)
+def test_office_presentation_implementation_is_pinned(monkeypatch):
+    from pathlib import Path
+    from agent_service import business_flows
+    doc={'nodes':[{'kind':'office_document'}]}
+    original=business_flows._runtime_lock(doc)
+    assert 'office_presentation.py' in original['modules']
+    read_bytes=Path.read_bytes
+    def changed(path):
+        data=read_bytes(path)
+        return data+b'\n# changed' if path.name=='office_presentation.py' else data
+    monkeypatch.setattr(Path,'read_bytes',changed)
+    assert business_flows._runtime_lock(doc)!=original

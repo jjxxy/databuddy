@@ -2,13 +2,13 @@
 import hashlib,json,re,zipfile
 from decimal import Decimal,InvalidOperation
 from typing import Literal
-from pydantic import Field,ValidationError
+from pydantic import Field,ValidationError,model_validator
 from .models import StrictModel
 from .config import DATA
 from .store import get,put,now
 from . import workspace
 
-RENDERER='office-v2'
+RENDERER='office-v3'
 PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
 MANIFEST_MAX_BYTES=256*1024
 
@@ -18,10 +18,20 @@ class OfficeArgs(StrictModel):
     name:str=Field(min_length=1,max_length=91,
         pattern=r'^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff _-]{0,90}$',
         description='不含路径和扩展名的文件基名，例如净收入明细；扩展名由规格kind决定，不能传report.xlsx')
+class SectionTable(StrictModel):
+    columns:list[str]=Field(min_length=1,max_length=20)
+    rows:list[list[str]]=Field(default_factory=list,max_length=100)
+    @model_validator(mode='after')
+    def complete(self):
+        if any(not c.strip() or len(c)>300 for c in self.columns):raise ValueError('表格表头无效')
+        if any(len(row)!=len(self.columns) or any(len(value)>2000 for value in row) for row in self.rows):
+            raise ValueError('表格行不完整或单元格过长')
+        return self
 class Section(StrictModel):
     heading:str=Field(default='',max_length=300)
     body:str=Field(default='',max_length=20000)
     bullets:list[str]=Field(default_factory=list,max_length=30)
+    table:SectionTable|None=None
 class Sheet(StrictModel):
     name:str=Field(min_length=1,max_length=31)
     columns:list[str]=Field(min_length=1,max_length=60)
@@ -83,7 +93,10 @@ def _verify_structure(file,ext,spec=None):
             Document(file)
         elif ext=='pptx':
             from pptx import Presentation
-            Presentation(file)
+            deck=Presentation(file)
+            if spec is not None:
+                from .office_presentation import verify
+                verify(spec,deck)
         elif spec is not None:_verify_xlsx_values(file,spec)
         else:
             from openpyxl import load_workbook
@@ -94,6 +107,8 @@ def _verify_structure(file,ext,spec=None):
 
 def _build_file(spec,tmp,precision_notes):
     ext=tmp.suffix.lstrip('.')
+    if ext!='pptx' and any(section.table is not None for section in spec.sections):
+        raise ValueError('结构化章节表格目前仅支持演示文稿，请使用工作簿交付完整表格')
     if ext=='docx':
         from docx import Document
         from docx.shared import Pt,Inches
@@ -138,19 +153,8 @@ def _build_file(spec,tmp,precision_notes):
             for column in ws.columns:ws.column_dimensions[column[0].column_letter].width=min(42,max(14,max(len(str(c.value or '')) for c in column)+2))
         book.save(tmp)
     else:
-        from pptx import Presentation
-        from pptx.util import Inches,Pt
-        if not spec.sections:raise ValueError('演示文稿至少需要一页内容')
-        deck=Presentation();deck.slide_width=Inches(13.333);deck.slide_height=Inches(7.5)
-        title=deck.slides.add_slide(deck.slide_layouts[0]);title.shapes.title.text=spec.title
-        for section in spec.sections:
-            slide=deck.slides.add_slide(deck.slide_layouts[1]);slide.shapes.title.text=section.heading or spec.title
-            tf=slide.placeholders[1].text_frame;tf.clear()
-            lines=section.body.splitlines()+section.bullets
-            if len(lines)>12 or any(len(line)>180 for line in lines):raise ValueError('单页内容过多，请拆分为更短的幻灯片')
-            for i,line in enumerate(lines):
-                p=tf.paragraphs[0] if i==0 else tf.add_paragraph();p.text=line;p.font.size=Pt(22)
-        deck.save(tmp)
+        from .office_presentation import build
+        build(spec,tmp)
     _verify_structure(tmp,ext,spec)
 
 

@@ -37,6 +37,24 @@ def run(args, timeout=90):
     if result.returncode:raise ValueError('Rendition program failed; no success receipt was written')
 
 
+def cjk_font_probe(suffix):
+    """Check fontconfig's language coverage, not every glyph or actual layout.
+
+    Embedded PDF fonts need a different per-font inspection, so do not claim
+    that a host font check verifies a PDF's rendering.
+    """
+    if suffix == '.pdf':return 'not_checked'
+    try:
+        result = subprocess.run(['fc-match', '-f', '%{lang}', ':lang=zh-cn'],
+                                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=5, check=True)
+        if len(result.stdout) > 16384:return 'unknown'
+        languages = result.stdout.decode('utf-8', errors='strict').lower().split('|')
+        return 'available' if 'zh-cn' in languages else 'missing'
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return 'unknown'
+
+
 def render(source, output, max_pages, *, first_page=1, root=None):
     root = root or Path('/workspace')
     source = checked_path(source, root)
@@ -92,6 +110,7 @@ def render(source, output, max_pages, *, first_page=1, root=None):
         result = {'schema': 'atlas-rendition-v1', 'input_sha256': checksum, 'input_format': suffix[1:],
                   'total_pages': total, 'first_page': first_page, 'rendered_pages': count, 'complete': count == total,
                   'images': images, 'network': 'none', 'financial_approval': False,
+                  'cjk_font_probe': cjk_font_probe(suffix),
                   'scope': 'offline_rendition; visual_inspection_and_business_review_are_separate'}
         manifest.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')
         print(json.dumps({'manifest': str(manifest.relative_to(root)), 'rendered_pages': count,

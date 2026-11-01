@@ -74,6 +74,8 @@ def test_rendered_pages_are_version_bound_and_visible_in_original_artifact_previ
     assert preview['render'] == 'text' and '<script>' in preview['text']
     assert preview['visual_preview']['total_pages'] == 3
     assert preview['visual_preview']['visual_inspected'] is False
+    # Old runner manifests did not include a font probe: never infer success.
+    assert preview['visual_preview']['cjk_font_probe'] == 'unknown'
     assert get('turn', turn['id'])['agent_download']['name'] == 'report.html'
 
 
@@ -89,6 +91,32 @@ def test_forged_rendition_cannot_reuse_a_different_input_hash(controller):
     trace = get('turn', turn['id'])['agent_trace'][-1]
     assert trace['status'] == 'failed' and trace['observation']['executed'] is False
     assert not [v for v in all_items('work_rendition') if v['project_id'] == turn['project_id']]
+
+
+def test_rendition_rejects_truncated_png_even_if_its_header_and_hash_match(controller):
+    engine, backend, _ = controller
+    turn, aid = make_saved_work(controller, 'report.html', b'<h1>Original</h1>')
+    sha = get('work_artifact', aid)['sha256']; output = 'previews/' + sha[:24]
+    # Previously this valid-looking signature/IHDR and matching digest passed;
+    # it has no image payload and cannot be viewed by the business user.
+    png = sample_png()[:24]
+    manifest = {'schema':'atlas-rendition-v1','input_sha256':sha,'total_pages':1,
+                'rendered_pages':1,'images':[{'page':1,'path':output+'/page-1.png','sha256':digest(png)}]}
+    backend.output = {output+'/page-1.png':png,output+'/manifest.json':json.dumps(manifest).encode()}
+    turn = run_tool(turn,'render_work_preview',{'artifact_id':aid})
+    eid=turn['work_execution_id'];engine.step(eid);engine.step(eid);work.resume(turn)
+    trace=get('turn',turn['id'])['agent_trace'][-1]
+    assert trace['status']=='failed' and trace['observation']['executed'] is False
+    assert not [v for v in all_items('work_rendition') if v['project_id']==turn['project_id']]
+
+
+def test_rendition_png_integrity_validation_does_not_claim_visual_quality():
+    png=sample_png()
+    assert work.verified_rendition_png(png)==(40,30)
+    with pytest.raises(ValueError,match='损坏|不完整'):
+        work.verified_rendition_png(png[:-5])
+    with pytest.raises(ValueError):
+        work.verified_rendition_png(b'not-a-png')
 
 
 def test_rendition_readback_retries_same_execution_after_temporary_disconnect(controller, monkeypatch):
@@ -174,6 +202,7 @@ def test_real_pdf_rendition_uses_poppler_and_marks_unrendered_pages(tmp_path):
     with source.open('wb') as stream:writer.write(stream)
     result = render('actual.pdf', 'previews/actual', 2, root=tmp_path)
     assert result['total_pages'] == 3 and result['rendered_pages'] == 2 and result['complete'] is False
+    assert result['cjk_font_probe'] == 'not_checked'
     for image in result['images']:
         raw = (tmp_path / image['path']).read_bytes()
         assert digest(raw) == image['sha256'] and struct.unpack('>II', raw[16:24]) == (image['width'], image['height'])
@@ -192,6 +221,56 @@ def test_office_binary_artifact_can_be_selected_without_model_transcription(cont
     content, metadata = work.artifact_input(turn, saved['artifact_id'])
     assert content.startswith(b'PK') and metadata['sha256'] == saved['sha256']
     assert metadata['path'].endswith('/精确结果.xlsx')
+
+
+def test_cjk_font_probe_reports_missing_and_unknown_without_claiming_glyph_verification(monkeypatch):
+    from work_runner import render
+    class Response:
+        def __init__(self, value):self.stdout=value
+    monkeypatch.setattr(render.subprocess, 'run', lambda *args, **kwargs:Response(b'en|zh-cn|zh-tw'))
+    assert render.cjk_font_probe('.pptx') == 'available'
+    monkeypatch.setattr(render.subprocess, 'run', lambda *args, **kwargs:Response(b'en|fr'))
+    assert render.cjk_font_probe('.html') == 'missing'
+    def failed(*args, **kwargs):raise OSError('fontconfig unavailable')
+    monkeypatch.setattr(render.subprocess, 'run', failed)
+    assert render.cjk_font_probe('.docx') == 'unknown'
+    assert render.cjk_font_probe('.pdf') == 'not_checked'
+
+
+@pytest.mark.parametrize('kind', ['office', 'flow'])
+def test_business_artifact_catalog_can_render_versioned_output(controller, kind):
+    engine, backend, turn = controller
+    from agent_service import office, workspace, business_deliverables as delivery
+    if kind == 'office':
+        spec={'kind':'presentation','title':'报告','sections':[{'heading':'收入','body':'待核验'}]}
+        workspace.write_file(turn['project_id'],'spec.json',json.dumps(spec,ensure_ascii=False))
+        office.render(turn,'spec.json','报告')
+        item=next(v for v in workspace_artifacts.catalog(turn['project_id'],'office')['items'] if v['name']=='报告.pptx')
+        aid=item['id']
+    else:
+        execution={'project_id':turn['project_id'],'actor_id':'owner','originating_turn_id':turn['id']}
+        spec={'title':'报告','sections':[{'heading':'收入','body':'待核验'}]}
+        result=delivery.render_html(execution,{'name':'报告','renderer_version':delivery.HTML_RENDERER},{'spec':spec})
+        aid=result['artifact_id']
+    raw, meta=work.artifact_input(turn,aid)
+    assert digest(raw)==meta['sha256']
+    output='previews/'+meta['sha256'][:24];png=sample_png()
+    manifest={'schema':'atlas-rendition-v1','input_sha256':meta['sha256'],'total_pages':1,'rendered_pages':1,
+              'cjk_font_probe':'missing','images':[{'page':1,'path':output+'/page-1.png','sha256':digest(png)}]}
+    backend.output={output+'/page-1.png':png,output+'/manifest.json':json.dumps(manifest).encode()}
+    turn=run_tool(turn,'render_work_preview',{'artifact_id':aid})
+    eid=turn['work_execution_id'];engine.step(eid);engine.step(eid);work.resume(turn)
+    preview=workspace_artifacts.preview(turn['project_id'],aid)['visual_preview']
+    assert preview['cjk_font_probe']=='missing' and preview['visual_inspected'] is False
+    other=put('project',{'name':'other'},'p_'+uid())
+    with pytest.raises((ValueError,KeyError)):work.artifact_input(dict(turn,project_id=other['id']),aid)
+    record=workspace_artifacts._record(turn['project_id'],aid)
+    resource_kind='office_artifact' if kind=='office' else 'business_flow_artifact'
+    resource_id=record['private']['office_id' if kind=='office' else 'flow_artifact_id']
+    original=get(resource_kind,resource_id)['sha256']
+    patch(resource_kind,resource_id,sha256='0'*64)
+    with pytest.raises((ValueError,KeyError)):work.artifact_input(turn,aid)
+    patch(resource_kind,resource_id,sha256=original)
 
 
 def test_vision_request_uses_actual_compatible_http_protocol_and_safe_image_mime(controller, monkeypatch):

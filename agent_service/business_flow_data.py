@@ -593,6 +593,7 @@ def table_workflow(context, config, inputs):
     if not isinstance(inputs,dict) or set(inputs)!=(set(cfg.plan.inputs)|set(cfg.parameter_bindings)):
         raise ValueError('加工输入与已确认的数据步骤不一致')
     tables={};source_review=False;semantic_review=False
+    source_refs=[];seen_sources=set();source_lineage_complete=True
     for alias in cfg.plan.inputs:
         value=inputs[alias]
         if (not isinstance(value,dict) or value.get('kind') not in ('source_table_v1','table_workflow_v1')
@@ -600,6 +601,31 @@ def table_workflow(context, config, inputs):
             raise ValueError('加工输入不是完整数据来源或已完成的数据步骤')
         value=materialize_table(context,value)
         if not isinstance(value.get('rows'),list):raise ValueError('加工输入的数据表不完整')
+        # Carry the identity of the actual frozen inputs through chained
+        # processing steps. Older outputs may lack lineage; do not present
+        # their references as a complete audit trail.
+        if value['kind']=='source_table_v1':
+            refs=[{key:value.get(key) for key in ('source_id','revision','content_hash')}]
+        else:
+            refs=value.get('source_refs')
+            if value.get('source_lineage_complete') is not True or not isinstance(refs,list) or not refs:
+                source_lineage_complete=False
+                refs=refs if isinstance(refs,list) else []
+        from .project_data import owned
+        for ref in refs:
+            if not isinstance(ref,dict):raise ValueError('资料来源引用无效')
+            pin=SourcePin.model_validate({key:ref.get(key) for key in ('source_id','revision','content_hash')})
+            agent_team.assert_turn_allowed(turn,'read_source_table',{'source_id':pin.source_id})
+            source=owned(turn['project_id'],'source',pin.source_id)
+            if (source.get('kind')!='file' or source.get('status')!='ready' or source.get('archived')
+                    or source.get('revision')!=pin.revision or source.get('content_hash')!=pin.content_hash):
+                raise FlowStepError('SOURCE_VERSION_CHANGED','资料版本已变化或不可用，请重新确认并运行')
+            key=(pin.source_id,pin.revision,pin.content_hash)
+            if key not in seen_sources:
+                if len(source_refs)>=200:raise ValueError('资料来源数量超过处理上限')
+                seen_sources.add(key)
+                source_refs.append({'source_id':pin.source_id,'revision':pin.revision,
+                                    'content_hash':pin.content_hash,'name':str(source.get('name') or pin.source_id)})
         tables[alias]=value['rows']
         source_review |= value.get('requires_source_review') is True
         semantic_review |= value.get('requires_semantic_review') is True
@@ -620,6 +646,7 @@ def table_workflow(context, config, inputs):
         'schema':result['output']['schema'],'row_count':result['output']['row_count'],
         'output_sha256':result['output']['sha256'],'plan_sha256':result['plan_sha256'],
         'input_sha256':result['input_sha256'],'stage_receipts':result['stages'],
+        'source_refs':source_refs,'source_lineage_complete':source_lineage_complete,
         'requires_source_review':source_review,
         'requires_semantic_review':semantic_review or result.get('requires_semantic_review') is True,
         'financial_evidence_status':'requires_business_review'})

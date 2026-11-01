@@ -11,7 +11,7 @@ import html
 import json
 import re
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from . import office, workspace
 from .actor_context import current_actor
@@ -20,7 +20,8 @@ from .models import StrictModel
 from .store import get, put, now, seal, unseal
 from .workspace_lifecycle import assert_turn_live
 
-HTML_RENDERER = 'business-html-v1'
+HTML_RENDERER = 'business-html-v2'
+HTML_RENDERER_LEGACY = 'business-html-v1'
 MAX_SPEC_BYTES = 256 * 1024
 _NAME = r'^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff _-]{0,90}$'
 
@@ -30,10 +31,24 @@ class DeliveryConfig(StrictModel):
     renderer_version: str = Field(min_length=1, max_length=100)
 
 
+class HtmlTable(StrictModel):
+    columns: list[str] = Field(min_length=1,max_length=20)
+    rows: list[list[str]] = Field(max_length=1000)
+
+    @model_validator(mode='after')
+    def complete(self):
+        if any(not isinstance(col,str) or not col.strip() or len(col)>300 for col in self.columns):
+            raise ValueError('报告表头无效')
+        if any(len(row)!=len(self.columns) or any(len(cell)>2000 for cell in row) for row in self.rows):
+            raise ValueError('报告表格行不完整或单元格过长')
+        return self
+
+
 class HtmlSection(StrictModel):
     heading: str = Field(default='', max_length=300)
     body: str = Field(default='', max_length=20000)
     bullets: list[str] = Field(default_factory=list, max_length=30)
+    table: HtmlTable | None = None
 
 
 class HtmlSpec(StrictModel):
@@ -58,7 +73,14 @@ def validate_office_config(value):
 
 
 def validate_html_config(value):
-    _config(value,HTML_RENDERER)
+    _html_config(value)
+
+
+def _html_config(value):
+    config=DeliveryConfig.model_validate(value)
+    if config.renderer_version not in (HTML_RENDERER,HTML_RENDERER_LEGACY):
+        raise ValueError('已确认的成果渲染器版本不可用，请重新验证后再运行')
+    return config
 
 
 def validate_table_report_config(value):
@@ -130,7 +152,7 @@ def render_office(context,config,inputs):
             'structural_validation':True,'visual_validation':False,'financial_verified':False,'review':_review_notice(inputs)}
 
 
-def _render_html(spec):
+def _render_html_v1(spec):
     parts=['<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
            '<meta name="viewport" content="width=device-width,initial-scale=1">',
            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">',
@@ -145,16 +167,68 @@ def _render_html(spec):
             parts.append('<ul>')
             for item in section.bullets:parts.append('<li>'+html.escape(item,quote=True)+'</li>')
             parts.append('</ul>')
+        # v1 documents previously had no table field. Preserve their exact
+        # bytes while allowing newly generated structured specifications to
+        # be rendered for an explicitly retained v1 flow.
+        if section.table is not None:
+            parts.append('<table><thead><tr>')
+            parts.extend('<th>'+html.escape(c,quote=True)+'</th>' for c in section.table.columns)
+            parts.append('</tr></thead><tbody>')
+            for row in section.table.rows:
+                parts.append('<tr>');parts.extend('<td>'+html.escape(c,quote=True)+'</td>' for c in row);parts.append('</tr>')
+            parts.append('</tbody></table>')
         parts.append('</section>')
     parts.append('</main></body></html>')
     return ''.join(parts)
 
 
+def _render_html(spec,version=HTML_RENDERER):
+    if version==HTML_RENDERER_LEGACY:return _render_html_v1(spec)
+    if version!=HTML_RENDERER:raise ValueError('报告渲染器版本不可用')
+    esc=lambda value:html.escape(value,quote=True)
+    css=('''
+:root{color-scheme:light;--ink:#172c3d;--muted:#536676;--line:#d9e2e8;--accent:#08645e;--paper:#ffffff}
+*{box-sizing:border-box}body{margin:0;background:#f1f4f6;color:var(--ink);font:16px/1.7 system-ui,-apple-system,"Microsoft YaHei",sans-serif}
+.report{max-width:1120px;margin:40px auto;padding:0 24px}.report-head{background:var(--paper);border-top:5px solid var(--accent);padding:30px 36px;border-radius:4px 4px 0 0}
+.eyebrow{color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.12em}h1{margin:8px 0 0;font-size:clamp(26px,3vw,36px);line-height:1.28;overflow-wrap:anywhere}
+main{background:var(--paper);padding:8px 36px 36px}section{padding:22px 0;border-top:1px solid var(--line)}section:first-child{border-top:0}h2{font-size:20px;line-height:1.4;margin:0 0 12px}p{margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}li{margin:5px 0;overflow-wrap:anywhere}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);margin-top:12px}table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.55}caption{text-align:left;padding:12px 14px;background:#f5f9f8;font-weight:600;color:var(--muted)}th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line);overflow-wrap:anywhere;min-width:100px}th{background:#ecf3f2;color:#203f40;font-weight:700}tbody tr:nth-child(even){background:#f8fafb}tbody tr:last-child td{border-bottom:0}.end{color:var(--muted);font-size:12px;padding-top:20px;border-top:1px solid var(--line)}
+@media(max-width:600px){.report{margin:0;padding:0}.report-head{padding:24px 20px}main{padding:8px 20px 28px}th,td{padding:9px 10px}}
+@media print{@page{size:A4;margin:15mm}body{background:#fff;font-size:10pt}.report{max-width:none;margin:0;padding:0}.report-head{padding:0 0 12pt;border:0;border-bottom:2pt solid #08645e}main{padding:0}section{padding:12pt 0}h1{font-size:22pt}h2{font-size:15pt;break-after:avoid}.table-wrap{overflow:visible;border:0}table{font-size:9pt;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid}th,td{min-width:0;padding:5pt;border:1px solid #c9d3d8}tbody tr:nth-child(even){background:#fff}}
+''')
+    if any(section.table is not None and len(section.table.columns)>6 for section in spec.sections):
+        css+='@media print{@page{size:A4 landscape}}'
+    parts=['<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+           '<meta name="viewport" content="width=device-width,initial-scale=1">',
+           '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'">',
+           '<title>'+esc(spec.title)+'</title><style>'+css+'</style></head><body>',
+           '<div class="report"><header class="report-head"><div class="eyebrow">业务报告</div><h1>'+esc(spec.title)+'</h1></header><main>']
+    for index,section in enumerate(spec.sections):
+        ident='section-'+str(index+1)
+        parts.append('<section'+(' aria-labelledby="'+ident+'"' if section.heading else '')+'>')
+        if section.heading:parts.append('<h2 id="'+ident+'">'+esc(section.heading)+'</h2>')
+        for line in section.body.splitlines():parts.append('<p>'+esc(line)+'</p>')
+        if section.bullets:
+            parts.append('<ul>');parts.extend('<li>'+esc(item)+'</li>' for item in section.bullets);parts.append('</ul>')
+        if section.table is not None:
+            table=section.table
+            parts.append('<div class="table-wrap" role="region" aria-label="'+esc(section.heading or '数据表')+'" tabindex="0"><table>')
+            parts.append('<caption>'+esc(section.heading or '数据明细')+' · 共 '+str(len(table.rows))+' 行</caption><thead><tr>')
+            parts.extend('<th scope="col">'+esc(label)+'</th>' for label in table.columns);parts.append('</tr></thead><tbody>')
+            for row in table.rows:
+                parts.append('<tr>');parts.extend('<td>'+esc(cell)+'</td>' for cell in row);parts.append('</tr>')
+            parts.append('</tbody></table></div>')
+        parts.append('</section>')
+    parts.append('<div class="end">报告内容以实际资料和业务口径核对为准。</div></main></div></body></html>')
+    return ''.join(parts)
+
+
 def render_html(context,config,inputs):
-    cfg=_config(config,HTML_RENDERER);turn=_turn(context,'write_file')
+    cfg=_html_config(config);turn=_turn(context,'write_file')
     raw,spec_hash=_spec(inputs)
     spec=HtmlSpec.model_validate(json.loads(raw))
-    content=_render_html(spec);content_hash=hashlib.sha256(content.encode('utf-8')).hexdigest()
+    content=_render_html(spec,cfg.renderer_version);content_hash=hashlib.sha256(content.encode('utf-8')).hexdigest()
+    if len(content.encode('utf-8'))>2*1024*1024:raise ValueError('完整报告超过安全容量，未截断，请使用完整数据结果')
     # Business values must not enter the project's Git working tree. Save the
     # verified output in the protected artifact store; the content itself is
     # not a source file or a versioned workflow definition.
@@ -162,13 +236,13 @@ def render_html(context,config,inputs):
     from .locks import FileLock
     from .agent_handoff import _atomic_bytes
     identity=hashlib.sha256(json.dumps([turn['project_id'],turn['id'],turn.get('actor_id','owner'),cfg.name,
-                                       content_hash,HTML_RENDERER],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+                                       content_hash,cfg.renderer_version],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
     artifact_id='bfa_'+identity[:40]
     path=DATA/'business-flow-artifacts'/artifact_id/(cfg.name+'.html')
     record={'id':artifact_id,'project_id':turn['project_id'],'actor_id':turn.get('actor_id','owner'),
             'turn_id':turn['id'],'name':cfg.name+'.html','relative_path':str(path.relative_to(DATA)),
             'format':'html','sha256':content_hash,'bytes':len(content.encode('utf-8')),
-            'spec_sha256':spec_hash,'renderer_version':HTML_RENDERER}
+            'spec_sha256':spec_hash,'renderer_version':cfg.renderer_version}
     with FileLock(str(DATA/('business-flow-artifact-'+identity+'.lock')),timeout=20):
         try:old=get('business_flow_artifact',artifact_id)
         except KeyError:old=None
@@ -184,7 +258,7 @@ def render_html(context,config,inputs):
                          private={'flow_artifact_id':artifact_id})
     if not registered:raise ValueError('报告已归档，不能重新采用')
     return {'artifact_id':registered['id'],'format':'html','sha256':content_hash,'spec_sha256':spec_hash,
-            'renderer_version':HTML_RENDERER,'download_url':registered['download_url'],
+            'renderer_version':cfg.renderer_version,'download_url':registered['download_url'],
             'content_escaped':True,'visual_validation':False,'financial_verified':False,'review':_review_notice(inputs)}
 
 
@@ -214,7 +288,7 @@ def artifact(pid,identity):
 def preview_blocks(pid,identity):
     """Return text-only report structure tied to verified stored bytes."""
     _,value=artifact(pid,identity)
-    if value.get('renderer_version')!=HTML_RENDERER or not value.get('secret_preview'):
+    if value.get('renderer_version') not in (HTML_RENDERER,HTML_RENDERER_LEGACY) or not value.get('secret_preview'):
         raise ValueError('此报告没有可验证的结构化预览，请下载原件')
     try:
         source=unseal(value['secret_preview'])
@@ -222,7 +296,7 @@ def preview_blocks(pid,identity):
         if len(raw)>MAX_SPEC_BYTES or hashlib.sha256(raw).hexdigest()!=value['spec_sha256']:
             raise ValueError('报告预览规格与固定回执不一致')
         spec=HtmlSpec.model_validate(source)
-        if hashlib.sha256(_render_html(spec).encode('utf-8')).hexdigest()!=value['sha256']:
+        if hashlib.sha256(_render_html(spec,value['renderer_version']).encode('utf-8')).hexdigest()!=value['sha256']:
             raise ValueError('报告预览与保存的成果不一致')
     except Exception:
         raise ValueError('报告预览无法验证，请下载原件') from None
@@ -232,6 +306,9 @@ def preview_blocks(pid,identity):
         for line in section.body.splitlines():
             blocks.append({'type':'paragraph','text':line})
         for item in section.bullets:blocks.append({'type':'paragraph','text':'• '+item})
+        if section.table is not None:
+            for start in range(0,max(1,len(section.table.rows)),100):
+                blocks.append({'type':'table','table':{'columns':section.table.columns,'rows':section.table.rows[start:start+100]}})
     return blocks
 
 
@@ -251,8 +328,9 @@ def table_report_spec(context,config,inputs):
             or table.get('financial_evidence_status')!='requires_business_review'
             or type(table.get('requires_source_review')) is not bool or type(table.get('requires_semantic_review')) is not bool):
         raise ValueError('报告输入不是完整且待业务核验的数据加工结果')
+    max_rows=100 if cfg.format=='presentation' else 1000
     if 'rows_ref' in table:
-        if type(table.get('row_count')) is not int or table['row_count']>100:
+        if type(table.get('row_count')) is not int or table['row_count']>max_rows:
             raise ValueError('完整结果超出报告展示容量；未截断，请使用完整表格交付')
         # References are bound to the authenticated project, actor, turn and
         # run; the existing output digest check below independently verifies
@@ -266,11 +344,12 @@ def table_report_spec(context,config,inputs):
     parsed=TableSchema.model_validate(schema)
     if not isinstance(table.get('output_sha256'),str) or digest({'schema':schema,'rows':rows})!=table['output_sha256']:
         raise ValueError('数据结果摘要不一致，未生成报告')
-    if len(rows)>100 or len(parsed.columns)>20:
+    if len(rows)>max_rows or len(parsed.columns)>20:
         raise ValueError('完整结果超出报告展示容量；未截断，请使用完整表格交付')
     keys=[column.name for column in parsed.columns]
-    labels=[(column.label or column.name)+(('（'+column.unit+'）') if column.unit else '') for column in parsed.columns]
-    lines=[]
+    labels=[(column.label or column.name)+(('（'+column.unit+'）') if column.unit else '')+
+            ((' · '+column.period) if column.period else '') for column in parsed.columns]
+    display_rows=[]
     for row in rows:
         if not isinstance(row,dict) or set(row)!=set(keys):raise ValueError('数据结果字段与声明不一致')
         values=[]
@@ -278,17 +357,34 @@ def table_report_spec(context,config,inputs):
             value=row[key]
             if value is not None and type(value) not in (str,int,bool):raise ValueError('报告数值需要精确文本或整数，不接受浮点数')
             display='未提供' if value is None else ('是' if value is True else '否' if value is False else str(value))
-            values.append(label+'：'+display)
-        line='；'.join(values)
-        if len(line)>180:raise ValueError('完整行超出报告的可读容量；未截断，请使用完整表格交付')
-        lines.append(line)
+            values.append(display)
+        # The report retains each value as text, including exact decimal
+        # strings. It never infers totals, rounding, or missing-as-zero.
+        display_rows.append(values)
     notes=['以下为实际数据加工结果，完整 '+str(len(rows))+' 行；不代表业务口径或财经数字已审核。']
+    if parsed.meaning:notes.append('结果含义：'+parsed.meaning)
+    if isinstance(table.get('output_sha256'),str) and re.fullmatch(r'[a-f0-9]{64}',table['output_sha256']):
+        notes.append('数据结果摘要：'+table['output_sha256'])
+    if isinstance(table.get('plan_sha256'),str) and re.fullmatch(r'[a-f0-9]{64}',table['plan_sha256']):
+        notes.append('处理方案摘要：'+table['plan_sha256'])
+    refs=table.get('source_refs')
+    lineage_complete=table.get('source_lineage_complete') is True
+    if not isinstance(refs,list):refs=[];lineage_complete=False
+    for ref in refs:
+        if (not isinstance(ref,dict) or not isinstance(ref.get('source_id'),str) or not ref['source_id']
+                or type(ref.get('revision')) is not int or ref['revision']<1
+                or not isinstance(ref.get('content_hash'),str) or not re.fullmatch(r'[a-f0-9]{64}',ref['content_hash'])
+                or not isinstance(ref.get('name'),str) or not ref['name']):
+            lineage_complete=False
+            continue
+        notes.append('文件来源：'+ref['name']+'；资料 ID：'+ref['source_id']+'；版本：'+str(ref['revision'])+'；内容摘要：'+ref['content_hash'])
+    if not refs or not lineage_complete:notes.append('文件来源记录不完整，需核对原始资料及版本。')
+    notes.append('工作表、读取范围及字段映射请回查流程运行记录并核对原始资料。')
     if table['requires_source_review']:notes.append('来源资料仍需业务核对。')
     if table['requires_semantic_review']:notes.append('数据语义或处理口径仍需业务核对。')
     sections=[{'heading':'数据与核对状态','body':'\n'.join(notes),'bullets':[]}]
-    for index in range(0,len(lines),10):
-        sections.append({'heading':'数据明细 '+str(index+1)+'–'+str(min(index+10,len(lines))),
-                         'body':'\n'.join(lines[index:index+10]),'bullets':[]})
+    sections.append({'heading':'数据明细','body':'','bullets':[],
+                     'table':{'columns':labels,'rows':display_rows}})
     commentary=inputs.get('commentary')
     if commentary is not None:
         if (not isinstance(commentary,dict) or commentary.get('evidence_status')!='unverified'
@@ -301,6 +397,9 @@ def table_report_spec(context,config,inputs):
                          'bullets':[]})
     spec={'title':cfg.title,'sections':sections}
     if cfg.format=='presentation':spec['kind']='presentation'
+    try:raw=json.dumps(spec,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8')
+    except (TypeError,ValueError,RecursionError,UnicodeError):raise ValueError('报告规格无效') from None
+    if len(raw)>MAX_SPEC_BYTES:raise ValueError('完整结果超出报告容量；未截断，请使用完整表格交付')
     return {'kind':'table_report_spec_v1','spec':spec,'table_sha256':table['output_sha256'],
             'row_count':len(rows),'requires_source_review':table['requires_source_review'],
             'requires_semantic_review':table['requires_semantic_review'],
@@ -314,4 +413,4 @@ def handlers():
             'html_report':Handler(render_html,deterministic=True,replay_safe=False,
                                   validate_config=validate_html_config,version=HTML_RENDERER),
             'table_report_spec':Handler(table_report_spec,deterministic=True,replay_safe=True,
-                                        validate_config=validate_table_report_config,version='table-report-v2')}
+                                        validate_config=validate_table_report_config,version='table-report-v3')}

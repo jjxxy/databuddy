@@ -110,6 +110,7 @@ def _runtime_lock(document):
         names|={'business_flow_data.py','project_data.py','data_workflows.py','workbook_reader.py','connectors.py'}
     if kinds & {'office_document','html_report','table_report_spec'}:
         names|={'business_deliverables.py','office.py','workspace_artifacts.py'}
+    if 'office_document' in kinds:names.add('office_presentation.py')
     if kinds & {'model','skill'}:names|={'provider.py','provider_compatibility.py','extensions.py'}
     root=Path(__file__).parent
     modules={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in sorted(names)}

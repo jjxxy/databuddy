@@ -391,59 +391,136 @@ def _write_docx(manifest,path):
 
 
 def _write_pptx(manifest,path):
+    """Present frozen observations as editable tables with traceable evidence.
+
+    Long content is paginated or rejected explicitly; it must never be silently
+    clipped to make a deck look cleaner. Existing frozen exports remain intact.
+    """
     from pptx import Presentation
     from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
     from pptx.util import Inches,Pt
+
     presentation=Presentation();presentation.slide_width=Inches(13.333);presentation.slide_height=Inches(7.5)
-    def text(slide,value,x,y,w,h,size=20,bold=False):
-        box=slide.shapes.add_textbox(Inches(x),Inches(y),Inches(w),Inches(h));frame=box.text_frame
-        frame.word_wrap=True;frame.margin_left=frame.margin_right=Inches(.03)
-        for i,line in enumerate(value.split('\n')):
-            paragraph=frame.paragraphs[0] if i==0 else frame.add_paragraph()
-            paragraph.text=line;paragraph.font.name='Microsoft YaHei';paragraph.font.size=Pt(size)
-            paragraph.font.bold=bold;paragraph.font.color.rgb=RGBColor(20,31,43)
+    navy=RGBColor(20,39,64);ink=RGBColor(31,45,59);muted=RGBColor(89,105,119)
+    blue=RGBColor(31,100,147);light=RGBColor(239,245,249);white=RGBColor(255,255,255)
+
+    def rect(current,x,y,w,h,color):
+        shape=current.shapes.add_shape(MSO_SHAPE.RECTANGLE,Inches(x),Inches(y),Inches(w),Inches(h))
+        shape.fill.solid();shape.fill.fore_color.rgb=color;shape.line.fill.background()
+        return shape
+    def text(current,value,x,y,w,h,size=18,bold=False,color=ink):
+        box=current.shapes.add_textbox(Inches(x),Inches(y),Inches(w),Inches(h));frame=box.text_frame
+        frame.word_wrap=True;frame.margin_left=frame.margin_right=Inches(.02)
+        frame.margin_top=frame.margin_bottom=Inches(.02)
+        frame.text=str(value)
+        for paragraph in frame.paragraphs:
+            paragraph.font.name='Noto Sans CJK SC';paragraph.font.size=Pt(size)
+            paragraph.font.bold=bold;paragraph.font.color.rgb=color
         return box
-    def slide(title):
+    def slide(title,subtitle=''):
         current=presentation.slides.add_slide(presentation.slide_layouts[6])
-        text(current,title,.7,.45,11.9,1.0,30,True)
+        rect(current,0,0,13.333,.12,blue)
+        text(current,title,.7,.40,11.95,.55,25,True,navy)
+        if subtitle:text(current,subtitle,.72,1.02,11.85,.38,13,color=muted)
+        rect(current,.7,7.06,11.9,.015,RGBColor(217,226,232))
+        text(current,'财务业务简报  |  未经业务确认',.72,7.12,9,.22,10,color=muted)
+        text(current,str(len(presentation.slides)),12.1,7.12,.4,.22,10,color=muted)
         return current
+
+    recipe=manifest['recipe'];period=recipe['period']
     cover=presentation.slides.add_slide(presentation.slide_layouts[6])
-    text(cover,manifest['recipe']['title'],.7,.45,11.9,2.8,30,True)
-    text(cover,'报告期间 '+manifest['recipe']['period'],.75,3.7,11.7,.65,28)
-    text(cover,'以下数值来自完整加工结果。\n业务原因和后续判断需要另附依据。',.75,4.8,11.7,1.5,22)
+    rect(cover,0,0,.18,7.5,blue);rect(cover,.18,0,13.153,.12,blue)
+    text(cover,'财务业务简报',.82,.66,11.7,.4,15,True,blue)
+    # The validated title can contain 160 characters; keep enough room for it.
+    title=recipe['title']
+    title_lines=sum(max(1,(len(part)+32)//33) for part in title.split('\n'))
+    if title_lines>6:raise ValueError('报告标题过长，无法完整呈现在幻灯片封面')
+    text(cover,title,.8,1.34,11.7,2.65,23 if len(title)>65 or title_lines>2 else 32,True,navy)
+    rect(cover,.82,4.35,.75,.04,blue)
+    text(cover,'报告期间  '+period,.82,4.65,11.7,.45,20,True,ink)
+    text(cover,'基于冻结加工结果的观察值；业务口径和结果未经业务确认。',.82,5.55,11.7,.5,16,color=muted)
+    text(cover,'业务原因和后续判断需另附依据。',.82,6.12,11.7,.45,15,color=muted)
+
     rows=_assertion_rows(manifest);offset=0;page_number=1
     while offset<len(rows):
-        # Long business labels consume more vertical space. Never truncate them.
         chunk=[];height=.55
         while offset+len(chunk)<len(rows) and len(chunk)<6:
             values=rows[offset+len(chunk)]
-            row_height=max(.68,.29*((len(values[0])+17)//18),.29*((len(values[1])+36)//37))
-            if chunk and height+row_height>4.9:break
+            # CJK-width estimates are deliberately conservative, including values.
+            def visual_lines(value,width):
+                return sum(max(1,(len(part)+width-1)//width) for part in str(value).split('\n'))
+            # Treat every character as a full CJK glyph, including wide Latin
+            # letters (W/M), and reserve cell margins. This intentionally
+            # overestimates narrow digits so a long exact value stays visible.
+            row_height=max(.66,.29*visual_lines(values[0],14),.29*visual_lines(values[1],22),
+                           .29*visual_lines(values[2],4),.29*visual_lines(values[3],6))+.08
+            if height+row_height>4.9:
+                if chunk:break
+                raise ValueError('指标内容过长，无法完整呈现在可编辑幻灯片表格中')
             chunk.append((values,row_height));height+=row_height
-        current=slide('经营指标 '+str(page_number))
-        native=current.shapes.add_table(len(chunk)+1,4,Inches(.75),Inches(1.7),Inches(11.8),Inches(height)).table
-        for column,width in zip(native.columns,(3.5,5.3,1.3,1.7)):column.width=Inches(width)
+        current=slide('经营指标  '+str(page_number),'期间 '+period+'  ·  数值与单位按冻结结果展示')
+        native=current.shapes.add_table(len(chunk)+1,4,Inches(.72),Inches(1.65),Inches(11.9),Inches(height)).table
+        for column,width in zip(native.columns,(3.55,5.35,1.3,1.7)):column.width=Inches(width)
         for i,values in enumerate([['指标','数值','单位','范围行数']]+[values for values,_ in chunk]):
             native.rows[i].height=Inches(.55 if i==0 else chunk[i-1][1])
             for j,value in enumerate(values):
                 cell=native.cell(i,j);cell.text=value;cell.margin_left=cell.margin_right=Inches(.1)
-                cell.margin_top=cell.margin_bottom=Inches(.06)
-                cell.fill.solid();cell.fill.fore_color.rgb=RGBColor(234,240,246) if i==0 else RGBColor(255,255,255)
+                cell.margin_top=cell.margin_bottom=Inches(.04);cell.text_frame.word_wrap=True
+                cell.fill.solid();cell.fill.fore_color.rgb=navy if i==0 else (white if i%2 else light)
                 for paragraph in cell.text_frame.paragraphs:
-                    paragraph.font.name='Microsoft YaHei';paragraph.font.size=Pt(17)
-                    paragraph.font.bold=i==0;paragraph.font.color.rgb=RGBColor(20,31,43)
-        text(current,'期间 '+manifest['recipe']['period']+'    数值单位与原始口径一致',.75,6.85,11.7,.35,13)
+                    paragraph.font.name='Noto Sans CJK SC';paragraph.font.size=Pt(16)
+                    paragraph.font.bold=i==0;paragraph.font.color.rgb=white if i==0 else ink
         offset+=len(chunk);page_number+=1
-    for assumption in manifest['recipe']['assumptions']:
-        for offset in range(0,len(assumption),400):
-            current=slide('用户声明的假设')
-            text(current,'以下假设未作为事实核实。',.75,1.65,11.7,.55,20)
-            text(current,assumption[offset:offset+400],.75,2.4,11.7,4.3,20)
-    current=slide('数值依据')
-    for index,value in enumerate(['完整结果编号：'+manifest['run_id'],'交接摘要：'+manifest['handoff_sha256'],
-        '加工方案摘要：'+manifest['plan_sha256'],'完整数据行数：'+str(manifest['evaluation']['input_rows']),
-        '本次筛选行数：'+str(manifest['evaluation']['selected_rows'])]):
-        text(current,value,.75,1.65+index*.9,11.8,.7,18)
+
+    # Conservative width accounts for both Chinese and Latin text.
+    # Segments are not discarded or summarized, including long filter values.
+    def detail_pages(title,items):
+        lines=[]
+        for item in items:
+            value=str(item)
+            for logical_line in value.split('\n'):
+                segment='';width=0
+                for character in logical_line:
+                    cost=1 if ord(character)<128 else 2
+                    if width+cost>100:
+                        lines.append(segment);segment='';width=0
+                    segment+=character;width+=cost
+                lines.append(segment)
+        for start in range(0,len(lines),12):
+            current=slide(title,'按冻结记录展示；可在源结果中进一步核对')
+            for index,line in enumerate(lines[start:start+12]):
+                text(current,line,.74,1.62+index*.42,11.8,.38,15,color=ink)
+
+    if recipe['assumptions']:
+        detail_pages('用户声明的假设',['以下内容未作为事实核实。']+recipe['assumptions'])
+    methodology=[]
+    for proof in manifest['evaluation']['assertions']:
+        methodology.append('指标：'+proof['label'])
+        labels={'kind':'计算类型','columns':'数据字段','filters':'筛选条件','reduction':'取值方式',
+                'rounding_scale':'小数位数','rounding_mode':'舍入方式','zero_policy':'零基数处理',
+                'actual':'实际值','baseline':'比较基数','relative_change_formula':'相对变化公式'}
+        names={'sum':'求和','value':'直接取值','ratio':'比率','variance':'差异','row_count':'行数',
+               'exact_only':'不舍入，要求精确','half_even':'四舍六入五成双','error':'报错','null':'不适用'}
+        for key,label in labels.items():
+            if key not in proof:continue
+            value=proof[key]
+            if isinstance(value,(dict,list)):value=json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
+            elif value is None:value='未设置'
+            else:value=names.get(str(value),str(value))
+            methodology.append(label+'：'+value)
+    detail_pages('指标口径与计算',methodology)
+    detail_pages('数据来源与核对依据',[
+        '完整结果编号：'+manifest['run_id'],
+        '结果地址：'+manifest.get('source_reference','未记录'),
+        '源数据引用：'+json.dumps((manifest.get('output_semantics') or {}).get('source_ref') or '未记录',ensure_ascii=False,sort_keys=True),
+        '完整结果下载：'+manifest.get('complete_handoff_reference','未记录'),
+        '交接摘要 SHA-256：'+manifest['handoff_sha256'],
+        '加工方案摘要 SHA-256：'+manifest['plan_sha256'],
+        '数据结构摘要 SHA-256：'+manifest['evaluation'].get('schema_sha256','未记录'),
+        '完整数据行数：'+str(manifest['evaluation']['input_rows']),
+        '本次筛选行数：'+str(manifest['evaluation']['selected_rows']),
+        '业务确认状态：未经业务确认。'])
     presentation.save(path)
 
 

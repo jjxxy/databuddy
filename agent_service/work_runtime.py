@@ -493,18 +493,47 @@ def complete_render(turn, value):
         if not isinstance(entry, dict) or entry.get('path') != request['output'] + '/page-' + str(page) + '.png' or entry.get('page') != page or page > manifest['total_pages']:
             raise ValueError('渲染清单路径或页码无效')
         content, meta = file_bytes(turn, value['id'], entry['path'])
-        if meta['sha256'] != entry.get('sha256') or content[:8] != b'\x89PNG\r\n\x1a\n' or len(content) < 24:
+        if meta['sha256'] != entry.get('sha256'):
             raise ValueError('渲染图片未通过校验')
-        width, height = struct.unpack('>II', content[16:24])
-        if not 1 <= width <= 1600 or not 1 <= height <= 1600:raise ValueError('渲染图片尺寸无效')
+        width, height = verified_rendition_png(content)
         image = save_artifact(turn, value, content, meta, set_download=False)
         saved.append({**image, 'page': page, 'width': width, 'height': height})
     identity = 'wr_' + digest((value['id'] + request['sha256']).encode())[:48]
+    # Older runner images have no font probe; never treat absence as success.
+    font_probe = manifest.get('cjk_font_probe', 'unknown')
+    if font_probe not in ('available', 'missing', 'unknown', 'not_checked'):font_probe = 'unknown'
     return put('work_rendition', {'project_id': turn['project_id'], 'actor_id': current_actor(),
         'input_artifact_id': request['artifact_id'], 'input_sha256': request['sha256'],
         'execution_id': value['id'], 'manifest_sha256': expected['sha256'], 'created_at': now(),
         'images': saved, 'total_pages': manifest['total_pages'], 'rendered_pages': len(saved),
-        'complete': len(saved) == manifest['total_pages'], 'visual_inspected': False, 'financial_approval': False}, identity)
+        'complete': len(saved) == manifest['total_pages'], 'cjk_font_probe': font_probe,
+        'visual_inspected': False, 'financial_approval': False}, identity)
+
+
+def verified_rendition_png(content):
+    """Validate actual render bytes, not merely a forged PNG header.
+
+    Structural validity is only evidence that pixels can be decoded; it is not
+    a visual, business, or financial approval. Bound dimensions before decoding.
+    """
+    import io
+    from PIL import Image, UnidentifiedImageError
+    if (not isinstance(content,bytes) or len(content)<24 or len(content)>6*1024*1024
+            or content[:8]!=b'\x89PNG\r\n\x1a\n' or content[12:16]!=b'IHDR'):
+        raise ValueError('渲染图片未通过校验')
+    width,height=struct.unpack('>II',content[16:24])
+    if not 1<=width<=1600 or not 1<=height<=1600:
+        raise ValueError('渲染图片尺寸无效')
+    try:
+        with Image.open(io.BytesIO(content)) as image:
+            if image.format!='PNG' or image.size!=(width,height) or getattr(image,'n_frames',1)!=1:
+                raise ValueError('渲染图片格式不一致')
+            image.verify()
+        with Image.open(io.BytesIO(content)) as image:
+            image.load()
+    except (OSError,ValueError,EOFError,SyntaxError,UnidentifiedImageError,Image.DecompressionBombError):
+        raise ValueError('渲染图片损坏或不完整') from None
+    return width,height
 
 
 def visual_preview(pid, checksum):
@@ -515,7 +544,8 @@ def visual_preview(pid, checksum):
             for image in value['images']:
                 _, saved = artifact(pid, image['artifact_id'])
                 if saved['sha256'] != image['sha256']:raise ValueError('预览图片摘要不一致')
-            return {key: value[key] for key in ('images', 'total_pages', 'rendered_pages', 'complete', 'visual_inspected')}
+            return {**{key: value[key] for key in ('images', 'total_pages', 'rendered_pages', 'complete', 'visual_inspected')},
+                    'cjk_font_probe': value.get('cjk_font_probe', 'unknown')}
         except (KeyError, ValueError, OSError):continue
     return None
 

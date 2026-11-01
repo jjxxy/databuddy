@@ -206,7 +206,8 @@
    const entry=images[index];if(!entry||typeof entry.download_url!=='string')throw Error('预览图片记录不完整');const blob=await binary(entry.download_url,id);
    if(!current(id,mark)||ticket!==previewTicket||read!==request)return;if(blob.type!=='image/png')throw Error('预览图片格式无效');
    releaseBlob();previewBlob=URL.createObjectURL(blob);image.src=previewBlob;image.alt='成果第'+entry.page+'页渲染预览';page=index;
-   status.textContent='渲染预览 · 第'+entry.page+'页 / 共'+value.total_pages+'页'+(value.complete?'':images[0].page===1?'；本次仅生成前'+images.length+'页':'；本次仅生成第'+images[0].page+'–'+images[images.length-1].page+'页')+'。页图不代表视觉或业务复核通过。';
+   const fontNotice=value.cjk_font_probe==='missing'?'渲染环境缺少简体中文字库，中文可能无法显示；请安装字体并重新渲染。':value.cjk_font_probe==='not_checked'?'未检查 PDF 内嵌字体，请核对文字是否完整。':value.cjk_font_probe==='available'?'已检测简体中文字库，仍需核对实际文字和版式。':'未能确认渲染环境中文字库，请核对文字是否完整。';
+   status.textContent='渲染预览 · 第'+entry.page+'页 / 共'+value.total_pages+'页'+(value.complete?'':images[0].page===1?'；本次仅生成前'+images.length+'页':'；本次仅生成第'+images[0].page+'–'+images[images.length-1].page+'页')+'。'+fontNotice+' 页图不代表视觉或业务复核通过。';
    previous.disabled=index===0;next.disabled=index===images.length-1;
   }catch(error){if(current(id,mark)&&ticket===previewTicket&&read===request){image.removeAttribute('src');status.textContent=error.message}}}
   previous.onclick=()=>show(page-1);next.onclick=()=>show(page+1);await show(0);

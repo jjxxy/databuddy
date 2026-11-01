@@ -123,7 +123,13 @@ def test_real_uploaded_income_is_processed_and_rendered_to_html_and_ppt():
     pid=req('POST','/api/projects',json={'name':'真实报表','request_id':uid()})['id'];root='/api/projects/'+pid
     source=req('POST',root+'/attachments',files={'file':('income.csv','办事处,收入\n东部,9.00\n东部,9.00\n'.encode(),'text/csv')},
                data={'request_id':uid(),'local_processing':'true'})
-    assert process_once(); source=get('source',source['id'])
+    # Earlier integration tests may leave other jobs in the shared queue;
+    # wait for this upload specifically instead of assuming the next job is ours.
+    for _ in range(100):
+        source=get('source',source['id'])
+        if source.get('status') in ('ready','failed'):break
+        assert process_once()
+    assert source['status']=='ready'
     turn=req('POST',root+'/messages',json={'text':'按办事处计算并生成 HTML 和 PPT 报告','request_id':uid(),'source_id':source['id']})
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     plan={'version':1,'name':'收入汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
@@ -144,14 +150,16 @@ def test_real_uploaded_income_is_processed_and_rendered_to_html_and_ppt():
     handlers=delivery.handlers() | {'source_table':Handler(source_table,True,True,validate_source),
                                    'table_workflow':Handler(table_workflow,True,True,validate_table)}
     result=run(doc,{},handlers,context,persist=lambda value:None)
-    assert result['status']=='succeeded',result
+    assert result['status']=='succeeded',[(step.get('node_id'),step.get('status'),step.get('error_code'),step.get('error_message')) for step in result['steps']]
     assert Decimal(result['outputs']['aggregate']['rows'][0]['amount'])==Decimal('18.00')
     html_path,_=workspace_artifacts.file(pid,result['outputs']['html']['artifact_id'])
     ppt_path,_=workspace_artifacts.file(pid,result['outputs']['ppt']['artifact_id'])
-    assert '18' in html_path.read_text(encoding='utf-8')
+    html_content=html_path.read_text(encoding='utf-8')
+    assert '18' in html_content and 'income.csv' in html_content and source['content_hash'] in html_content
     from pptx import Presentation
     presentation=Presentation(ppt_path)
-    text=' '.join(shape.text for slide in presentation.slides for shape in slide.shapes if shape.has_text_frame)
+    text=' '.join((shape.text if shape.has_text_frame else ' '.join(cell.text for row in shape.table.rows for cell in row.cells))
+                  for slide in presentation.slides for shape in slide.shapes if shape.has_text_frame or shape.has_table)
     assert '18' in text and '不代表业务口径或财经数字已审核' in text
     assert result['outputs']['html']['financial_verified'] is False and result['outputs']['ppt']['financial_verified'] is False
     assert not any('18.00' in workspace.read_file(pid,item['path']) for item in workspace.list_files(pid))
@@ -167,7 +175,8 @@ def test_table_report_never_silently_truncates_or_accepts_tampered_rows(executio
            'output_sha256':digest({'schema':schema,'rows':rows}),
            'requires_source_review':True,'requires_semantic_review':True,'financial_evidence_status':'requires_business_review'}
     result=delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':table})
-    assert '9007199254740993.123456789012' in result['spec']['sections'][1]['body']
+    assert result['spec']['sections'][1]['table']['rows']==[['9007199254740993.123456789012']]
+    assert '来源记录不完整' in result['spec']['sections'][0]['body']
     assert result['requires_source_review'] and result['requires_semantic_review']
     ai='建议收入为 999 元，需人工核对。'
     commentary={'text':ai,'output_sha256':hashlib.sha256(ai.encode()).hexdigest(),
@@ -183,7 +192,8 @@ def test_table_report_never_silently_truncates_or_accepts_tampered_rows(executio
         if fmt=='html':content=path.read_text(encoding='utf-8')
         else:
             from pptx import Presentation
-            content=' '.join(s.text for slide in Presentation(path).slides for s in slide.shapes if s.has_text_frame)
+            content=' '.join((s.text if s.has_text_frame else ' '.join(cell.text for row in s.table.rows for cell in row.cells))
+                             for slide in Presentation(path).slides for s in slide.shapes if s.has_text_frame or s.has_table)
         assert '999' in content and '未经核验' in content and '9007199254740993' in content
         assert rendered['financial_verified'] is False
     with pytest.raises(ValueError,match='回执无效'):
@@ -192,4 +202,59 @@ def test_table_report_never_silently_truncates_or_accepts_tampered_rows(executio
     with pytest.raises(ValueError,match='摘要'):delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':bad})
     rows=[{'amount':str(i)} for i in range(101)]
     large=dict(table,rows=rows,row_count=len(rows),output_sha256=digest({'schema':schema,'rows':rows}))
-    with pytest.raises(ValueError,match='未截断'):delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':large})
+    assert len(delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':large})['spec']['sections'][1]['table']['rows'])==101
+    with pytest.raises(ValueError,match='未截断'):delivery.table_report_spec(execution,{'title':'核对','format':'presentation'},{'table':large})
+    rows=[{'amount':str(i)} for i in range(1001)]
+    too_large=dict(table,rows=rows,row_count=len(rows),output_sha256=digest({'schema':schema,'rows':rows}))
+    with pytest.raises(ValueError,match='未截断'):delivery.table_report_spec(execution,{'title':'核对','format':'html'},{'table':too_large})
+
+
+def test_business_html_renders_complete_structured_table_and_safe_paged_preview(execution):
+    from agent_service.data_workflows import digest
+    from html.parser import HTMLParser
+    class Tables(HTMLParser):
+        def __init__(self):super().__init__();self.tags=[];self.text=[]
+        def handle_starttag(self,tag,attrs):self.tags.append((tag,dict(attrs)))
+        def handle_data(self,data):self.text.append(data)
+    schema={'columns':[{'name':'office','data_type':'text','meaning':'办事处','label':'办事处'},
+                       {'name':'amount','data_type':'decimal','meaning':'净收入','label':'净收入','unit':'CNY','period':'2026-10','aggregation':'additive'}],
+            'grain':['office'],'meaning':'各办事处不含税净收入'}
+    rows=[{'office':'华东第'+str(i)+'办事处','amount':'9007199254740993.123456789012'} for i in range(205)]
+    rows[0]['office']='<script>alert(1)</script>'
+    table={'kind':'table_workflow_v1','complete':True,'rows':rows,'schema':schema,'row_count':len(rows),
+           'output_sha256':digest({'schema':schema,'rows':rows}),'plan_sha256':'a'*64,
+           'requires_source_review':False,'requires_semantic_review':True,'financial_evidence_status':'requires_business_review'}
+    spec=delivery.table_report_spec(execution,{'title':'十月收入核对报告','format':'html'},{'table':table})
+    report=delivery.render_html(execution,config('收入核对',delivery.HTML_RENDERER),{'spec':spec})
+    path,_=workspace_artifacts.file(execution['project_id'],report['artifact_id']);content=path.read_text(encoding='utf-8')
+    parsed=Tables();parsed.feed(content)
+    assert not any(tag=='script' for tag,_ in parsed.tags) and '<script>alert' not in content
+    assert sum(tag=='tr' for tag,_ in parsed.tags)==206
+    assert '9007199254740993.123456789012' in content and '净收入（CNY） · 2026-10' in content
+    assert '各办事处不含税净收入' in content and '数据语义或处理口径仍需业务核对' in content
+    assert '@media print' in content and any(tag=='th' and attrs.get('scope')=='col' for tag,attrs in parsed.tags)
+    from agent_service.store import get
+    identity=workspace_artifacts._record(execution['project_id'],report['artifact_id'])['private']['flow_artifact_id']
+    blocks=delivery.preview_blocks(execution['project_id'],identity)
+    tables=[item['table'] for item in blocks if item.get('type')=='table']
+    assert [len(item['rows']) for item in tables]==[100,100,5]
+    assert [cell for item in tables for cell in item['rows']]==[[r['office'],r['amount']] for r in rows]
+    assert not report['financial_verified']
+
+
+def test_legacy_html_artifact_remains_byte_identical_and_previewable(execution):
+    spec={'title':'旧报告','sections':[{'heading':'结果','body':'收入 1.25','bullets':['待确认']}]}
+    value=delivery.render_html(execution,config('旧报告',delivery.HTML_RENDERER_LEGACY),{'spec':spec})
+    path,_=workspace_artifacts.file(execution['project_id'],value['artifact_id'])
+    expected=('''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><title>旧报告</title><style>body{font-family:system-ui,sans-serif;max-width:960px;margin:3rem auto;padding:0 1.5rem;line-height:1.7;color:#263c35}h1,h2{color:#165d48}section{margin:2rem 0}li{margin:.3rem 0}</style></head><body><main><h1>旧报告</h1><section><h2>结果</h2><p>收入 1.25</p><ul><li>待确认</li></ul></section></main></body></html>''')
+    assert path.read_text(encoding='utf-8')==expected
+    identity=workspace_artifacts._record(execution['project_id'],value['artifact_id'])['private']['flow_artifact_id']
+    assert [x['text'] for x in delivery.preview_blocks(execution['project_id'],identity)]==['旧报告','结果','收入 1.25','• 待确认']
+
+
+def test_empty_html_table_keeps_headers_in_preview(execution):
+    spec={'title':'无匹配记录','sections':[{'heading':'数据明细','table':{'columns':['办事处','收入'], 'rows':[]}}]}
+    value=delivery.render_html(execution,config('空报表',delivery.HTML_RENDERER),{'spec':spec})
+    identity=workspace_artifacts._record(execution['project_id'],value['artifact_id'])['private']['flow_artifact_id']
+    tables=[block['table'] for block in delivery.preview_blocks(execution['project_id'],identity) if block['type']=='table']
+    assert tables==[{'columns':['办事处','收入'],'rows':[]}]
