@@ -302,3 +302,49 @@ def test_unconfigured_tools_are_hidden_and_chat_cannot_generate(interactive,monk
     monkeypatch.delenv('ATLAS_IMAGE_MODEL');monkeypatch.delenv('ATLAS_BROWSER_TOKEN')
     allowed=agent_context.allowed(interactive)
     assert 'generate_image' not in allowed and 'open_browser' not in allowed
+
+
+def test_agent_browser_interaction_requires_explicit_origin_grant_and_never_retries_unknown(browser_fixture,monkeypatch):
+    turn,state=browser_fixture
+    opened=browser.execute(turn,'open_browser',{'url':'https://public.test/'})
+    sid=opened['session_id'];args={'session_id':sid,'revision':'a'*64,'action':'click','ref':1,'option_index':0}
+    patch('turn',turn['id'],agent_trace=[{'id':'step1','status':'started'}])
+    turn=get('turn',turn['id'])
+    with pytest.raises(ValueError,match='授权'):
+        browser.execute(turn,'browser_interact',args)
+    app=FastAPI();browser.install(app,lambda:None);client=TestClient(app)
+    path='/api/projects/'+turn['project_id']+'/browsers/'+sid
+    with pytest.raises(ValueError,match='页面已变化'):client.post(path+'/agent-grant',json={'revision':'b'*64,'enabled':True})
+    assert client.post(path+'/agent-grant',json={'revision':'a'*64,'enabled':True}).json()['origin']=='https://public.test'
+    result=browser.execute(turn,'browser_interact',args)
+    assert result['session_id']==sid
+    action=[v for v in state['calls'] if v[1]=='action'][-1]
+    assert action[2]['agent_authorized'] and action[2]['revision']=='a'*64
+    patch('turn',turn['id'],agent_trace=[{'id':'step2','status':'started'}])
+    original=browser._request
+    def lost(sid,operation,body):
+        if operation=='action':raise ValueError('response lost')
+        return original(sid,operation,body)
+    monkeypatch.setattr(browser,'_request',lost)
+    with pytest.raises(ValueError,match='response lost'):browser.execute(get('turn',turn['id']),'browser_interact',args)
+    assert get('browser_session',sid)['unknown_pending'] is True
+    assert client.post(path+'/observe',json={}).json()['unknown_pending'] is True
+    with pytest.raises(ValueError,match='未确认'):browser.execute(get('turn',turn['id']),'browser_interact',args)
+    browser.mode(browser.owned(turn['project_id'],sid),'human')
+    with pytest.raises(ValueError,match='核对'):browser.mode(browser.owned(turn['project_id'],sid),'agent')
+    assert client.post(path+'/resolve-unknown',json={'reviewed':True}).json()['reviewed']
+    browser.mode(browser.owned(turn['project_id'],sid),'agent')
+
+
+def test_private_browser_requires_explicit_private_host_and_model_consent(browser_fixture,monkeypatch):
+    turn,_=browser_fixture;patch('project',turn['project_id'],work_private=True)
+    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_ENABLED','1')
+    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_HOSTS','erp.company.test')
+    assert browser._browser_url(turn,'https://erp.company.test/path')=='https://erp.company.test/path'
+    with pytest.raises(ValueError,match='内部'):browser._browser_url(turn,'https://other.company.test/')
+    with pytest.raises(ValueError):browser._browser_url(turn,'https://erp.company.test.evil.test/')
+    with pytest.raises(ValueError):browser._browser_url(turn,'https://user:pw@erp.company.test/')
+    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_HOSTS','*')
+    with pytest.raises(ValueError):browser._browser_url(turn,'https://erp.company.test/')
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':False})
+    with pytest.raises(ValueError,match='获准'):browser._scope(turn)

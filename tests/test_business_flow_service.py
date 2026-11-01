@@ -77,6 +77,33 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     from agent_service.workspace import folder,git_content
     content=git_content(folder(pid),saved['candidate_commit'],'files/business-flows/'+saved['id']+'.json').decode()
     assert '东部' not in content
+    # A flagged source needs an explicit review tied to this checkpoint.
+    from agent_service.jobs import get_job,save
+    from agent_service.store import seal
+    raw=get_job(run['run_id']);flagged=unseal(raw['secret_flow_checkpoint'])
+    flagged['steps'][0]['output']['requires_source_review']=True
+    flagged['steps'][0]['output']['evidence']['semantic_review_reasons']=['AUTO_LAYOUT_REVIEW_REQUIRED']
+    from agent_service.business_flow_engine import digest
+    flagged['steps'][0]['output_sha256']=digest(flagged['steps'][0]['output'])
+    raw['secret_flow_checkpoint']=seal(flagged);save(raw,raw['id'])
+    review=req('GET',flow+'/runs/'+run['run_id'])['review']
+    assert review['required'] and not review['approved'] and len(review['items'])==1
+    item=review['items'][0];assert item['source_id']==source['id'] and item['content_hash']==source['content_hash']
+    assert item['reasons']==['AUTO_LAYOUT_REVIEW_REQUIRED'] and 'rows' not in item
+    cannot=client.post(flow+'/publish',headers=h,json={'run_id':run['run_id'],'expected_digest':saved['candidate_digest']})
+    assert cannot.status_code==400 and '核对' in cannot.text
+    review_path=flow+'/runs/'+run['run_id']+'/review'
+    body_review={'expected_checkpoint_sha256':review['checkpoint_sha256'],'items':[{'node_id':item['node_id'],'kinds':item['kinds'],'note':'已对照原表范围和收入口径'}]}
+    stale=client.post(review_path,headers=h,json={**body_review,'expected_checkpoint_sha256':'a'*64});assert stale.status_code==400
+    wrong=client.post(review_path,headers=h,json={**body_review,'items':[{'node_id':item['node_id'],'kinds':['semantic'],'note':'已对照原表范围和收入口径'}]});assert wrong.status_code==400
+    assert req('POST',review_path,json=body_review)['review']['approved']
+    assert req('POST',review_path,json=body_review)['review']['approved']
+    original_checkpoint=raw['secret_flow_checkpoint']
+    flagged['steps'][0]['output']['revision']=2
+    raw['secret_flow_checkpoint']=seal(flagged);save(raw,raw['id'])
+    tampered=client.post(flow+'/publish',headers=h,json={'run_id':run['run_id'],'expected_digest':saved['candidate_digest']})
+    assert tampered.status_code==400 and '回执' in tampered.text
+    raw['secret_flow_checkpoint']=original_checkpoint;save(raw,raw['id'])
     adopted=req('POST',flow+'/publish',json={'run_id':run['run_id'],'expected_digest':saved['candidate_digest']})
     assert adopted['published_run']==run['run_id'] and adopted['published_digest']==saved['candidate_digest']
     # The same published Git version reruns without changing logic or inputs;
@@ -131,3 +158,37 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert req('GET',flow)['latest_run']['status']=='unknown'
     assert req('POST',flow+'/runs',json=ambiguous_body)['run_id']==ambiguous['run_id']
     blocked=client.post(flow+'/runs',headers=h,json={**ambiguous_body,'request_id':uid()});assert blocked.status_code==400 and '未知' in blocked.text
+    # A user may confirm that one in-flight external step did not execute.
+    # Earlier non-idempotent effects would continue to block a fresh run.
+    raw=get_job(ambiguous['run_id']);state=unseal(raw['secret_flow_checkpoint'])
+    state['steps']=[{'node_id':'submit','title':'提交','status':'unknown','replay_safe':False}]
+    raw['secret_flow_checkpoint']=seal(state);save(raw,raw['id'])
+    unknown=req('GET',flow+'/runs/'+ambiguous['run_id'])['unknown_resolution']
+    assert unknown['can_confirm_not_executed'] and not unknown['confirmed_not_executed']
+    resolution={'expected_checkpoint_sha256':unknown['checkpoint_sha256'],'outcome':'not_executed','note':'已查询系统确认没有提交记录'}
+    checked=req('POST',flow+'/runs/'+ambiguous['run_id']+'/resolve-unknown',json=resolution)
+    assert checked['status']=='unknown' and checked['unknown_resolution']['confirmed_not_executed']
+    assert req('POST',flow+'/runs',json={**ambiguous_body,'request_id':uid()})['run_id']!=ambiguous['run_id']
+
+
+def test_unknown_resolution_never_replays_prior_external_side_effects():
+    from agent_service.business_flows import _resolution_view
+    job={'id':'test_unknown_prior','actor_id':'owner','project_id':'p_test','status':'failed'}
+    state={'status':'unknown','steps':[{'node_id':'sent','status':'succeeded','replay_safe':False},
+                                       {'node_id':'write','status':'unknown','replay_safe':False}]}
+    result=_resolution_view(job,state)
+    assert not result['can_confirm_not_executed'] and not result['confirmed_not_executed']
+
+
+def test_fact_alignment_cannot_be_dismissed_as_generic_source_review():
+    from agent_service.business_flows import _review_items
+    from agent_service.store import put,delete
+    pid='p_'+uid();sid='s_'+uid();source={'project_id':pid,'revision':1,'content_hash':'a'*64,
+         'fact_review_id':'fact_'+uid()}
+    put('source',source,sid)
+    try:
+        state={'steps':[{'node_id':'source','title':'资料','output':{'source_id':sid,'revision':1,
+            'content_hash':'a'*64,'requires_source_review':True,'evidence':{}}}]}
+        items,blocked=_review_items(pid,state)
+        assert items and '事实语义' in blocked
+    finally:delete('source',sid)

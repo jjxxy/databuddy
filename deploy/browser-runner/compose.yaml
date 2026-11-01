@@ -9,6 +9,7 @@ services:
       ATLAS_BROWSER_WORKSPACE_ID: ${ATLAS_BROWSER_WORKSPACE_ID:?Bind one container stack to one actor and project}
       ATLAS_BROWSER_PROXY: http://egress:8092
       ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+      ATLAS_BROWSER_ALLOW_DOWNLOADS: ${ATLAS_BROWSER_ALLOW_DOWNLOADS:-0}
     ports: ["127.0.0.1:${ATLAS_BROWSER_PORT:-8091}:8091"]
     networks: [restricted]
     depends_on: [egress]
@@ -26,6 +27,9 @@ services:
     build: {context: ../.., dockerfile: deploy/browser-runner/Dockerfile.proxy}
     environment:
       ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+      ATLAS_BROWSER_PRIVATE_ENABLED: ${ATLAS_BROWSER_PRIVATE_ENABLED:-0}
+      ATLAS_BROWSER_PRIVATE_HOSTS: ${ATLAS_BROWSER_PRIVATE_HOSTS:-}
+      ATLAS_BROWSER_PRIVATE_HOSTS_JSON: ${ATLAS_BROWSER_PRIVATE_HOSTS_JSON:-}
     networks: [restricted, public]
     read_only: true
     cap_drop: [ALL]

@@ -43,6 +43,8 @@
   const human=result.mode==='human';
   for(const button of browserDialog.querySelectorAll('[data-browser-action]'))button.disabled=!human;
   $('[data-browser-takeover]').disabled=human;$('[data-browser-return]').disabled=!human;
+  $('[data-browser-grant]').disabled=!result.url||!!result.unknown_pending;
+  $('[data-browser-resolve]').hidden=!result.unknown_pending;$('[data-browser-resolve]').disabled=!human;
   $('[data-browser-notice]').textContent=human?'你正在接管。点击页图或选择控件操作，输入会发送给网页；模型暂停读取。完成登录或表单后点击“交还 Agent”。':'Agent 可读取此页。登录、验证码及提交请先接管；页面是独立云浏览器，不是你的本机浏览器。';
  }
  async function observe(){
@@ -81,6 +83,28 @@
   catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message+' 请刷新查看页面；不要重复提交。'}
   finally{$('[data-browser-input]').value='';if(current(mark,project))busy=false}
  }
+ $('[data-browser-grant]').onclick=async()=>{
+  if(!sid||!snapshot||busy)return;
+  if(!window.confirm('允许 Agent 在当前网站点击和选择页面控件，授权最多 15 分钟。网页控件可能触发不可逆操作，系统无法仅凭按钮名称保证只读。请只为可信网站授权，密码、验证码和正式提交请自行接管。确认继续？'))return;
+  busy=true;const mark=generation,project=pid;
+  try{const result=await b.api(base()+'/agent-grant',{method:'POST',body:{revision:snapshot.revision,enabled:true}});if(current(mark,project))$('[data-browser-notice]').textContent='已授权 Agent 操作 '+result.origin+'。返回对话可继续任务。'}
+  catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
+  finally{if(current(mark,project))busy=false}
+ };
+ $('[data-browser-revoke]').onclick=async()=>{
+  if(!sid||!snapshot||busy)return;busy=true;const mark=generation,project=pid;
+  try{await b.api(base()+'/agent-grant',{method:'POST',body:{revision:snapshot.revision,enabled:false}});if(current(mark,project))$('[data-browser-notice]').textContent='已撤销 Agent 网站操作授权。'}
+  catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
+  finally{if(current(mark,project))busy=false}
+ };
+ $('[data-browser-resolve]').onclick=async()=>{
+  if(!sid||!snapshot||snapshot.mode!=='human'||busy)return;
+  if(!window.confirm('请先在业务系统中核对上次操作是否实际发生。确认已经核对并继续？'))return;
+  busy=true;const mark=generation,project=pid;
+  try{await b.api(base()+'/resolve-unknown',{method:'POST',body:{reviewed:true}});if(current(mark,project)){busy=false;await observe()}}
+  catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
+  finally{if(current(mark,project))busy=false}
+ };
  document.querySelector('#cloud-browser').onclick=()=>{
   if(!b.getState().projectId)return b.toast('请先打开项目');
   reset();pid=b.getState().projectId;browserDialog.showModal();loadBrowsers().catch(error=>b.toast(error.message));

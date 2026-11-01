@@ -251,6 +251,14 @@ def table_report_spec(context,config,inputs):
             or table.get('financial_evidence_status')!='requires_business_review'
             or type(table.get('requires_source_review')) is not bool or type(table.get('requires_semantic_review')) is not bool):
         raise ValueError('报告输入不是完整且待业务核验的数据加工结果')
+    if 'rows_ref' in table:
+        if type(table.get('row_count')) is not int or table['row_count']>100:
+            raise ValueError('完整结果超出报告展示容量；未截断，请使用完整表格交付')
+        # References are bound to the authenticated project, actor, turn and
+        # run; the existing output digest check below independently verifies
+        # the complete table after decryption.
+        from .business_flow_data import materialize_table
+        table=materialize_table(context,table)
     rows=table.get('rows');schema=table.get('schema')
     if not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows):
         raise ValueError('数据结果行数不完整，未生成报告')

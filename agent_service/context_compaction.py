@@ -10,7 +10,6 @@ from .models import StrictModel
 from .store import get,put,all_items,seal,unseal,now
 from .memory_service import actor,generation,revoked_turn_ids,sensitive
 
-RECENT_TURNS=6
 SUMMARY_BUDGET=7000
 CRITICAL_BUDGET=14000
 _RECOVERY_TRAVERSAL=frozenset({'read_tool_result','read_context_original','read_context_checkpoint','compact_work_context'})
@@ -126,13 +125,19 @@ def context_for_turn(turn,recent_turns=None,*,force=False,window_managed=False):
     memory_versions=_active_memory_versions(pid)
     visible=[_visible(value,revoked,foreign_personal_sources,memory_versions) for value in history] if allowed else [
         {'turn_id':value['id'],'user':'[模型业务内容读取未获批准]','agent':'','outcome':value.get('outcome')} for value in history]
-    keep=2 if force else max(1,len(history)) if window_managed else RECENT_TURNS
+    # Conversation projection is not the full model request: system prompt,
+    # tools, attachments, output allowance and the selected model window are
+    # only known by the caller. Never silently truncate here based on a turn or
+    # character count. The complete request is passed to context_window.fit
+    # (or the legacy router's equivalent) for window-aware recovery. Explicit
+    # force is a user/tool-requested checkpoint, not automatic compaction.
+    keep=2 if force else max(1,len(history))
     older=history[:-keep] if len(history)>keep else []
     old_visible=visible[:-keep] if older else []
     recent=visible[-keep:]
     total_chars=sum(len(item['user'])+len(item['agent']) for item in visible)
-    compress=bool(older and (force or len(history)>RECENT_TURNS or total_chars>16000))
-    critical=_critical(history,visible,bounded=not window_managed) if allowed else []
+    compress=bool(force and older)
+    critical=_critical(history,visible,bounded=force) if allowed else []
     coverage=[{'turn_id':value['id'],'sha256':_digest({'text':value.get('text'),'answer':value.get('answer'),'trace':value.get('agent_trace'),'outcome':value.get('outcome'),'model_revision':value.get('model_catalog_revision')})} for value in older]
     coverage_hash=_digest({'coverage':coverage,'memory_generation':memory_generation,'actor':actor(),'content_allowed':allowed})
     checkpoint_id='ctx_'+coverage_hash[:48]
@@ -164,7 +169,7 @@ def context_for_turn(turn,recent_turns=None,*,force=False,window_managed=False):
     # Bound the injected projection, while the durable checkpoint retains the
     # full coverage list. Recent material is labelled/paged if it does not fit.
     recent_budget=10000
-    for item in ([] if window_managed and not force else reversed(recent)):
+    for item in (reversed(recent) if force else []):
         for field in ('user','agent'):
             allowance=min(3500,max(0,recent_budget))
             if len(item[field])>allowance:

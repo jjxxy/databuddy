@@ -171,6 +171,8 @@ TOOLS.update(WORK_RUNTIME_TOOLS)
 TOOLS.update(web_research.DEFINITIONS)
 from . import browser_tools, media_tools
 TOOLS.update(browser_tools.DEFINITIONS)
+from . import browser_downloads
+TOOLS.update(browser_downloads.DEFINITIONS)
 TOOLS.update(media_tools.DEFINITIONS)
 TOOLS.update({'local_workspace_status':(Empty,False,'读取本地电脑工作空间状态；本地存储不等于断网运行'),
               'export_local_workspace':(Empty,True,'按用户要求将项目代码与已核验完整产物导出到所选本地文件夹，生成可回查快照')})
@@ -632,6 +634,8 @@ def execute(turn,step):
         return web_research.execute(turn,name,args)
     if name in browser_tools.DEFINITIONS:
         return browser_tools.execute(turn,name,args)
+    if name in browser_downloads.DEFINITIONS:
+        return browser_downloads.execute(turn,name,args)
     if name in media_tools.DEFINITIONS:
         return media_tools.execute(turn,name,args)
     if name in COLLABORATION_TOOLS:

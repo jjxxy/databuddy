@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, model_validator, model_serializer
 
 from .models import StrictModel
 
@@ -68,19 +68,59 @@ class Node(StrictModel):
         return self
 
 
+class InputSpec(StrictModel):
+    """Declared user input; decimal values are text to preserve exactness."""
+    type: Literal['text','integer','decimal','date','boolean','choice']
+    label: str = Field(min_length=1,max_length=100)
+    options: list[str] = Field(default_factory=list,max_length=50)
+
+    @model_validator(mode='after')
+    def valid_options(self):
+        if self.type=='choice':
+            if not self.options or len(set(self.options))!=len(self.options) or any(not x.strip() or len(x)>200 for x in self.options):
+                raise ValueError('选项参数需要明确且不重复的选项')
+        elif self.options:raise ValueError('只有选项参数可以配置选项')
+        return self
+
+    def validate_value(self,value):
+        import re
+        from datetime import date
+        if self.type=='boolean':valid=type(value) is bool
+        elif self.type=='integer':valid=type(value) is int and -(2**53-1)<=value<=2**53-1
+        elif self.type=='decimal':valid=isinstance(value,str) and bool(re.fullmatch(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?',value)) and len(value)<=80
+        elif self.type=='choice':valid=isinstance(value,str) and value in self.options
+        elif self.type=='date':
+            valid=isinstance(value,str) and bool(re.fullmatch(r'\d{4}-\d{2}-\d{2}',value))
+            if valid:
+                try:valid=date.fromisoformat(value).isoformat()==value
+                except ValueError:valid=False
+        else:valid=isinstance(value,str) and bool(value.strip()) and len(value)<=4000
+        if not valid:raise ValueError('流程参数“'+self.label+'”的值不符合已确认的类型或选项')
+
+
 class BusinessFlow(StrictModel):
     version: Literal[1] = 1
     name: str = Field(min_length=1,max_length=200)
     inputs: list[str] = Field(default_factory=list,max_length=50)
+    input_specs: dict[str,InputSpec] | None = None
     nodes: list[Node] = Field(min_length=1,max_length=100)
     outputs: list[str] = Field(min_length=1,max_length=50)
+
+    @model_serializer(mode='wrap')
+    def legacy_compatible(self,handler):
+        value=handler(self)
+        # Existing Git versions were hashed without this optional field.
+        if self.input_specs is None:value.pop('input_specs',None)
+        return value
 
     @model_validator(mode='after')
     def graph(self):
         import re
         if any(not re.fullmatch(_NAME,name) for name in self.inputs) or len(set(self.inputs))!=len(self.inputs):
             raise ValueError('流程输入名称无效或重复')
-        seen=set();kinds={}
+        if self.input_specs is not None and not set(self.input_specs)<=set(self.inputs):
+            raise ValueError('流程参数声明必须引用已声明的输入')
+        seen=set();kinds={};used_parameters=set()
         for node in self.nodes:
             if node.id in seen or node.id in self.inputs:raise ValueError('流程节点名称重复')
             if len(set(node.depends_on))!=len(node.depends_on) or not set(node.depends_on)<=seen:
@@ -98,13 +138,47 @@ class BusinessFlow(StrictModel):
                     ref=node.inputs['commentary']
                     if ref.source!='node' or kinds.get(ref.name) not in ('model','skill'):
                         raise ValueError('报告说明只能来自已执行的模型或技能步骤')
-            for reference in node.inputs.values():
+            for key,reference in node.inputs.items():
                 if reference.source=='input' and reference.name not in self.inputs:raise ValueError('节点引用了不存在的流程输入')
                 if reference.source=='node' and reference.name not in node.depends_on:raise ValueError('节点输入必须引用声明过的前序依赖')
-                if node.kind=='table_workflow' and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','table_workflow')):
+                table_parameter=(node.kind=='table_workflow' and reference.source=='input'
+                    and reference.name in (self.input_specs or {}) and key in (node.config.get('parameter_bindings') or {}))
+                if node.kind=='table_workflow' and not table_parameter and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','table_workflow')):
                     raise ValueError('数据加工只能使用已执行的数据来源或加工结果，不能将模型内容作为已核验财务数据')
+            for key,reference in node.inputs.items():
+                table_parameter=(node.kind=='table_workflow' and key in (node.config.get('parameter_bindings') or {}))
+                if reference.source=='input' and reference.name in (self.input_specs or {}) and not ((node.kind in ('model','skill') and key=='content') or table_parameter):
+                    raise ValueError('流程参数只能用于指定的模型内容或已声明的数据筛选条件')
+                if reference.source=='input' and reference.name in (self.input_specs or {}):used_parameters.add(reference.name)
+            if node.kind=='table_workflow':
+                bindings=node.config.get('parameter_bindings') or {}
+                if not isinstance(bindings,dict) or set(bindings)!={key for key,ref in node.inputs.items() if ref.source=='input'}:
+                    raise ValueError('数据筛选参数必须逐项绑定已声明的运行输入')
+                plan=node.config.get('plan') or {}
+                stages=plan.get('stages') if isinstance(plan,dict) else None
+                schemas=plan.get('inputs') if isinstance(plan,dict) else None
+                for key,binding in bindings.items():
+                    if not isinstance(binding,dict) or set(binding)!={'stage_id','condition_index'} or type(binding['condition_index']) is not int:
+                        raise ValueError('数据筛选参数绑定无效')
+                    stage=next((x for x in stages or [] if isinstance(x,dict) and x.get('id')==binding['stage_id']),None)
+                    if not stage or stage.get('kind')!='filter' or not isinstance(schemas,dict) or stage.get('input') not in schemas:
+                        raise ValueError('数据筛选参数只能绑定原始输入表的筛选条件')
+                    conditions=stage.get('conditions') or [];index=binding['condition_index']
+                    if not isinstance(conditions,list) or index<0 or index>=len(conditions) or not isinstance(conditions[index],dict):
+                        raise ValueError('数据筛选条件不存在')
+                    condition=conditions[index]
+                    if condition.get('operator') in ('in','not_in','is_null','not_null'):
+                        raise ValueError('此筛选运算不支持运行参数')
+                    schema=schemas[stage['input']];columns=schema.get('columns') if isinstance(schema,dict) else None
+                    column=next((c for c in columns or [] if isinstance(c,dict) and c.get('name')==condition.get('column')),None)
+                    dtype=column.get('data_type') if column else None
+                    allowed={'text':{'text','choice'},'decimal':{'decimal'},'integer':{'integer'},'boolean':{'boolean'},'date':{'date'}}
+                    spec=(self.input_specs or {}).get(node.inputs[key].name)
+                    if spec is None or spec.type not in allowed.get(dtype,set()):
+                        raise ValueError('数据筛选参数类型与输入字段语义不一致')
             seen.add(node.id)
             kinds[node.id]=node.kind
+        if used_parameters!=set(self.input_specs or {}):raise ValueError('流程声明了未使用的参数')
         if len(set(self.outputs))!=len(self.outputs) or not set(self.outputs)<=seen:
             raise ValueError('流程输出必须引用已声明节点')
         return self
@@ -134,6 +208,7 @@ def _prepare(document,inputs,handlers):
     config=flow.model_dump(mode='json')
     frozen=_copy(inputs,_MAX_INPUT)
     if not isinstance(frozen,dict) or set(frozen)!=set(flow.inputs):raise ValueError('流程输入与已确认的定义不一致')
+    for name,spec in (flow.input_specs or {}).items():spec.validate_value(frozen[name])
     if not isinstance(handlers,dict):raise ValueError('流程处理器不可用')
     for node in flow.nodes:
         handler=handlers.get(node.kind)

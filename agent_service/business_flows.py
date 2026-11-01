@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 from croniter import croniter
 
 from fastapi import Depends
-from pydantic import Field
+from pydantic import Field,field_validator
 
 from .models import StrictModel
 from .store import get,put,patch,all_items,seal,unseal,now
@@ -251,6 +251,152 @@ def _uncertain(job,state):
         for step in state.get('steps',[]))
 
 
+
+def _checkpoint_sha(state):
+    return digest(state)
+
+
+def _record_id(prefix, job, state):
+    return prefix+hashlib.sha256((job['id']+'\0'+job['actor_id']+'\0'+_checkpoint_sha(state)).encode()).hexdigest()
+
+
+def _saved_review(job,state):
+    try:
+        record=get('business_flow_review',_record_id('bfr_',job,state))
+        if record.get('project_id')!=job['project_id'] or record.get('actor_id')!=job['actor_id'] or record.get('run_id')!=job['id']:return None
+        return record
+    except KeyError:return None
+
+
+def _review_items(pid,state):
+    """Expose only evidence metadata, never source rows or raw cell content."""
+    from .project_data import source_requires_fact_alignment
+    result=[];blocked=None
+    for step in state.get('steps',[]):
+        if not isinstance(step,dict):continue
+        output=step.get('output')
+        if not isinstance(output,dict):continue
+        sid=output.get('source_id')
+        if isinstance(sid,str):
+            try:
+                source=get('source',sid)
+                if (source.get('project_id')!=pid or source.get('revision')!=output.get('revision')
+                    or source.get('content_hash')!=output.get('content_hash') or source.get('archived')):
+                    blocked='资料版本已变化，请重新运行并核对';continue
+                if source_requires_fact_alignment(source,output.get('evidence')):
+                    blocked='资料存在待核对的事实语义，当前不能通过通用复核发布'
+            except KeyError:blocked='资料已不可用，请重新运行并核对'
+        kinds=[name for name,field in [('source','requires_source_review'),('semantic','requires_semantic_review')]
+               if output.get(field) is True]
+        if not kinds:continue
+        proof=output.get('evidence') if isinstance(output.get('evidence'),dict) else {}
+        reasons=proof.get('semantic_review_reasons') or []
+        reasons=[x for x in reasons if isinstance(x,str) and re.fullmatch(r'[A-Z0-9_]{1,100}',x)][:30] if isinstance(reasons,list) else []
+        result.append({'node_id':step.get('node_id'),'title':step.get('title'),'kinds':kinds,
+                       'input_sha256':step.get('input_sha256'),'output_sha256':step.get('output_sha256'),
+                       'source_id':sid,'revision':output.get('revision'),'content_hash':output.get('content_hash'),
+                       'reasons':reasons})
+    return result,blocked
+
+
+
+def _verify_completed_state(pid,job,state):
+    """Review the actual immutable receipts, never just a success flag."""
+    if state.get('status')!='succeeded' or state.get('flow_sha256')!=job.get('commit'):
+        raise ValueError('流程执行回执不完整')
+    doc=BusinessFlow.model_validate(_read_commit(pid,job['target'],job['project_commit'],job['commit']))
+    payload=unseal(job['secret_flow_payload'])
+    if state.get('inputs_sha256')!=digest(payload.get('inputs')):raise ValueError('运行输入回执不一致')
+    steps=state.get('steps')
+    if not isinstance(steps,list) or len(steps)!=len(doc.nodes):raise ValueError('流程步骤回执不完整')
+    outputs={}
+    for node,step in zip(doc.nodes,steps):
+        if (not isinstance(step,dict) or step.get('node_id')!=node.id or step.get('kind')!=node.kind
+            or step.get('status')!='succeeded' or digest(step.get('output'))!=step.get('output_sha256')):
+            raise ValueError('流程步骤回执不一致')
+        output=step['output']
+        if isinstance(output,dict) and 'rows_ref' in output:
+            # The JSON reference alone is not evidence the encrypted table is
+            # still present or belongs to this run. Verify the complete data.
+            from .business_flow_data import materialize_table
+            context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
+                     'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+            materialize_table(context,output)
+        outputs[node.id]=output
+    if state.get('outputs')!={name:outputs[name] for name in doc.outputs}:
+        raise ValueError('流程最终结果回执不一致')
+
+def _review_view(pid,job,state):
+    if job.get('status')!='succeeded' or state.get('status')!='succeeded':return None
+    items,blocked=_review_items(pid,state)
+    record=_saved_review(job,state)
+    return {'required':bool(items),'checkpoint_sha256':_checkpoint_sha(state),'items':items,
+            'approved':bool(record),'blocked_reason':blocked}
+
+
+def review_run(pid,flow_id,run_id,actor_id,expected_checkpoint_sha256,items):
+    with workspace.lock(pid):
+        flow=_owned(pid,flow_id,actor_id);job=get_job(run_id)
+        if (job.get('kind')!='business_flow' or job.get('project_id')!=pid or job.get('target')!=flow_id
+            or job.get('actor_id')!=actor_id or job.get('status')!='succeeded'):
+            raise ValueError('只能复核当前用户已完成的流程运行')
+        if (job.get('commit')!=flow.get('candidate_digest') or job.get('project_commit')!=flow.get('candidate_commit')
+            or job.get('flow_turn_id')!=flow.get('turn_id')):raise ValueError('候选版本已变化，请重新运行并核对')
+        state=unseal(job['secret_flow_checkpoint'])
+        if _checkpoint_sha(state)!=expected_checkpoint_sha256:raise ValueError('运行记录已变化，请重新核对')
+        _verify_completed_state(pid,job,state)
+        required,blocked=_review_items(pid,state)
+        if blocked:raise ValueError(blocked)
+        if not required:raise ValueError('本次运行没有待核对项')
+        expected={(x['node_id'],tuple(sorted(x['kinds']))) for x in required}
+        supplied={(x.node_id,tuple(sorted(x.kinds))) for x in items}
+        if len(items)!=len(expected) or supplied!=expected:raise ValueError('请逐项核对所有待确认的资料和业务语义')
+        value=[x.model_dump(mode='json') for x in items]
+        ident=_record_id('bfr_',job,state)
+        try:
+            old=get('business_flow_review',ident)
+            if unseal(old['secret_items'])!=value:raise ValueError('该运行已有不同的复核记录，请重新运行后复核')
+        except KeyError:
+            put('business_flow_review',{'project_id':pid,'flow_id':flow_id,'run_id':run_id,'actor_id':actor_id,
+                'checkpoint_sha256':expected_checkpoint_sha256,'secret_items':seal(value),'reviewed_at':now()},ident)
+        return get_run(pid,flow_id,run_id,actor_id)
+
+
+def _resolution_view(job,state):
+    if not _uncertain(job,state):return None
+    running=[x for x in state.get('steps',[]) if isinstance(x,dict) and x.get('status') in ('running','unknown') and x.get('replay_safe') is not True]
+    prior=[x for x in state.get('steps',[]) if isinstance(x,dict) and x.get('status')=='succeeded' and x.get('replay_safe') is not True]
+    allowed=job.get('status') in ('failed','cancelled') and len(running)==1 and not prior
+    try:
+        saved=get('business_flow_resolution',_record_id('bfu_',job,state))
+        confirmed=(saved.get('project_id')==job.get('project_id') and saved.get('actor_id')==job.get('actor_id')
+                   and saved.get('run_id')==job.get('id') and saved.get('outcome')=='not_executed')
+    except KeyError:confirmed=False
+    return {'checkpoint_sha256':_checkpoint_sha(state),'can_confirm_not_executed':allowed,
+            'confirmed_not_executed':bool(confirmed and allowed),
+            'reason':None if allowed else '无法安全确认完整重跑不会重复其他外部操作，请先由管理员处理原运行'}
+
+
+def resolve_unknown(pid,flow_id,run_id,actor_id,expected_checkpoint_sha256,outcome,note):
+    from .config import DATA
+    from .locks import FileLock
+    with FileLock(str(DATA/('business-flow-run-'+flow_id+'.lock')),timeout=10):
+        _owned(pid,flow_id,actor_id);job=get_job(run_id)
+        if (job.get('kind')!='business_flow' or job.get('project_id')!=pid or job.get('target')!=flow_id or job.get('actor_id')!=actor_id):
+            raise ValueError('运行记录不属于当前用户')
+        state=unseal(job['secret_flow_checkpoint']) if job.get('secret_flow_checkpoint') else {}
+        view=_resolution_view(job,state)
+        if not view or view['checkpoint_sha256']!=expected_checkpoint_sha256:raise ValueError('运行记录已变化，请重新核对')
+        if outcome!='not_executed' or not view['can_confirm_not_executed']:raise ValueError('该运行不能安全重新发起，请先由管理员核对')
+        ident=_record_id('bfu_',job,state)
+        try:
+            old=get('business_flow_resolution',ident)
+            if unseal(old['secret_note'])!=note:raise ValueError('该运行已有不同的核对记录')
+        except KeyError:
+            put('business_flow_resolution',{'project_id':pid,'flow_id':flow_id,'run_id':run_id,'actor_id':actor_id,
+                'checkpoint_sha256':expected_checkpoint_sha256,'outcome':outcome,'secret_note':seal(note),'reviewed_at':now()},ident)
+    return get_run(pid,flow_id,run_id,actor_id)
+
 def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_published=False):
     from .business_flow_engine import _prepare
     flow=_owned(pid,flow_id,actor_id)
@@ -287,7 +433,8 @@ def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_publis
             raise ValueError('该流程已有运行正在处理，请等待完成后再发起')
         if previous and previous[0].get('secret_flow_checkpoint'):
             state=unseal(previous[0]['secret_flow_checkpoint'])
-            if _uncertain(previous[0],state):raise ValueError('上次流程操作结果未知，请先核对外部状态；不能自动重复')
+            if _uncertain(previous[0],state) and not (_resolution_view(previous[0],state) or {}).get('confirmed_not_executed'):
+                raise ValueError('上次流程操作结果未知，请先核对外部状态；不能自动重复')
         job=enqueue('business_flow',flow_id,commit=sha,scheduled_key=key,max_attempts=2,
                     extra={'project_id':pid,'actor_id':actor_id,'flow_turn_id':turn['id'],'project_commit':commit,'secret_flow_payload':seal(payload)})
     if (job.get('target')!=flow_id or job.get('commit')!=sha or job.get('actor_id')!=actor_id or
@@ -318,7 +465,8 @@ def get_run(pid,flow_id,run_id,actor_id=None):
               'WORKER_LOST':'执行服务中断，已有回执已保存'}
     return {'id':job['id'],'flow_id':flow_id,'status':status,'plan_digest':job['commit'],
             'commit':job.get('project_commit'),'steps':steps,'artifacts':artifacts,'created_at':job.get('created_at'),
-            'finished_at':job.get('finished_at'),'message':job.get('public_error') or messages.get(job.get('error_code')),'financial_verified':False}
+            'finished_at':job.get('finished_at'),'message':job.get('public_error') or messages.get(job.get('error_code')),'financial_verified':False,
+            'review':_review_view(pid,job,state),'unknown_resolution':_resolution_view(job,state)}
 
 
 def request_status(pid,flow_id,request_id,actor_id=None):
@@ -357,11 +505,11 @@ def publish(pid,flow_id,actor_id,run_id,expected_digest):
                 or job.get('project_commit')!=flow.get('candidate_commit') or job.get('flow_turn_id')!=flow.get('turn_id')):
             raise ValueError('候选方案已变化，请重新检查')
         state=unseal(job['secret_flow_checkpoint'])
-        if state.get('status')!='succeeded' or state.get('flow_sha256')!=expected_digest:raise ValueError('流程执行回执不完整')
-        for step in state.get('steps',[]):
-            out=step.get('output') if isinstance(step,dict) else None
-            if isinstance(out,dict) and (out.get('requires_source_review') or out.get('requires_semantic_review')):
-                raise ValueError('资料解析或财经语义仍需核对，不能直接发布')
+        _verify_completed_state(pid,job,state)
+        pending,blocked=_review_items(pid,state)
+        if blocked:raise ValueError(blocked)
+        if pending and not _saved_review(job,state):
+            raise ValueError('资料解析或财经语义仍需逐项核对，不能直接发布')
         if flow.get('published_run')==run_id:
             # Recover a lost response or crash after updating the formal
             # pointer but before the project checkpoint became durable.
@@ -443,7 +591,7 @@ def execute_job(job,folder):
     try:locked=json.loads(workspace.git_content(workspace.folder(pid),job['project_commit'],'files/'+_lock_path(job['target'])))
     except Exception:raise TaskError('该流程版本缺少执行环境锁，不能运行','BUSINESS_RUNTIME_LOCK_MISSING') from None
     if locked!=_runtime_lock(document):raise TaskError('流程执行器或依赖已变化，请重新验证并生成候选版本','BUSINESS_RUNTIME_CHANGED')
-    context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],'originating_turn_id':job['flow_turn_id']}
+    context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
     stop=threading.Event()
     def beat():
         while not stop.wait(5):
@@ -492,6 +640,30 @@ class UpdateInput(CreateInput):
 class PublishInput(StrictModel):
     run_id:str=Field(min_length=1,max_length=64)
     expected_digest:str=Field(pattern=r'^[a-f0-9]{64}$')
+class ReviewItem(StrictModel):
+    node_id:str=Field(pattern=r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
+    kinds:list[Literal['source','semantic']]=Field(min_length=1,max_length=2)
+    note:str=Field(min_length=4,max_length=500)
+    @field_validator('note')
+    @classmethod
+    def substantive_note(cls,value):
+        if len(value.strip())<4:raise ValueError('请说明核对依据')
+        return value.strip()
+
+class ReviewInput(StrictModel):
+    expected_checkpoint_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    items:list[ReviewItem]=Field(min_length=1,max_length=100)
+
+class ResolveInput(StrictModel):
+    expected_checkpoint_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    outcome:Literal['not_executed']
+    note:str=Field(min_length=4,max_length=500)
+    @field_validator('note')
+    @classmethod
+    def substantive_note(cls,value):
+        if len(value.strip())<4:raise ValueError('请说明核对依据')
+        return value.strip()
+
 class ScheduleInput(StrictModel):
     cron:str|None=None
     source_bindings:dict[str,str]=Field(default_factory=dict,max_length=50)
@@ -517,6 +689,10 @@ def install(app,auth):
     def start(pid:str,fid:str,value:RunInput):return submit_run(pid,fid,current_actor(),value.request_id,value.expected_digest,value.inputs,value.use_published)
     @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}',dependencies=[Depends(auth)])
     def status(pid:str,fid:str,rid:str):return get_run(pid,fid,rid)
+    @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/review',dependencies=[Depends(auth)])
+    def review(pid:str,fid:str,rid:str,value:ReviewInput):return review_run(pid,fid,rid,current_actor(),value.expected_checkpoint_sha256,value.items)
+    @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/resolve-unknown',dependencies=[Depends(auth)])
+    def resolve(pid:str,fid:str,rid:str,value:ResolveInput):return resolve_unknown(pid,fid,rid,current_actor(),value.expected_checkpoint_sha256,value.outcome,value.note)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/cancel',dependencies=[Depends(auth)])
     def cancel(pid:str,fid:str,rid:str):return cancel_run(pid,fid,rid)
     @app.get('/api/projects/{pid}/business-flows/{fid}/requests/{request_id}',dependencies=[Depends(auth)])

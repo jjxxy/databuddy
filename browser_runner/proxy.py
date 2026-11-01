@@ -1,23 +1,60 @@
-"""Public HTTP/HTTPS egress only; every new connection pins a validated IP.
+"""Restricted HTTP/HTTPS egress; every new connection pins a validated IP.
 
 Run on an internal Docker network shared only with the browser service. CONNECT
 does not decrypt TLS. DNS rebinding cannot change the already selected address.
 """
 import asyncio
 import ipaddress
+import json
 import os
 import socket
 from urllib.parse import urlsplit
+
+
+_PRIVATE_NETWORKS = tuple(ipaddress.ip_network(value) for value in
+                          ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', 'fc00::/7'))
+
+
+def private_networks(host, allowed):
+    """Administrator-approved hostname and private network, never wildcarded.
+
+    The proxy remains a separate enforcement boundary: a hostname resolving to
+    both an approved and an unapproved address must be rejected entirely.
+    """
+    if os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED') != '1':
+        return ()
+    approved = {x.strip().lower().rstrip('.') for x in
+                os.getenv('ATLAS_BROWSER_PRIVATE_HOSTS', '').split(',') if x.strip()}
+    if host not in approved:
+        return ()
+    if host not in allowed or host == '*':
+        raise ValueError('Private destination requires an exact host approval')
+    try:
+        config = json.loads(os.getenv('ATLAS_BROWSER_PRIVATE_HOSTS_JSON', '{}'))
+        if not isinstance(config, dict): raise ValueError()
+        raw = config.get(host, [])
+        if not isinstance(raw, list) or not raw or len(raw) > 32: raise ValueError()
+        networks = tuple(ipaddress.ip_network(value, strict=True) for value in raw)
+        if not all(any(net.version == base.version and net.subnet_of(base)
+                       for base in _PRIVATE_NETWORKS) for net in networks):
+            raise ValueError()
+        return networks
+    except (ValueError, TypeError):
+        raise ValueError('Invalid private destination policy') from None
 
 
 def destination(host, port, allowed):
     host = host.lower().rstrip('.')
     if port not in (80, 443) or ('*' not in allowed and host not in allowed):
         raise ValueError('Destination is not approved')
+    private = private_networks(host, allowed)
     addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     for entry in addresses:
         ip = ipaddress.ip_address(entry[4][0])
-        if not ip.is_global or ip.is_multicast or ip.is_reserved or isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        public = ip.is_global and not ip.is_multicast and not ip.is_reserved
+        private_allowed = any(ip.version == net.version and ip in net for net in private)
+        if (not (private_allowed if private else public) or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped):
             raise ValueError('Non-public destination')
     if not addresses: raise ValueError('DNS returned no address')
     return addresses[0][4][0]

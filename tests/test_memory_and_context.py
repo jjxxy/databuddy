@@ -153,22 +153,34 @@ def test_no_share_model_cannot_receive_active_memory_through_project_history(pro
         with pytest.raises(ValueError,match='读取未获批准'):context.read_original(current,original['id'])
 
 
+def test_default_history_projection_keeps_all_turns_even_above_old_threshold(project):
+    with actor_scope(A):
+        records,current=history(project,15)
+        value=context.context_for_turn(current)
+        assert value['compression']['source_characters']>16000
+        assert not value['compression']['active'] and value['summary_id'] is None
+        assert [x['turn_id'] for x in value['recent_verbatim']]==[x['id'] for x in records]
+        assert value['recent_verbatim'][0]['user']==records[0]['text']
+        assert value['recent_verbatim'][0]['agent']==records[0]['answer']
+        assert not any(x.get('recent_excerpted') for x in value['recent_verbatim'])
+
+
 def test_long_context_checkpoint_is_durable_smaller_and_recovers_original(project):
     with actor_scope(A):
         records,current=history(project)
-        first=context.context_for_turn(current)
-        assert first['compression']['active'] and len(first['recent_verbatim'])==6
+        first=context.context_for_turn(current,force=True)
+        assert first['compression']['active'] and len(first['recent_verbatim'])==2
         assert first['compression']['context_characters']<first['compression']['source_characters']
         assert first['summary']['summary_is_financial_evidence'] is False
         assert first['summary']['coverage'][0]['turn_id']==records[0]['id']
         quotes='\n'.join(item.get('quote','') for item in first['critical_constraints'])
         assert 'Do not aggregate balances' in quotes and '金额单位元' in quotes
         assert first['frozen_task']['model_catalog_revision']=='frozen-model'
-        assert first==context.context_for_turn(current)
+        assert first==context.context_for_turn(current,force=True)
         recovered=context.read_original(current,records[0]['id'],limit=500)
         assert '原始细节' in recovered['content'] and recovered['next_offset'] is not None
-        assert len(unseal(get('context_checkpoint',first['summary_id'])['secret_summary'])['coverage'])==9
-        assert len(context.read_checkpoint(current,first['summary_id'])['items'])==9
+        assert len(unseal(get('context_checkpoint',first['summary_id'])['secret_summary'])['coverage'])==13
+        assert len(context.read_checkpoint(current,first['summary_id'])['items'])==13
 
 
 def test_forget_invalidates_summary_history_matches_trace_and_source_quote(project):
@@ -272,28 +284,28 @@ def test_api_identity_is_server_derived_and_separate_from_shared_project_rules(p
 def test_thousand_turns_have_bounded_model_projection_and_complete_paged_coverage(project):
     with actor_scope(A):
         records,current=history(project,1000)
-        value=context.context_for_turn(current)
+        value=context.context_for_turn(current,force=True)
         assert len(json.dumps(value,ensure_ascii=False))<40000
-        assert value['summary']['covered_turns']==994 and not value['summary']['coverage_is_complete']
+        assert value['summary']['covered_turns']==998 and not value['summary']['coverage_is_complete']
         seen=[];offset=0
         while offset is not None:
             page=context.read_checkpoint(current,value['summary_id'],offset,50)
             seen.extend(item['turn_id'] for item in page['items']);offset=page['next_offset']
-        assert seen==[item['id'] for item in records[:-6]]
+        assert seen==[item['id'] for item in records[:-2]]
 
 
 def test_critical_constraints_cannot_be_silently_dropped(project):
     with actor_scope(A):
         records,current=history(project,8)
         patch('turn',records[0]['id'],text='Do not send these records. '+('only this currency. '*1500))
-        with pytest.raises(ValueError,match='关键约束'):context.context_for_turn(current)
+        with pytest.raises(ValueError,match='关键约束'):context.context_for_turn(current,force=True)
 
 
 def test_large_unresolved_task_index_also_obeys_critical_budget(project):
     with actor_scope(A):
         records,current=history(project,100)
         for record in records:patch('turn',record['id'],text='Continue source review',outcome='needs_input')
-        with pytest.raises(ValueError,match='关键约束'):context.context_for_turn(current)
+        with pytest.raises(ValueError,match='关键约束'):context.context_for_turn(current,force=True)
 
 
 def test_deleted_session_invalidates_context_and_hides_originals(project):
@@ -301,7 +313,7 @@ def test_deleted_session_invalidates_context_and_hides_originals(project):
     with actor_scope(A):
         records,current=history(project)
         _,survivor=history(project,0)
-        before=context.context_for_turn(current);generation=memory.generation(project)
+        before=context.context_for_turn(current,force=True);generation=memory.generation(project)
         assert context.read_original(survivor,records[0]['id'])['turn_id']==records[0]['id']
         life.delete_session(project,current['session_id'])
         assert memory.generation(project)!=generation

@@ -1,12 +1,15 @@
 import http from 'node:http';
 import {createRequire} from 'node:module';
 import {createHash, timingSafeEqual} from 'node:crypto';
+import {stat, readFile} from 'node:fs/promises';
+import {basename, extname} from 'node:path';
 const require = createRequire(process.env.ATLAS_BROWSER_PLAYWRIGHT_ROOT || '/opt/atlas-work/package.json');
 const {chromium} = require('playwright-core');
 const token = process.env.ATLAS_BROWSER_TOKEN || '';
 if(token.length < 32) throw Error('A dedicated browser service token is required');
 const proxy = process.env.ATLAS_BROWSER_PROXY;
 const testMode = process.env.ATLAS_BROWSER_TEST_MODE === '1';
+const allowDownloads = process.env.ATLAS_BROWSER_ALLOW_DOWNLOADS === '1';
 if(!proxy && !testMode) throw Error('A restricted egress proxy is mandatory');
 const expectedWorkspace=process.env.ATLAS_BROWSER_WORKSPACE_ID||'';
 if(!testMode&&!/^[a-f0-9]{64}$/.test(expectedWorkspace))throw Error('Bind this container to one actor/project workspace');
@@ -32,9 +35,9 @@ async function state(s, image=true) {
         return {ref:index+1,tag:el.tagName.toLowerCase(),type:el.getAttribute('type')||'',
           label:(el.getAttribute('aria-label')||el.getAttribute('placeholder')||el.innerText||el.getAttribute('name')||'').slice(0,180),
           href:el.tagName==='A'?safeLink(el.href)?.slice(0,2000)||null:null,
-          sensitive:el.matches('input[type=password],input[autocomplete*=password],input[autocomplete=one-time-code]'),
+          sensitive:el.matches('input[type=password],input[autocomplete*=password],input[autocomplete=one-time-code]') || /(?:password|passcode|verification.?code|one.?time|otp|验证码|密码|口令)/i.test([el.getAttribute('aria-label'),el.getAttribute('placeholder'),el.getAttribute('name'),el.id].join(' ')),
           visible:box.width>0&&box.height>0&&box.bottom>0&&box.top<innerHeight,
-          disabled:!!el.disabled,box:[box.x,box.y,box.width,box.height].map(Math.round)};
+          disabled:!!el.disabled,options:el.tagName==='SELECT'?[...el.options].slice(0,80).map(o=>({value:o.value.slice(0,200),label:o.text.slice(0,200),selected:o.selected})):undefined,box:[box.x,box.y,box.width,box.height].map(Math.round)};
       }),scroll:[Math.round(scrollX),Math.round(scrollY)]};
   });
   if(s.mode==='agent'&&dom.sensitive_url)throw Error('Finish sign-in and leave the authentication URL before returning control');
@@ -61,13 +64,13 @@ async function open(id,scope,url){
     proxy:proxy?{server:proxy,bypass:'<-loopback>'}:undefined,
     args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--disable-extensions','--disable-background-networking',
       '--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']});
-    const context=await browser.newContext({viewport:{width:1280,height:800},acceptDownloads:false,serviceWorkers:'block',permissions:[]});
+    const context=await browser.newContext({viewport:{width:1280,height:800},acceptDownloads:allowDownloads,serviceWorkers:'block',permissions:[]});
     const s={browser,context,page:await context.newPage(),scope,mode:'agent',expires:Date.now()+lifetime,results:new Map(),busy:true};
     sessions.set(id,s);
     s.page.setDefaultTimeout(12000);
     context.on('page',page=>{if(page!==s.page)page.close().catch(()=>{})});
     s.page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));
-    s.page.on('download',download=>download.cancel().catch(()=>{}));
+    s.page.on('download',download=>{if(!s.expectedDownload)download.cancel().catch(()=>{})});
     await context.route('**/*',route=>{
       try{
         allowed(route.request().url());
@@ -82,16 +85,22 @@ async function open(id,scope,url){
   finally{opening--}
 }
 async function action(s,body){
-  if(s.mode!=='human')throw Error('Take over the browser before interacting');
+  if(s.mode!=='human' && !(s.mode==='agent' && body.agent_authorized===true))throw Error('Browser interaction not authorized');
+  if(s.mode==='agent' && !['click','select'].includes(body.action))throw Error('Action denied');
   const fresh=await state(s,false);
   if(body.revision!==fresh.revision)throw Error('Page changed; refresh before acting');
   const a=body.action;
-  if(a==='click'||a==='fill'){
+  if(a==='click'||a==='fill'||a==='select'){
     const ref=body.ref;
     if(!Number.isInteger(ref)||ref<1||ref>fresh.controls.length)throw Error('Invalid control reference');
     const item=fresh.controls[ref-1];if(!item.visible||item.disabled)throw Error('Control is unavailable');
+    if(s.mode==='agent'&&item.sensitive)throw Error('Sensitive controls require user takeover');
+    if(s.mode==='agent'&&a==='click'&&!/^(?:查询|搜索|筛选|查找|展开|收起|下一页|上一页|切换|search|filter|find|expand|collapse|next|previous)(?:\s|$)/i.test((item.label||'').trim()))throw Error('Only query and navigation controls are allowed; take over for other clicks');
     const el=s.page.locator('a,button,input,textarea,select,[role="button"],[role="link"]').nth(ref-1);
-    if(a==='fill'){
+    if(a==='select'){
+      if(item.tag!=='select'||!Number.isInteger(body.option_index)||body.option_index<0||body.option_index>=Math.min(80,(item.options||[]).length))throw Error('Invalid option');
+      await el.selectOption({index:body.option_index});
+    }else if(a==='fill'){
       if(typeof body.text!=='string'||body.text.length>4000)throw Error('Invalid input');
       await el.fill(body.text);
     }else await el.click({noWaitAfter:true});
@@ -112,6 +121,24 @@ async function action(s,body){
   await new Promise(resolve=>setTimeout(resolve,150));
   return state(s);
 }
+async function download(s,body){
+  if(!allowDownloads||s.mode!=='agent'||body.agent_authorized!==true)throw Error('Download denied');
+  const fresh=await state(s,false);
+  if(body.revision!==fresh.revision||!Number.isInteger(body.ref))throw Error('Page changed');
+  const item=fresh.controls[body.ref-1];if(!item||!item.visible||item.disabled||item.sensitive)throw Error('Control unavailable');
+  if(!/(下载|导出|download|export)/i.test((item.label||'')+' '+(item.href||'')))throw Error('Download control not identified');
+  const el=s.page.locator('a,button,input,textarea,select,[role="button"],[role="link"]').nth(body.ref-1);
+  s.expectedDownload=true;let file;
+  try{
+    [file]=await Promise.all([s.page.waitForEvent('download',{timeout:15000}),el.click({noWaitAfter:true})]);
+    const filename=basename(file.suggestedFilename());
+    if(!['.csv','.xlsx','.json','.jsonl','.pdf','.docx','.pptx','.txt','.md'].includes(extname(filename).toLowerCase()))throw Error('File type denied');
+    const path=await file.path();const size=(await stat(path)).size;
+    if(size<1||size>2*1024*1024)throw Error('Download size denied');
+    const bytes=await readFile(path);if(bytes.length!==size)throw Error('Download size changed');
+    return {filename,bytes:size,content_base64:bytes.toString('base64'),content_sha256:hash(bytes)};
+  }finally{s.expectedDownload=false;if(file)await file.delete().catch(()=>{})}
+}
 async function bodyOf(req){let parts=[],length=0;for await(const b of req){length+=b.length;if(length>256*1024)throw Error('Request too large');parts.push(b)}return JSON.parse(Buffer.concat(parts).toString()||'{}')}
 const server=http.createServer(async(req,res)=>{
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
@@ -119,7 +146,7 @@ const server=http.createServer(async(req,res)=>{
   if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){res.writeHead(401);return res.end('{}')}
   try{
     if(req.url==='/v1/health'&&req.method==='GET'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ready:true,production_policy:!testMode,workspace_id:expectedWorkspace,restricted_proxy:!!proxy,active:sessions.size}))}
-    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|close))?$/);
+    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|download|close))?$/);
     if(!match||req.method!=='POST')throw Error('Route denied');
     const [,id,operation]=match,body=await bodyOf(req);checkId(body.workspace_id);
     if(expectedWorkspace&&body.workspace_id!==expectedWorkspace){res.writeHead(404);return res.end('{}')}
@@ -163,7 +190,8 @@ const server=http.createServer(async(req,res)=>{
       }else if(operation==='scroll'){
         if(s.mode!=='agent'||!Number.isInteger(body.delta)||Math.abs(body.delta)>1200)throw Error('Scroll denied');
         await s.page.mouse.move(1200,700);await s.page.mouse.wheel(0,body.delta);await new Promise(r=>setTimeout(r,150));result=await state(s);
-      }else result=await action(s,body);
+      }else if(operation==='download')result=await download(s,body);
+      else result=await action(s,body);
       result={session_id:id,...result};s.results.set(actionId,{fingerprint,result});
       res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
     }finally{s.busy=false}

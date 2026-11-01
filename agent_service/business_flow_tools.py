@@ -64,7 +64,7 @@ def execute(turn,name,args):
                          'html_report':{'config_schema':DeliveryConfig.model_json_schema(),'renderer_version':HTML_RENDERER,'input':'spec'},
                          'model':{'required_config':['model_id','catalog_revision','prompt'],'input':'content','nondeterministic':True},
                          'skill':{'required_config':['model_id','catalog_revision','prompt','pin_id','skill_id','skill_digest'],'input':'content','nondeterministic':True}},
-                'notice':'仅使用已提供的实际节点及其输入输出。草稿尚未执行或发布；模型输出不是已核验的财经依据。'}
+                'notice':'仅使用已提供的实际节点及其输入输出。可用 input_specs 声明文本、整数、精确小数（字符串）、日期、布尔或选项参数；参数可绑定模型或技能的 content；数据加工只允许通过 parameter_bindings 明确绑定已声明筛选条件的值，不可改变字段或运算符。草稿尚未执行或发布；模型输出不是已核验的财经依据。'}
     if name=='prepare_business_flow_source':
         from .conversation import owned
         source=owned('source',args['source_id'],pid)

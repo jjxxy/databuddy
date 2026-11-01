@@ -6,6 +6,7 @@
  const STATE_LABELS={pending:'等待执行',queued:'等待执行',running:'正在执行',succeeded:'执行完成',completed:'执行完成',failed:'未完成',unknown:'结果待核对',cancelled:'已停止',skipped:'已跳过',blocked:'等待处理'};
  function node(document,tag,value,cls){const e=document.createElement(tag);if(value!==undefined&&value!==null)e.textContent=String(value);if(cls)e.className=cls;return e}
  function text(value,fallback){return typeof value==='string'&&value.trim()?value.trim():fallback}
+ function elapsed(start,end){const a=Date.parse(start),b=end?Date.parse(end):Date.now();if(!Number.isFinite(a)||!Number.isFinite(b)||b<a)return '';const seconds=Math.floor((b-a)/1000);return seconds>=3600?Math.floor(seconds/3600)+'小时'+Math.floor(seconds%3600/60)+'分'+seconds%60+'秒':seconds>=60?Math.floor(seconds/60)+'分'+seconds%60+'秒':seconds+'秒'}
  function render(container,options){
   const document=container.ownerDocument, plan=options?.plan, run=options?.run;
   container.replaceChildren();
@@ -37,7 +38,7 @@
    const top=node(document,'div',null,'flow-step-heading');
    top.append(node(document,'strong',text(item.title,text(item.name,KIND_LABELS[item.kind]||'工作步骤'))));
    top.append(node(document,'span',receipt?(STATE_LABELS[receipt.status]||'状态未知'):sameRun?'本次未记录':'尚未选择运行','flow-step-state'));
-   li.append(top);
+   li.append(top);if(receipt&&typeof receipt.started_at==='string'){const duration=elapsed(receipt.started_at,receipt.finished_at);if(duration){const time=node(document,'p','耗时 '+duration,'flow-step-elapsed');time.dataset.startedAt=receipt.started_at;if(receipt.finished_at)time.dataset.finishedAt=receipt.finished_at;li.append(time)}}
    if(item.kind)li.append(node(document,'p',KIND_LABELS[item.kind]||'其他工作步骤','flow-step-kind'));
    if(typeof item.description==='string'&&item.description.trim())li.append(node(document,'p',item.description,'flow-step-description'));
    const dependencies=Array.isArray(item.depends_on)?item.depends_on.filter(x=>typeof x==='string'):[];
@@ -56,6 +57,7 @@
   }
   if(list.children.length)container.append(list);else container.append(node(document,'p','当前方案没有可展示的步骤。','flow-empty'));
  }
+ if(root.document&&!root.__atlasFlowElapsedTimer){root.__atlasFlowElapsedTimer=root.setInterval(()=>{if(root.document.hidden)return;for(const item of root.document.querySelectorAll('.flow-step-elapsed[data-started-at]')){const value=elapsed(item.dataset.startedAt,item.dataset.finishedAt);if(value)item.textContent='耗时 '+value}},1000)}
  root.AtlasBusinessFlowView={render};
  if(typeof module!=='undefined'&&module.exports)module.exports={render};
 })(typeof window!=='undefined'?window:globalThis);
