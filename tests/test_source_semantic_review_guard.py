@@ -67,6 +67,22 @@ def test_html_tables_are_explicitly_marked_for_review():
     assert evidence['requires_source_review'] is True
 
 
+def test_json_inferred_array_context_requires_review_before_publish():
+    pid=project();source=file_source(pid,'campaign.json',
+        b'{"meta":{"currency":"CNY"},"data":[{"id":"A","amount":12.50}]}')
+    rows,fields,evidence,_=data.read_input(pid,{'source_id':source['id']})
+    assert len(rows)==1 and evidence['records_path']=='data'
+    assert evidence['records_path_inferred'] and evidence['requires_source_review']
+    names=['c_1','c_2'];schema={'columns':[column(n) for n in names],'grain':['c_1'],'meaning':'营销记录'}
+    doc={'version':1,'plan':{'name':'读取营销资料','inputs':{'detail':schema},
+        'stages':[{'kind':'select','id':'selected','description':'选择记录','input':'detail','columns':names}],
+        'output':'selected'},'bindings':{'detail':{'source_id':source['id']}}}
+    result=run(pid,registered(pid,doc))
+    assert result['data_result']['requires_source_review'] is True
+    with pytest.raises(ValueError,match='来源解释需要'):
+        data.publish_result(pid,result['id'],result['commit'])
+
+
 def test_docling_result_never_loses_review_obligation(monkeypatch):
     import sys,types
     from types import SimpleNamespace

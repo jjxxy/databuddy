@@ -119,6 +119,7 @@ def inspect_source(pid,sid):
 def _workbook_semantic_review_reasons(table):
     cells=list(table.get('header_cells',{}).values())+[cell for row in table.get('special_cells',{}).values() for cell in row.values()]
     reasons=[]
+    if table.get('semantic_review_required') is True:reasons.append('AUTO_LAYOUT_REVIEW_REQUIRED')
     if table.get('row_roles'):reasons.append('ROW_ROLE_REVIEW_REQUIRED')
     if any('formula' in cell for cell in cells):reasons.append('FORMULA_CACHE_FRESHNESS_UNKNOWN')
     if any(w.get('code')=='EXCEL_PRECISION_LIMIT' for w in table.get('warnings',[])):reasons.append('EXCEL_PRECISION_LIMIT')
@@ -268,9 +269,9 @@ def read_input(pid,binding,*,frozen_source=None):
             from .workbook_reader import WorkbookReadError
             raise WorkbookReadError('text_columns只支持明确选择的XLSX来源','TEXT_PROJECTION_NOT_XLSX')
         if s['kind']=='file' and s['name'].lower().endswith('.xlsx'):
-            from .workbook_reader import read_table
+            from .workbook_reader import read_table_with_title_proposal
             options=o.model_dump(exclude={'html_table','text_columns'},exclude_none=True)
-            table=read_table(file_path,limit=MAX_ROWS,**options)
+            table=read_table_with_title_proposal(file_path,limit=MAX_ROWS,**options)
             if table.get('truncated') or table.get('complete') is False or table.get('executable_values_complete') is False:raise ValueError('表格读取未完成，不能按完整输入执行')
             rows,projection=_project_text_columns(table['rows'],table['fields'],o)
             fields=table['fields'];evidence={k:v for k,v in table.items() if k not in ('rows','provenance')}
@@ -338,9 +339,9 @@ def preview_source(pid,value):
     options=value.options.model_copy(update={'hidden_rows':'include','subtotal_policy':'preserve'})
     source=owned(pid,'source',value.source_id)
     if source['kind']=='file' and source['name'].lower().endswith('.xlsx'):
-        from .workbook_reader import read_table
-        table=read_table(source_path(source),limit=MAX_ROWS,require_formula_cache=False,
-                         **options.model_dump(exclude={'html_table','text_columns'},exclude_none=True))
+        from .workbook_reader import read_table_with_title_proposal
+        table=read_table_with_title_proposal(source_path(source),limit=MAX_ROWS,require_formula_cache=False,
+                                             **options.model_dump(exclude={'html_table','text_columns'},exclude_none=True))
         source_path(source)
         rows,projection=_project_text_columns(table['rows'],table['fields'],options);fields=table['fields']
         evidence={k:v for k,v in table.items() if k not in ('rows','provenance')}

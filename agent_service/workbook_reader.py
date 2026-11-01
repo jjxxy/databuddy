@@ -265,6 +265,7 @@ def _sheet_metadata(archive, part):
     hidden_rows = []
     table_ids = []
     max_row = max_col = scanned_cells = 0
+    min_col = None
     sketch = _RegionSketch()
     row_cells = []
     with archive.open(part) as stream:
@@ -278,7 +279,9 @@ def _sheet_metadata(archive, part):
                     match = re.fullmatch(r'([A-Z]+)([1-9][0-9]*)', coordinate)
                     if match:
                         max_row = max(max_row, int(match[2]))
-                        max_col = max(max_col, column_index_from_string(match[1]))
+                        col = column_index_from_string(match[1])
+                        max_col = max(max_col, col)
+                        min_col = col if min_col is None else min(min_col, col)
                         typ = element.get('t', 'n')
                         raw = element.find(NS + 'v')
                         payload = raw.text if raw is not None else None
@@ -329,7 +332,7 @@ def _sheet_metadata(archive, part):
                        'totals_rows': int(table.get('totalsRowCount', '0'))})
     regions, regions_truncated = _region_proposals(sketch, merges, tables)
     _resolve_region_preview_strings(archive, regions)
-    return {'max_row': max_row, 'max_column': max_col, 'merged_ranges': merges,
+    return {'max_row': max_row, 'min_column': min_col, 'max_column': max_col, 'merged_ranges': merges,
             'hidden_rows': hidden_rows, 'tables': tables, 'scanned_cells': scanned_cells,
             'candidate_regions': regions, 'region_discovery_truncated': regions_truncated,
             'discovery_scope': 'bounded_layout_proposals; confirm_header_grain_and_range; no_automatic_selection'}
@@ -737,6 +740,58 @@ def _normalize_percentage_cell(value, number_format, target):
                'output_representation': target, 'normalized_value': str(result),
                'transformations': transformations + (['fraction_to_percentage_points'] if target == 'points' else [])}
     return result, receipt
+
+
+def read_table_with_title_proposal(path, *, sheet=None, **options):
+    """Read a clear title-plus-table layout tentatively, retaining review duty.
+
+    Only recover an implicit header failure when a single bounded layout
+    candidate spans the full used width and ends at the last used row, and a
+    merged first-row title covers it.  Do not override a user-selected range or
+    combine multiple candidate tables.  The result is a proposal, not evidence
+    that field meanings or financial values were approved.
+    """
+    try:
+        return read_table(path, sheet=sheet, **options)
+    except WorkbookReadError as original:
+        if original.code != 'HEADER_SELECTION_REQUIRED' or any(
+                options.get(key) is not None for key in
+                ('table', 'header_rows', 'cell_range', 'data_start_row', 'data_end_row')):
+            raise
+        document=inspect_workbook(path)
+        sheets=[item for item in document['sheets'] if sheet is None or item['name']==sheet]
+        if len(sheets)!=1 or document['region_discovery_truncated']:
+            raise original
+        selected=sheets[0]
+        candidates=selected['candidate_regions']
+        if len(candidates)!=1:
+            raise original
+        candidate=candidates[0]
+        proposal=candidate.get('proposed_options') or {}
+        if (candidate.get('table') is not None or candidate.get('confidence')!='layout_supported'
+                or candidate.get('possible_internal_header_rows') or not proposal.get('header_rows')):
+            raise original
+        try:
+            left,top,right,bottom=range_boundaries(proposal['cell_range'])
+        except (KeyError,TypeError,ValueError):
+            raise original
+        # Other used rows/columns outside the proposal could be another table,
+        # a footer or a separated continuation.  Never silently drop them.
+        if (top<=1 or bottom!=selected['max_row'] or left!=selected['min_column']
+                or right!=selected['max_column']
+                or not any(a<=left and z>=right and t==1 and b==1 and z>a
+                           for a,t,z,b in (m['bounds'] for m in selected['merged_ranges']))):
+            raise original
+        retried=dict(options)
+        retried.update(proposal)
+        result=read_table(path, **retried)
+        result['semantic_review_required']=True
+        result['auto_layout_selection']={'candidate_id':candidate['candidate_id'],
+            'sheet':selected['name'],'options':dict(proposal),
+            'method':'unique_merged_title_candidate','requires_confirmation':True}
+        result['warnings']=[*result.get('warnings',[]),{'code':'XLSX_AUTO_LAYOUT_REVIEW_REQUIRED',
+            'note':'按唯一候选识别合并标题后的表格；发布前须对照原表核对范围、表头和业务口径'}]
+        return result
 
 
 def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=None,

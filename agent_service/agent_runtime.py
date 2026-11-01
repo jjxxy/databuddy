@@ -63,6 +63,16 @@ class OpenCodeRuntime:
                     raise
                 continue
             patch('turn', turn_id, opencode_receipt=receipt)
+            current = get('turn', turn_id)
+            # A finished native loop is not a completed Atlas task. Unless the
+            # bridge explicitly asked the scheduler to rebuild context, an
+            # active turn here has no running owner. Without this guard the next
+            # tick would launch the same request repeatedly, accumulating model
+            # calls and potentially repeating work. Session presence alone is
+            # not an ownership marker, and valid long-running sessions remain
+            # protected by the project lock while run_session is in progress.
+            if current['state'] in ('agent', 'agent_tool') and not receipt.get('context_rebuild_required'):
+                raise provider.ModelOutputError('Agent 执行已中断，任务尚未完成；已有步骤和成果已保留，请继续或重试')
             return receipt
 
 

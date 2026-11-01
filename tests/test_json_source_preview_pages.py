@@ -32,10 +32,12 @@ def test_large_json_document_is_bounded_but_pages_reconstruct_verified_original(
     pid=project();raw=json.dumps({'title':'多表原始文档','contents':'内容😀\\\"'*2500},ensure_ascii=False)
     source,path=json_source(pid,raw);turn={'project_id':pid}
     preview=invoke(turn,'source_preview',{'source_id':source['id']})
-    field=preview['fields'][0]['name'];assert preview['rows'][0][field]==raw[:4000]
+    names={field['label']:field['name'] for field in preview['fields']}
+    assert preview['rows'][0][names['title']]=='多表原始文档'
+    assert preview['rows'][0][names['contents']]==('内容😀\\\"'*2500)[:4000-len('多表原始文档')]
     assert preview['value_truncated'] is True
     assert preview['truncated'] is True
-    assert preview['truncated_field']['total_characters']==len(raw)
+    assert preview['truncated_field']['total_characters']==len('内容😀\\\"'*2500)
     assert '不能将片段当作完整文档' in preview['notice']
     reference=preview['read_original_with'];assert reference['tool']=='read_source_text'
     from agent_service.agent_context import trace_context
@@ -76,6 +78,26 @@ def test_paged_json_read_is_project_scoped_version_bound_and_share_gated(monkeyp
     patch('source',source['id'],revision=source['revision']+1)
     with pytest.raises(ValueError,match='版本或内容摘要已变化'):
         invoke(turn,'read_source_text',args)
+
+
+def test_nested_object_preview_is_bounded_and_original_keeps_exact_amount(monkeypatch):
+    from decimal import Decimal
+    from agent_service.connectors import exact_json
+    monkeypatch.setattr(agent,'authorize',lambda *args:None)
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True})
+    raw='{"name":"campaign","campaigns":[{"details":"'+('资料😀'*3000)+'","amount":9007199254740.000001}]}'
+    source,_=json_source(project(),raw)
+    turn={'project_id':source['project_id']}
+    preview=invoke(turn,'source_preview',{'source_id':source['id']})
+    assert preview['value_truncated'] and preview['truncated']
+    assert preview['evidence']['root_object_record']
+    ref=preview['read_original_with'];parts=[];offset=0
+    while offset is not None:
+        page=invoke(turn,'read_source_text',{**{k:v for k,v in ref.items() if k!='tool'},'offset':offset})
+        parts.append(page['content']);offset=page['next_offset']
+    reconstructed=''.join(parts)
+    assert reconstructed==raw
+    assert exact_json(reconstructed)['campaigns'][0]['amount']==Decimal('9007199254740.000001')
 
 
 def test_real_authorization_keeps_frozen_attachment_and_exposes_paging(monkeypatch):

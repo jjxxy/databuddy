@@ -710,22 +710,30 @@ def execute(turn,step):
         rows,fields,evidence,truncated=read_source(source,limit=20)
         values=[{k:v for k,v in r.items() if k not in ('record_hash','_source_index')} for r in rows[:20]]
         result={'source_id':source['id'],'fields':fields,'sample_only':True,'truncated':truncated or len(rows)>20}
-        # A JSON document is one text value, not a table. Avoid placing its
-        # entire potentially 25 MiB body in durable agent trace and context.
-        # Only replace that value, not ordinary rows or their numeric metadata.
-        if evidence.get('parser')=='json_document' and len(values)==1:
-            field=next((f['name'] for f in fields if f.get('label')=='JSON原文'),None)
-            text=values[0].get(field) if field else None
-            if isinstance(text,str) and len(text)>4000:
-                values[0][field]=text[:4000]
+        # JSON documents and normalized object/wrapper fields can contain the
+        # entire original file as a string. Bound the aggregate sample text and
+        # give a version-bound path back to the complete source whenever it was
+        # shortened or a wrapper was inferred; previews are never full evidence.
+        if evidence.get('parser') in ('json_document','json') and source.get('name','').lower().endswith('.json'):
+            remaining=4000;first_truncated=None
+            for row in values:
+                for field,text in row.items():
+                    if not isinstance(text,str):continue
+                    allowance=max(0,remaining)
+                    if len(text)>allowance:
+                        row[field]=text[:allowance]
+                        if first_truncated is None:first_truncated={'field':field,'total_characters':len(text),'shown_characters':allowance}
+                    remaining=max(0,remaining-len(row[field]))
+            if first_truncated:
                 result['value_truncated']=True;result['truncated']=True
-                result['truncated_field']={'field':field,'total_characters':len(text),'shown_characters':4000}
+                result['truncated_field']=first_truncated
+            if first_truncated or evidence.get('records_path_inferred'):
                 checksum=source.get('content_hash');revision=source.get('revision')
                 if isinstance(checksum,str) and re.fullmatch(r'[a-f0-9]{64}',checksum) and type(revision) is int and revision>0:
                     result['read_original_with']={'tool':'read_source_text','source_id':source['id'],'revision':revision,'sha256':checksum,'offset':0}
-                    result['notice']='JSON原文字段仅显示前4000字符；使用 read_source_text 按 next_offset 分片读取原件，直到 next_offset 为 null，不能将片段当作完整文档。'
+                    result['notice']='JSON样本可能省略字段或其他上下文；使用 read_source_text 按 next_offset 分片读取原件，直到 next_offset 为 null，不能将片段当作完整文档。'
                 else:
-                    result['notice']='JSON原文字段仅显示前4000字符；该来源缺少可核验版本或摘要，请重新上传后读取完整原件。'
+                    result['notice']='JSON样本可能省略字段或其他上下文；该来源缺少可核验版本或摘要，请重新上传后读取完整原件。'
         result['rows']=values;result['evidence']=evidence
         return result
     if name=='read_source_text':

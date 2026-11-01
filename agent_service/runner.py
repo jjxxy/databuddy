@@ -18,6 +18,8 @@ def ingest(run_dir,code_dir):
         records,fields,evidence,_=read_source(s,allow_empty=plan['spec'].get('allow_empty_source',False),expected_labels=entry['schema_labels'])
         if evidence.get('document_only'):
             raise TaskError('此 JSON 是完整文档，不是已确定的记录表；请明确记录路径并转换为对象数组后再进行表格加工。','JSON_DOCUMENT_NOT_TABLE')
+        if evidence.get('records_path_inferred') and evidence.get('wrapper_context_fields'):
+            raise TaskError('JSON 记录数组是自动识别的，且存在其他上下文字段；请核对单位和口径并明确记录路径后再正式加工。','JSON_RECORDS_PATH_REVIEW_REQUIRED')
         if [x['name'] for x in fields]!=[x['name'] for x in entry['fields']] or [x['label'] for x in fields]!=entry['schema_labels']:
             raise TaskError('来源字段发生变化。重新探查、检查影响并生成新版本。正式结果保留。','SCHEMA_CHANGED')
         # Preserve entirely-null columns with explicit nullable type hints.

@@ -62,7 +62,7 @@ def test_json_array_nested_decimals_remain_json_numbers_and_keep_all_subtrees():
 
 def test_json_bom_and_errors_have_clear_locations_without_exposing_contents():
     rows,fields,_,_=read_source(_file_source(b'\xef\xbb\xbf{"name":"value"}'))
-    assert fields[0]['label']=='JSON原文' and rows[0]['c_1']=='{"name":"value"}'
+    assert fields[0]['label']=='name' and rows[0]['c_1']=='value'
     for raw,extension,code in [(b'{"private":}', '.json','JSON_SYNTAX_INVALID'),(b'{"x":1}\n42\n','.jsonl','JSONL_RECORD_INVALID')]:
         with pytest.raises(SourceError) as caught:read_source(_file_source(raw,extension))
         assert caught.value.code==code and 'private' not in str(caught.value)
@@ -101,6 +101,63 @@ def test_explicit_json_record_path_is_recorded_and_only_explicitly_selected():
     rows,fields,evidence,_=read_source(_file_source(raw,records_path='data.items'))
     assert rows[0]['c_1']=='123.450001' and fields[0]['label']=='amount'
     assert evidence['records_path']=='data.items' and not evidence.get('document_only')
+
+
+@pytest.mark.parametrize('key',['data','records','items','results','list','rows'])
+def test_unambiguous_wrapper_array_is_selected_without_discarding_records(key):
+    raw=('{"'+key+'":[{"name":"A","amount":9007199254740.000001},'
+         '{"name":"B","amount":2.500001}]}').encode()
+    rows,fields,evidence,truncated=read_source(_file_source(raw))
+    labels={field['label']:field['name'] for field in fields}
+    assert [row[labels['name']] for row in rows]==['A','B']
+    assert [row[labels['amount']] for row in rows]==['9007199254740.000001','2.500001']
+    assert evidence['records_path']==key and evidence['records_path_inferred'] is True
+    assert exact_json(evidence['wrapper_context_json'])=={} and not truncated
+
+
+def test_single_object_keeps_all_nested_values_and_exact_numeric_precision():
+    from decimal import Decimal
+    raw=b'{"name":"campaign","currency":"CNY","budget":9007199254740.000001,"campaigns":[{"amount":0.1234567890123456789}]}'
+    rows,fields,evidence,_=read_source(_file_source(raw))
+    labels={field['label']:field['name'] for field in fields}
+    assert len(rows)==1 and rows[0][labels['budget']]=='9007199254740.000001'
+    assert exact_json(rows[0][labels['campaigns']])==[{'amount':Decimal('0.1234567890123456789')}]
+    assert evidence['root_object_record'] and evidence['semantic_review_required']
+
+
+def test_inferred_records_with_metadata_are_visible_but_cannot_be_silently_used_in_formal_ingest(tmp_path,monkeypatch):
+    import json
+    from decimal import Decimal
+    from agent_service import rules,runner
+    from agent_service.errors import TaskError
+    raw=b'{"meta":{"currency":"CNY","rate":0.1234567890123456789},"data":[{"amount":12.50}]}'
+    source=_file_source(raw)
+    rows,fields,evidence,_=read_source(source)
+    assert rows[0]['c_1']=='12.50' and evidence['records_path']=='data'
+    assert exact_json(evidence['wrapper_context_json'])['meta']['rate']==Decimal('0.1234567890123456789')
+    assert evidence['wrapper_context_fields']==['meta'] and evidence['semantic_review_required']
+    run=tmp_path/'run';code=tmp_path/'code';run.mkdir();code.mkdir()
+    (run/'sources.json').write_text(json.dumps({source['id']:source}),encoding='utf-8')
+    (code/'plan.json').write_text(json.dumps({'source_id':source['id'],'spec':{},'schema_labels':['amount'],'schema_names':['c_1']}),encoding='utf-8')
+    monkeypatch.setattr(rules,'validate_legacy_numeric',lambda *args,**kwargs:None)
+    with pytest.raises(TaskError) as caught:runner.ingest(run,code)
+    assert caught.value.code=='JSON_RECORDS_PATH_REVIEW_REQUIRED'
+    assert not (run/'warehouse.duckdb').exists()
+    selected=_file_source(raw,records_path='data')
+    _,_,confirmed,_=read_source(selected)
+    assert confirmed['records_path']=='data' and not confirmed.get('records_path_inferred')
+
+
+@pytest.mark.parametrize('raw',[
+    b'{"data":[{"amount":1}],"results":[{"amount":2}]}',
+    b'{"data":[{"amount":1}],"other":[{"amount":2}]}',
+    b'{"data":[{"amount":1}],"meta":{"segments":[1,2]}}',
+    b'{"data":[]}',
+])
+def test_ambiguous_or_empty_record_candidates_never_drop_sibling_data(raw):
+    rows,fields,evidence,_=read_source(_file_source(raw))
+    assert evidence['document_only'] is True
+    assert fields[0]['label']=='JSON原文' and rows[0]['c_1']==raw.decode()
 
 
 def test_real_multi_attachment_message_probes_all_files_including_nested_json(monkeypatch):

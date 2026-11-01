@@ -185,7 +185,7 @@ def _file_rows(source, limit, path, content):
             raise SourceError('CSV 第 %s 行格式错误，请核对引号和分隔符' % reader.line_num) from exc
         return rows,{'parser':'csv','file':source['name'],'schema_labels':reader.fieldnames}
     if suffix == '.xlsx':
-        from .workbook_reader import workbook_sheet_names,read_table,WorkbookReadError
+        from .workbook_reader import workbook_sheet_names,read_table_with_title_proposal,WorkbookReadError
         options=cfg.get('xlsx_options',{})
         if not isinstance(options,dict):raise SourceError('xlsx_options 必须为对象')
         allowed={'sheet','table','header_rows','cell_range','data_start_row','data_end_row','merged_label_columns','hidden_rows','subtotal_policy','html_table'}
@@ -198,8 +198,8 @@ def _file_rows(source, limit, path, content):
             # Existing uploads retain first-sheet behavior, explicitly and visibly.
             # New read_table/workflow API requires an actual selection for multiple sheets.
             if implicit:selected=names[0]
-            extracted=read_table(path,sheet=selected,limit=limit+1,
-                                 require_formula_cache=limit>=MAX_ROWS,**options)
+            extracted=read_table_with_title_proposal(path,sheet=selected,limit=limit+1,
+                                                     require_formula_cache=limit>=MAX_ROWS,**options)
         except WorkbookReadError as exc:
             raise SourceError(str(exc),exc.code) from exc
         warnings=list(extracted['warnings'])
@@ -229,12 +229,48 @@ def _file_rows(source, limit, path, content):
         else:
             try:document=exact_json(text)
             except json.JSONDecodeError as exc:raise SourceError('JSON 第 %s 行第 %s 列格式错误，请检查文件' % (exc.lineno,exc.colno),'JSON_SYNTAX_INVALID') from exc
+            json_evidence={}
             if cfg.get('records_path'):
                 rows=json_path(document,cfg['records_path'])
                 if not isinstance(rows,list) or any(not isinstance(x,dict) for x in rows):
                     raise SourceError('指定的 JSON 记录路径必须指向对象数组','JSON_RECORDS_PATH_INVALID')
             elif isinstance(document,list) and document and all(isinstance(x,dict) for x in document):
                 rows=document
+            elif isinstance(document,dict) and document:
+                # A unique conventional record array can be previewed without
+                # guessing between multiple datasets. Empty arrays have no
+                # inferable schema and remain complete JSON documents.
+                candidates=[key for key in ('data','records','items','results','list','rows')
+                            if isinstance(document.get(key),list) and document[key]
+                            and all(isinstance(item,dict) for item in document[key])]
+                def contains_array(value):
+                    return isinstance(value,list) or isinstance(value,dict) and any(contains_array(item) for item in value.values())
+                if len(candidates)==1 and not any(contains_array(value) for key,value in document.items() if key!=candidates[0]):
+                    key=candidates[0];rows=document[key]
+                    context={name:value for name,value in document.items() if name!=key}
+                    json_evidence={'records_path':key,'records_path_inferred':True,
+                        'semantic_review_required':bool(context),'wrapper_context_fields':list(context),
+                        'warnings':[{'code':'JSON_RECORDS_PATH_INFERRED',
+                          'note':'已预览唯一的常见对象数组；其他上下文字段仍在原文件中，含额外上下文时正式加工前须确认记录路径和业务口径'}]}
+                    # Exact source bytes remain authoritative. Include bounded
+                    # wrapper metadata for useful preview without numeric float
+                    # conversion; large metadata is retrieved from the source.
+                    encoded_context=exact_json_dumps(context)
+                    if len(encoded_context)<=4000:json_evidence['wrapper_context_json']=encoded_context
+                    else:json_evidence['wrapper_context_omitted']=True
+                elif not any(isinstance(document.get(key),list) for key in ('data','records','items','results','list','rows')):
+                    # A single top-level object is itself a record, preserving
+                    # every key and serializing nested values without losing
+                    # Decimal precision. It is not an inferred records array.
+                    rows=[document]
+                    nested=any(isinstance(value,(dict,list)) for value in document.values())
+                    json_evidence={'root_object_record':True,'semantic_review_required':nested,
+                        'warnings':[{'code':'JSON_OBJECT_AS_SINGLE_RECORD',
+                          'note':'顶层对象作为一条记录；嵌套对象和数组保留为 JSON 字段，数据粒度和业务含义需核对'}]}
+                else:
+                    return [{'JSON原文':text}], {'parser':'json_document','file':source['name'],
+                        'document_only':True,'semantic_review_required':True,'warnings':[{'code':'JSON_DOCUMENT_NOT_TABLE',
+                        'note':'存在多个或不明确的记录数组；完整原文已保留，请明确记录路径后再加工'}]}
             else:
                 # A JSON object may contain multiple unrelated arrays, metadata,
                 # or no arrays at all. Never guess one and discard the rest.
@@ -246,7 +282,7 @@ def _file_rows(source, limit, path, content):
         # precision in that text instead of converting Decimal to quoted strings.
         rows=[{key:exact_json_dumps(value) if isinstance(value,(dict,list)) else value
                for key,value in row.items()} for row in rows[:limit+1]]
-        evidence={'parser':'json','file':source['name']}
+        evidence={'parser':'json','file':source['name'],**(json_evidence if suffix=='.json' else {})}
         if cfg.get('records_path'):evidence['records_path']=cfg['records_path']
         return rows,evidence
     if suffix in ('.html','.htm'):

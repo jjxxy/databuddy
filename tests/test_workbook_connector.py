@@ -102,3 +102,80 @@ def test_csv_stays_on_original_normalization_path(tmp_path):
     assert rows[0]['c_1']=='甲' and rows[0]['c_2']=='10'
     assert fields==[{'name':'c_1','label':'客户'},{'name':'c_2','label':'金额'}]
     assert evidence['parser']=='csv' and not truncated
+
+
+def titled_workbook(tmp_path, *, later_table=False, footer=False):
+    book=Workbook();ws=book.active;ws.title='季度预算'
+    ws['A1']='季度预算报告';ws.merge_cells('A1:F1')
+    ws.append([])
+    ws.append(['部门','月份','预算','已用','剩余','备注'])
+    ws.append(['销售','一月',100,40,60,'正常'])
+    ws.append(['运营','一月',200,50,150,'正常'])
+    if later_table:
+        ws.append([]);ws.append(['其他部门','其他月份','其他预算','其他已用','其他剩余','其他备注'])
+        ws.append(['研发','二月',300,60,240,'正常'])
+    if footer:
+        ws.append([]);ws.append(['备注：数据待核实'])
+    file=tmp_path/(uid()+'.xlsx');book.save(file)
+    uploads=DATA/'uploads';uploads.mkdir(exist_ok=True);shutil.copy2(file,uploads/file.name)
+    s={'kind':'file','id':'s_'+uid(),'name':'quarterly_budget.xlsx',
+       'secret_config':seal({'stored_name':file.name}),
+       'content_hash':hashlib.sha256(file.read_bytes()).hexdigest()}
+    return s,file
+
+
+def test_merged_title_unique_candidate_is_read_with_review_evidence(tmp_path):
+    s,_=titled_workbook(tmp_path)
+    rows,fields,evidence,truncated=read_source(s)
+    assert not truncated and [f['label'] for f in fields]==['部门','月份','预算','已用','剩余','备注']
+    assert [r['c_1'] for r in rows]==['销售','运营'] and evidence['source_rows']==[4,5]
+    assert evidence['selection']['header_rows']==[3]
+    assert evidence['auto_layout_selection']['options']['cell_range']=='A3:F5'
+    assert evidence['semantic_review_required'] is True
+    assert any(w['code']=='XLSX_AUTO_LAYOUT_REVIEW_REQUIRED' for w in evidence['warnings'])
+
+
+@pytest.mark.parametrize('case',['later_table','footer'])
+def test_merged_title_never_silently_omits_other_content(tmp_path,case):
+    s,_=titled_workbook(tmp_path,**{case:True})
+    with pytest.raises(SourceError) as exc:read_source(s)
+    assert exc.value.code=='HEADER_SELECTION_REQUIRED'
+
+
+def test_auto_layout_preview_and_workflow_input_keep_review_requirement(tmp_path):
+    from agent_service import project_data
+    from agent_service.store import put, delete
+    s,_=titled_workbook(tmp_path)
+    pid='p_'+uid();s['project_id']=pid
+    put('project',{'name':'layout review'},pid);put('source',s,s['id'])
+    try:
+        preview=project_data.preview_source(pid,{'source_id':s['id']})
+        assert preview['total']==2 and preview['evidence']['requires_semantic_review']
+        rows,fields,evidence,provenance=project_data.read_input(pid,{'source_id':s['id']})
+        assert len(rows)==2 and fields[0]['label']=='部门'
+        assert evidence['requires_source_review'] is True
+        assert evidence['auto_layout_selection']['requires_confirmation'] is True
+        assert provenance['selection']['header_rows']==[3]
+    finally:
+        delete('source',s['id']);delete('project',pid)
+
+
+def test_auto_layout_never_drops_isolated_data_left_of_candidate(tmp_path):
+    # A discovery candidate can omit a one-column block separated by an empty
+    # column. Its right edge and last row still match the worksheet bounds.
+    from agent_service.workbook_reader import inspect_workbook
+    book=Workbook();ws=book.active;ws.title='数据'
+    ws['A1']='标题';ws.merge_cells('A1:F1')
+    for column,value in zip(('C','D','E','F'),('部门','预算','已用','备注')):ws[f'{column}3']=value
+    for column,value in zip(('C','D','E','F'),('销售',100,40,'正常')):ws[f'{column}4']=value
+    for column,value in zip(('C','D','E','F'),('运营',200,50,'正常')):ws[f'{column}5']=value
+    ws['A5']='左侧独立数据'
+    file=tmp_path/(uid()+'.xlsx');book.save(file)
+    uploads=DATA/'uploads';uploads.mkdir(exist_ok=True);shutil.copy2(file,uploads/file.name)
+    source={'kind':'file','id':'s_'+uid(),'name':'budget.xlsx',
+            'secret_config':seal({'stored_name':file.name}),
+            'content_hash':hashlib.sha256(file.read_bytes()).hexdigest()}
+    info=inspect_workbook(file)
+    assert info['candidate_regions'][0]['range']=='C3:F5'
+    with pytest.raises(SourceError) as exc:read_source(source)
+    assert exc.value.code=='HEADER_SELECTION_REQUIRED'

@@ -216,11 +216,14 @@ def prepare_attachments(turn):
         finish(turn,str(exc),outcome='needs_input',resume_available=False);return False
     rows=[owned('source',identifier,turn['project_id']) for identifier in identifiers]
     selectable={source['id'] for source in rows if source.get('status')=='failed' and _selectable_workbook(source)}
-    failed=[source for source in rows if source.get('status')=='failed' and source['id'] not in selectable]
+    # Only known in-progress states are waitable.  An unknown/cancelled state
+    # must not hold the conversation open forever or silently omit a source.
+    waiting={'queued','processing','running','retrying','pending'}
+    failed=[source for source in rows if source.get('status') not in waiting|{'ready'} and source['id'] not in selectable]
     if failed:
         names='、'.join(source['name'] for source in failed[:5])
         finish(turn,'这些资料尚未读成功：'+names+'。本次没有忽略失败附件继续计算，请修正或移除后发起新任务。',outcome='needs_input',resume_available=False);return False
-    pending=[source for source in rows if source.get('status')!='ready' and source['id'] not in selectable]
+    pending=[source for source in rows if source.get('status') in waiting]
     if pending:
         from .execution import enqueue
         for source in pending:enqueue('probe',source['id'])
@@ -551,7 +554,12 @@ def decision(project, turn, text, source, pipeline):
                 # Publication requires a direct explicit confirmation, even when an LLM asks for it.
                 if result.action == 'publish': return Decision(action='reply', reply='如要采用刚才的候选结果，请回复“确认发布”。')
                 return result
-        except Exception:
+        except Exception as exc:
+            # A provider rate-limit is transient, not malformed model output.
+            # Let the durable turn scheduler delay the retry without sleeping
+            # in the worker or exposing the provider's response body.
+            if isinstance(exc,httpx.HTTPStatusError) and exc.response.status_code==429:
+                raise
             return Decision(action='reply', reply='这次模型连接或规划校验没有成功，请稍后重试。你仍可说“分析这份资料”“查看汇总”“每天上午9点更新”等明确需求。')
     if re.search(r'连接.*(?:数据库|API|接口)|(?:数据库|API|接口).*连接', text, re.I): return Decision(action='reply', reply='把数据库连接串发给我，再告诉我表名，并确认使用只读账号；连接 API 则直接发送地址。连接内容会隐藏并加密保存。')
     if pipeline and any(x in text for x in ('多少', '几条', '数量', '查看汇总', '排名', '最多', '来源', '版本', '看看结果', '查看结果')): return Decision(action='ask')
@@ -695,7 +703,25 @@ def legacy_handle(turn):
     if turn['state'] == 'generating':
         d = Decision.model_validate(turn['decision'])
     else:
-        d = Decision.model_validate(turn['forced_decision']) if turn.get('forced_decision') else decision(project, turn, text, source, pipeline)
+        try:
+            d = Decision.model_validate(turn['forced_decision']) if turn.get('forced_decision') else decision(project, turn, text, source, pipeline)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code!=429:raise
+            current=get('turn',turn['id'])
+            # A user can stop a task while the upstream request is in flight.
+            # Never revive a completed or cancelled turn after the request ends.
+            if current['state'] in TERMINAL:return
+            count=current.get('legacy_model_retry_count',0)+1
+            if count<3:
+                import time
+                patch('turn',turn['id'],legacy_model_retry_count=count,model_retry_at=time.time()+2**count,
+                      progress='模型服务请求过于频繁，正在稍后重试；资料和已有成果保留')
+            else:
+                finish(current,'模型服务连续返回限流（HTTP 429），任务和已有成果已保留。请稍后回复“继续”或检查模型服务限流。',
+                       outcome='paused',resume_available=True,legacy_model_retry_count=count,model_retry_at=0)
+            return
+        if turn.get('legacy_model_retry_count'):
+            patch('turn',turn['id'],legacy_model_retry_count=0,model_retry_at=0)
         patch('turn', turn['id'], mode='llm' if LLM_BASE and LLM_MODEL else 'rules')
     if d.action == 'reply': finish(turn, d.reply); return
     if d.action in ('rename','switch','analyze','publish','schedule','pause','refresh'):
@@ -900,7 +926,28 @@ def handle(turn):
         source_id=turn.get('source_id') or project.get('source_id')
         if source_id:
             primary=owned('source',source_id,project['id'])
-            if primary.get('status')!='ready' and not _selectable_workbook(primary):legacy_handle(turn);return
+            frozen=turn.get('implicit_wait_source')
+            if frozen and (frozen.get('id')!=source_id or any(primary.get(key)!=frozen.get(key) for key in ('revision','revision_id','content_hash'))):
+                finish(turn,'等待期间资料已变更；原任务不会自动改用新文件。请重新选择资料并发起新任务。',outcome='needs_input');return
+            source_status=primary.get('status')
+            if source_status in ('queued','processing','running','retrying','pending'):
+                # The project may have a pending implicit source even when no
+                # attachments were sent in this particular turn.  Do not pass
+                # it to the legacy decision parser while the probe is running.
+                from .execution import enqueue
+                enqueue('probe',source_id)
+                changes={'state':'waiting_source','progress':'正在读取资料并识别字段'}
+                if not turn.get('source_id'):
+                    # Freeze the implicit project focus while probing. A later
+                    # focus change must not silently substitute another file.
+                    changes.update(source_id=source_id,implicit_wait_source=snapshot_attachment(primary))
+                patch('turn',turn['id'],**changes)
+                return
+            if source_status!='ready' and not _selectable_workbook(primary):
+                finish(turn,'资料还没有读成功：'+(primary.get('error') or '请检查文件格式或连接权限')+'。你可以重新上传修正后的资料。',outcome='needs_input');return
+            # A connection-only turn has a deterministic success response;
+            # after the probe it should not be handed to the planner as work.
+            if turn.get('connect_only') and turn['state']=='waiting_source':legacy_handle(turn);return
         if turn.get('workflow_goal'):turn=patch('turn',turn['id'],work_request=turn['workflow_goal'])
         advance(turn);return
     if len(attachment_ids(turn))>1:

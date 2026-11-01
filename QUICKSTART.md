@@ -81,6 +81,8 @@ Linux/macOS：`bash start.sh status`、`bash start.sh logs`、`bash start.sh dow
 
 不带动作默认 `up`。`down` 保留数据卷。不要使用 `down -v` 或删除数据卷；升级保留 `.env`、填好的 `llm.json` 与数据卷，沿用原目录及同一 Compose 项目。换目录启动不能视为自动数据迁移。
 
+更新源码后需要重新构建镜像并重启服务：默认 `up` 会执行构建。只在正在运行的容器里修改文件不会更新已经加载的进程。默认 quickstart 镜像每次启动时为 Python 使用新的缓存目录，避免因旧 `.pyc` 意外加载旧代码；不需要删除业务数据或旧的 `__pycache__`。已有自定义镜像、覆盖入口命令的部署或非 Docker 启动方式需按各自方式更新和重启。
+
 端口占用时在 `.env` 改 `ATLAS_HTTP_PORT`，保留口令。构建结束后健康等待最多180秒，镜像下载和构建另计；超时用 `status`、`logs` 核对。配置格式通过不等于模型连通，也不等于业务正确。
 
 需要备份时见 [ENTERPRISE-WORK.md](ENTERPRISE-WORK.md)。原件、结果、模型配置、加密密钥与数据库需要一致备份；Git版本不能代替备份。不要分享填好后的 `llm.json`、`.env` 或未经脱敏的运行目录。
