@@ -119,7 +119,18 @@ def test_export_checker_rejects_duplicate_and_missing_business_keys(verifier,gol
     assert any('多出结果行' in e for e in verifier.compare(rows+[extra],rows))
 
 
-@pytest.mark.parametrize('bad',['NaN','Infinity','460001.31','460,001.30','¥460001.30'])
+def test_nonempty_row_outside_expected_columns_is_not_silently_skipped(verifier,gold,tmp_path):
+    expected=gold['baseline_sep'];headers=list(expected[0]);path=tmp_path/'result.csv'
+    with path.open('w',encoding='utf-8',newline='') as stream:
+        writer=csv.writer(stream);writer.writerow(headers+['备注'])
+        for row in expected:writer.writerow([row[key] for key in headers]+[''])
+        writer.writerow(['']*len(headers)+['未识别的另一笔业务'])
+    with pytest.raises(ValueError,match='不能静默跳过'):
+        verifier.load_export(path,headers)
+
+
+@pytest.mark.parametrize('bad',['NaN','Infinity','460001.31','460,001.30','¥460001.30',
+                                 '1e999999999','1e-999999999','460_001.30'])
 def test_export_checker_rejects_wrong_or_nonatomic_money(verifier,gold,bad):
     rows=deepcopy(gold['baseline_sep'])
     rows[-1]['收入元']=bad
@@ -140,6 +151,65 @@ def test_export_checker_reads_real_xlsx_strings_and_formula_failure(verifier):
     assert next(r for r in rows if len(r)>1 and r[1]=='S09002')[4]=='8.000005'
     with pytest.raises(ValueError,match='含Excel错误'):
         verifier._xlsx_rows(KIT/'inputs'/'negative'/'异常_公式.xlsx','不可核实公式')
+
+
+def test_excel_numeric_cells_remain_numeric_and_text_amounts_are_rejected(verifier,gold,tmp_path):
+    from openpyxl import Workbook
+    expected=gold['baseline_sep'];headers=list(expected[0]);path=tmp_path/'result.xlsx'
+    book=Workbook();sheet=book.active;sheet.title='结果';sheet.append(headers)
+    for row in expected:
+        sheet.append([row[name] if name in verifier.KEYS else float(Decimal(row[name])) for name in headers])
+    book.save(path)
+    rows=verifier.load_export(path,headers,sheet='结果')
+    assert verifier.compare(rows,expected)==[]
+    # A numeric-looking string in Excel is still text; do not certify it as
+    # a numeric result merely because Decimal can parse its characters.
+    amount_column=headers.index('收入元')+1
+    sheet.cell(2,amount_column).value=expected[0]['收入元'];book.save(path)
+    with pytest.raises(ValueError,match='必须是数值单元格'):
+        verifier.load_export(path,headers,sheet='结果')
+    sheet.cell(2,amount_column).value=True;book.save(path)
+    with pytest.raises(ValueError,match='必须是数值单元格'):
+        verifier.load_export(path,headers,sheet='结果')
+
+
+def test_excel_numeric_formula_requires_an_actual_numeric_cache(verifier,gold,tmp_path):
+    import zipfile
+    from openpyxl import Workbook
+    expected=gold['baseline_sep'];headers=list(expected[0]);path=tmp_path/'result.xlsx'
+    book=Workbook();sheet=book.active;sheet.title='结果';sheet.append(headers)
+    for row in expected:
+        sheet.append([row[name] if name in verifier.KEYS else float(Decimal(row[name])) for name in headers])
+    amount_column=headers.index('收入元')+1
+    sheet.cell(2,amount_column).value='=1+1';book.save(path)
+    with pytest.raises(ValueError,match='公式缓存缺失'):
+        verifier.load_export(path,headers,sheet='结果')
+    # A cached numeric formula is permitted; the independent oracle compares
+    # the cached value but does not claim the workbook was recalculated.
+    with zipfile.ZipFile(path) as archive:contents={n:archive.read(n) for n in archive.namelist()}
+    xml=contents['xl/worksheets/sheet1.xml']
+    assert b'<f>1+1</f><v></v>' in xml
+    xml=xml.replace(b'<f>1+1</f><v></v>',b'<f>1+1</f><v>'+expected[0]['收入元'].encode()+b'</v>',1)
+    contents['xl/worksheets/sheet1.xml']=xml
+    with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as archive:
+        for name,data in contents.items():archive.writestr(name,data)
+    assert verifier.compare(verifier.load_export(path,headers,sheet='结果'),expected)==[]
+
+
+def test_excel_malformed_or_duplicate_cell_coordinates_are_rejected(verifier,tmp_path):
+    import zipfile
+    from openpyxl import Workbook
+    path=tmp_path/'coordinates.xlsx';book=Workbook();sheet=book.active
+    sheet['A1']='one';sheet['B1']='two';book.save(path)
+    with zipfile.ZipFile(path) as archive:original={n:archive.read(n) for n in archive.namelist()}
+    for source,target,message in [(b'r="B1"',b'r="XFE1"','坐标无效'),
+                                  (b'r="B1"',b'r="A1"','重复单元格')]:
+        contents=dict(original);xml=contents['xl/worksheets/sheet1.xml']
+        assert source in xml
+        contents['xl/worksheets/sheet1.xml']=xml.replace(source,target,1)
+        with zipfile.ZipFile(path,'w',zipfile.ZIP_DEFLATED) as archive:
+            for name,data in contents.items():archive.writestr(name,data)
+        with pytest.raises(ValueError,match=message):verifier._xlsx_rows(path,None)
 
 
 def test_cli_works_without_project_imports(tmp_path):

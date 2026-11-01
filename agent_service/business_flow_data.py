@@ -547,8 +547,7 @@ def _save_rows_paged(context,rows,raw,table_sha=None):
             if os.path.exists(name):os.unlink(name)
 
 
-def _compact_table(context,value):
-    rows=value.get('rows')
+def _serialized_table_rows(rows):
     if not isinstance(rows,list):raise ValueError('数据快照行格式无效')
     # Enforce the bound while serializing instead of first allocating an
     # arbitrarily large canonical representation and checking afterward.
@@ -561,7 +560,12 @@ def _compact_table(context,value):
         if len(data)+len(chunk)>_MAX_TABLE_BYTES:
             raise FlowStepError('BYTE_BUDGET','完整数据超过当前步骤的安全容量，未截断或发布')
         data.extend(chunk)
-    raw=bytes(data)
+    return bytes(data)
+
+
+def _compact_table(context,value):
+    rows=value.get('rows')
+    raw=_serialized_table_rows(rows)
     if len(raw)<=_INLINE_ROWS_LIMIT:
         return json.loads(canonical(value))
     table_sha=None
@@ -745,8 +749,29 @@ def table_workflow(context, config, inputs):
         columns={column.name:column for column in cfg.plan.inputs[stage['input']].columns}
         _coerce(inputs[alias],columns[condition['column']])
         condition['value']=inputs[alias]
-    result=execute(WorkflowPlan.model_validate(plan),tables)
-    return _compact_table(context,{'kind':'table_workflow_v1','complete':result['complete'],'rows':result['output']['rows'],
+    validated_plan=WorkflowPlan.model_validate(plan)
+    from .data_workflows import dependencies_for,digest
+    stages_by_id={stage.id:stage for stage in validated_plan.stages}
+    ancestry=set();pending=[validated_plan.output]
+    while pending:
+        ident=pending.pop()
+        if ident in ancestry:continue
+        ancestry.add(ident)
+        if ident in stages_by_id:pending.extend(dependencies_for(stages_by_id[ident]))
+    evidence=[]
+    def keep_fx_evidence(stage,schema,rows,receipt):
+        # Only retain computed FX detail on the final output's own dependency
+        # path. The final FX table itself is already directly pageable.
+        if stage.id not in ancestry or stage.id==validated_plan.output:return
+        raw=_serialized_table_rows(rows)
+        checksum=digest({'schema':schema,'rows':rows})
+        if checksum!=receipt['output_sha256'] or digest(schema)!=receipt['schema_sha256']:
+            raise ValueError('换算明细与执行回执不一致')
+        ref=_save_rows_paged(context,rows,raw,checksum)
+        evidence.append({'stage_id':stage.id,'kind':'fx_convert','schema':schema,
+                         'row_count':len(rows),'output_sha256':checksum,'rows_ref':ref})
+    result=execute(validated_plan,tables,on_evidence=keep_fx_evidence)
+    value={'kind':'table_workflow_v1','complete':result['complete'],'rows':result['output']['rows'],
         'schema':result['output']['schema'],'row_count':result['output']['row_count'],
         'output_sha256':result['output']['sha256'],'plan_sha256':result['plan_sha256'],
         'input_sha256':result['input_sha256'],'stage_receipts':result['stages'],
@@ -754,4 +779,8 @@ def table_workflow(context, config, inputs):
         'selection_lineage_complete':selection_lineage_complete,
         'requires_source_review':source_review,
         'requires_semantic_review':semantic_review or result.get('requires_semantic_review') is True,
-        'financial_evidence_status':'requires_business_review'})
+        'financial_evidence_status':'requires_business_review'}
+    if evidence:
+        value['evidence_tables']=evidence
+        value['workflow_output_stage']=validated_plan.output
+    return _compact_table(context,value)

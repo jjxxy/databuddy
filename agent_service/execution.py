@@ -6,6 +6,7 @@ import duckdb,yaml
 from croniter import croniter
 from .config import DATA,TIMEZONE
 from .store import get,patch,now,transaction,items
+from sqlalchemy import select,update
 from .jobs import enqueue as queue_enqueue,claim,get_job,fenced_update,heartbeat,ACTIVE
 from .codegen import checkout
 from .errors import TaskError,Cancelled
@@ -228,27 +229,89 @@ def execute(run):
         status='cancelled' if isinstance(error,Cancelled) else 'retrying' if error.retryable and run['attempts']<run['max_attempts'] else 'failed'
         try:patch_run(run,status=status,finished_at=now(),stage='等待重试' if status=='retrying' else '已取消' if status=='cancelled' else '失败',error=str(error),error_code=error.code,available_at=time.time()+min(300,2**run['attempts']),quality=quality_report(folder))
         except RuntimeError:return
+        if run.get('scheduled_key') and status in ('failed','cancelled'):
+            _scheduled_failure_notice(run,status)
         if run['kind']=='probe' and status=='failed':patch('source',run['target'],status='failed',error=str(error),error_code=error.code)
         record('run.'+status,run['target'],{'run_id':run['id'],'code':error.code,'attempt':run['attempts']})
 
+def _patch_schedule_if_current(kind,snapshot,fields,**values):
+    # A user can edit a schedule or adopt a newer result while the scheduler
+    # is admitting work. Never overwrite that newer state.
+    with transaction() as connection:
+        row=connection.execute(select(items.c.body).where(items.c.id==snapshot['id'],
+            items.c.kind==kind).with_for_update()).first()
+        if not row:return False
+        current=json.loads(row[0])
+        if any(current.get(field)!=snapshot.get(field) for field in fields):return False
+        current.update(values)
+        connection.execute(update(items).where(items.c.id==snapshot['id'],items.c.kind==kind)
+                           .values(body=json.dumps(current,ensure_ascii=False,default=str)))
+        return True
+
+
+def _scheduled_failure_notice(run,status):
+    # Only update the still-current published revision. A late failure must
+    # not overwrite a newer result or an edited/discontinued schedule.
+    kind=run.get('kind')
+    if kind not in ('data_workflow','pipeline'):return
+    try:current=get(kind,run['target'])
+    except KeyError:return
+    if current.get('archived') or not (current.get('cron') or current.get('watch_sources')):return
+    if kind=='data_workflow':
+        pointers=run.get('workflow_pointer_snapshot') or {}
+        if (not run.get('workflow_refresh_published') or current.get('active_sha256')!=run.get('commit')
+                or current.get('published_run')!=pointers.get('published_run')
+                or current.get('candidate_run')!=pointers.get('candidate_run')):return
+        fields=('project_id','archived','cron','next_due','watch_sources','active_sha256','published_run','candidate_run','refresh_error','schedule_gap_pending')
+        notice='自动更新%s；之前正式结果保留，请检查运行记录'%('已取消' if status=='cancelled' else '失败')
+        if current.get('schedule_gap_pending'):notice+='；历史计划缺口尚待核对'
+        _patch_schedule_if_current(kind,current,fields,refresh_error=notice)
+    else:
+        if not _automatic_adoption_allowed(current,run.get('commit')):return
+        fields=('project_id','archived','cron','next_due','active_commit','commit','published_run','candidate_run','schedule_error','schedule_gap_pending')
+        notice='定时更新%s；之前正式结果保留，请检查运行记录'%('已取消' if status=='cancelled' else '失败')
+        if current.get('schedule_gap_pending'):notice+='；历史计划缺口尚待核对'
+        _patch_schedule_if_current(kind,current,fields,schedule_error=notice)
+
+
 def _queue_due():
-    # Updating the schedule row and enqueuing need one logical clock; per-workspace file lock
-    # serializes schedulers, while DB uniqueness and active-task suppression remain authoritative.
+    # Serializes local scheduler workers; queue deduplication remains authoritative.
     from .locks import FileLock
     with FileLock(str(DATA/'scheduler.lock'),timeout=5):
         current=datetime.now(timezone.utc)
         from .store import all_items
+        fields=('project_id','archived','cron','next_due','active_commit','commit','release_mode',
+                'business_plan_confirmation_required','schedule_gap_pending')
         for p in all_items('pipeline'):
             if not p.get('cron') or p.get('archived'):continue
-            try:due=datetime.fromisoformat(p['next_due'])
-            except (ValueError,TypeError,KeyError):
-                patch('pipeline',p['id'],cron=None,schedule_error='定时配置无效，已停用');continue
-            if due>current:continue
-            commit=p.get('active_commit') or (p.get('commit') if p.get('release_mode','auto')=='auto' and not p.get('business_plan_confirmation_required') else None)
-            if commit:
-                try:enqueue('pipeline',p['id'],commit,f"{p['id']}:{p['next_due']}")
-                except ValueError:patch('pipeline',p['id'],schedule_error='来源已归档，需修复连接')
-            patch('pipeline',p['id'],next_due=croniter(p['cron'],current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat())
+            if (p.get('schedule_retry_after') or 0)>current.timestamp():continue
+            try:
+                due=datetime.fromisoformat(p['next_due'])
+                if due.tzinfo is None:raise ValueError('missing schedule timezone')
+                if due>current:continue
+                # Validate cron before admission so invalid settings never start a job.
+                following=croniter(p['cron'],due.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
+                next_due=croniter(p['cron'],current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
+                commit=p.get('active_commit') or (p.get('commit') if p.get('release_mode','auto')=='auto' and not p.get('business_plan_confirmation_required') else None)
+                if not commit:
+                    _patch_schedule_if_current('pipeline',p,fields,schedule_error='尚无已确认的可运行版本，自动更新等待处理',schedule_retry_after=current.timestamp()+30)
+                    continue
+                key=f"{p['id']}:{p['next_due']}"
+                queued=enqueue('pipeline',p['id'],commit,key)
+                if (queued.get('scheduled_key')!=key or queued.get('kind')!='pipeline'
+                        or queued.get('target')!=p['id'] or queued.get('commit')!=commit):
+                    _patch_schedule_if_current('pipeline',p,fields,schedule_error='已有其他任务运行，自动更新等待后重试；正式结果保留',schedule_retry_after=current.timestamp()+30)
+                    continue
+                if queued.get('status') not in (*ACTIVE,'succeeded','validated'):
+                    _patch_schedule_if_current('pipeline',p,fields,schedule_error='该计划的运行未成功，请检查运行记录后处理；正式结果保留',schedule_retry_after=current.timestamp()+30)
+                    continue
+                gap=p.get('schedule_gap_pending') or following<=current
+                notice='存在历史未执行的计划时间；本次仅安排一次刷新，请核对缺失期间后重新设置调度' if gap else None
+                _patch_schedule_if_current('pipeline',p,fields,next_due=next_due.isoformat(),schedule_error=notice,
+                                           schedule_retry_after=None,schedule_gap_pending=bool(gap))
+            except Exception:
+                # Admission and configuration errors must not consume this occurrence.
+                _patch_schedule_if_current('pipeline',p,fields,schedule_error='自动更新未能安排，请检查计划及来源；正式结果保留',schedule_retry_after=current.timestamp()+30)
 
 def process_once():
     from .maintenance import guard

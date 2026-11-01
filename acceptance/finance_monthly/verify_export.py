@@ -5,10 +5,11 @@ or modify the export. CSV must be UTF-8; XLSX formulas require numeric caches.
 """
 import argparse
 import csv
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 import io
 import json
 from pathlib import Path, PurePosixPath
+import re
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -37,7 +38,7 @@ def _part(base, target):
     return '/'.join(parts)
 
 
-def _xlsx_rows(path, sheet_name):
+def _xlsx_rows(path, sheet_name, *, include_types=False):
     with zipfile.ZipFile(path) as archive:
         entries = archive.infolist()
         if len(entries)>10000 or sum(e.file_size for e in entries)>200*1024*1024:
@@ -55,19 +56,24 @@ def _xlsx_rows(path, sheet_name):
             for item in ET.fromstring(archive.read('xl/sharedStrings.xml')):
                 strings.append(''.join(n.text or '' for n in item.iter(NS+'t')))
         document=ET.fromstring(archive.read(part))
-        rows=[]
+        rows=[];types=[]
         for row in document.iter(NS+'row'):
-            values={}
+            values={};cell_types={}
             for cell in row:
                 if cell.tag!=NS+'c':
                     continue
                 coordinate=cell.get('r','')
-                col=''.join(ch for ch in coordinate if ch.isalpha())
+                match=re.fullmatch(r'([A-Z]{1,3})([1-9][0-9]{0,6})',coordinate)
+                if not match or int(match.group(2))>1048576:
+                    raise ValueError('XLSX单元格坐标无效')
+                col=match.group(1)
                 index=0
                 for ch in col:
                     index=index*26+ord(ch)-64
-                if index<=0:
+                if index>16384:
                     raise ValueError('XLSX单元格坐标无效')
+                if index-1 in values:
+                    raise ValueError('XLSX一行中存在重复单元格坐标')
                 node=cell.find(NS+'v')
                 kind=cell.get('t','n')
                 if kind=='e':
@@ -81,8 +87,14 @@ def _xlsx_rows(path, sheet_name):
                 else:
                     value=node.text if node is not None and node.text is not None else ''
                 values[index-1]=value
+                # The validator must distinguish native numeric cells from
+                # text, booleans and cached text formula results. Converting
+                # every cell to a string here would make the Excel output's
+                # type validation impossible.
+                cell_types[index-1]=kind
             rows.append([values.get(i,'') for i in range(max(values,default=-1)+1)])
-        return rows
+            types.append([cell_types.get(i,'') for i in range(max(values,default=-1)+1)])
+        return (rows,types) if include_types else rows
 
 
 def load_export(path, headers, sheet=None):
@@ -90,8 +102,9 @@ def load_export(path, headers, sheet=None):
     if path.suffix.lower()=='.csv':
         with path.open(encoding='utf-8-sig',newline='') as stream:
             rows=list(csv.reader(stream))
+        cell_types=None
     elif path.suffix.lower()=='.xlsx':
-        rows=_xlsx_rows(path,sheet)
+        rows,cell_types=_xlsx_rows(path,sheet,include_types=True)
     else:
         raise ValueError('只接受完整CSV或XLSX导出，不接受截图、Markdown或报告正文')
     # Find exactly one complete header row; notes above it are permitted.
@@ -109,9 +122,14 @@ def load_export(path, headers, sheet=None):
             continue
         value={h:str(row[i]).strip() if i<len(row) else '' for h,i in indexes.items()}
         if not any(value.values()):
-            continue
+            raise ValueError('结果第'+str(line)+'行存在未纳入规范字段的内容，不能静默跳过')
         if not all(value[k] for k in KEYS):
             raise ValueError('结果第'+str(line)+'行缺少月份/办事处，不能静默跳过')
+        if cell_types is not None:
+            types=cell_types[line-1]
+            for column,index in indexes.items():
+                if column not in KEYS and value[column] and (index>=len(types) or types[index]!='n'):
+                    raise ValueError('XLSX结果第'+str(line)+'行“'+column+'”必须是数值单元格，不能用文本或布尔值冒充')
         output.append(value)
     return output
 
@@ -138,15 +156,26 @@ def compare(actual, expected):
                 continue
             value=observed[key].get(column,'')
             try:
-                number=Decimal(str(value))
+                numeric_text=str(value)
+                # Bound parsing and arithmetic, reject Python-only numeric
+                # spellings (such as underscores), but accept ordinary Excel
+                # scientific notation. The independent fixture needs no
+                # numbers outside these generous decimal bounds.
+                if (len(numeric_text)>256 or not re.fullmatch(
+                        r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d{1,3})?',numeric_text)):
+                    raise InvalidOperation
+                number=Decimal(numeric_text)
                 answer=Decimal(str(gold))
-                if not number.is_finite():
+                if not number.is_finite() or abs(number.adjusted())>100:
                     raise InvalidOperation
             except InvalidOperation:
                 differences.append(repr(key)+' '+column+'不是有限原子数值：'+repr(value))
                 continue
             tolerance=Decimal('0.000000005') if column in RATIOS else Decimal('0') if column in COUNTS else Decimal('0.000001')
-            if abs(number-answer)>tolerance:
+            with localcontext() as context:
+                context.prec=max(80,len(number.as_tuple().digits)+len(answer.as_tuple().digits)+4)
+                different=abs(number-answer)>tolerance
+            if different:
                 differences.append(repr(key)+' '+column+'应为'+str(gold)+'，实际'+str(value))
     return differences
 

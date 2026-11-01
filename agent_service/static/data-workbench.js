@@ -156,9 +156,13 @@ function wbRenderTask() {
   const steps = wbPlanSteps(), inputs = workflow?.inputs || {}, entries = Array.isArray(inputs) ? inputs.map((v,i) => [v.name || '来源 '+(i+1),v]) : Object.entries(inputs);
   const failure = wbFailure(job), candidate = !!result && result.run_id===wbState.resultId && wbState.resultId === wbRunId(workflow?.candidate_run);
   const changed = candidate && result.plan_sha256 !== workflow?.draft_sha256;
+  // A formerly adopted result may predate the authenticated semantic review
+  // receipt. Keep the landing card aligned with the actual result restrictions,
+  // rather than inviting the user to treat it as ready for financial reuse.
+  const semanticReviewPending = !!result && !candidate && result.context?.requires_semantic_review===true && result.semantic_review_confirmed!==true;
   const taskState = wbState.workflowLoading && !workflow ? '正在读取任务' : !workflow ? '尚未选择任务' : wbState.activeJob ? ({queued:'等待执行',retrying:'等待重试'}[job?.status] || '正在运行') :
     wbState.editorConflict ? '做法需要合并' : wbState.editorDirty ? '做法待保存' : failure ? (job.status === 'cancelled' ? '已取消' : '需要检查') :
-    workflow.refresh_error ? '需要检查来源' : result&&wbFactSemanticBlocked()?'需业务语义对齐':candidate ? '新结果待确认' : result ? '可以继续使用' : '可以开始';
+    workflow.refresh_error ? '自动更新需处理' : result&&wbFactSemanticBlocked()?'需业务语义对齐':candidate ? '新结果待确认' : semanticReviewPending ? '业务口径待核对' : result ? '可以继续使用' : '可以开始';
   wbEl('#workbench-task-state').textContent = taskState;
   const time = wbDateTime(job?.finished_at || job?.started_at || job?.created_at);
   const runStatus = {queued:'等待执行',running:'正在运行',retrying:'等待重试',failed:'未完成',cancelled:'已取消',validated:'结果待确认',succeeded:'已完成'}[job?.status];
@@ -170,10 +174,11 @@ function wbRenderTask() {
     wbState.editorConflict ? ['先合并其他会话的修改','本页内容已保留。请先复制要保留的修改，再重新载入最新做法后合并。'] :
     wbState.editorDirty ? ['先保存本页的做法修改','保存后再运行；如果不需要这些修改，可以在“任务做法”中重新载入。'] :
     failure ? ['先检查这次未完成的地方',failure.next] :
-    workflow.refresh_error ? ['先检查来源的更新情况','回到对话检查来源是否可用，再继续重复执行。已有结果仍可查看。'] :
+    workflow.refresh_error ? ['检查自动更新提示','请查看下方的自动更新提示，并按具体原因处理；此前保留的结果仍可查看。'] :
     result&&wbFactSemanticBlocked()?['先完成业务语义对齐','逐条事实的指标、单位、期间和可加性尚不能确认；当前结果仅供查看，不能采用或生成报告。'] :
     changed ? ['做法已经调整，请重新运行','当前新结果来自之前的做法。运行最新任务后，再核对并采用新结果。'] :
     candidate ? ['核对这次新结果','查看完整明细与来源，确认后点击“采用此结果”，方便以后继续使用。'] :
+    semanticReviewPending ? ['重新运行并核对业务口径','历史结果仍可查看；当前缺少有效的业务语义复核记录，不能作为已核验依据用于简报或下游加工。'] :
     result ? ['继续使用这份结果','可以查看和下载完整结果；需要读取最新来源时，点击“运行任务”。'] :
     ['运行这项任务','来源与做法已保存。点击“运行任务”，完成后就能查看和核对结果。'];
   wbEl('#workbench-next-title').textContent = next[0];wbEl('#workbench-next-text').textContent = next[1];
@@ -229,6 +234,8 @@ function wbSyncSourceReview(){
   if(key!==wbState.sourceReviewKey){wbState.sourceReviewKey=key;wbState.sourceReviewAcknowledged='';wbState.semanticReviewAcknowledged='';wbEl('#workbench-source-review-ack').checked=false;wbEl('#workbench-semantic-review-ack').checked=false;}
   wbEl('#workbench-source-review').hidden=!required;wbEl('#workbench-source-review-error').hidden=!required||!!key;
   wbEl('#workbench-semantic-review').hidden=!semanticRequired;wbEl('#workbench-semantic-review-error').hidden=!semanticRequired||!!key;
+  const reviewReasons=Array.isArray(result?.context?.semantic_review_reasons)?result.context.semantic_review_reasons:[];
+  wbEl('#workbench-hidden-columns-warning').hidden=!semanticRequired||!reviewReasons.includes('HIDDEN_COLUMNS_PRESENT');
   wbEl('#workbench-fact-semantic-warning').hidden=!blocked;
   wbEl('#workbench-candidate-title').textContent=blocked?'结果需业务语义对齐':'新结果待你确认';
   wbEl('#workbench-candidate-description').textContent=blocked?'这份结果可以查看，暂不能采用。':'核对数值与来源后，可以将它作为以后继续使用的结果。';

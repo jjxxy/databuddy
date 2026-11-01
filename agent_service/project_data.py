@@ -119,7 +119,8 @@ def inspect_source(pid,sid):
 def _workbook_semantic_review_reasons(table):
     cells=list(table.get('header_cells',{}).values())+[cell for row in table.get('special_cells',{}).values() for cell in row.values()]
     reasons=[]
-    if table.get('semantic_review_required') is True:reasons.append('AUTO_LAYOUT_REVIEW_REQUIRED')
+    if isinstance(table.get('auto_layout_selection'),dict):reasons.append('AUTO_LAYOUT_REVIEW_REQUIRED')
+    if table.get('hidden_columns'):reasons.append('HIDDEN_COLUMNS_PRESENT')
     if table.get('row_roles'):reasons.append('ROW_ROLE_REVIEW_REQUIRED')
     if any('formula' in cell for cell in cells):reasons.append('FORMULA_CACHE_FRESHNESS_UNKNOWN')
     if any(w.get('code')=='EXCEL_PRECISION_LIMIT' for w in table.get('warnings',[])):reasons.append('EXCEL_PRECISION_LIMIT')
@@ -600,9 +601,10 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
                'workflow_refresh_published':bool(use_published),
                'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
                'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
-    if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow' or queued.get('commit')!=digest(doc.model_dump()):raise ValueError('已有不同版本的加工任务，请等待完成后运行新方案')
+    if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow':raise ValueError('已有不同项目的加工任务，请核对权限')
+    if queued.get('commit')!=digest(doc.model_dump()):raise WorkflowScheduleBusy('已有不同版本的加工任务，请等待完成后运行新方案')
     if not isinstance(queued.get('source_snapshot'),dict) or digest(queued['source_snapshot'])!=digest(frozen):
-        raise ValueError('已有使用不同资料版本的加工任务，请等待结束后重新发起新资料的运行')
+        raise WorkflowScheduleBusy('已有使用不同资料版本的加工任务，请等待结束后重新发起新资料的运行')
     return queued
 
 
@@ -1208,6 +1210,30 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
     return {'workflow_id':w['id'],'published_run':rid,'plan_sha256':run['commit']}
 
 
+class WorkflowScheduleBusy(ValueError):
+    """A different active run did not accept this scheduled occurrence."""
+
+
+def _schedule_now():
+    from datetime import datetime,timezone
+    return datetime.now(timezone.utc)
+
+
+def _schedule_patch_if_current(snapshot,**values):
+    """Do not overwrite a concurrently edited schedule or adopted version."""
+    fields=('project_id','archived','cron','next_due','watch_sources','published_run','active_sha256','schedule_gap_pending')
+    with transaction() as connection:
+        row=connection.execute(select(items.c.body).where(items.c.id==snapshot['id'],
+            items.c.kind=='data_workflow').with_for_update()).first()
+        if not row:return False
+        current=json.loads(row[0])
+        if any(current.get(field)!=snapshot.get(field) for field in fields):return False
+        current.update(values)
+        connection.execute(update(items).where(items.c.id==snapshot['id'],items.c.kind=='data_workflow')
+                           .values(body=json.dumps(current,ensure_ascii=False,default=str)))
+        return True
+
+
 def schedule(pid,wid,cron=None,watch_sources=False):
     from croniter import croniter
     from datetime import datetime,timezone
@@ -1216,28 +1242,75 @@ def schedule(pid,wid,cron=None,watch_sources=False):
     w=owned(pid,'data_workflow',wid)
     if not w.get('published_run'):raise ValueError('先核对并采用结果，再启用持续刷新')
     if cron and (not croniter.is_valid(cron) or len(cron.split())!=5):raise ValueError('需要有效五段cron')
-    next_due=croniter(cron,datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat() if cron else None
-    patch('data_workflow',wid,cron=cron,watch_sources=watch_sources,next_due=next_due)
+    next_due=croniter(cron,_schedule_now().astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat() if cron else None
+    patch('data_workflow',wid,cron=cron,watch_sources=watch_sources,next_due=next_due,
+          refresh_error=None,refresh_retry_after=None,schedule_gap_pending=False)
     return {'workflow_id':wid,'cron':cron,'watch_sources':watch_sources,'next_due':next_due,
             'scope':'file_revision_events_or_scheduled_full_snapshot; database_CDC_not_configured'}
 
 
 def queue_due():
-    from datetime import datetime,timezone
+    from datetime import datetime,timedelta,timezone
     from croniter import croniter
+    from zoneinfo import ZoneInfo
+    from .config import TIMEZONE
     from .locks import FileLock
     with FileLock(str(DATA/'data-workflow-scheduler.lock'),timeout=2):
+        current=_schedule_now()
         for w in all_items('data_workflow'):
-            if not w.get('active_document') or not w.get('published_run'):continue
-            cron=w.get('cron');due=cron and w.get('next_due') and datetime.fromisoformat(w['next_due'])<=datetime.now(timezone.utc)
-            ids=[b['source_id'] for b in w['active_document']['bindings'].values() if b.get('source_id')]
-            revisions={sid:get('source',sid).get('revision',1) for sid in ids}
-            changed=w.get('watch_sources') and revisions!=w.get('source_revisions',{})
-            if due or changed:
+            if w.get('archived') or not w.get('active_document') or not w.get('published_run'):continue
+            if not w.get('cron') and not w.get('watch_sources'):continue
+            try:
+                retry=w.get('refresh_retry_after')
+                if retry and datetime.fromisoformat(retry)>current:continue
+                cron=w.get('cron');due=False
+                if cron:
+                    due_at=datetime.fromisoformat(w['next_due'])
+                    if due_at.tzinfo is None:raise ValueError('定时配置缺少时区')
+                    due=due_at<=current
+                active=WorkflowDocument.model_validate(w['active_document'])
+                ids=[binding.source_id for binding in active.bindings.values() if binding.source_id]
+                revisions={sid:get('source',sid).get('revision',1) for sid in ids}
+                changed=bool(w.get('watch_sources') and revisions!=w.get('source_revisions',{}))
+                if not due and not changed:continue
                 key=w['id']+':'+(w['next_due'] if due else digest(revisions))
-                try:enqueue_workflow(w['project_id'],w['id'],use_published=True,scheduled_key=key)
-                except (ValueError,KeyError):patch('data_workflow',w['id'],refresh_error='来源不可用，之前正式结果保留')
-                if due:patch('data_workflow',w['id'],next_due=croniter(cron,datetime.now(timezone.utc)).get_next(datetime).isoformat())
+                queued=enqueue_workflow(w['project_id'],w['id'],use_published=True,scheduled_key=key)
+                # Queue admission may return an unrelated already-active job;
+                # it is not evidence this scheduled occurrence was accepted.
+                if queued.get('scheduled_key')!=key:raise WorkflowScheduleBusy('已有其他任务正在运行')
+                if not due and queued.get('source_revisions')!=revisions:
+                    raise WorkflowScheduleBusy('资料版本在入队期间发生变化')
+                gap_notice='存在历史未执行的计划时间；请核对缺失期间后重新设置调度'
+                updates={'refresh_error':gap_notice if w.get('schedule_gap_pending') else None,
+                         'refresh_retry_after':None}
+                # The deduplication key can point to a finished failure from
+                # an earlier scan. Reusing that record is not a successful
+                # refresh; do not blindly replay a failed/cancelled task.
+                if queued.get('status') in ('failed','cancelled','unknown'):
+                    state='已取消' if queued['status']=='cancelled' else '状态未知' if queued['status']=='unknown' else '失败'
+                    updates['refresh_error']='上次自动更新'+state+'，请查看运行记录并明确重新运行；正式结果保留'
+                    if w.get('schedule_gap_pending'):updates['refresh_error']+='；历史计划缺口尚待核对'
+                    if not due:updates['refresh_retry_after']=(current+timedelta(seconds=30)).isoformat()
+                if due:
+                    # Do not blindly replay many missed occurrences: they may
+                    # perform external work or require historical input data.
+                    # A single current refresh is admitted, and the gap is
+                    # explicitly surfaced for the owner to reconcile.
+                    following=croniter(cron,due_at.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
+                    if following<=current:
+                        updates['schedule_gap_pending']=True
+                        gap='存在多个未执行的计划时间；本次仅安排一次刷新，请核对缺失期间后重新设置调度'
+                        updates['refresh_error']=(updates['refresh_error']+'；'+gap if updates['refresh_error'] else gap)
+                    updates['next_due']=croniter(cron,current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
+                _schedule_patch_if_current(w,**updates)
+            except WorkflowScheduleBusy:
+                notice=('历史计划缺口尚待核对；' if w.get('schedule_gap_pending') else '')+'已有任务运行或资料版本变化，自动更新等待后重试；正式结果保留'
+                _schedule_patch_if_current(w,refresh_error=notice,
+                                           refresh_retry_after=(current+timedelta(seconds=30)).isoformat())
+            except (ValueError,KeyError,TypeError):
+                notice=('历史计划缺口尚待核对；' if w.get('schedule_gap_pending') else '')+'定时或来源配置不可用，自动更新等待后重试；正式结果保留'
+                _schedule_patch_if_current(w,refresh_error=notice,
+                                           refresh_retry_after=(current+timedelta(seconds=30)).isoformat())
 
 
 def ensure_candidate_bulk_allowed(pid,rid):

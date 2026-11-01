@@ -1101,12 +1101,14 @@ def _filter_reconciliation(stage, source, output, deadline):
 
 
 def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], *,
-            on_stage: Callable[[dict], None] | None = None) -> dict:
+            on_stage: Callable[[dict], None] | None = None,
+            on_evidence: Callable[[Any, dict, list, dict], None] | None = None) -> dict:
     """Execute a complete plan against explicit full inputs in an isolated run.
 
     Monetary inputs and returned values use exact decimal strings at the public
-    boundary. ``on_stage`` receives receipts only, not raw rows. Exceptions mean
-    no final output exists; callers must not publish intermediate stage data.
+    boundary. ``on_stage`` receives receipts only. The trusted server-owned
+    ``on_evidence`` callback can persist a selected stage's complete rows;
+    such snapshots are not published until the enclosing run succeeds.
     """
     plan = WorkflowPlan.model_validate(plan)
     if set(inputs) != set(plan.inputs):
@@ -1164,6 +1166,8 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
             receipt['checks']['rounding_scope']='per_transaction'
         if isinstance(stage, Filter):
             receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
+        if on_evidence is not None and isinstance(stage,FxConvert):
+            on_evidence(stage, schema.model_dump(mode='json'), table['rows'], receipt)
         if on_stage is not None:
             on_stage(json.loads(canonical(receipt)))
     output = tables[plan.output]

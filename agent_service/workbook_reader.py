@@ -263,6 +263,7 @@ def _resolve_region_preview_strings(archive, regions):
 def _sheet_metadata(archive, part):
     merges = []
     hidden_rows = []
+    column_ranges = []
     table_ids = []
     max_row = max_col = scanned_cells = 0
     min_col = None
@@ -306,6 +307,20 @@ def _sheet_metadata(archive, part):
                 if element.get('hidden') in ('1', 'true'):
                     hidden_rows.append(int(element.get('r', '0')))
                 element.clear()
+            elif element.tag == NS + 'col':
+                # Workbook column groups may hide an interval, not only one
+                # column. Keep coordinates only; never infer that hidden data
+                # should be silently included or excluded from a business run.
+                try:
+                    first,last=int(element.get('min','')),int(element.get('max',''))
+                except ValueError as exc:
+                    raise WorkbookReadError('Excel 列范围无效', 'WORKBOOK_SELECTION_INVALID') from exc
+                hidden=element.get('hidden','0')
+                if (not 1<=first<=last<=16384 or hidden not in ('0','1','false','true')
+                        or len(column_ranges)>=16384):
+                    raise WorkbookReadError('Excel 列可见性信息无效或超出限制', 'WORKBOOK_SELECTION_INVALID')
+                column_ranges.append((first,last,hidden in ('1','true')))
+                element.clear()
             elif element.tag == NS + 'mergeCell':
                 ref = element.get('ref', '')
                 try:
@@ -333,7 +348,7 @@ def _sheet_metadata(archive, part):
     regions, regions_truncated = _region_proposals(sketch, merges, tables)
     _resolve_region_preview_strings(archive, regions)
     return {'max_row': max_row, 'min_column': min_col, 'max_column': max_col, 'merged_ranges': merges,
-            'hidden_rows': hidden_rows, 'tables': tables, 'scanned_cells': scanned_cells,
+            'hidden_rows': hidden_rows, 'column_visibility': column_ranges, 'tables': tables, 'scanned_cells': scanned_cells,
             'candidate_regions': regions, 'region_discovery_truncated': regions_truncated,
             'discovery_scope': 'bounded_layout_proposals; confirm_header_grain_and_range; no_automatic_selection'}
 
@@ -893,6 +908,24 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
     header_cells = {}
     stacks = {}
     hidden = set(selected['hidden_rows'])
+    # Apply overlapping group ranges with difference arrays. Expanding every
+    # interval individually makes a crafted file with thousands of full-width
+    # groups quadratic in the number of declarations and columns. The reader
+    # already limits a selected range to 256 columns, so this scan uses bounded
+    # memory and O(number of declarations + selected columns) work.
+    width=max_col-min_col+1
+    hidden_delta=[0]*(width+1);visible_delta=[0]*(width+1)
+    for first,last,is_hidden in selected['column_visibility']:
+        left=max(first,min_col);right=min(last,max_col)
+        if left<=right:
+            delta=hidden_delta if is_hidden else visible_delta
+            delta[left-min_col]+=1;delta[right-min_col+1]-=1
+    hidden_columns=set();hidden_count=visible_count=0
+    for offset in range(width):
+        hidden_count+=hidden_delta[offset];visible_count+=visible_delta[offset]
+        if hidden_count and visible_count:
+            raise WorkbookReadError('所选范围中同一列的可见性声明冲突，请先核对原文件', 'WORKBOOK_SELECTION_INVALID')
+        if hidden_count:hidden_columns.add(min_col+offset)
     truncated = False
     missing_caches = 0
     precision_warnings = 0
@@ -1115,6 +1148,8 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
                      'numeric': bool(kinds[column]) and kinds[column] <= {'number', 'percentage', 'percentage_points'},
                      'semantic_status': 'requires_review' if review else 'source_declared_header',
                      **unit_details[0]}
+            if column in hidden_columns:
+                field.update(hidden_in_source=True,semantic_status='requires_review')
             if mixed_percentage or field['name'] in representation_conflicts:
                 field.update(unit=None, stored_semantics=('ambiguous_percentage_representation' if mixed_percentage else 'ambiguous_numeric_representation'),
                              representation_conflict=True, numeric=False)
@@ -1140,6 +1175,10 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
                          'note': '原文件以数值保存的长编号可能已损失位数，不能据此恢复原编号'})
     if row_roles:
         warnings.append({'code': 'ROW_ROLE_REVIEW_REQUIRED', 'note': '隐藏/汇总候选行已保留并标记，汇总前需确认粒度，避免重复计数'})
+    if hidden_columns:
+        warnings.append({'code': 'HIDDEN_COLUMNS_PRESENT',
+                         'note': '所选范围包含原文件隐藏列，已完整保留；使用前请核对字段含义及是否应纳入。',
+                         'columns': [get_column_letter(col) for col in sorted(hidden_columns)]})
     if not metadata_complete:
         warnings.append({'code': 'METADATA_PREVIEW_TRUNCATED', 'note': '预览不能用于完整语义传递或正式执行'})
     if representation_conflicts:
@@ -1160,11 +1199,12 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
     provenance = {'version': 1, 'file_sha256': source_hash, 'table_id': table_id, 'sheet': selected['name'],
                   'source_rows': source_rows,
                   'columns': {f['name']: {'excel_column': f['excel_column'], 'header_path': f['header_path'],
-                                        'number_formats': f['number_formats']} for f in fields},
+                                        'number_formats': f['number_formats'],
+                                        **({'hidden_in_source':True} if f.get('hidden_in_source') is True else {})} for f in fields},
                   'special_cells': special, 'complete': metadata_complete and not truncated and missing_caches == 0 and not representation_conflicts,
                   'header_cells': header_cells,
                   'coordinate_rule': 'columns[field].excel_column + source_rows[row_index]; special_cells may override source_coordinate'}
-    return {'version': 1, 'parser': 'atlas_coordinate_xlsx', 'table_id': table_id, 'selection': table_identity,
+    result = {'version': 1, 'parser': 'atlas_coordinate_xlsx', 'table_id': table_id, 'selection': table_identity,
             'rows': rows, 'fields': fields, 'source_rows': source_rows, 'special_cells': special,
             'header_cells': header_cells,
             'provenance': provenance,
@@ -1173,3 +1213,7 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
             'executable_values_complete': missing_caches == 0 and metadata_complete and not truncated and not representation_conflicts,
             'coordinate_rule': 'field.excel_column + source_rows[row_index]; special_cells override source_coordinate for explicit merged labels',
             'scope': 'source_values_and_layout_only; no_formula_recalculation_or_implicit_semantic_conversion'}
+    if hidden_columns:
+        result['hidden_columns']=[get_column_letter(col) for col in sorted(hidden_columns)]
+        result['semantic_review_required']=True
+    return result
