@@ -19,3 +19,4 @@ verification/
 deploy/isolated/secrets/
 deploy/isolated/manifest.json
 deploy/isolated/gateway.json
+deploy/isolated/login.json

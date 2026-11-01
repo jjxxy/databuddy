@@ -46,6 +46,29 @@ def test_exact_financial_dag_receipts_and_replay_do_not_mutate_inputs():
     assert result['output']['sha256']==digest({k:result['output'][k] for k in ('schema','rows')})
 
 
+def test_filter_reconciles_actual_rows_and_declared_additive_amounts():
+    plan,inputs=base()
+    receipt=execute(plan,inputs)['stages'][0]['reconciliation']
+    assert (receipt['input_rows'],receipt['output_rows'],receipt['excluded_rows'])==(3,2,1)
+    amounts={item['column']:item for item in receipt['checks']}
+    assert amounts['amount']['input_total']=='140.123456789013'
+    assert amounts['amount']['included_total']=='40.123456789013'
+    assert amounts['amount']['excluded_total']=='100'
+    assert Decimal(amounts['amount']['difference'])==0 and amounts['amount']['status']=='balanced'
+    assert amounts['refund']['unit']=='CNY' and amounts['refund']['status']=='balanced'
+    assert receipt['omitted_measure_count']==0
+    assert '业务复核' in receipt['meaning']
+
+
+def test_filter_missing_amount_is_not_treated_as_zero_or_verified():
+    plan,inputs=base();plan['stages']=plan['stages'][:1];plan['output']='paid'
+    inputs['orders'][2]['amount']=None
+    receipt=execute(plan,inputs)['stages'][0]['reconciliation']
+    amount=next(item for item in receipt['checks'] if item['column']=='amount')
+    assert amount['status']=='missing_values' and amount['missing_excluded']==1
+    assert amount['input_total'] is amount['included_total'] is amount['excluded_total'] is amount['difference'] is None
+
+
 def test_stage_receipt_callback_is_a_dependency_barrier():
     plan,inputs=base();seen=[]
     def barrier(receipt):

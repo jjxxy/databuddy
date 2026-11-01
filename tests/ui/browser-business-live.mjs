@@ -148,16 +148,20 @@ try{
   await call(session,'action',{agent_authorized:true,submit_confirmed:true,revision:page.revision,action:'click',ref:submitRef,
                               post_target:{method:'POST',origin,path:'/submit'}},409);
   assert.equal(submissions,0);
-  page=await call(session,'mode',{mode:'human'});submitRef=pick(page,'提交');
-  const submitId=randomBytes(32).toString('hex');
-  const submitArgs={action_id:submitId,revision:page.revision,action:'click',ref:submitRef};
-  const submitted=await call(session,'action',submitArgs);
-  assert(submitted.text.includes('receipt-fixture-1'));assert.equal(submissions,1);
-  const submittedAgain=await call(session,'action',submitArgs);assert.equal(submittedAgain.image_sha256,submitted.image_sha256);assert.equal(submissions,1);
+  // The original POST remains paused while its exact target/body is reviewed.
+  const capture=await call(session,'action',{agent_authorized:true,capture_confirmed:true,action:'capture_post',revision:page.revision,ref:submitRef});
+  assert.equal(submissions,0);const pending=capture.pending_post;assert(pending?.id&&pending?.digest);
+  const reviewed=await call(session,'post-reveal',{post_id:pending.id,digest:pending.digest});
+  assert.equal(reviewed.pending_post.method,'POST');assert.equal(reviewed.pending_post.url,origin+'/submit');
+  assert.equal(reviewed.pending_post.body,'fixture=1');
+  const approved={post_id:pending.id,digest:pending.digest,approve:true};
+  const sent=await call(session,'post-decision',approved);assert.equal(sent.state,'sent');assert.equal(sent.transport_code,200);assert.equal(submissions,1);
+  const repeated=await call(session,'post-decision',approved);assert.equal(repeated.state,'sent');assert.equal(submissions,1);
+  page=await call(session,'mode',{mode:'human'});
   assert(!serviceOutput.includes('fixture-password'));
   await call(session,'close');await call(session,'observe',{},404);await call(other,'close');
   console.log(JSON.stringify({real_chromium:true,synthetic_local_fixture:true,user_login_takeover:true,
-    unauthorized_mutation_blocked:true,query:true,approved_fill:true,agent_submit_denied:true,human_submit_once:true,large_download_bytes:reports.length,download_sha256:true,
+    unauthorized_mutation_blocked:true,query:true,approved_fill:true,unapproved_submit_denied:true,approved_post_once:true,large_download_bytes:reports.length,download_sha256:true,
     chunks_reconstructed:true,retry_did_not_redownload:true,project_import:true,import_status_queued:true,interrupted_download_unknown:true,cross_session_download_denied:true,
     actual_company_site:false,actual_model:false,production_isolation_not_tested:true,submissions}));
 }finally{

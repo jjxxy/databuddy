@@ -100,6 +100,9 @@ _MAX_RUN_BYTES=256*1024*1024
 _DEFAULT_TOTAL_MB=2048
 _DEFAULT_ACTOR_MB=1024
 _DEFAULT_PROJECT_MB=512
+_PAGE_MAGIC=b'ATLASP2\0'
+_PAGE_ROWS=256
+_MAX_INDEX_BYTES=2*1024*1024
 
 
 def _table_scope(context):
@@ -284,6 +287,8 @@ def _write_owner(path,claim):
 
 
 def _read_rows(context,ref):
+    if isinstance(ref,dict) and ref.get('version')==2:
+        return _read_paged(context,ref,0,ref.get('row_count'),whole=True)
     if not isinstance(ref,dict) or set(ref)!={'version','sha256','bytes','row_count','scope'} or ref.get('version')!=1:
         raise ValueError('数据快照引用无效')
     import re
@@ -307,6 +312,201 @@ def _read_rows(context,ref):
     return rows
 
 
+def _file_digest(stream):
+    stream.seek(0);h=hashlib.sha256()
+    for part in iter(lambda:stream.read(1024*1024),b''):h.update(part)
+    return h.hexdigest()
+
+
+def _paged_ref(context,ref):
+    import re
+    if (not isinstance(ref,dict) or set(ref)!={'version','sha256','bytes','row_count','scope','cipher_sha256','table_sha256'}
+            or ref.get('version')!=2 or not re.fullmatch(r'[a-f0-9]{64}',str(ref.get('sha256','')))
+            or not re.fullmatch(r'[a-f0-9]{64}',str(ref.get('cipher_sha256','')))
+            or (ref.get('table_sha256') is not None and not re.fullmatch(r'[a-f0-9]{64}',str(ref.get('table_sha256',''))))
+            or type(ref.get('bytes')) is not int or not 0<ref['bytes']<=_MAX_TABLE_BYTES
+            or type(ref.get('row_count')) is not int or not 0<=ref['row_count']<=1000000
+            or ref.get('scope')!=_table_scope(context)):
+        raise ValueError('数据快照与当前运行不一致')
+    folder,scope=_table_folder(context);path=folder/(ref['sha256']+'.enc')
+    if path.is_symlink() or not path.is_file():raise ValueError('数据快照丢失')
+    return path,scope
+
+
+def _paged_index(stream,ref,scope):
+    """Validate authenticated index and full ciphertext without loading it."""
+    stream.seek(0,os.SEEK_END);size=stream.tell()
+    if size<48 or size>_MAX_TABLE_BYTES+_MAX_INDEX_BYTES+1000000:
+        raise ValueError('数据快照大小无效')
+    if _file_digest(stream)!=ref['cipher_sha256']:raise ValueError('数据快照完整性校验失败')
+    stream.seek(0)
+    if stream.read(len(_PAGE_MAGIC))!=_PAGE_MAGIC:raise ValueError('数据快照格式无效')
+    stream.seek(-8,os.SEEK_END);index_length=int.from_bytes(stream.read(8),'big')
+    if not 1<=index_length<=_MAX_INDEX_BYTES or size-index_length-40<len(_PAGE_MAGIC):
+        raise ValueError('数据快照索引无效')
+    index_start=size-index_length-40;stream.seek(index_start)
+    raw=stream.read(index_length);tag=stream.read(32)
+    if not hmac.compare_digest(tag,hmac.new(_table_key(scope),raw,hashlib.sha256).digest()):
+        raise ValueError('数据快照索引校验失败')
+    try:meta=json.loads(raw)
+    except (ValueError,UnicodeError):raise ValueError('数据快照索引损坏') from None
+    if (not isinstance(meta,dict) or set(meta)!={'version','scope','sha256','bytes','row_count','chunks'}
+            or meta['version']!=2 or any(meta[k]!=ref[k] for k in ('scope','sha256','bytes','row_count'))
+            or not isinstance(meta['chunks'],list) or len(meta['chunks'])>4000):
+        raise ValueError('数据快照索引与运行记录不一致')
+    row=0;position=len(_PAGE_MAGIC)
+    for item in meta['chunks']:
+        if (not isinstance(item,dict) or set(item)!={'start','count','offset','length','sha256'}
+                or any(type(item.get(k)) is not int for k in ('start','count','offset','length'))
+                or item['start']!=row or not 1<=item['count']<=_PAGE_ROWS or item['offset']!=position
+                or not 28<item['length']<=_MAX_TABLE_BYTES+28
+                or not isinstance(item['sha256'],str) or len(item['sha256'])!=64):
+            raise ValueError('数据快照分块索引无效')
+        row+=item['count'];position+=item['length']
+    if row!=ref['row_count'] or position!=index_start:raise ValueError('数据快照分块不完整')
+    return meta
+
+
+def _page_chunk(stream,scope,ref,index,item):
+    stream.seek(item['offset']);encrypted=stream.read(item['length'])
+    if hashlib.sha256(encrypted).hexdigest()!=item['sha256']:raise ValueError('数据快照分块校验失败')
+    aad=canonical(['atlas-table-page-v2',scope,ref['sha256'],index,item['start'],item['count']])
+    try:plain=AESGCM(_table_key(scope)).decrypt(encrypted[:12],encrypted[12:],aad);rows=json.loads(plain)
+    except Exception:raise ValueError('数据快照分块无法解密') from None
+    if not isinstance(rows,list) or len(rows)!=item['count'] or any(not isinstance(row,dict) for row in rows):
+        raise ValueError('数据快照分块行数不一致')
+    return rows
+
+
+def _read_paged(context,ref,offset,limit,*,whole=False,verify_only=False):
+    path,scope=_paged_ref(context,ref)
+    if type(offset) is not int or offset<0 or type(limit) is not int or limit<0:raise ValueError('分页参数无效')
+    with path.open('rb') as stream:
+        index=_paged_index(stream,ref,scope)
+        if verify_only:return None
+        result=[]
+        for number,item in enumerate(index['chunks']):
+            start=item['start'];end=start+item['count']
+            if end<=offset or start>=offset+limit:continue
+            rows=_page_chunk(stream,scope,ref,number,item)
+            result.extend(rows[max(0,offset-start):min(item['count'],offset+limit-start)])
+    if len(result)!=max(0,min(limit,ref['row_count']-offset)):
+        raise ValueError('数据快照分页不完整')
+    if whole:
+        raw=canonical(result)
+        if len(raw)!=ref['bytes'] or hashlib.sha256(raw).hexdigest()!=ref['sha256']:
+            raise ValueError('完整数据快照摘要不一致')
+    return result
+
+
+def verify_table_snapshot(context,value):
+    """Verify an immutable table snapshot without materializing v2 rows."""
+    if not isinstance(value,dict):raise ValueError('数据表无效')
+    ref=value.get('rows_ref')
+    if ref is None:return
+    if not isinstance(ref,dict):raise ValueError('数据快照引用无效')
+    if 'rows' in value:raise ValueError('数据表不能同时包含明细与快照引用')
+    if value.get('kind')=='table_workflow_v1' and ref.get('version')==2:
+        if (not isinstance(ref.get('table_sha256'),str) or type(value.get('row_count')) is not int or value['row_count']!=ref.get('row_count')
+                or value.get('output_sha256')!=ref.get('table_sha256')):
+            raise ValueError('数据结果与快照摘要不一致')
+    if ref.get('version')==2:_read_paged(context,ref,0,0,verify_only=True)
+    else:_read_rows(context,ref)
+
+
+def get_table_page(context,value,offset,limit):
+    """Return a verified slice; legacy v1 snapshots require full decryption."""
+    if not isinstance(value,dict) or type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
+        raise ValueError('数据分页参数无效')
+    ref=value.get('rows_ref')
+    if ref is None:
+        rows=value.get('rows')
+        if not isinstance(rows,list):raise ValueError('数据表无效')
+        return rows[offset:offset+limit]
+    if not isinstance(ref,dict):raise ValueError('数据快照引用无效')
+    if 'rows' in value:raise ValueError('数据表不能同时包含明细与快照引用')
+    if ref.get('version')==2:
+        if value.get('kind')=='table_workflow_v1' and (not isinstance(ref.get('table_sha256'),str) or value.get('row_count')!=ref.get('row_count')
+                or value.get('output_sha256')!=ref.get('table_sha256')):
+            raise ValueError('数据结果与快照摘要不一致')
+        return _read_paged(context,ref,offset,limit)
+    return _read_rows(context,ref)[offset:offset+limit]
+
+
+def _save_rows_paged(context,rows,raw,table_sha=None):
+    """Atomically persist independently encrypted blocks with a signed index."""
+    if len(raw)>_MAX_TABLE_BYTES:raise FlowStepError('BYTE_BUDGET','完整数据超过当前步骤的安全容量，未截断或发布')
+    folder,scope=_table_folder(context);sha=hashlib.sha256(raw).hexdigest();target=folder/(sha+'.enc')
+    from .locks import FileLock
+    from .config import DATA
+    count=(len(rows)+_PAGE_ROWS-1)//_PAGE_ROWS
+    reserve=len(raw)+count*512+65536
+    root=DATA/'business-flow-tables'
+    with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
+        key=_index_key();claim=_owner_claim(context,scope,key);marker=folder/'.owner.json'
+        actor_used,project_used,_=_indexed_usage(root,claim,key)
+        if marker.exists():
+            if marker.is_symlink() or json.loads(marker.read_bytes())!=claim:raise ValueError('数据快照归属与当前用户或项目不一致')
+        else:
+            own_legacy=_scope_bytes(folder);actor_used+=own_legacy;project_used+=own_legacy
+        if target.exists():
+            if target.is_symlink() or not target.is_file():raise ValueError('数据快照目录无效')
+            with target.open('rb') as old:
+                magic=old.read(len(_PAGE_MAGIC));old.seek(0)
+                if magic==_PAGE_MAGIC:
+                    ref={'version':2,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'scope':scope,'cipher_sha256':_file_digest(old),'table_sha256':table_sha}
+                else:ref={'version':1,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'scope':scope}
+            _read_rows(context,ref)
+            if not marker.exists():_write_owner(marker,claim)
+            return ref
+        if _scope_bytes(folder)+reserve>_MAX_RUN_BYTES:
+            raise FlowStepError('BYTE_BUDGET','本次运行的数据快照超过安全容量，未截断或发布')
+        additional=reserve+(0 if marker.exists() else len(canonical(claim)))
+        if actor_used+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024:
+            raise FlowStepError('BYTE_BUDGET','当前用户的数据快照容量不足；未删除历史结果')
+        if project_used+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024:
+            raise FlowStepError('BYTE_BUDGET','当前项目的数据快照容量不足；未删除历史结果')
+        total=0
+        for item in root.iterdir():
+            if item.is_symlink():raise ValueError('数据快照目录包含不可用的链接')
+            if item.is_dir():total+=_scope_bytes(item)
+            elif item.is_file():total+=item.stat().st_size
+        if total+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024:
+            raise FlowStepError('BYTE_BUDGET','数据快照存储容量不足；未删除历史结果')
+        if not marker.exists():_write_owner(marker,claim)
+        fd,name=tempfile.mkstemp(prefix='.pending-',dir=folder)
+        try:
+            os.fchmod(fd,0o600);entries=[];page_key=_table_key(scope)
+            with os.fdopen(fd,'wb') as stream:
+                stream.write(_PAGE_MAGIC)
+                plain_hash=hashlib.sha256();plain_hash.update(b'[');plain_bytes=1
+                for i in range(0,len(rows),_PAGE_ROWS):
+                    page=rows[i:i+_PAGE_ROWS];nonce=secrets.token_bytes(12)
+                    aad=canonical(['atlas-table-page-v2',scope,sha,len(entries),i,len(page)])
+                    page_bytes=canonical(page)
+                    if entries:plain_hash.update(b',');plain_bytes+=1
+                    plain_hash.update(page_bytes[1:-1]);plain_bytes+=len(page_bytes)-2
+                    encrypted=nonce+AESGCM(page_key).encrypt(nonce,page_bytes,aad)
+                    entries.append({'start':i,'count':len(page),'offset':stream.tell(),'length':len(encrypted),
+                                    'sha256':hashlib.sha256(encrypted).hexdigest()})
+                    stream.write(encrypted)
+                plain_hash.update(b']');plain_bytes+=1
+                if plain_bytes!=len(raw) or plain_hash.hexdigest()!=sha:
+                    raise ValueError('数据快照与处理结果不一致')
+                meta={'version':2,'scope':scope,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'chunks':entries}
+                index=canonical(meta)
+                if len(index)>_MAX_INDEX_BYTES:raise ValueError('数据快照索引超过安全容量')
+                stream.write(index);stream.write(hmac.new(page_key,index,hashlib.sha256).digest());stream.write(len(index).to_bytes(8,'big'))
+                stream.flush();os.fsync(stream.fileno())
+            with open(name,'rb') as stream:cipher_sha=_file_digest(stream)
+            ref={'version':2,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'scope':scope,'cipher_sha256':cipher_sha,'table_sha256':table_sha}
+            if os.path.getsize(name)>reserve:raise ValueError('数据快照超过预留容量')
+            os.replace(name,target)
+            return ref
+        finally:
+            if os.path.exists(name):os.unlink(name)
+
+
 def _compact_table(context,value):
     rows=value.get('rows')
     if not isinstance(rows,list):raise ValueError('数据快照行格式无效')
@@ -324,7 +524,13 @@ def _compact_table(context,value):
     raw=bytes(data)
     if len(raw)<=_INLINE_ROWS_LIMIT:
         return json.loads(canonical(value))
-    ref=_save_rows(context,rows,raw)
+    table_sha=None
+    if value.get('kind')=='table_workflow_v1':
+        from .data_workflows import digest
+        table_sha=digest({'schema':value.get('schema'),'rows':rows})
+        if table_sha!=value.get('output_sha256') or value.get('row_count')!=len(rows):
+            raise ValueError('数据加工结果与回执摘要不一致')
+    ref=_save_rows_paged(context,rows,raw,table_sha)
     result=dict(value);del result['rows'];result['rows_ref']=ref
     return json.loads(canonical(result))
 

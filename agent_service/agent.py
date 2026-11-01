@@ -1124,13 +1124,13 @@ def _execute_node(state):
         if value is not None:
             observe(turn,value)
             if isinstance(value,dict) and value.get('browser_fill_pending') is True:
-                finish(get('turn',turn['id']),'页面操作已准备，请打开浏览器面板核对具体目标和内容后批准或拒绝。尚未执行；批准后可继续这项工作。',outcome='needs_input',resume_available=True)
+                finish(get('turn',turn['id']),'页面操作已准备，请在对话确认卡核对目标和内容后批准或拒绝；也可打开浏览器面板处理。',outcome='needs_input',resume_available=True)
                 return {}
             if isinstance(value,dict) and value.get('proposal_pending') is True:
                 finish(get('turn',turn['id']),'业务处理方案已整理，请核对资料和口径。确认后才会生成代码并试运行；正式发布还需另行确认。',outcome='needs_input',resume_available=False)
                 return {}
             if step.tool=='prepare_work_action' and value.get('state')=='pending':
-                finish(get('turn',turn['id']),'外部系统操作已准备好，请核对确认卡中的目标和参数。确认前不会提交；确认后会继续这项工作。',outcome='needs_input',resume_available=True)
+                finish(get('turn',turn['id']),'外部系统操作已准备好，请核对确认卡中的目标和参数。确认前不会提交；处理后可点击继续这项工作。',outcome='needs_input',resume_available=True)
     except Exception as exc:
         if isinstance(exc,ValidationError):
             observe(turn,validation_observation(exc,step.tool),True)
@@ -1268,7 +1268,7 @@ def advance(turn):
             if value is not None:
                 observe(turn,value)
             if step.tool=='prepare_work_action' and value and value.get('state')=='pending':
-                finish(get('turn',turn['id']),'外部系统操作已准备好，请核对确认卡中的目标和参数。确认前不会提交；确认后会继续这项工作。',outcome='needs_input',resume_available=True)
+                finish(get('turn',turn['id']),'外部系统操作已准备好，请核对确认卡中的目标和参数。确认前不会提交；处理后可点击继续这项工作。',outcome='needs_input',resume_available=True)
         except Exception:observe(turn,{'error':'中断的操作未完成，请检查当前项目状态后再处理'},True)
         return
     patch('turn',turn['id'],progress='正在理解需求并规划下一步',state='agent')

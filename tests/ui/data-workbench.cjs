@@ -29,7 +29,7 @@ function catalogRecord(id,status='draft',version=1){
 function response(value,status=200){return {ok:status>=200&&status<300,status,json:async()=>value,blob:async()=>new Blob(['complete-result']),headers:{get:()=>null}};}
 function clone(value){return JSON.parse(JSON.stringify(value));}
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function boot({token=true,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null,requiresSourceReview=false,factAlignmentRequired=false,missingManifest=false,deferPublish=false,publishStatus=200,publishDetail='无法确认'}={}){
+async function boot({token=true,cookie=false,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null,requiresSourceReview=false,factAlignmentRequired=false,missingManifest=false,deferPublish=false,publishStatus=200,publishDetail='无法确认'}={}){
  const url='https://atlas.test/data-workbench.html'+(project?'?project=p_1&workflow=wf_1'+(tab?'&tab='+tab:''):'');
  const dom=new JSDOM(html,{url,runScripts:'outside-only'}),w=dom.window,calls=[],timers=[];
  if(token)w.sessionStorage.setItem('atlas_token','test-token-that-must-not-be-logged');
@@ -47,7 +47,8 @@ async function boot({token=true,project=true,putConflict=false,reviewConflict=fa
  let putBody=null,jobStatus=null,currentJob=latestJob,releaseSecond=null,releasePublish=null;
  w.fetch=async(url,options={})=>{
   const u=new URL(url,w.location.href),method=options.method||'GET';calls.push({url:u.pathname+u.search,method,options});
-  assert.equal(options.headers.Authorization,'Bearer '+w.sessionStorage.getItem('atlas_token'));
+  if(u.pathname==='/auth/status')return response({enabled:cookie,authenticated:cookie});
+  assert.equal(options.headers.Authorization,token?'Bearer '+w.sessionStorage.getItem('atlas_token'):undefined);
   const catalogRoute=u.pathname.match(/\/semantic-catalogs(?:\/([^/]+)(?:\/(approve|retire))?)?$/);
   if(catalogRoute){
    const [,id,operation]=catalogRoute;
@@ -361,7 +362,8 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  assert.equal(staleDetails.querySelector('[data-review="approved"]').disabled,true);
  stale.dom.window.close();
 
- const login=await boot({token:false});assert.equal(login.w.document.querySelector('#workbench-login').hidden,false);assert.equal(login.calls.length,0);login.dom.window.close();
+ const cookie=await boot({token:false,cookie:true});assert.equal(cookie.w.document.querySelector('#workbench-shell').hidden,false);assert(cookie.calls.some(x=>x.url==='/auth/status'));assert(cookie.calls.some(x=>x.url.startsWith('/api/projects/')));cookie.dom.window.close();
+ const login=await boot({token:false});assert.equal(login.w.document.querySelector('#workbench-login').hidden,false);assert.deepEqual(login.calls.map(x=>x.url),['/auth/status']);login.dom.window.close();
  const missing=await boot({project:false});assert.equal(missing.w.document.querySelector('#workbench-missing').hidden,false);assert.equal(missing.calls.length,0);missing.dom.window.close();
  const factsApp=await boot();await factsApp.w.wbTest.loadFacts();
  const factDetails=factsApp.w.document.querySelector('[data-facts]');factDetails.open=true;factDetails.dispatchEvent(new factsApp.w.Event('toggle'));await tick();await tick();

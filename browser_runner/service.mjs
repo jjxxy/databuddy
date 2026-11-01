@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {createRequire} from 'node:module';
-import {createHash, timingSafeEqual} from 'node:crypto';
+import {createHash, timingSafeEqual, randomBytes} from 'node:crypto';
 import {stat, open as openFile} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {basename, extname} from 'node:path';
@@ -21,6 +21,37 @@ const hosts = new Set((process.env.ATLAS_BROWSER_ALLOWED_HOSTS || '').split(',')
 const sessions = new Map(), lifetime = 30 * 60 * 1000, maximum = 2;
 let opening=0;
 const hash = s=>createHash('sha256').update(s).digest('hex');
+const secretKey=/(password|passwd|passcode|one.?time.?code|otp|secret|csrf|xsrf|token|authorization|credential|api.?key|验证码|密码|口令)/i;
+function checkedPost(request, pageUrl){
+  const url=new URL(allowed(request.url())),current=new URL(allowed(pageUrl));
+  if(url.origin!==current.origin||request.method()!=='POST')throw Error('Only same-origin POST can be reviewed');
+  if([...url.searchParams.keys()].some(k=>secretKey.test(k)))throw Error('Sensitive URL requires user takeover');
+  const headers=request.headers(),type=(headers['content-type']||'').trim(),encoding=(headers['content-encoding']||'').trim();
+  // An undisclosed business header (e.g. X-Account, X-Amount or If-Match)
+  // can change the meaning of an otherwise identical body. Reject it rather
+  // than pretending the user reviewed a complete business request. Cookie
+  // and Authorization remain private browser-session credentials.
+  const standard=new Set(['accept','accept-encoding','accept-language','authorization','cache-control','connection',
+    'content-length','content-type','cookie','host','origin','pragma','priority','referer','user-agent']);
+  if(Object.keys(headers).some(k=>!standard.has(k.toLowerCase())&&!/^sec-[a-z0-9-]+$/i.test(k)))throw Error('Request headers require user takeover');
+  if(encoding||! /^(application\/json|application\/x-www-form-urlencoded|text\/plain)(?:\s*;\s*charset\s*=\s*utf-8)?$/i.test(type))throw Error('Unsupported request format');
+  const raw=request.postDataBuffer();if(!Buffer.isBuffer(raw)||raw.length>65536)throw Error('Request body unavailable or too large');
+  let text;try{text=new TextDecoder('utf-8',{fatal:true}).decode(raw)}catch{throw Error('Unsupported request encoding')}
+  if(!Buffer.from(text,'utf8').equals(raw))throw Error('Request bytes are not faithfully representable');
+  if(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text))throw Error('Binary content requires user takeover');
+  const keys=[];
+  if(/^application\/json/i.test(type)){
+    let parsed;try{parsed=JSON.parse(text)}catch{throw Error('Invalid JSON')}
+    function walk(v,depth){if(depth>30)throw Error('Excessive request depth');if(v&&typeof v==='object'){for(const [k,x] of Object.entries(v)){keys.push(k);walk(x,depth+1)}}}walk(parsed,0);
+  }else if(/^application\/x-www-form-urlencoded/i.test(type)){
+    if(/%(?![0-9a-f]{2})/i.test(text))throw Error('Invalid form encoding');
+    for(const [key] of new URLSearchParams(text))keys.push(key);
+  }else if(/(?:password|passcode|验证码|密码|口令|csrf|authorization|access_token)\s*[:=]/i.test(text))throw Error('Sensitive content requires user takeover');
+  if(keys.some(key=>secretKey.test(key)))throw Error('Sensitive content requires user takeover');
+  const body_sha256=hash(raw),descriptor={method:'POST',url:url.href,content_type:type,body_sha256,bytes:raw.length};
+  return {descriptor,digest:hash(JSON.stringify(descriptor)),body:text};
+}
+function postPublic(post){return {id:post.id,digest:post.digest,...post.descriptor,expires_at:post.expires}}
 function allowed(raw) {
   const url = new URL(raw);
   if(!['http:','https:'].includes(url.protocol) || url.username || url.password || (url.port && !['80','443'].includes(url.port) && !(testMode&&url.hostname==='127.0.0.1'))) throw Error('URL denied');
@@ -57,7 +88,7 @@ async function state(s, image=true) {
   }
   return result;
 }
-async function close(id){const s=sessions.get(id);if(s){sessions.delete(id);await s.browser.close().catch(()=>{})}}
+async function close(id){const s=sessions.get(id);if(s){sessions.delete(id);clearTimeout(s.capture?.timer);if(s.capture?.route&&s.capture.phase==='pending')await s.capture.route.abort().catch(()=>{});await s.browser.close().catch(()=>{})}}
 async function open(id,scope,url){
   if(sessions.size+opening>=maximum)throw Error('Browser capacity reached');
   checkId(scope);allowed(url);
@@ -69,15 +100,34 @@ async function open(id,scope,url){
     args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--disable-extensions','--disable-background-networking',
       '--force-webrtc-ip-handling-policy=disable_non_proxied_udp','--proxy-bypass-list=<-loopback>']});
     const context=await browser.newContext({viewport:{width:1280,height:800},acceptDownloads:allowDownloads,serviceWorkers:'block',permissions:[]});
-    const s={browser,context,page:await context.newPage(),scope,mode:'agent',expires:Date.now()+lifetime,results:new Map(),downloads:new Map(),busy:true};
+    const s={id,browser,context,page:await context.newPage(),scope,mode:'agent',expires:Date.now()+lifetime,results:new Map(),downloads:new Map(),busy:true};
     sessions.set(id,s);
     s.page.setDefaultTimeout(12000);
     context.on('page',page=>{if(page!==s.page)page.close().catch(()=>{})});
     s.page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));
     s.page.on('download',download=>{if(!s.expectedDownload)download.cancel().catch(()=>{})});
-    await context.route('**/*',route=>{
+    await context.route('**/*',async route=>{
       try{
         allowed(route.request().url());
+        const cap=s.capture;
+        if(s.mode==='agent'&&cap){
+          // Block every other request, including GET and navigation, while the
+          // action is being reviewed. GET is not proof of read-only behaviour.
+          if(cap.phase!=='armed'||route.request().method()!=='POST'){
+            cap.blocked++;if(route.request().method()==='POST')cap.multiplePost=true;
+            return await route.abort()
+          }
+          // Reserve before parsing so concurrent requests cannot win the race.
+          cap.phase='capturing';
+          try{
+            const verified=checkedPost(route.request(),cap.pageUrl);
+            Object.assign(cap,verified,{route,request:route.request(),phase:'pending'});
+            cap.resolve(true);
+            // Keep the original route paused; a separate decision operates on
+            // this exact object, never on a reconstructed request.
+            return;
+          }catch(error){cap.phase='invalid';cap.resolve(false);return await route.abort()}
+        }
         if(s.mode!=='human'&&!['GET','HEAD'].includes(route.request().method()))return route.abort();
         return route.continue();
       }catch{return route.abort()}
@@ -90,15 +140,30 @@ async function open(id,scope,url){
 }
 async function action(s,body){
   if(s.mode!=='human' && !(s.mode==='agent' && body.agent_authorized===true))throw Error('Browser interaction not authorized');
-  if(s.mode==='agent' && !['click','select','fill'].includes(body.action))throw Error('Action denied');
+  if(s.mode==='agent' && !['click','select','fill','capture_post'].includes(body.action))throw Error('Action denied');
   const fresh=await state(s,false);
   if(body.revision!==fresh.revision)throw Error('Page changed; refresh before acting');
   const a=body.action;
-  if(a==='click'||a==='fill'||a==='select'){
+  if(a==='click'||a==='fill'||a==='select'||a==='capture_post'){
     const ref=body.ref;
     if(!Number.isInteger(ref)||ref<1||ref>fresh.controls.length)throw Error('Invalid control reference');
     const item=fresh.controls[ref-1];if(!item.visible||item.disabled)throw Error('Control is unavailable');
     if(s.mode==='agent'&&item.sensitive)throw Error('Sensitive controls require user takeover');
+    if(a==='capture_post'){
+      if(s.mode!=='agent'||body.capture_confirmed!==true||s.capture)throw Error('Capture requires confirmation');
+      let resolve;const ready=new Promise(r=>{resolve=r});
+      const cap={id:randomBytes(32).toString('hex'),phase:'armed',pageUrl:fresh.url,blocked:0,resolve,expires:Math.min(Date.now()+300000,s.expires)};
+      s.capture=cap;
+      // Do not await click: a form navigation may wait on the paused route.
+      const el=s.page.locator('a,button,input,textarea,select,[role="button"],[role="link"]').nth(ref-1);
+      Promise.resolve(el.click({noWaitAfter:true})).catch(()=>{if(cap.phase==='armed'){cap.phase='invalid';resolve(false)}});
+      const timer=setTimeout(()=>{if(cap.phase==='armed'){cap.phase='invalid';resolve(false)}},8000);
+      const found=await ready;clearTimeout(timer);
+      if(!found||cap.phase!=='pending')throw Error('No safely reviewable request was captured');
+      cap.timer=setTimeout(()=>{if(cap.phase==='pending'){cap.phase='expired';cap.route.abort().catch(()=>{});close(s.id).catch(()=>{})}},Math.max(1,cap.expires-Date.now()));
+      cap.timer.unref();
+      return {pending_post:postPublic(cap),notice:'请求尚未发送；用户必须核对实际内容。其他请求已阻断。'};
+    }
     if(s.mode==='agent'&&a==='fill'&&body.fill_confirmed!==true)throw Error('Text fill requires confirmation');
     if(s.mode==='agent'&&a==='click'&&!/^(?:查询|搜索|筛选|查找|展开|收起|下一页|上一页|切换|search|filter|find|expand|collapse|next|previous)(?:\s|$)/i.test((item.label||'').trim()))throw Error('Only query and navigation controls are allowed; take over for other clicks');
     const el=s.page.locator('a,button,input,textarea,select,[role="button"],[role="link"]').nth(ref-1);
@@ -125,6 +190,38 @@ async function action(s,body){
   // A bounded settling interval, never a wait for an arbitrary network idle.
   await new Promise(resolve=>setTimeout(resolve,150));
   return state(s);
+}
+function revealPost(s,body){
+  const cap=s.capture;
+  if(!cap||cap.phase!=='pending'||cap.expires<=Date.now()||body.post_id!==cap.id||body.digest!==cap.digest)throw Error('Pending request unavailable');
+  return {pending_post:{...postPublic(cap),body:cap.body,blocked_requests:cap.blocked,multiple_post:!!cap.multiplePost}};
+}
+async function decidePost(s,body){
+  const cap=s.capture;
+  if(!cap||body.post_id!==cap.id||body.digest!==cap.digest||typeof body.approve!=='boolean')throw Error('Pending request unavailable');
+  if(cap.phase!=='pending'){
+    if(cap.decision===body.approve&&['rejected','sent','unknown'].includes(cap.phase))return {state:cap.phase,transport_code:cap.transportCode||null,notice:'已有执行记录；未重复发送。'};
+    throw Error('Request is no longer pending');
+  }
+  if(cap.expires<=Date.now())throw Error('Approval expired');
+  if(body.approve&&cap.multiplePost)throw Error('Multiple requests require user takeover');
+  clearTimeout(cap.timer);cap.decision=body.approve;
+  if(!body.approve){
+    cap.phase='unknown';cap.body='';
+    try{await cap.route.abort();cap.phase='rejected'}catch{}
+    return {state:cap.phase,notice:cap.phase==='rejected'?'请求已取消，未发送；其他页面请求仍被阻断。':'取消结果未确认，请接管并核对业务系统。'};
+  }
+  // Mark unknown before continuing. A transport error must not retry the POST.
+  cap.phase='unknown';cap.body='';
+  const finished=s.page.waitForEvent('requestfinished',{predicate:request=>request===cap.request,timeout:10000});
+  finished.catch(()=>{});
+  try{
+    await cap.route.continue();
+    const request=await finished;const response=await request.response();
+    if(response&&!cap.multiplePost){cap.transportCode=response.status();cap.phase='sent'}
+  }catch{}
+  return {state:cap.phase,transport_code:cap.transportCode||null,
+    notice:cap.phase==='sent'?'已收到网络回执；业务是否完成仍需核对，其他页面请求仍被阻断。':'请求结果未知，请接管并核对业务系统；未自动重试。'};
 }
 async function download(s,body){
   if(!allowDownloads||s.mode!=='agent'||body.agent_authorized!==true)throw Error('Download denied');
@@ -172,7 +269,7 @@ const server=http.createServer(async(req,res)=>{
   if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected)){res.writeHead(401);return res.end('{}')}
   try{
     if(req.url==='/v1/health'&&req.method==='GET'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({ready:true,production_policy:!testMode,workspace_id:expectedWorkspace,restricted_proxy:!!proxy,active:sessions.size}))}
-    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|download|download-chunk|download-release|close))?$/);
+    const match=req.url.match(/^\/v1\/sessions\/([a-f0-9]{64})(?:\/(observe|mode|action|navigate|follow|scroll|download|download-chunk|download-release|post-reveal|post-decision|close))?$/);
     if(!match||req.method!=='POST')throw Error('Route denied');
     const [,id,operation]=match,body=await bodyOf(req);checkId(body.workspace_id);
     if(expectedWorkspace&&body.workspace_id!==expectedWorkspace){res.writeHead(404);return res.end('{}')}
@@ -187,11 +284,11 @@ const server=http.createServer(async(req,res)=>{
     }
     if(s.scope!==body.workspace_id){res.writeHead(404);return res.end('{}')}
     if(Date.now()>s.expires){await close(id);res.writeHead(404);return res.end('{}')}
-    if(operation==='download-chunk'||operation==='download-release'){
+    if(['download-chunk','download-release','post-reveal','post-decision'].includes(operation)){
       if(s.busy||s.chunkBusy)throw Error('Session busy');
       s.chunkBusy=true;
       try{
-        const result=operation==='download-chunk'?await downloadChunk(s,body):await releaseDownload(s,body);
+        const result=operation==='download-chunk'?await downloadChunk(s,body):operation==='download-release'?await releaseDownload(s,body):operation==='post-reveal'?revealPost(s,body):await decidePost(s,body);
         res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({session_id:id,...result}));
       }finally{s.chunkBusy=false}
     }
@@ -211,6 +308,11 @@ const server=http.createServer(async(req,res)=>{
       else if(operation==='observe')result=await state(s);
       else if(operation==='mode'){
         if(!['agent','human'].includes(body.mode))throw Error('Invalid mode');
+        if(body.mode==='human'&&s.capture){
+          clearTimeout(s.capture.timer);
+          if(s.capture.phase==='pending')await s.capture.route.abort().catch(()=>{});
+          s.capture=null;
+        }
         const old=s.mode;s.mode=body.mode;try{result=await state(s)}catch(error){s.mode=old;throw error}
       }else if(operation==='navigate'||operation==='follow'){
         if(s.mode!=='agent')throw Error('Browser is under user control');

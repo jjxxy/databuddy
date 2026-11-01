@@ -3,11 +3,13 @@ const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),a
 const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function until(check){for(let i=0;i<60;i++){await tick();if(check())return}throw Error('application navigation did not settle')}
 const reply=(value,status=200)=>({ok:status<400,status,json:async()=>value});
-async function boot({status='building',error='',ready=false,missing=false,factBlocked=false,history=false,historicalRisk=false,insecure=false}={}){
+async function boot({status='building',error='',ready=false,missing=false,factBlocked=false,history=false,historicalRisk=false,insecure=false,cookie=false}={}){
  const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:(insecure?'http://192.168.1.7':'https://atlas.test')+'/data-app.html'+(missing?'':'?project=p_1&app=app_1&session=c_1'),runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
  if(insecure){Object.defineProperty(w.crypto,'randomUUID',{value:undefined});w.eval(fs.readFileSync(path.join(root,'secure-id.js'),'utf8'))}
- w.sessionStorage.setItem('atlas_token','fixture-owner');w.setInterval=()=>0;
+ if(!cookie)w.sessionStorage.setItem('atlas_token','fixture-owner');w.setInterval=()=>0;
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href);calls.push({path:u.pathname,method:options.method||'GET',body:options.body});
+  if(u.pathname==='/auth/status')return reply({enabled:true,authenticated:cookie});
+  if(cookie)assert.equal(options.headers?.Authorization,undefined);
   if(u.pathname.endsWith('/messages'))return reply({detail:'fixture retry'},503);
   if(u.pathname.endsWith('application.json'))return reply({},404);
   if(u.pathname.endsWith('/app_1'))return error==='config'?reply({detail:'应用暂时无法读取'},404):reply({name:'测试应用',status,can_publish:true,preview_type:history?'history':'candidate',...(ready?{run_id:'r_1',config:{page_size:25,default_sort:'c_1',descending:false}}:{})});
@@ -19,6 +21,7 @@ async function boot({status='building',error='',ready=false,missing=false,factBl
  return {dom,w,d,calls};
 }
 (async()=>{
+ const gateway=await boot({ready:true,cookie:true});assert.equal(gateway.d.querySelector('#shell').hidden,false);assert(gateway.calls.some(x=>x.path==='/auth/status'));gateway.dom.window.close();
  for(const options of [{status:'building'},{status:'failed'},{error:'config'},{ready:true,error:'data'}]){
   const app=await boot(options);try{
    for(const [id,intent] of [['back',''],['revise','revise']]){const u=new URL(app.d.querySelector('#'+id).href);assert.equal(u.searchParams.get('project'),'p_1');assert.equal(u.searchParams.get('application'),'app_1');assert.equal(u.searchParams.get('session'),'c_1');assert.equal(u.searchParams.get('intent'),intent||null)}

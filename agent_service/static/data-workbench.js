@@ -14,7 +14,7 @@ const wbState = {
   catalogs: new Map(), catalogsLoaded: false, catalogsLoading: false,
   catalogOffset: null, catalogTotal: 0, catalogActions: new Set(),
 };
-let wbAuthClosed=false;const wbAuthRequests=new Set();
+let wbAuthClosed=false,wbCookieSession=false;const wbAuthRequests=new Set();
 const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],blobUrls:new Set(),ocrGeneration:0,ocrBusy:false,draftBinding:null};
 const wbSingle={key:'',generation:0,blobUrl:null,preview:null};
 function wbReloadAuthDocument(){location.reload()}
@@ -41,7 +41,7 @@ function wbLogin(text = '') {
 }
 async function wbRequest(url, options = {}) {
   if(wbAuthClosed)throw wbAuthError();
-  const headers = {Authorization: 'Bearer ' + wbState.token};
+  const headers = wbState.token ? {Authorization: 'Bearer ' + wbState.token} : {};
   const args = {...options, headers};
   if (Object.prototype.hasOwnProperty.call(options, 'body')) {
     headers['Content-Type'] = 'application/json';args.body = JSON.stringify(options.body);
@@ -680,7 +680,9 @@ async function wbLoadProposals(append = false) {
 async function wbInitialize() {
   for (const id of ['back','chat','task-chat','failure-chat','rules-chat','catalog-chat']) wbEl('#workbench-' + id).href = '/?project=' + wbEnc(wbProject);
   if (!wbProject) {wbEl('#workbench-missing').hidden = false;return;}
-  if (!wbState.token) {wbLogin();return;}
+  if (!wbState.token) {try{const r=await fetch('/auth/status',{credentials:'same-origin',cache:'no-store'});const v=r.ok?await r.json():null;wbCookieSession=v?.enabled===true&&v?.authenticated===true}catch{}}
+  if (wbAuthClosed) return;
+  if (!wbState.token && !wbCookieSession) {wbLogin();return;}
   wbEl('#workbench-login').hidden = true;wbEl('#workbench-shell').hidden = false;
   await Promise.all([wbRefresh(),wbLoadProposals(false)]);
   wbTab(wbParams.get('tab') || 'task');

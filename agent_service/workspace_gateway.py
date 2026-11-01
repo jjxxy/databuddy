@@ -232,9 +232,11 @@ class _SecurityHeaders:
 
 
 _STATIC = frozenset(('index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.webmanifest', 'sw.js',
+    'workspace-login.js', 'workspace-session.js',
     'secure-id.js', 'lifecycle.js', 'safe-markdown.js', 'workspace-features.js', 'workspace-shell.js', 'agent-collaboration.js',
     'local-data.html', 'local-data.js', 'local-data.css', 'work-runtime.js', 'interactive-work.js',
-    'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css'))
+    'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css',
+    'business-flows.html', 'business-flows.js', 'business-flows.css', 'business-flow-view.js', 'business-flow-view.css'))
 _DENIED_API = frozenset(('operator', 'agent', 'mcp', 'a2a'))
 _REQUEST_HEADERS = frozenset(('accept', 'accept-language', 'content-type', 'if-match', 'if-none-match', 'range', 'if-range'))
 _RESPONSE_HEADERS = frozenset(('content-type', 'content-disposition', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'retry-after', 'x-atlas-runtime-revision'))
@@ -260,6 +262,14 @@ def _validate_target(request):
     except (UnicodeError, ValueError):
         raise HTTPException(400, 'Invalid query') from None
     return path, query
+
+
+def _matches_login_generation(request,login):
+    import hmac
+    values=request.headers.getlist('x-atlas-session')
+    expected=login.generation(request)
+    return bool(len(values)==1 and re.fullmatch(r'[A-Za-z0-9_-]{43}',values[0])
+                and expected is not None and hmac.compare_digest(values[0],expected))
 
 
 class _ProxyResponse(StreamingResponse):
@@ -312,6 +322,11 @@ def create_app(config=None, *, transport=None):
                 timeout=httpx.Timeout(active.limits.upstream_timeout_seconds, connect=10),
                 limits=httpx.Limits(max_connections=active.limits.max_concurrent_requests, max_keepalive_connections=20)) as client:
             application.state.client = client
+            login_config=os.getenv('ATLAS_WORKSPACE_OIDC_LOGIN_CONFIG','')
+            if login_config:
+                from .gateway_oidc_login import Login
+                application.state.login=Login(active,_read_json(login_config,16384),client)
+            else:application.state.login=None
             yield
 
     application = FastAPI(title='Atlas isolated-workspace gateway', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -326,6 +341,22 @@ def create_app(config=None, *, transport=None):
             raise HTTPException(400, 'Unrecognized gateway host')
         if target == '/health' and request.method in ('GET', 'HEAD'):
             return JSONResponse({'ok': True, 'scope': 'isolated_workspace_gateway'}, headers={'Cache-Control': 'no-store'})
+        login=request.app.state.login
+        if target == '/auth/status' and request.method=='GET':
+            generation=login.generation(request) if login else None
+            return JSONResponse({'enabled':bool(login),'authenticated':bool(generation),'generation':generation},headers={'Cache-Control':'no-store'})
+        if target in ('/auth/login','/auth/callback','/auth/logout'):
+            if not login:raise HTTPException(404,'Enterprise login is not configured')
+            if target=='/auth/login' and request.method=='GET':return login.start()
+            if target=='/auth/callback' and request.method=='GET':return await login.callback_response(request)
+            if target=='/auth/logout' and request.method=='POST':
+                if request.headers.get('origin')!=active.public_origin or request.headers.get('sec-fetch-site')=='cross-site':
+                    raise HTTPException(403,'Cross-origin access is not supported')
+                if login.has_session(request):
+                    if not _matches_login_generation(request,login):
+                        raise HTTPException(401,'登录账号或会话已变化，请重新进入')
+                return login.logout(request)
+            raise HTTPException(405,'Method not allowed')
         if target == '/' or target.removeprefix('/') in _STATIC:
             if request.method not in ('GET', 'HEAD'):
                 raise HTTPException(405, 'Method not allowed')
@@ -340,10 +371,35 @@ def create_app(config=None, *, transport=None):
             raise HTTPException(405, 'Cross-origin access is not supported')
         if request.headers.get('origin') not in (None, active.public_origin) or request.headers.get('sec-fetch-site') == 'cross-site':
             raise HTTPException(403, 'Cross-origin access is not supported')
+        if login:
+            # In SSO mode all browser/API requests are bound to a live gateway
+            # session. A stale bearer token from another tab cannot survive
+            # account switch or logout and silently retain old authority.
+            if not login.has_session(request):
+                raise HTTPException(401,'企业登录已过期，请重新登录')
+            if not _matches_login_generation(request,login):
+                raise HTTPException(401,'登录账号或会话已变化，请重新进入')
         authorizations = request.headers.getlist('authorization')
-        if len(authorizations) != 1 or not authorizations[0].startswith('Bearer '):
+        if authorizations:
+            if len(authorizations)!=1 or not authorizations[0].startswith('Bearer '):
+                raise HTTPException(401,'A bearer access token is required')
+            token=authorizations[0][7:]
+            if login and login.has_session(request):
+                # A stale manual credential in an older tab must not silently
+                # override a different identity signed in through the gateway.
+                cookie_token=await login.token(request)
+                try:
+                    bearer_claims=jwt.decode(token,options={'verify_signature':False})
+                    cookie_claims=jwt.decode(cookie_token,options={'verify_signature':False})
+                    active.authenticate(token)
+                    if bearer_claims.get('sub')!=cookie_claims.get('sub'):raise ValueError()
+                except Exception:raise HTTPException(401,'登录账号已变化，请刷新页面') from None
+        elif login:
+            if request.method not in ('GET','HEAD') and request.headers.get('origin')!=active.public_origin:
+                raise HTTPException(403,'A same-origin request is required')
+            token=await login.token(request)
+        else:
             raise HTTPException(401, 'A bearer access token is required')
-        token = authorizations[0][7:]
         _, backend = active.authenticate(token)
         if request.headers.get('content-encoding', 'identity') != 'identity':
             raise HTTPException(415, 'Encoded request bodies are not supported')
@@ -368,6 +424,8 @@ def create_app(config=None, *, transport=None):
                         spool.write(chunk)
                 if lengths and int(lengths[0]) != size:
                     raise HTTPException(400, 'Request body length mismatch')
+                if login and not login.still_current(request,request.headers.get('x-atlas-session'),token):
+                    raise HTTPException(401,'登录账号或会话已变化，请重新进入')
                 spool.seek(0)
                 async def body():
                     while chunk := spool.read(65536):

@@ -4,7 +4,7 @@
  const b=window.atlasBusiness,browserDialog=document.querySelector('#cloud-browser-dialog'),voiceDialog=document.querySelector('#voice-dialog');
  if(!b||!browserDialog||!voiceDialog)return;
  const $=s=>browserDialog.querySelector(s),v=s=>voiceDialog.querySelector(s);
- let generation=0,voiceEpoch=0,pid='',sid='',snapshot=null,busy=false,recorder=null,stream=null,peer=null,channel=null,voiceTimer=null,voiceCall=null;
+ let generation=0,voiceEpoch=0,pid='',sid='',snapshot=null,busy=false,recorder=null,stream=null,peer=null,channel=null,voiceTimer=null,voiceCall=null,browserPollTimer=null,pendingSignature='';
  function node(tag,text){const el=document.createElement(tag);el.textContent=text;return el}
  function id(){return window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID()}
  function hangup(call){try{Promise.resolve(b.authFetch('/api/projects/'+encodeURIComponent(call.project)+'/voice/calls/'+encodeURIComponent(call.id)+'/end',{method:'POST',keepalive:true})).catch(()=>{})}catch{}}
@@ -18,7 +18,7 @@
   if(call)hangup(call);
  }
  function reset(){
-  generation++;stopVoice();pid='';sid='';snapshot=null;busy=false;
+  generation++;stopVoice();clearTimeout(browserPollTimer);browserPollTimer=null;pendingSignature='';pid='';sid='';snapshot=null;busy=false;
   $('[data-browser-image]').removeAttribute('src');$('[data-browser-controls]').replaceChildren();$('[data-browser-list]').replaceChildren();
   $('[data-browser-input]').value='';$('[data-browser-url]').textContent='';$('[data-browser-notice]').textContent='';
   v('[data-voice-text]').value='';v('[data-voice-notice]').textContent='';
@@ -27,12 +27,85 @@
  }
  function current(mark,project){return mark===generation&&project===b.getState().projectId&&pid===project}
  function base(){return '/projects/'+encodeURIComponent(pid)+'/browsers/'+encodeURIComponent(sid)}
+ // Conversation approvals use only identifiers already carried by the current
+ // turn. Exact contents are fetched only after the user chooses to review.
+ // They never enter HTML strings, local storage or an implicit retry queue.
+ const chatInFlight=new Set(),chatUncertain=new Set();
+ async function reviewInConversation(button){
+  const card=button.closest('[data-browser-chat-card]'),turn=card?.closest('[data-turn]');
+  const fill=card?.dataset.browserChatCard,session=card?.dataset.browserChatSession;
+  const state=b.getState(),project=state.projectId,conversation=state.sessionId,mark=generation;
+  if(!card||!turn||!project||!conversation||!/^bfill_[a-f0-9]{48}$/.test(fill||'')||!/^[a-f0-9]{64}$/.test(session||''))return;
+  const key=project+':'+session+':'+fill,notice=card.querySelector('[data-browser-chat-notice]'),detail=card.querySelector('[data-browser-chat-detail]');
+  const valid=()=>mark===generation&&b.getState().projectId===project&&b.getState().sessionId===conversation&&card.isConnected;
+  if(chatInFlight.has(key))return;
+  if(chatUncertain.has(key)){notice.textContent='上次操作结果尚未确认，请打开浏览器接管核对，不要重复操作。';return}
+  chatInFlight.add(key);button.disabled=true;
+  const path='/projects/'+encodeURIComponent(project)+'/browsers/'+encodeURIComponent(session)+'/pending-actions';
+  try{
+   const list=await b.api(path);if(!valid())return;
+   const item=(Array.isArray(list.items)?list.items:[]).find(x=>x?.id===fill&&['fill','capture_post','post'].includes(x.kind));
+   if(!item||!/^[a-f0-9]{64}$/.test(item.digest||''))throw Error('这项待确认操作已失效，请刷新工作记录。');
+   const reviewed=await b.api(path+'/'+encodeURIComponent(fill)+'/reveal',{method:'POST',body:{}});
+   if(!valid())return;
+   if(reviewed.id!==fill||reviewed.kind!==item.kind||reviewed.digest!==item.digest)throw Error('操作内容已变化，请刷新后重新核对。');
+   if(item.kind==='fill'){
+    if(typeof reviewed.text!=='string')throw Error('无法完整读取填写内容，未执行。');
+    detail.replaceChildren(node('p','网站：'+String(reviewed.origin||'')+'；控件：'+String(reviewed.label||'未命名')),
+                           node('p','准备填写以下内容：'),node('pre',reviewed.text));
+   }else if(item.kind==='capture_post'){
+    if(typeof reviewed.origin!=='string'||typeof reviewed.label!=='string'||!reviewed.origin||!reviewed.label)throw Error('无法核对点击目标，未执行。');
+    detail.replaceChildren(node('p','网站：'+reviewed.origin+'；控件：'+reviewed.label),
+     node('p','确认后将点击控件以捕获待发送请求；实际请求仍须再次核对并确认。页面脚本可能产生副作用，请先确认目标。'));
+   }else{
+    if(reviewed.method!=='POST'||typeof reviewed.url!=='string'||typeof reviewed.content_type!=='string'||typeof reviewed.body!=='string'||reviewed.body.length>1000000)throw Error('无法完整读取请求内容，请接管页面核对。');
+    let url;try{url=new URL(reviewed.url)}catch{throw Error('请求目标无效，未发送。')}
+    if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('请求目标无效，未发送。');
+    detail.replaceChildren(node('p','请求目标：'+reviewed.method+' '+reviewed.url),node('p','内容类型：'+reviewed.content_type),
+                           node('p','请求使用当前会话凭据；Cookie 和授权头不显示。确认后会将以下内容发送至目标系统。'));
+    if(Array.isArray(reviewed.parsed_fields)){
+     const fields=node('div','');fields.append(node('p','解析后的字段：'));
+     for(const field of reviewed.parsed_fields){if(!field||typeof field.name!=='string'||typeof field.value!=='string')throw Error('请求字段不完整，未发送。');fields.append(node('p',field.name+'：'+field.value))}
+     detail.append(fields);
+    }
+    detail.append(node('p','完整原文如下，请核对金额、期间和接收方：'),node('pre',reviewed.body));
+    if(Number.isInteger(reviewed.blocked_requests)&&reviewed.blocked_requests>0)detail.append(node('p','另有 '+reviewed.blocked_requests+' 个页面请求已阻断，业务可能不完整；发送成功也不代表业务办理成功。'));
+   }
+   const approve=node('button',item.kind==='fill'?'确认填写':item.kind==='capture_post'?'确认捕获请求':'确认发送请求'),reject=node('button','拒绝');approve.type=reject.type='button';detail.append(approve,reject);
+   async function decide(accepted){
+    if(!valid()||chatInFlight.has(key)||chatUncertain.has(key))return;
+    if(accepted&&!window.confirm(item.kind==='fill'?'确认将上面显示的内容填入所示网站和控件？':item.kind==='capture_post'?'确认点击所示控件以捕获请求？实际请求仍须再次确认。':'确认向所示目标发送上述完整内容？请先核对业务信息。'))return;
+    chatInFlight.add(key);approve.disabled=reject.disabled=true;
+    try{
+     const result=await b.api(path+'/'+encodeURIComponent(fill)+'/decision',{method:'POST',body:{digest:item.digest,approve:accepted}});
+     if(!valid())return;
+     if(accepted&&item.kind==='capture_post'&&result.state==='pending'){
+      detail.replaceChildren();notice.textContent='请求已捕获，尚未发送。请查看实际请求内容并再次确认。';
+      const next=node('button','查看实际请求');next.type='button';next.dataset.browserChatReview='';card.insertBefore(next,detail);return;
+     }
+     if(result.state!==(accepted?'applied':'rejected'))throw Error('没有确认操作的最终状态。');
+     detail.replaceChildren();button.remove();notice.textContent=(result.notice||(accepted?(item.kind==='fill'?'已填写。':'请求已发送，请核对业务系统的实际回执。'):'已拒绝该操作。'))+(item.kind==='post'?' 请接管浏览器核对后交还，才能继续访问页面。':' 可点击下方“继续这项工作”。');
+     if(item.kind==='post'){const takeover=node('button','打开浏览器接管核对');takeover.type='button';takeover.onclick=()=>openBrowserForSession(session);detail.append(takeover)}
+    }catch(error){
+     // A lost response cannot distinguish a completed page action from an
+     // unexecuted one. Never issue another decision automatically.
+     chatUncertain.add(key);if(valid()){detail.replaceChildren();notice.textContent=error.message+' 请先接管浏览器核对实际页面，不要重复操作。'}
+    }finally{chatInFlight.delete(key)}
+   }
+   approve.onclick=()=>decide(true);reject.onclick=()=>decide(false);button.remove();notice.textContent='';
+  }catch(error){if(valid()){button.disabled=false;notice.textContent=error.message}}
+  finally{chatInFlight.delete(key)}
+ }
+ document.querySelector('#messages')?.addEventListener('click',event=>{
+  const button=event.target.closest('[data-browser-chat-review]');if(button)reviewInConversation(button);
+ });
  function paint(result){
   snapshot=result;
   $('[data-browser-url]').textContent=result.url||'';
   $('[data-browser-image]').src='data:image/png;base64,'+result.image_base64;
   $('[data-browser-input]').value='';
   $('[data-browser-controls]').replaceChildren();
+  pendingSignature='';
   const select=$('[data-browser-select]');select.replaceChildren();
   for(const control of result.controls||[]){
    if(!control.visible||control.disabled)continue;
@@ -50,10 +123,13 @@
  async function pendingActions(mark,project,session){
   const result=await b.api(base()+'/pending-actions');
   if(!current(mark,project)||sid!==session||!browserDialog.open)return;
+  const signature=JSON.stringify([session,(Array.isArray(result.items)?result.items:[]).map(x=>[x?.id,x?.kind,x?.digest])]);
+  if(signature===pendingSignature)return;
+  pendingSignature=signature;
   const container=$('[data-browser-controls]');container.replaceChildren();
   for(const item of result.items||[]){
-   if(!/^bfill_[a-f0-9]{48}$/.test(item.id||'')||!/^[a-f0-9]{64}$/.test(item.digest||''))continue;
-   const card=node('section',''),title=node('strong',item.kind==='submit'?'待确认页面提交':'待确认页面填写');
+   if(!/^bfill_[a-f0-9]{48}$/.test(item.id||'')||!/^[a-f0-9]{64}$/.test(item.digest||'')||!['fill','capture_post','post'].includes(item.kind))continue;
+   const card=node('section',''),title=node('strong',item.kind==='fill'?'待确认页面填写':item.kind==='capture_post'?'待确认捕获请求':'待确认发送请求');
    card.append(title,node('p','网站：'+(item.origin||'')+'；控件：'+(item.label||'未命名')+'（'+item.ref+'）'));
    const detail=node('div',''),open=node('button','查看具体内容');open.type='button';card.append(detail,open);
    open.onclick=async()=>{
@@ -61,18 +137,43 @@
     try{
      const reviewed=await b.api(base()+'/pending-actions/'+encodeURIComponent(item.id)+'/reveal',{method:'POST',body:{}});
      if(!current(mark,project)||sid!==session||!browserDialog.open)return;
-     if(reviewed.digest!==item.digest)throw Error('操作内容已变化，请刷新重试');
+     if(reviewed.id!==item.id||reviewed.kind!==item.kind||reviewed.digest!==item.digest)throw Error('操作内容已变化，请刷新重试');
      detail.replaceChildren();
-     if(item.kind==='fill')detail.append(node('p','准备填写以下内容：'),node('pre',reviewed.text||''));
-     else detail.append(node('p','准备点击控件并允许一次 POST 请求至：'),node('pre',(reviewed.post_target?.origin||'')+(reviewed.post_target?.path||'')),node('p','请同时核对页面全部表单内容；请求发送不代表业务处理成功。'));
+     if(item.kind==='fill'){
+      if(typeof reviewed.text!=='string')throw Error('无法完整读取填写内容，未执行。');
+      detail.append(node('p','准备填写以下内容：'),node('pre',reviewed.text));
+     }else if(item.kind==='capture_post'){
+      if(typeof reviewed.origin!=='string'||typeof reviewed.label!=='string'||!reviewed.origin||!reviewed.label)throw Error('无法核对点击目标，未执行。');
+      detail.append(node('p','确认后将点击所示控件以捕获请求；实际请求仍需再次核对。页面脚本可能产生副作用。'));
+     }else{
+      if(reviewed.method!=='POST'||typeof reviewed.url!=='string'||typeof reviewed.content_type!=='string'||typeof reviewed.body!=='string'||reviewed.body.length>1000000)throw Error('无法完整读取请求内容，请接管页面核对。');
+      let url;try{url=new URL(reviewed.url)}catch{throw Error('请求目标无效，未发送。')}
+      if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw Error('请求目标无效，未发送。');
+      detail.append(node('p','请求目标：'+reviewed.method+' '+reviewed.url),node('p','内容类型：'+reviewed.content_type),node('p','请求使用当前会话凭据；Cookie 和授权头不显示。确认后会将以下内容发送至目标系统。'));
+      if(Array.isArray(reviewed.parsed_fields)){
+       const fields=node('div','');fields.append(node('p','解析后的字段：'));
+       for(const field of reviewed.parsed_fields){if(!field||typeof field.name!=='string'||typeof field.value!=='string')throw Error('请求字段不完整，未发送。');fields.append(node('p',field.name+'：'+field.value))}
+       detail.append(fields);
+      }
+      detail.append(node('p','完整原文如下，请核对金额、期间和接收方：'),node('pre',reviewed.body));
+      if(Number.isInteger(reviewed.blocked_requests)&&reviewed.blocked_requests>0)detail.append(node('p','另有 '+reviewed.blocked_requests+' 个页面请求已阻断，业务可能不完整；发送成功也不代表业务办理成功。'));
+     }
      const approve=node('button','确认执行'),reject=node('button','拒绝');approve.type=reject.type='button';detail.append(approve,reject);
      const decide=async accepted=>{
       if(busy)return;
-      if(accepted&&!window.confirm(item.kind==='submit'?'确认点击此控件并发送到所示系统？请先核对页面和业务数据。':'确认将上面显示的内容填入所示页面控件？'))return;
+      if(accepted&&!window.confirm(item.kind==='fill'?'确认将上面显示的内容填入所示页面控件？':item.kind==='capture_post'?'确认点击控件以捕获请求？实际请求仍需再次确认。':'确认向所示目标发送上述完整内容？请先核对业务信息。'))return;
       busy=true;approve.disabled=reject.disabled=true;
       try{
        const r=await b.api(base()+'/pending-actions/'+encodeURIComponent(item.id)+'/decision',{method:'POST',body:{digest:item.digest,approve:accepted}});
-       if(current(mark,project)&&sid===session){detail.replaceChildren();open.remove();$('[data-browser-notice]').textContent=r.notice||(accepted?'操作已执行，请核对实际结果。':'已拒绝该操作。')}
+       if(current(mark,project)&&sid===session){
+        if(accepted&&item.kind==='capture_post'&&r.state==='pending'){
+         detail.replaceChildren();open.remove();$('[data-browser-notice]').textContent='请求已捕获，尚未发送。请查看实际请求内容并再次确认。';
+         await pendingActions(mark,project,session);
+        }else{
+         if(r.state!==(accepted?'applied':'rejected'))throw Error('没有确认操作的最终状态。');
+         detail.replaceChildren();open.remove();$('[data-browser-notice]').textContent=(r.notice||(accepted?'操作已执行，请核对实际结果。':'已拒绝该操作。'))+(item.kind==='post'?' 请接管浏览器核对后交还，才能继续访问页面。':'');
+        }
+       }
       }catch(error){if(current(mark,project)&&sid===session){detail.replaceChildren();$('[data-browser-notice]').textContent=error.message+' 请刷新并核对实际页面，不要盲目重试。'}}
       finally{if(current(mark,project))busy=false}
      };
@@ -82,13 +183,23 @@
    container.append(card);
   }
  }
+ function scheduleBrowserPoll(){
+  clearTimeout(browserPollTimer);
+  if(!browserDialog.open||!pid)return;
+  browserPollTimer=setTimeout(async()=>{
+   const mark=generation,project=pid,session=sid;
+   try{if(session&&!busy&&!document.hidden)await pendingActions(mark,project,session)}
+   catch(error){if(current(mark,project)&&sid===session)$('[data-browser-notice]').textContent='待确认事项暂时无法刷新，请手动重试。'}
+   finally{if(current(mark,project)&&browserDialog.open)scheduleBrowserPoll()}
+  },3500);
+ }
  async function observe(){
   if(busy||!sid)return;busy=true;const mark=generation,project=pid,session=sid;
   try{const result=await b.api(base()+'/observe',{method:'POST',body:{}});if(current(mark,project)&&sid===session&&browserDialog.open){paint(result);await pendingActions(mark,project,session)}}
   catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
   finally{if(current(mark,project))busy=false}
  }
- async function loadBrowsers(){
+ async function loadBrowsers(preferredSession=''){
   const mark=generation,project=pid;
   const result=await b.api('/projects/'+encodeURIComponent(pid)+'/browsers');
   if(!current(mark,project))return;
@@ -98,7 +209,8 @@
    row.disabled=session.state==='closed';row.onclick=()=>{sid=session.id;observe()};$('[data-browser-list]').append(row);
    if(session.reason)$('[data-browser-list]').append(node('p',session.reason));
   }
-  const active=(result.sessions||[]).find(s=>s.state!=='closed');if(active){sid=active.id;await observe()}
+  const active=preferredSession?(result.sessions||[]).find(s=>s.id===preferredSession&&s.state!=='closed'):(result.sessions||[]).find(s=>s.state!=='closed');
+  if(active){sid=active.id;await observe()}else if(preferredSession)$('[data-browser-notice]').textContent='该浏览器会话已失效，请查看工作记录。';
  }
  async function changeMode(mode){
   if(!sid||busy)return;busy=true;const mark=generation,project=pid;
@@ -140,10 +252,12 @@
   catch(error){if(current(mark,project))$('[data-browser-notice]').textContent=error.message}
   finally{if(current(mark,project))busy=false}
  };
- document.querySelector('#cloud-browser').onclick=()=>{
+ function openBrowserForSession(preferredSession=''){
   if(!b.getState().projectId)return b.toast('请先打开项目');
-  reset();pid=b.getState().projectId;browserDialog.showModal();loadBrowsers().catch(error=>b.toast(error.message));
- };
+  if(preferredSession&&!/^[a-f0-9]{64}$/.test(preferredSession))return b.toast('浏览器会话无效');
+  reset();pid=b.getState().projectId;browserDialog.showModal();scheduleBrowserPoll();loadBrowsers(preferredSession).catch(error=>b.toast(error.message));
+ }
+ document.querySelector('#cloud-browser').onclick=()=>openBrowserForSession();
  $('[data-browser-refresh]').onclick=observe;
  $('[data-browser-takeover]').onclick=()=>changeMode('human');$('[data-browser-return]').onclick=()=>changeMode('agent');
  $('[data-browser-destroy]').onclick=()=>changeMode('close');

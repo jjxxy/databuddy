@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>我的业务工作空间 · Atlas</title>
   <link rel="stylesheet" href="/data-workbench.css?v=21">
-  <script src="/data-workbench.js?v=21" defer></script>
+  <script src="/workspace-session.js?v=1" defer></script>
+  <script src="/data-workbench.js?v=22-gateway-login" defer></script>
 </head>
 <body>
 <section id="workbench-login" class="login" hidden>
@@ -16,7 +17,7 @@
     <label for="workbench-token">访问口令</label>
     <input id="workbench-token" type="password" autocomplete="current-password" required>
     <button type="submit" class="primary">进入项目</button>
-    <p id="workbench-login-error" role="alert"></p>
+    <a href="/">返回工作空间使用企业账号登录</a><p id="workbench-login-error" role="alert"></p>
   </form>
 </section>
 <section id="workbench-missing" class="missing" hidden>

@@ -318,10 +318,10 @@ def _verify_completed_state(pid,job,state):
         if isinstance(output,dict) and 'rows_ref' in output:
             # The JSON reference alone is not evidence the encrypted table is
             # still present or belongs to this run. Verify the complete data.
-            from .business_flow_data import materialize_table
+            from .business_flow_data import verify_table_snapshot
             context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
                      'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
-            materialize_table(context,output)
+            verify_table_snapshot(context,output)
         outputs[node.id]=output
     if state.get('outputs')!={name:outputs[name] for name in doc.outputs}:
         raise ValueError('流程最终结果回执不一致')
@@ -495,22 +495,64 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
     output=match[0].get('output') if len(match)==1 else None
     if (not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
         raise ValueError('该步骤没有完整可查看的数据结果')
-    from .business_flow_data import materialize_table
+    from .business_flow_data import get_table_page,materialize_table
     from .data_workflows import TableSchema, digest as table_digest
     context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],
              'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
-    table=materialize_table(context,output);rows=table.get('rows');schema=table.get('schema')
-    parsed=TableSchema.model_validate(schema)
-    if (not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows)
-            or table.get('output_sha256')!=table_digest({'schema':schema,'rows':rows})):
-        raise ValueError('完整数据结果与回执不一致')
-    page=rows[offset:offset+limit]
+    schema=output.get('schema');parsed=TableSchema.model_validate(schema)
+    ref=output.get('rows_ref')
+    if isinstance(ref,dict) and ref.get('version')==2:
+        # v2 binds an authenticated index and full ciphertext hash to the
+        # receipt. Only pages intersecting this request are decrypted.
+        total=output.get('row_count');page=get_table_page(context,output,offset,limit)
+        if type(total) is not int or total<0:raise ValueError('数据结果行数无效')
+    else:
+        # Inline and legacy v1 records still need full data verification.
+        table=materialize_table(context,output);rows=table.get('rows')
+        if (not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows)
+                or table.get('output_sha256')!=table_digest({'schema':schema,'rows':rows})):
+            raise ValueError('完整数据结果与回执不一致')
+        total=len(rows);page=rows[offset:offset+limit]
     if len(json.dumps(page,ensure_ascii=False).encode('utf-8'))>1024*1024:
         raise ValueError('本页数据过大，请减少每页行数')
     return {'run_id':run_id,'node_id':node_id,'columns':[{'name':c.name,'label':c.label or c.name,'unit':c.unit} for c in parsed.columns],
-            'rows':page,'total':len(rows),'offset':offset,'next_offset':offset+len(page) if offset+len(page)<len(rows) else None,
-            'output_sha256':table['output_sha256'],'financial_verified':False,
+            'rows':page,'total':total,'offset':offset,'next_offset':offset+len(page) if offset+len(page)<total else None,
+            'output_sha256':output['output_sha256'],'financial_verified':False,
             'notice':'展示实际完整结果的分页；财务口径和数据仍需业务复核。'}
+
+
+def get_run_reconciliation(pid,flow_id,run_id):
+    """Read technical checks from the exact authorized completed run."""
+    actor=current_actor();_owned(pid,flow_id,actor);job=get_job(run_id)
+    if (job.get('project_id')!=pid or job.get('target')!=flow_id or job.get('kind')!='business_flow'
+            or job.get('actor_id')!=actor or job.get('status')!='succeeded'):
+        raise ValueError('运行记录不属于当前项目或尚未完成')
+    turn=_turn(pid,actor,job.get('flow_turn_id'))
+    from . import agent_gateway,agent_team
+    agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn,'run_data_workflow',{})
+    state=unseal(job['secret_flow_checkpoint']);_verify_completed_state(pid,job,state)
+    nodes=[];sources=[]
+    for step in state['steps']:
+        output=step.get('output')
+        if not isinstance(output,dict):continue
+        if output.get('kind')=='source_table_v1':
+            source={key:output.get(key) for key in ('source_id','revision','content_hash')}
+            try:
+                current=get('source',source['source_id'])
+                if current.get('project_id')==pid:source['name']=current.get('name')
+            except KeyError:pass
+            sources.append(source)
+        if output.get('kind')!='table_workflow_v1':continue
+        stages=[]
+        for receipt in output.get('stage_receipts',[]):
+            check=receipt.get('reconciliation') if isinstance(receipt,dict) else None
+            if isinstance(check,dict):
+                stages.append({'stage_id':receipt.get('stage_id'),'kind':receipt.get('kind'),
+                    'inputs':receipt.get('inputs'),'output_sha256':receipt.get('output_sha256'),**check})
+        if stages:nodes.append({'node_id':step.get('node_id'),'title':step.get('title'),
+                                'plan_sha256':output.get('plan_sha256'),'stages':stages})
+    return {'run_id':run_id,'flow_id':flow_id,'plan_digest':job['commit'],'sources':sources,'nodes':nodes,
+            'financial_verified':False,'notice':'仅显示实际运行中已记录的筛选技术对账；来源、口径和业务结论仍需人工核对。'}
 
 
 def request_status(pid,flow_id,request_id,actor_id=None):
@@ -740,6 +782,8 @@ def install(app,auth):
     def status(pid:str,fid:str,rid:str):return get_run(pid,fid,rid)
     @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/tables/{node_id}',dependencies=[Depends(auth)])
     def table(pid:str,fid:str,rid:str,node_id:str,offset:int=0,limit:int=50):return get_run_table(pid,fid,rid,node_id,offset,limit)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/reconciliation',dependencies=[Depends(auth)])
+    def reconciliation(pid:str,fid:str,rid:str):return get_run_reconciliation(pid,fid,rid)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/review',dependencies=[Depends(auth)])
     def review(pid:str,fid:str,rid:str,value:ReviewInput):return review_run(pid,fid,rid,current_actor(),value.expected_checkpoint_sha256,value.items)
     @app.post('/api/projects/{pid}/business-flows/{fid}/runs/{rid}/resolve-unknown',dependencies=[Depends(auth)])

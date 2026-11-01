@@ -23,14 +23,16 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     def req(method,path,**kw):
         r=client.request(method,path,headers=h,**kw);assert r.status_code==200,r.text;return r.json()
     pid=req('POST','/api/projects',json={'name':'流程纵切','request_id':uid()})['id'];base='/api/projects/'+pid
-    uploaded=req('POST',base+'/attachments',files={'file':('income.csv','办事处,收入\n东部,9.00\n东部,9.00\n'.encode(),'text/csv')},data={'request_id':uid(),'local_processing':'true'})
+    uploaded=req('POST',base+'/attachments',files={'file':('income.csv','办事处,收入\n东部,9.00\n东部,9.00\n西部,4.00\n'.encode(),'text/csv')},data={'request_id':uid(),'local_processing':'true'})
     assert process_once();source=get('source',uploaded['id'])
     turn=req('POST',base+'/messages',json={'text':'读取收入明细并生成汇总报告','request_id':uid(),'source_id':source['id']})
     plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
         'columns':[{'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
-        'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table','by':['c_1'],
+        'stages':[{'id':'selected','kind':'filter','description':'选择东部','input':'table',
+                   'conditions':[{'column':'c_1','operator':'eq','value':'东部'}]},
+                  {'id':'total','kind':'aggregate','description':'按办事处汇总','input':'selected','by':['c_1'],
                    'meaning':'各办事处收入','aggregations':[{'function':'sum','column':'c_2',
                        'output':{'name':'amount','data_type':'decimal','meaning':'收入合计','unit':'CNY'}}]}], 'output':'total'}
     document={'name':'收入汇总','inputs':[],'nodes':[
@@ -73,6 +75,18 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     page=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
     assert page['total']==1 and page['next_offset'] is None and page['rows'][0]['amount']=='18.00'
     assert page['financial_verified'] is False and page['run_id']==run['run_id']
+    reconciliation=req('GET',flow+'/runs/'+run['run_id']+'/reconciliation')
+    assert reconciliation['financial_verified'] is False and reconciliation['sources'][0]['content_hash']==source['content_hash']
+    stage=reconciliation['nodes'][0]['stages'][0]
+    assert (stage['input_rows'],stage['output_rows'],stage['excluded_rows'])==(3,2,1)
+    amount=next(x for x in stage['checks'] if x['column']=='c_2')
+    assert amount['input_total']=='22.00' and amount['included_total']=='18.00' and amount['excluded_total']=='4.00'
+    assert amount['status']=='balanced' and amount['difference']=='0.00'
+    from agent_service.business_flows import get_run_reconciliation
+    from agent_service.actor_context import actor_scope
+    import pytest
+    with actor_scope('u_'+'f'*64):
+        with pytest.raises(ValueError):get_run_reconciliation(pid,saved['id'],run['run_id'])
     bad=client.get(flow+'/runs/'+run['run_id']+'/tables/read',headers=h)
     assert bad.status_code==400
     invalid=client.get(flow+'/runs/'+run['run_id']+'/tables/aggregate?limit=101',headers=h)
@@ -85,7 +99,9 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     # Inputs and source rows are not committed to the project repository.
     from agent_service.workspace import folder,git_content
     content=git_content(folder(pid),saved['candidate_commit'],'files/business-flows/'+saved['id']+'.json').decode()
-    assert '东部' not in content
+    # The declared filter value is part of the versioned plan; raw financial
+    # amounts from uploaded source rows remain outside the project repository.
+    assert '9.00' not in content and '4.00' not in content
     # A flagged source needs an explicit review tied to this checkpoint.
     from agent_service.jobs import get_job,save
     from agent_service.store import seal

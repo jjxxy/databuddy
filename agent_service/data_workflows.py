@@ -11,7 +11,7 @@ import re
 import threading
 import time
 from datetime import date,datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
+from decimal import Decimal, Inexact, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from typing import Annotated, Any, Callable, Literal
 
 import duckdb
@@ -820,6 +820,69 @@ def _operate(stage, tables, budget, deadline):
     raise WorkflowError('UNSUPPORTED_STAGE', 'Unsupported workflow stage')
 
 
+def _filter_reconciliation(stage, source, output, deadline):
+    """Account for actual rows, not inferred business correctness.
+
+    Summation is limited to numeric measures explicitly declared additive.
+    Missing values or arithmetic rounding never become zero or a balance.
+    The resulting totals are technical checks and require business review.
+    """
+    schema=source['schema'];grain=schema.grain
+    before=source['rows'];after=output['rows']
+    source_by_key={tuple(row[name] for name in grain):row for row in before}
+    retained=set()
+    for row in after:
+        key=tuple(row[name] for name in grain)
+        if key in retained or key not in source_by_key or source_by_key[key]!=row:
+            raise WorkflowError('FILTER_RECONCILIATION_FAILED','筛选结果与实际输入记录不一致',stage.id)
+        retained.add(key)
+    candidates=[col for col in schema.columns if col.data_type in ('decimal','integer') and col.aggregation=='additive']
+    checks=[]
+    # A wide table may have hundreds of declared measures. Bound receipt size
+    # and calculation cost; the omitted count is disclosed, never called zero.
+    for col in candidates[:20]:
+        missing_before=missing_included=missing_excluded=0
+        totals=[Decimal(0),Decimal(0),Decimal(0)]
+        exact=True
+        with localcontext() as ctx:
+            ctx.prec=100
+            ctx.traps[Inexact]=True
+            for index,row in enumerate(before):
+                if index%1000==0 and time.monotonic()>deadline:
+                    raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget',stage.id)
+                selected=tuple(row[name] for name in grain) in retained
+                value=row[col.name]
+                if value is None:
+                    missing_before+=1
+                    if selected:missing_included+=1
+                    else:missing_excluded+=1
+                    continue
+                try:
+                    amount=Decimal(value)
+                    totals[0]+=amount
+                    totals[1 if selected else 2]+=amount
+                except (Inexact,InvalidOperation):exact=False
+            if missing_before:
+                status='missing_values';values=[None,None,None];difference=None
+            elif not exact:
+                status='precision_exceeded';values=[None,None,None];difference=None
+            else:
+                try:
+                    delta=totals[0]-totals[1]-totals[2]
+                    values=[str(value) for value in totals];difference=str(delta)
+                    status='balanced' if delta==0 else 'difference'
+                except (Inexact,InvalidOperation):
+                    status='precision_exceeded';values=[None,None,None];difference=None
+        checks.append({'column':col.name,'label':col.label or col.name,'unit':col.unit,'period':col.period,
+                       'input_total':values[0],'included_total':values[1],'excluded_total':values[2],
+                       'difference':difference,'missing_input':missing_before,'missing_included':missing_included,
+                       'missing_excluded':missing_excluded,'status':status})
+    return {'input_rows':len(before),'output_rows':len(after),'excluded_rows':len(before)-len(after),
+            'conditions':[condition.model_dump(mode='json') for condition in stage.conditions],
+            'checks':checks,'omitted_measure_count':max(0,len(candidates)-20),
+            'meaning':'技术筛选平衡检查；字段含义、期间及财经口径仍需业务复核'}
+
+
 def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], *,
             on_stage: Callable[[dict], None] | None = None) -> dict:
     """Execute a complete plan against explicit full inputs in an isolated run.
@@ -868,6 +931,8 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
         receipts.append(receipt)
         if isinstance(stage, Normalize):
             receipt['checks']['localized_parsing'] = 'explicit_policy; original_text_columns_retained; business_semantics_require_review'
+        if isinstance(stage, Filter):
+            receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
         if on_stage is not None:
             on_stage(json.loads(canonical(receipt)))
     output = tables[plan.output]

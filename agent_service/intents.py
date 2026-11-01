@@ -27,7 +27,7 @@ ALIASES={'remember_memory':'remember','forget_memory':'forget','export_local_wor
  'schedule_data_workflow':'schedule','propose_semantic_alignment':'write','propose_value_mapping':'write',
  'propose_semantic_catalog':'write','propose_catalog_alignment':'analyze',
  'acquire_report_data':'refresh','propose_extracted_data_facts':'write','extract_indented_source':'analyze',
- 'download_browser_source':'refresh', 'prepare_browser_fill':'write',
+ 'download_browser_source':'refresh', 'prepare_browser_fill':'write', 'prepare_browser_post':'write',
  'render_business_report':'write', 'create_business_flow':'write', 'update_business_flow':'write', 'prepare_business_flow_skill':'write'}
 
 # A business request need not use an internal tool's storage/execution verb.
@@ -43,6 +43,7 @@ TOOL_VERBS={
  'acquire_report_data':r'获取|采集|下载|导出|读取',
  'download_browser_source':r'获取|采集|下载|导出|读取',
  'prepare_browser_fill':r'填写|填入|输入|录入',
+ 'prepare_browser_post':r'查询|搜索|筛选|提交|发送|执行|操作',
  'propose_extracted_data_facts':r'提取|抽取|提交|存储',
  'extract_indented_source':r'提取|抽取|解析|转换',
  'render_business_report':r'导出|渲染|制作|出具',

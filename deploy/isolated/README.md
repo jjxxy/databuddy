@@ -85,10 +85,10 @@ requires valid owner credentials.
    unique `kid`. Export only its public JWKS to
    `deploy/isolated/secrets/idp-public-jwks.json`. The backend HTTPS `jwks_url`
    must publish the matching public keys and be reachable under Atlas's URL
-   safety policy. This release has manual token acquisition/paste, **not a full
-   authorization-code/PKCE SSO login, callback, refresh or logout flow**. Obtain
-   tokens via your approved IdP client/tool. Never paste an IdP client secret or
-   signing private key into Atlas.
+   safety policy. By default users obtain and paste an access token via an approved IdP client.
+   An optional gateway authorization-code/PKCE login is described below; it is
+   process-local and does not provide IdP-wide logout or distributed sessions.
+   Never paste an IdP client secret or signing private key into Atlas.
 2. Supply a distinct model provisioning JSON per workspace when using the
    example's `model_config_file` fields; use the existing model configuration
    format. The manifest requires that field: a fresh OpenCode-enabled instance
@@ -191,3 +191,71 @@ run; it uses no production credentials and must not substitute for these gates:
   deployment host, timestamps, test users, redacted results and remaining risks.
   Do not mark deployment production-ready until these gates and the existing
   Atlas release checks are independently satisfied.
+
+## Optional enterprise sign-in (OIDC authorization code with PKCE)
+
+The isolated gateway can optionally offer an enterprise login button instead of
+requiring the user to copy an access token. This is disabled unless the gateway
+is configured explicitly. The IdP must issue signed JWT access tokens for the
+existing configured API audience, plus an ID token for the client ID, signed by
+one of the gateway's configured issuer keys. Opaque access tokens are not
+supported. Register the exact redirect URI `<public_origin>/auth/callback` and
+allow PKCE S256. The authorization and token endpoints must use the issuer's
+HTTPS origin; provision a confidential client secret separately.
+
+Create a private `deploy/isolated/login.json` (ignored by Git) by replacing every
+placeholder in this example:
+
+```json
+{
+  "client_id": "REPLACE_WITH_IDP_CLIENT_ID",
+  "client_secret_file": "/run/secrets/oidc-client-secret",
+  "authorization_endpoint": "https://identity.example.com/REPLACE/authorize",
+  "token_endpoint": "https://identity.example.com/REPLACE/token",
+  "scope": "openid offline_access",
+  "session_seconds": 28800
+}
+```
+
+Create `deploy/isolated/secrets/oidc-client-secret.txt` with the confidential
+client secret, owned/readable by the gateway's UID 10001 and inaccessible to
+other users. Never commit the real login JSON, secret, access token or refresh
+token. Add this private Compose override to the generated deployment:
+
+```yaml
+services:
+  gateway:
+    environment:
+      ATLAS_WORKSPACE_OIDC_LOGIN_CONFIG: /run/atlas/login.json
+    volumes:
+      - ./login.json:/run/atlas/login.json:ro
+    secrets:
+      - source: oidc_client_secret
+        target: oidc-client-secret
+secrets:
+  oidc_client_secret:
+    file: ./secrets/oidc-client-secret.txt
+```
+
+Start Compose with both the generated file and the private override. Gateway
+login sessions and refresh tokens live only in gateway process memory: a gateway
+restart requires sign-in again; multiple gateway processes cannot share or
+resume sessions. Use a single gateway instance for this mode until an external
+secure shared session store and distributed refresh fencing are implemented.
+When this SSO mode is enabled, API requests require the live HttpOnly gateway
+cookie and a per-tab session generation; a standalone bearer token is not an
+alternative. State-changing requests must be same-origin. Switching accounts or
+signing out seals other tabs, clears their local Atlas state and aborts their
+pending browser fetches; requests already forwarded to an external service
+cannot be assumed cancelled. Sign-out revokes the gateway session but leaves the
+now-invalid cookie in place so a delayed logout response cannot erase a newer
+login; the next login replaces it. Sign-out does not perform IdP-wide logout or
+revoke the IdP refresh token. Generated gateway commands disable Uvicorn access
+logs; reverse proxies and observability systems must also suppress query strings
+on `/auth/callback` so authorization codes never enter logs. Refresh support
+requires a refresh token permitted by the IdP; without one, the user signs in
+again after access token expiry. Configure per-site login throttling at ingress.
+
+The included mock-IdP tests cover the authorization-code flow, PKCE, nonce/state
+checks, user routing, cookie security, refresh and logout. They do not replace
+end-to-end validation against your real IdP, proxy, TLS configuration or browser.

@@ -63,6 +63,9 @@ class PrepareFill(Session):
     revision: str = Field(pattern=r'^[a-f0-9]{64}$')
     ref: int = Field(ge=1,le=160)
     text: str = Field(min_length=1,max_length=4000)
+class PreparePost(Session):
+    revision: str = Field(pattern=r'^[a-f0-9]{64}$')
+    ref: int = Field(ge=1,le=160)
 class FillDecision(StrictModel):
     digest: str = Field(pattern=r'^[a-f0-9]{64}$')
     approve: bool
@@ -78,6 +81,7 @@ DEFINITIONS = {
     'scroll_browser': (Scroll, True, '滚动真实浏览器视口并重新观察页面，适合长页面和动态加载的公开内容；不提交表单'),
     'browser_interact': (AgentAction, True, '在用户明确授权的当前站点选择非敏感控件、点击页面控件；文本输入由用户接管；先观察并使用真实 revision 与 ref。模型不得输入密码验证码；不可假称提交成功；异常不自动重试。网络仅 GET/HEAD，登录和正式提交须用户接管'),
     'prepare_browser_fill': (PrepareFill, True, '准备向真实页面非密码控件填入文本；先观察并提供页面revision和ref。此工具仅准备，不发送文本：用户须在浏览器面板查看具体内容和目标后逐次批准。密码、验证码和凭证必须由用户接管，不得写入。批准后才执行填写，不代表表单已提交。'),
+    'prepare_browser_post': (PreparePost, True, '准备点击真实页面按钮以捕获 POST 请求。先由用户确认点击目标，再展示捕获到的完整目标和正文，用户再次批准后才发送同一请求；不能猜测请求内容或声称业务成功。'),
     'capture_browser_screenshot': (Session, True, '把当前真实浏览器截图保存为PNG成果，返回wa_编号，供inspect_visual_artifact读取实际图像；用户接管期间禁止捕获'),
     'request_browser_takeover': (Proposal, True, '遇到登录、验证码、填写或提交表单、点击控件时，请求用户在浏览器面板接管。立即暂停模型对该会话的读取和操作，返回接管原因；用户主动交还后才继续'),
     'close_browser': (Session, True, '关闭本项目浏览器会话并清除该会话的内存登录状态'),
@@ -227,9 +231,9 @@ def _update_fill_trace(record,state):
     for index,step in enumerate(trace):
         observation=step.get('observation') if isinstance(step,dict) else None
         if isinstance(observation,dict) and observation.get('fill_id')==record['id']:
-            notice={'applied':'用户已批准并执行页面填写；仍需核对页面业务结果。',
-                    'rejected':'用户已拒绝页面填写，没有执行。',
-                    'unknown':'页面填写执行结果未知，必须先接管核对，未自动重试。'}[state]
+            notice={'applied':('用户已批准并发送页面请求；页面其他请求仍受阻，请接管核对业务系统后再交还。' if record.get('kind')=='post' else '用户已批准并执行页面填写；仍需核对页面业务结果。'),
+                    'rejected':('用户已拒绝发送请求；页面其他请求仍受阻，请接管核对后再交还。' if record.get('kind')=='post' else '用户已拒绝页面操作，没有执行待审批的请求。'),
+                    'unknown':'页面操作执行结果未知，必须先接管核对，未自动重试。'}[state]
             trace[index]=dict(step,observation=dict(observation,state=state,awaiting_user=False,
                                                    browser_fill_pending=False,notice=notice))
             changed=True
@@ -276,6 +280,111 @@ def _prepare_fill(turn,value,args):
         'expires_at':min(time.time()+900,value['expires_at']/1000,value['agent_grant_expires']),
         'secret_payload':seal(payload)},fill_id)
     return _fill_view(record)
+
+
+def _prepare_post(turn,value,args):
+    """Propose a click, then capture the actual request before authorizing it."""
+    import time
+    from .intents import require
+    require(turn,'prepare_browser_post')
+    if value.get('mode')!='agent' or value.get('state')!='open' or value.get('unknown_pending'):
+        raise ValueError('浏览器尚未处于可操作状态，请先核对并交还')
+    snapshot=unseal(value['snapshot_secret']);parsed=urlsplit(snapshot['url']);origin=f'{parsed.scheme}://{parsed.netloc}'
+    if value.get('agent_grant_origin')!=origin or value.get('agent_grant_expires',0)<time.time():
+        raise ValueError('请先授权 Agent 操作当前网站')
+    if snapshot['revision']!=args['revision']:raise ValueError('页面已变化，请先重新观察')
+    controls=snapshot.get('controls') or [];ref=args['ref']
+    if ref>len(controls):raise ValueError('页面控件不存在')
+    control=controls[ref-1];label=str(control.get('label') or '')[:180]
+    if (not control.get('visible') or control.get('disabled') or control.get('sensitive')
+        or control.get('tag') not in ('button','input','a') or _FILL_SECRET_LABEL.search(label)):
+        raise ValueError('此控件需要用户接管')
+    trace=get('turn',turn['id']).get('agent_trace') or []
+    if not trace or trace[-1].get('status')!='started':raise ValueError('页面操作缺少执行回执')
+    fill_id='bfill_'+hashlib.sha256((turn['id']+'\0'+trace[-1]['id']).encode()).hexdigest()[:48]
+    payload={'kind':'capture_post','project_id':turn['project_id'],'actor_id':current_actor(),'turn_id':turn['id'],
+             'session_id':value['id'],'revision':args['revision'],'ref':ref,'origin':origin,'label':label}
+    digest=_fill_digest(payload)
+    try:
+        old=_fill_owned(turn['project_id'],value['id'],fill_id)
+        if old['digest']!=digest:raise ValueError('同一操作不能更换目标')
+        return _fill_view(old)
+    except KeyError:pass
+    record=put('browser_fill',{'project_id':turn['project_id'],'actor_id':current_actor(),'turn_id':turn['id'],
+        'session_id':value['id'],'origin':origin,'ref':ref,'revision':args['revision'],'label':label,
+        'kind':'capture_post','digest':digest,'state':'pending','created_at':now(),
+        'expires_at':min(time.time()+300,value['expires_at']/1000,value['agent_grant_expires']),
+        'secret_payload':seal(payload)},fill_id)
+    return _fill_view(record)
+
+
+def _validate_captured_post(record,wrapped,metadata):
+    """Bind the exact runner-captured bytes and target to an encrypted approval."""
+    import math,time
+    from urllib.parse import parse_qsl
+    actual=wrapped.get('pending_post') if isinstance(wrapped,dict) else None
+    if not isinstance(actual,dict) or any(actual.get(k)!=metadata.get(k) for k in
+        ('id','digest','method','url','content_type','body_sha256','bytes','expires_at')):
+        raise ValueError('捕获的请求回执不一致，请接管核对')
+    body=actual.get('body');url=actual.get('url');ctype=actual.get('content_type')
+    if (actual.get('multiple_post') is True or actual.get('method')!='POST' or not isinstance(body,str) or not isinstance(url,str)
+        or not isinstance(ctype,str) or not re.fullmatch('[a-f0-9]{64}',actual.get('digest',''))
+        or type(actual.get('bytes')) is not int or actual['bytes']<0 or actual['bytes']>65536
+        or len(body.encode('utf-8'))!=actual['bytes'] or hashlib.sha256(body.encode('utf-8')).hexdigest()!=actual.get('body_sha256')
+        or type(actual.get('expires_at')) not in (int,float) or not math.isfinite(actual['expires_at']) or actual['expires_at']/1000<=time.time()):
+        raise ValueError('捕获的请求内容不可安全核对')
+    blocked=actual.get('blocked_requests',0)
+    if type(blocked) is not int or not 0<=blocked<=100000:
+        raise ValueError('捕获的页面请求状态无效')
+    import unicodedata
+    if any(unicodedata.category(char)=='Cf' for char in body):
+        raise ValueError('请求包含不可见控制字符，请用户接管')
+    descriptor={k:actual[k] for k in ('method','url','content_type','body_sha256','bytes')}
+    descriptor_json=json.dumps(descriptor,ensure_ascii=False,separators=(',',':'))
+    if hashlib.sha256(descriptor_json.encode('utf-8')).hexdigest()!=actual['digest']:
+        raise ValueError('请求目标或内容摘要不一致')
+    parsed=urlsplit(url)
+    if (parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password
+        or parsed.fragment or f'{parsed.scheme}://{parsed.netloc}'!=record['origin']):
+        raise ValueError('请求目标与授权站点不一致')
+    # Unknown encodings, files and authentication secrets must be handled by a
+    # person; hidden headers/cookies are never copied to the approval record.
+    base=ctype.split(';',1)[0].strip().lower()
+    if base not in ('application/json','application/x-www-form-urlencoded','text/plain',''):
+        raise ValueError('请求格式不能完整展示，请用户接管')
+    def fields(value):
+        if re.search(r'%(?![0-9a-fA-F]{2})',value):raise ValueError('请求参数编码无效，请用户接管')
+        try:values=parse_qsl(value,keep_blank_values=True,encoding='utf-8',errors='strict')
+        except (ValueError,UnicodeError):raise ValueError('请求参数编码不可安全核对') from None
+        keys=[key for key,_ in values]
+        if len(keys)!=len(set(keys)):raise ValueError('请求含重复参数，无法确认业务语义')
+        return values
+    query_fields=fields(parsed.query)
+    if any(_FILL_SECRET_LABEL.search(k) for k,_ in query_fields):
+        raise ValueError('请求地址包含认证敏感字段，请用户接管')
+    form_fields=fields(body) if base=='application/x-www-form-urlencoded' else []
+    if any(_FILL_SECRET_LABEL.search(k) for k,_ in form_fields):raise ValueError('请求包含认证敏感字段，请用户接管')
+    if base=='application/json':
+        def unique(pairs):
+            result={}
+            for key,value in pairs:
+                if key in result:raise ValueError('请求含重复字段，无法确认实际语义')
+                result[key]=value
+            return result
+        try:obj=json.loads(body,object_pairs_hook=unique)
+        except ValueError:raise ValueError('JSON 请求不能完整解析，请用户接管') from None
+        def sensitive(value):
+            if isinstance(value,dict):return any(_FILL_SECRET_LABEL.search(str(k)) or sensitive(v) for k,v in value.items())
+            if isinstance(value,list):return any(sensitive(v) for v in value)
+            return False
+        if sensitive(obj):raise ValueError('请求包含认证敏感字段，请用户接管')
+    parsed_fields=[{'name':k,'value':v} for k,v in form_fields] if base=='application/x-www-form-urlencoded' else None
+    return {'kind':'post','project_id':record['project_id'],'actor_id':record['actor_id'],
+            'turn_id':record['turn_id'],'session_id':record['session_id'],'origin':record['origin'],
+            'post_id':actual['id'],'runner_digest':actual['digest'],'method':'POST','url':url,
+            'content_type':ctype,'body':body,'parsed_fields':parsed_fields,
+            'parsed_query':[{'name':k,'value':v} for k,v in query_fields],'blocked_requests':blocked,
+            'expires_at':actual['expires_at']/1000}
 
 
 
@@ -360,7 +469,11 @@ def execute(turn, name, args):
         if name=='prepare_browser_fill':
             result=_prepare_fill(turn,value,args)
             return {'fill_id':result['id'],'state':result['state'],'awaiting_user':True,
-                    'browser_fill_pending':True,'notice':'填写内容已准备；请在浏览器面板核对目标和内容后决定是否批准。尚未填写或提交。'}
+                    'browser_fill_pending':True,'notice':'填写内容已准备；请在对话确认卡核对目标和内容，也可打开浏览器面板。尚未填写或提交。'}
+        if name=='prepare_browser_post':
+            result=_prepare_post(turn,value,args)
+            return {'fill_id':result['id'],'state':result['state'],'awaiting_user':True,
+                    'browser_fill_pending':True,'notice':'页面请求已准备：请先核对点击目标，随后核对捕获的实际请求内容。尚未发送。'}
         if name=='browser_interact':
             import time
             snap=unseal(value['snapshot_secret']);current=urlsplit(snap['url']);origin=f'{current.scheme}://{current.netloc}'
@@ -458,7 +571,11 @@ def install(app, auth):
         _scope(get('turn',record['turn_id']))
         payload=unseal(record['secret_payload'])
         patch('browser_fill',fill_id,revealed_at=now())
-        return _fill_view(record) | ({'text':payload['text']} if record.get('kind')=='fill' else {})
+        visible={}
+        if record.get('kind')=='fill':visible={'text':payload['text']}
+        elif record.get('kind')=='capture_post':visible={'notice':'确认点击此控件以捕获真实请求；点击本身也可能触发页面脚本。POST 尚未发送，捕获后还需再次确认。'}
+        elif record.get('kind')=='post':visible={k:payload[k] for k in ('method','url','content_type','body','parsed_fields','parsed_query','blocked_requests')}
+        return _fill_view(record) | visible
 
     @app.post('/api/projects/{pid}/browsers/{sid}/pending-actions/{fill_id}/decision', dependencies=[Depends(auth)])
     def decide_action(pid: str, sid: str, fill_id: str, request: FillDecision):
@@ -469,18 +586,31 @@ def install(app, auth):
             if record['state']=='applied':return {'state':'applied','notice':'此操作已有执行回执，未重复执行'}
             if record['state']!='pending':raise ValueError('此操作结果未确认或已取消，未重复执行')
             if not request.approve:
+                if record.get('kind')=='post':
+                    # Abort the held request before lifting its uncertainty. If
+                    # communication fails, never assume the request was sent
+                    # or safely cancelled; the user must inspect the site.
+                    payload=unseal(record['secret_payload'])
+                    patch('browser_fill',fill_id,state='unknown')
+                    result=_request(sid,'post-decision',{'workspace_id':value['workspace_id'],
+                        'post_id':payload['post_id'],'digest':payload['runner_digest'],'approve':False})
+                    if result.get('state')!='rejected':raise ValueError('请求取消状态未确认，请接管核对')
+                    patch('browser_session',sid,state='open',unknown_pending=False,unknown_pending_owner=None)
                 patch('browser_fill',fill_id,state='rejected',secret_payload=None,finished_at=now())
                 _update_fill_trace(record,'rejected')
-                return {'state':'rejected'}
+                return {'state':'rejected','notice':'请求已取消；如页面请求被冻结，请接管核对后再交还。'}
             if not record.get('revealed_at'):raise ValueError('请先查看具体操作内容再确认')
             if record['expires_at']<=time.time():raise ValueError('操作已过期，请重新准备')
             turn=get('turn',record['turn_id']);_scope(turn)
             from . import agent_gateway,agent_team
             agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn)
-            if value.get('mode')!='agent' or value.get('state')!='open' or value.get('unknown_pending'):
+            is_post=record.get('kind')=='post'
+            if value.get('mode')!='agent' or (not is_post and (value.get('state')!='open' or value.get('unknown_pending'))):
                 raise ValueError('浏览器尚未处于可操作状态，请先核对并交还')
+            if is_post and (not value.get('unknown_pending') or value.get('unknown_pending_owner')!='post:'+fill_id):
+                raise ValueError('待审请求已变化，请重新核对')
             snapshot=unseal(value['snapshot_secret']);parsed=urlsplit(snapshot['url']);origin=f'{parsed.scheme}://{parsed.netloc}'
-            if (snapshot['revision']!=record['revision'] or origin!=record['origin']
+            if ((not is_post and snapshot['revision']!=record['revision']) or origin!=record['origin']
                 or value.get('agent_grant_origin')!=origin or value.get('agent_grant_expires',0)<time.time()):
                 raise ValueError('页面或站点授权已变化，请重新准备')
             payload=unseal(record['secret_payload'])
@@ -488,7 +618,36 @@ def install(app, auth):
             if actual!=record['digest']:raise ValueError('操作内容校验失败，未执行')
             body=_body(value)|{'action_id':hashlib.sha256(fill_id.encode()).hexdigest(),
                 'agent_authorized':True,'revision':record['revision'],'ref':record['ref']}
-            if record.get('kind')!='fill':raise ValueError('提交需要用户接管浏览器并核对完整业务数据')
+            if record.get('kind')=='capture_post':
+                patch('browser_fill',fill_id,state='unknown',approved_at=now())
+                patch('browser_session',sid,state='action_unknown',unknown_pending=True,unknown_pending_owner='post:'+fill_id)
+                result=_request(sid,'action',body|{'action':'capture_post','capture_confirmed':True})
+                if result.get('session_id')!=sid:raise ValueError('捕获回执与浏览器会话不一致')
+                post=result.get('pending_post')
+                if not isinstance(post,dict) or not re.fullmatch(r'[a-f0-9]{64}',post.get('id','')):
+                    _update_fill_trace(record,'unknown')
+                    raise ValueError('未捕获可核对的请求，请接管核对页面；未自动重试')
+                actual=_request(sid,'post-reveal',{'workspace_id':value['workspace_id'],'post_id':post['id'],'digest':post.get('digest')})
+                post_payload=_validate_captured_post(record,actual,post)
+                digest=_fill_digest(post_payload)
+                updated=dict(record,kind='post',digest=digest,state='pending',revealed_at=None,
+                             expires_at=min(record['expires_at'],post_payload['expires_at']),secret_payload=seal(post_payload))
+                put('browser_fill',updated,fill_id)
+                patch('browser_session',sid,state='awaiting_post',unknown_pending=True,unknown_pending_owner='post:'+fill_id)
+                return {'state':'pending','notice':'已捕获真实请求；请核对完整目标和内容，再决定是否发送。'}
+            if is_post:
+                patch('browser_fill',fill_id,state='unknown',approved_at=now())
+                _update_fill_trace(record,'unknown')
+                result=_request(sid,'post-decision',{'workspace_id':value['workspace_id'],
+                    'post_id':payload['post_id'],'digest':payload['runner_digest'],'approve':True})
+                if result.get('state')!='sent':raise ValueError('请求结果尚未确认，请接管核对，未自动重试')
+                fresh=_request(sid,'observe',_body(value));_save(value,fresh)
+                patch('browser_session',sid,state='open',unknown_pending=False,unknown_pending_owner=None)
+                patch('browser_fill',fill_id,state='applied',secret_payload=None,finished_at=now(),
+                      transport_status=result.get('transport_code'))
+                _update_fill_trace(record,'applied')
+                return {'state':'applied','notice':'请求已发送；HTTP 回执不代表业务成功。页面其他请求仍受阻，请接管核对后再交还。'}
+            if record.get('kind')!='fill':raise ValueError('页面操作类型不可用')
             body.update(action='fill',fill_confirmed=True,text=payload['text'])
             # Before contacting the browser, persist uncertainty. A timeout or
             # crash must never repeat a possibly effective page action.

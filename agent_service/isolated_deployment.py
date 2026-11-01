@@ -147,7 +147,7 @@ def render(manifest):
         gateway_workspaces.append({'id': wid, 'backend_url': 'http://' + backend + ':8000', 'subjects': sorted(workspace['subjects'])})
     services['gateway'] = {
         'build': {'context': '../..', 'dockerfile': 'Dockerfile.quickstart'},
-        'command': ['python', '-m', 'uvicorn', 'agent_service.workspace_gateway:app', '--host', '0.0.0.0', '--port', '8080', '--no-proxy-headers'],
+        'command': ['python', '-m', 'uvicorn', 'agent_service.workspace_gateway:app', '--host', '0.0.0.0', '--port', '8080', '--no-proxy-headers', '--no-access-log'],
         'user': '10001:10001', 'init': True, 'read_only': True,
         'environment': {'ATLAS_WORKSPACE_GATEWAY_CONFIG': '/run/atlas/gateway.json'},
         'volumes': [{'type': 'bind', 'source': './gateway.json', 'target': '/run/atlas/gateway.json', 'read_only': True, 'bind': {'create_host_path': False}}],
