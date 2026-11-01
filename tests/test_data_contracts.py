@@ -51,6 +51,15 @@ def test_exact_total_rejects_null_and_bad_values(db):
     db.execute('update business.business_objects set amount=NULL')
     assert not evaluate(db,{'version':1,'totals':{'amount':{'expected':'0'}}})['passed']
 
+def test_empty_total_is_not_zero_but_real_zero_total_can_pass(db):
+    db.execute('delete from business.business_objects')
+    contract={'version':1,'totals':{'amount':{'expected':'0'}}}
+    report=evaluate(db,contract)
+    assert report['rows']==0 and report['passed'] is False
+    assert next(c for c in report['checks'] if c['name']=='total:amount')['status']=='fail'
+    db.execute("insert into business.business_objects values (1,'CN','0.00')")
+    assert evaluate(db,contract)['passed'] is True
+
 @pytest.mark.parametrize('bounds',[{'expected':0.1},{'expected':'NaN'},{'expected':'1','tolerance':'-1'},{'expected':'1e4'},{'expected':'0.1234567890123'}])
 def test_exact_total_schema(bounds):
     with pytest.raises(ValueError):validate({'version':1,'totals':{'amount':bounds}})

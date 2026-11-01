@@ -149,7 +149,15 @@ def evaluate(recipe,table):
             raise ValueError('行数指标缺少明确的目标期间范围，请指定期间字段或核对所有数值列期间')
     if recipe.period_column:
         if recipe.period_column not in fields:raise ValueError('报告期间字段不存在')
+        # Unknown/malformed periods cannot be safely classified as belonging
+        # to some other month. Silently excluding them can understate the
+        # selected period while making an apparently complete report.
+        if any(not isinstance(r.get(recipe.period_column),str)
+               or not re.fullmatch(r'\d{4}-(?:0[1-9]|1[0-2])',r[recipe.period_column]) for r in rows):
+            raise ValueError('存在缺失或格式不明确的期间，无法确定是否属于报告范围，请先核对')
         rows=[r for r in rows if r[recipe.period_column]==recipe.period]
+    if any(any(key not in r or r[key] is None for key in recipe.filters) for r in rows):
+        raise ValueError('筛选字段存在缺失值，无法确定是否属于报告范围，请先核对')
     rows=[r for r in rows if all(r.get(k)==v for k,v in recipe.filters.items())]
     if not rows:raise ValueError('报告期间和筛选范围没有数据，未把缺失数据当作0')
 

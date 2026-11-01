@@ -78,6 +78,10 @@ def require_exact_numeric_evidence(report, contract=None, *, expected_rows=None)
     if (type(expected_rows) is not int or expected_rows < 0 or type(report.get('rows')) is not int
             or report['rows'] != expected_rows):
         raise ExactDataContractError(message)
+    # Older receipts coalesced an empty SUM to zero, so a passing empty-table
+    # total cannot be reused as evidence even when its old digest matches.
+    if expected_rows == 0 and any(name.startswith('total:') for name in expected):
+        raise ExactDataContractError(message)
     if not isinstance(contract, dict) or report.get('contract_sha256') != _contract_digest(contract):
         raise ExactDataContractError(message)
     if numeric_names != expected:
@@ -188,13 +192,13 @@ def _evaluate(connection, contract, *, verified_parquet=False):
         col=identifier(field)
         value='TRY_CAST('+col+' AS DECIMAL(38,12))'
         invalid=connection.execute('SELECT count(*) FROM '+table+' WHERE '+col+' IS NULL OR '+value+" IS NULL OR NOT regexp_full_match(trim(CAST("+col+" AS VARCHAR)), '"+_EXACT_AMOUNT+"')").fetchone()[0]
-        total=connection.execute('SELECT coalesce(sum('+value+'),0) FROM '+table).fetchone()[0]
+        total=connection.execute('SELECT sum('+value+') FROM '+table).fetchone()[0]
         expected=Decimal(bounds['expected']);tolerance=Decimal(bounds.get('tolerance','0'))
         # Decimal's default context is too small for 38-digit exact accounting.
         from decimal import localcontext
         with localcontext() as ctx:
             ctx.prec=80
-            passed=invalid==0 and abs(total-expected)<=tolerance
+            passed=invalid==0 and total is not None and abs(total-expected)<=tolerance
         check('total:'+field,passed,invalid if invalid else 0 if passed else 1)
     return {'version': 1, 'numeric_policy': 'exact_decimal_v1', 'contract_sha256': _contract_digest(contract), 'passed': all(r['status'] == 'pass' for r in results), 'rows': count, 'checks': results}
 

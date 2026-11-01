@@ -182,6 +182,28 @@ class Lookup(Stage):
     unmapped: Literal['error', 'null'] = 'error'
 
 
+class LookupKey(StrictModel):
+    left: str = Field(pattern=NAME)
+    right: str = Field(pattern=NAME)
+
+
+class LookupMulti(Stage):
+    """An explicit multi-column many-to-one lookup, never inferred keys."""
+    kind: Literal['lookup_multi']
+    input: str = Field(pattern=NAME)
+    right: str = Field(pattern=NAME)
+    keys: list[LookupKey] = Field(min_length=2, max_length=20,
+        description='Declared matching columns, e.g. legal entity, customer and reporting period. Business correctness requires review.')
+    outputs: dict[str, Column] = Field(min_length=1, max_length=100)
+    unmapped: Literal['error', 'null'] = 'error'
+
+    @model_validator(mode='after')
+    def unique_keys(self):
+        if len({k.left for k in self.keys})!=len(self.keys) or len({k.right for k in self.keys})!=len(self.keys):
+            raise ValueError('Composite lookup key fields cannot be repeated')
+        return self
+
+
 class UnionRows(Stage):
     kind: Literal['union_rows']
     inputs: list[str] = Field(min_length=2, max_length=10)
@@ -258,7 +280,7 @@ class Normalize(Stage):
     rules: list[Normalization] = Field(min_length=1, max_length=20)
 
 
-Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | UnionRows | Normalize | SQL,
+Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | LookupMulti | UnionRows | Normalize | SQL,
                       Field(discriminator='kind')]
 
 
@@ -300,7 +322,7 @@ class WorkflowPlan(StrictModel):
 def dependencies_for(stage: Stage) -> list[str]:
     if isinstance(stage, (UnionRows, SQL)):
         return stage.inputs
-    if isinstance(stage, Lookup):
+    if isinstance(stage, (Lookup, LookupMulti)):
         return [stage.input, stage.right]
     return [stage.input]
 
@@ -784,14 +806,17 @@ def _operate(stage, tables, budget, deadline):
         return _new_schema(schema, columns), result
     if isinstance(stage, Aggregate):
         return _aggregate(stage, source)
-    if isinstance(stage, Lookup):
+    if isinstance(stage, (Lookup, LookupMulti)):
         right = tables[stage.right]
         right_fields = _columns(right['schema'])
-        _require([stage.left_key], fields)
-        _require(list(dict.fromkeys([stage.right_key] + list(stage.outputs))), right_fields)
-        left_key, right_key = fields[stage.left_key], right_fields[stage.right_key]
-        if (left_key.data_type, left_key.unit, left_key.period, left_key.value_format) != (right_key.data_type, right_key.unit, right_key.period, right_key.value_format):
-            raise WorkflowError('SEMANTIC_MISMATCH', 'Lookup keys have incompatible types, units, or reporting periods')
+        keys=([(stage.left_key,stage.right_key)] if isinstance(stage,Lookup)
+              else [(pair.left,pair.right) for pair in stage.keys])
+        _require([left for left,_ in keys], fields)
+        _require(list(dict.fromkeys([right_name for _,right_name in keys] + list(stage.outputs))), right_fields)
+        for left_name,right_name in keys:
+            left_key, right_key = fields[left_name], right_fields[right_name]
+            if (left_key.data_type, left_key.unit, left_key.period, left_key.value_format) != (right_key.data_type, right_key.unit, right_key.period, right_key.value_format):
+                raise WorkflowError('SEMANTIC_MISMATCH', 'Lookup keys have incompatible types, units, or reporting periods')
         outputs = [value.name for value in stage.outputs.values()]
         if len(outputs) != len(set(outputs)) or set(outputs) & set(fields):
             raise WorkflowError('DUPLICATE_COLUMN', 'Lookup output names would overwrite columns')
@@ -801,13 +826,14 @@ def _operate(stage, tables, budget, deadline):
                 raise WorkflowError('SEMANTIC_MISMATCH', 'Lookup cannot silently change source type, unit, period, or additivity')
         index = {}
         for row in right['rows']:
-            key = row[stage.right_key]
-            if key is None or key in index:
+            key = tuple(row[right_name] for _,right_name in keys)
+            if any(value is None for value in key) or key in index:
                 raise WorkflowError('LOOKUP_CARDINALITY', 'Lookup right key must be non-null and unique; one-to-many mapping is ambiguous')
             index[key] = row
         result = []
         for row in rows:
-            match = index.get(row[stage.left_key])
+            key=tuple(row[left_name] for left_name,_ in keys)
+            match = None if any(value is None for value in key) else index.get(key)
             if match is None and stage.unmapped == 'error':
                 raise WorkflowError('UNMAPPED_VALUE', 'Lookup has unmatched left records')
             value = dict(row)
@@ -936,6 +962,8 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
         receipts.append(receipt)
         if isinstance(stage, Normalize):
             receipt['checks']['localized_parsing'] = 'explicit_policy; original_text_columns_retained; business_semantics_require_review'
+        if isinstance(stage, LookupMulti):
+            receipt['checks']['matching_keys'] = 'explicit_multi_column; business_semantics_require_review'
         if isinstance(stage, Filter):
             receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
         if on_stage is not None:
@@ -947,5 +975,5 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
     return {'version': 1, 'plan_sha256': digest(plan.model_dump()), 'input_sha256': input_hashes,
             'output': {**exported, 'row_count': len(output['rows']), 'sha256': result_hash},
             'stages': receipts, 'complete': True,
-            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize)) for stage in plan.stages),
+            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti)) for stage in plan.stages),
             'scope': 'explicit_semantic_tables; isolated_typed_operations; full_bounded_output; not_arbitrary_python'}

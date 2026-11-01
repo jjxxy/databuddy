@@ -126,6 +126,17 @@ def test_old_numeric_receipt_requires_exact_policy_and_matching_frozen_contract(
                                    {'version': 1, 'min_rows': 1})
 
 
+def test_old_empty_total_pass_receipt_cannot_be_reused():
+    contract={'version':1,'totals':{'amount':{'expected':'0'}}}
+    connection=numeric_table('DECIMAL(38,12)', [])
+    try:report=evaluate(connection,contract)
+    finally:connection.close()
+    # Reconstruct the prior buggy result, with a matching frozen contract.
+    old=dict(report,passed=True,checks=[dict(item,status='pass',failures=0) for item in report['checks']])
+    with pytest.raises(ValueError,match='重新运行'):
+        require_exact_numeric_evidence(old,contract,expected_rows=0)
+
+
 def _old_style_copy(run, *, remove_policy=True, receipt_rows=None):
     """Create a synthetic, internally hash-consistent pre-fix receipt."""
     old_id = uid()

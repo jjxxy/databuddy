@@ -76,3 +76,14 @@
 ## 持续扩展原则
 
 优先把一个高频场景做成真实可复用闭环，再推广其取数、规则、证据、交付和回归测试，不预先把所有行业科目或审批制度写死。新增系统时先确定官方 API 或可获授权的页面操作、读取与写入权限、失败/幂等及回执，再把专用适配器接入；没有实际连接或验收记录就标为待接入。业务规则、组织、模型、执行器或模板变更后，受影响场景重新验收。
+
+## 公开产品设计的参考与本项目边界
+
+| 参考资料 | 可借鉴的做法与当前边界 |
+| --- | --- |
+| [dbt 数据测试](https://docs.getdbt.com/docs/build/data-tests) | 将唯一性、非空、枚举和关系检查作为可重复运行的数据断言。业务使用复合键时，需对组合唯一性及空值分别核验；技术通过不能证明业务键选对。 |
+| [dbt 数据快照](https://docs.getdbt.com/best-practices/how-we-handle-cdc/2-choosing-incremental-or-snapshots) | 保存会变化的来源记录及有效历史；定期采集无法自动补回两次采集之间已经被覆盖的变化。本项目的复合键等值匹配不等于按有效日期匹配。 |
+| [Microsoft 财务合并与币种折算](https://learn.microsoft.com/en-us/dynamics365/finance/general-ledger/financial-consolidations-currency-translation) | 合并应按法人、科目及企业规则确定币种和汇率类型；本项目的币种标签不代表已经具备经审核的汇率换算或合并核算。 |
+| [Oracle 内部交易抵消](https://docs.oracle.com/en/cloud/saas/financial-consolidation-cloud/agfcc/intercompany_eliminations.html) | 内部抵消依赖合并范围、关联关系和适用会计规则，可能是部分抵消；关联匹配成功不代表完成抵消或过账。本项目尚不能据此宣称集团合并闭环已完成。 |
+
+这些产品的设计是参考，不是统一适用的企业会计政策。规则仍需由目标企业的财经、内控及系统负责人确认，并通过真实数据与环境验收。

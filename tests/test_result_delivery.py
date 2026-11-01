@@ -170,6 +170,18 @@ def test_missing_numeric_value_is_not_reconciled_as_zero(tmp_path):
     assert not (tmp_path/'null.xlsx').exists()
 
 
+def test_empty_excel_sum_control_is_not_zero_but_row_count_and_real_zero_are_valid(tmp_path):
+    with pytest.raises(DeliveryError,match='without input rows'):
+        export_xlsx([],SCHEMA,tmp_path/'empty-total.xlsx',
+                    controls=[{'kind':'sum','column':'amount','expected':'0'}])
+    assert not (tmp_path/'empty-total.xlsx').exists()
+    empty=export_xlsx([],SCHEMA,tmp_path/'empty-count.xlsx',controls=[{'kind':'row_count','expected':0}])
+    assert empty['row_count']==0 and empty['controls'][0]['passed']
+    zero=export_xlsx([{'office':'A','amount':Decimal('0')}],SCHEMA,tmp_path/'zero.xlsx',
+                     controls=[{'kind':'sum','column':'amount','expected':'0'}])
+    assert zero['controls'][0]['passed']
+
+
 def test_interrupted_handoff_has_no_success_manifest_or_partial_destination(tmp_path):
     def fail_after_one_row():
         yield {'office':'A','amount':Decimal(1)}

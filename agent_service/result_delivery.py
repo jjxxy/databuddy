@@ -516,6 +516,8 @@ def _checks(controls: Any, count: int, sums: dict[str, Decimal]) -> list[dict]:
         if kind == 'row_count':
             actual = Decimal(count)
         elif kind == 'sum' and check.get('column') in sums:
+            if count == 0:
+                raise DeliveryError('Cannot reconcile a sum without input rows')
             actual = sums[check['column']]
         else:
             raise DeliveryError('Unsupported or unknown numeric result control')

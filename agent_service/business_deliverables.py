@@ -396,16 +396,25 @@ def table_report_spec(context,config,inputs):
                 'merged_label_columns':'合并标签列','hidden_rows_policy':'隐藏行处理',
                 'subtotal_policy':'小计处理','percentage_columns':'百分比列','cell_range':'指定单元格范围',
                 'data_start_row':'指定数据起始行','data_end_row':'指定数据结束行','hidden_rows':'隐藏行处理',
-                'text_columns':'按文本读取的列','html_table':'网页表格序号','table_id':'网页表格标识'}
-        kinds={'workbook_table':'Excel 工作表','html_table':'网页表格','whole_source_table':'完整来源表'}
+                'text_columns':'按文本读取的列','html_table':'网页表格序号','table_id':'网页表格标识',
+                'records_path':'JSON 记录路径','selection_method':'记录选择方式','wrapper_context_fields':'记录之外的上下文字段',
+                'wrapper_context_status':'记录之外的上下文状态'}
+        kinds={'workbook_table':'Excel 工作表','html_table':'网页表格','whole_source_table':'完整来源表',
+               'json_records':'JSON 记录'}
+        methods={'explicit':'明确指定','inferred':'自动识别，需核对','root_array':'顶层数组','root_object':'顶层对象作为一条记录'}
         def describe(mapping):
             parts=[]
             for key,value in sorted(mapping.items()):
-                shown=kinds.get(value,value) if key=='kind' and isinstance(value,str) else value
+                shown=kinds.get(value,value) if key=='kind' and isinstance(value,str) else methods.get(value,value) if key=='selection_method' and isinstance(value,str) else '未记录，需回查原始资料' if key=='wrapper_context_status' and value=='not_recorded' else value
                 text=shown if isinstance(shown,str) else json.dumps(shown,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)
                 parts.append(field_labels.get(key,key)+'：'+text)
             return '；'.join(parts) or '无'
-        notes.append('实际读取选择：'+describe(basis['selection']))
+        selection=basis['selection']
+        if ref['name'].lower().endswith('.json') and selection.get('kind')=='whole_source_table':
+            selection_complete=False
+            notes.append('实际读取选择：旧版 JSON 记录路径未记录，请回查原始资料与运行记录。')
+        else:
+            notes.append('实际读取选择：'+describe(selection))
         notes.append('请求的读取配置（实际范围以读取选择为准）：'+describe(basis['options']))
         mapping=basis['column_map']
         notes.append('字段映射：'+('；'.join(str(key)+' → '+str(value) for key,value in sorted(mapping.items())) if mapping else '沿用原字段'))
@@ -447,4 +456,4 @@ def handlers():
             'html_report':Handler(render_html,deterministic=True,replay_safe=False,
                                   validate_config=validate_html_config,version=HTML_RENDERER),
             'table_report_spec':Handler(table_report_spec,deterministic=True,replay_safe=True,
-                                        validate_config=validate_table_report_config,version='table-report-v4')}
+                                        validate_config=validate_table_report_config,version='table-report-v5')}

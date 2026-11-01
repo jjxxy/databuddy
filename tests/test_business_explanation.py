@@ -19,6 +19,19 @@ client = TestClient(app)
 HEADERS = {'Authorization':'Bearer '+TOKEN}
 
 
+def test_multi_lookup_is_explained_as_combined_business_conditions():
+    from agent_service.business_explanation import _stage_description, _LABELS
+    stage={'kind':'lookup_multi','right':'mapping', 'keys':[{'left':'entity','right':'legal_entity'},
+            {'left':'period','right':'period'}], 'outputs':{'owner':{'name':'owner'}},'unmapped':'error'}
+    text=_stage_description(stage,{'entity':'法人','legal_entity':'法人编码','period':'会计期间','owner':'负责人'},
+                            {'mapping':'组织对照表'})
+    assert _LABELS['lookup_multi']=='按多项条件关联资料'
+    assert '同时满足' in text and '本表 法人 对照 组织对照表 的 法人编码' in text
+    assert '会计期间' in text and '无法匹配时停止' in text and '仍需业务核对' in text
+    stage['unmapped']='null'
+    assert '无法匹配时留空' in _stage_description(stage,{}, {})
+
+
 def create_report():
     pid, rid = real_result()
     definition = recipe()

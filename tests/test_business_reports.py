@@ -104,6 +104,24 @@ def test_period_column_requires_explicit_month_values_and_filters_all_complete_r
     assert result['assertions'][0]['value']=='9007199254740.000001'
 
 
+def test_unknown_period_or_filter_value_cannot_disappear_from_business_brief():
+    current=table()
+    current['schema']['columns'].append({'name':'month','data_type':'text','meaning':'会计期间'})
+    for column in current['schema']['columns'][1:3]:column['period']=''
+    current['rows'][0]['month']='2026-09';current['rows'][1]['month']=None
+    r=recipe(current['schema']);r['period_column']='month'
+    with pytest.raises(ValueError,match='期间.*无法确定'):reports.evaluate(r,current)
+    current['rows'][1]['month']='09/2026'
+    with pytest.raises(ValueError,match='期间.*无法确定'):reports.evaluate(r,current)
+    current['rows'][1]['month']='2026-09';current['rows'][1]['office']=None
+    # Keep the missing filter field out of grain so the filter's own
+    # completeness check, rather than the grain guard, is exercised.
+    current['schema']['grain']=[];current['rows']=current['rows'][:1];current['total']=1
+    current['rows'][0]['office']=None
+    r=recipe(current['schema']);r['period_column']='month';r['filters']={'office':'东区'}
+    with pytest.raises(ValueError,match='筛选字段存在缺失值'):reports.evaluate(r,current)
+
+
 def test_one_row_value_never_takes_first_row_implicitly():
     r=recipe();r['metrics']=[{'id':'one','label':'单值','kind':'value','column':'actual'}]
     with pytest.raises(ValueError,match='恰好一行'):reports.evaluate(r,table())

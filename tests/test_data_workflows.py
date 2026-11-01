@@ -170,6 +170,44 @@ def test_lookup_unmapped_values_require_explicit_policy_and_nullable_output():
     with pytest.raises(WorkflowError,match='missing'):execute(plan,inputs)
 
 
+def test_multi_field_lookup_keeps_entities_and_periods_distinct():
+    keys=[{'left':'company','right':'legal_entity'}, {'left':'customer','right':'customer'},
+          {'left':'month','right':'month'}, {'left':'currency','right':'currency'}]
+    plan={'name':'Legal entity and period crosswalk','inputs':{
+        'sales':schema([col('id'),col('company'),col('customer'),col('month'),col('currency')],['id']),
+        'mapping':schema([col('id'),col('legal_entity'),col('customer'),col('month'),col('currency'),col('owner')],['id'])},
+        'stages':[{'kind':'lookup_multi','id':'mapped','description':'Map within entity and period',
+                   'input':'sales','right':'mapping','keys':keys,'outputs':{'owner':col('owner')}}],
+        'output':'mapped'}
+    inputs={'sales':[{'id':'1','company':'A','customer':'C1','month':'2026-01','currency':'CNY'},
+                     {'id':'2','company':'B','customer':'C1','month':'2026-01','currency':'CNY'},
+                     {'id':'3','company':'A','customer':'C1','month':'2026-02','currency':'CNY'},
+                     {'id':'4','company':'A','customer':'C1','month':'2026-01','currency':'USD'}],
+            'mapping':[{'id':'1','legal_entity':'A','customer':'C1','month':'2026-01','currency':'CNY','owner':'North'},
+                       {'id':'2','legal_entity':'B','customer':'C1','month':'2026-01','currency':'CNY','owner':'South'},
+                       {'id':'3','legal_entity':'A','customer':'C1','month':'2026-02','currency':'CNY','owner':'West'},
+                       {'id':'4','legal_entity':'A','customer':'C1','month':'2026-01','currency':'USD','owner':'US'}]}
+    result=execute(plan,inputs)
+    assert [(row['id'],row['owner']) for row in result['output']['rows']]==[
+        ('1','North'),('2','South'),('3','West'),('4','US')]
+    assert result['requires_semantic_review'] is True
+    assert result['stages'][0]['checks']['matching_keys']=='explicit_multi_column; business_semantics_require_review'
+    assert result['stages'][0]['lineage']['keys']==keys
+    duplicate=copy.deepcopy(inputs)
+    duplicate['mapping'].append(dict(duplicate['mapping'][0],id='5',owner='Other'))
+    with pytest.raises(WorkflowError,match='one-to-many'):execute(plan,duplicate)
+    missing=copy.deepcopy(inputs);missing['sales'][0]['company']='C'
+    with pytest.raises(WorkflowError,match='unmatched'):execute(plan,missing)
+    missing['sales'][0]['company']=None
+    with pytest.raises(WorkflowError,match='unmatched'):execute(plan,missing)
+    null_right=copy.deepcopy(inputs);null_right['mapping'][0]['month']=None
+    with pytest.raises(WorkflowError,match='non-null'):execute(plan,null_right)
+    mismatched=copy.deepcopy(plan);mismatched['inputs']['mapping']['columns'][3]['period']='2026-01'
+    with pytest.raises(WorkflowError,match='reporting periods'):execute(mismatched,inputs)
+    repeated=copy.deepcopy(plan);repeated['stages'][0]['keys'].append(keys[0])
+    with pytest.raises(ValidationError,match='cannot be repeated'):execute(repeated,inputs)
+
+
 def test_reclassification_requires_complete_mapping_and_preserves_source():
     plan,inputs=base();plan['stages']=[{'kind':'reclassify','id':'types','description':'Reclassify status',
         'input':'orders','column':'status','output':col('category'),'mapping':{'paid':'recognized'}}];plan['output']='types'

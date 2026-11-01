@@ -73,6 +73,16 @@ def _read_basis(basis,expected_hash=None,source_hash=None):
     elif kind=='html_table':
         if not isinstance(selection.get('table_id'),str) or not selection['table_id']:
             raise ValueError('网页表格读取依据无效')
+    elif kind=='json_records':
+        path=selection.get('records_path');method=selection.get('selection_method')
+        if (not isinstance(path,str) or method not in ('explicit','inferred','root_array','root_object')
+                or (method in ('explicit','inferred')) != bool(path)):
+            raise ValueError('JSON 记录读取路径无效')
+        context=selection.get('wrapper_context_fields',[])
+        if not isinstance(context,list) or any(not isinstance(field,str) for field in context):
+            raise ValueError('JSON 记录上下文无效')
+        if selection.get('wrapper_context_status') not in (None,'not_recorded'):
+            raise ValueError('JSON 记录上下文状态无效')
     elif kind!='whole_source_table':raise ValueError('资料读取类型无效')
     return checksum
 
@@ -616,6 +626,28 @@ def source_table(context, config, inputs):
         selection={'kind':'workbook_table',**provenance['selection']}
     elif source['name'].lower().endswith(('.html','.htm')):
         selection={'kind':'html_table','table_id':evidence.get('table_id')}
+    elif source['name'].lower().endswith('.json'):
+        path=evidence.get('records_path')
+        if path:
+            method='inferred' if evidence.get('records_path_inferred') is True else 'explicit'
+        else:
+            method='root_object' if evidence.get('root_object_record') is True else 'root_array'
+        selection={'kind':'json_records','records_path':path or '', 'selection_method':method}
+        if method=='inferred':
+            # A conventional key is only a parser proposal, even if the
+            # wrapper has no sibling metadata. The user still needs to verify
+            # that this array is the intended business dataset.
+            evidence['requires_source_review']=True
+            evidence['requires_semantic_review']=True
+        if 'wrapper_context_fields' in evidence:
+            selection['wrapper_context_fields']=evidence['wrapper_context_fields']
+        elif method=='explicit':
+            # The legacy explicit-path parser records the selected path but
+            # does not inspect sibling metadata (period, currency, etc.).
+            # Absence of that evidence must not be presented as no context.
+            selection['wrapper_context_status']='not_recorded'
+            evidence['requires_source_review']=True
+            evidence['requires_semantic_review']=True
     else:selection={'kind':'whole_source_table'}
     read_basis={'version':1,'options':cfg.options.model_dump(mode='json',exclude_none=True),
                 'column_map':dict(cfg.column_map),'selection':selection}
@@ -683,6 +715,13 @@ def table_workflow(context, config, inputs):
             elif basis is None or not isinstance(basis_hash,str):
                 raise ValueError('资料读取依据摘要不完整')
             else:_read_basis(basis,basis_hash,pin.content_hash)
+            # Older JSON results claimed a whole source table even when the
+            # parser had selected a nested array. Preserve the old receipt but
+            # never certify its record-path lineage as complete.
+            if (str(source.get('name') or '').lower().endswith('.json') and isinstance(basis,dict)
+                    and isinstance(basis.get('selection'),dict)
+                    and basis['selection'].get('kind')=='whole_source_table'):
+                selection_lineage_complete=False
             key=(pin.source_id,pin.revision,pin.content_hash,basis_hash)
             if key not in seen_sources:
                 if len(source_refs)>=200:raise ValueError('资料来源数量超过处理上限')
