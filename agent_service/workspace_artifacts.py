@@ -220,6 +220,16 @@ def catalog(pid,kind='',offset=0,limit=40):
         add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),private={'office_id':value['id']})
     from .actor_context import current_actor
     from .workspace_lifecycle import visible_turn
+    for value in all_items('business_flow_artifact'):
+        if value.get('project_id')!=pid or value.get('actor_id')!=current_actor() or _gone(value):continue
+        try:
+            if not visible_turn(get('turn',value['turn_id'])):continue
+            from .business_deliverables import artifact as flow_artifact
+            flow_artifact(pid,value['id'])
+        except (KeyError,ValueError,OSError):continue
+        add('work',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),
+            status='needs_review',origin=value['turn_id'],private={'flow_artifact_id':value['id']},
+            version=value['renderer_version'],semantic_status='not_confirmed',metric_status='not_confirmed')
     for value in all_items('media_artifact'):
         if value.get('project_id')!=pid or value.get('actor_id')!=current_actor() or _gone(value):continue
         try:
@@ -323,8 +333,12 @@ def _record(pid,aid):
         _,value=media_artifact(pid,private['media_id'])
         if value['sha256']!=record['sha256']:raise ArtifactError('媒体版本不匹配')
     if kind=='work':
-        from .work_runtime import artifact
-        _,value=artifact(pid,private['work_artifact_id'])
+        if 'flow_artifact_id' in private:
+            from .business_deliverables import artifact
+            _,value=artifact(pid,private['flow_artifact_id'])
+        else:
+            from .work_runtime import artifact
+            _,value=artifact(pid,private['work_artifact_id'])
         if value['sha256']!=record['sha256']:raise ArtifactError('成果摘要与执行版本不匹配')
     if kind=='source':
         value=get('source',private['source_id'])
@@ -404,8 +418,13 @@ def file(pid,aid,format=None):
         from .media_tools import artifact as media_artifact
         path,metadata=media_artifact(pid,private['media_id']);expected=metadata['sha256']
     elif kind=='work':
-        from .work_runtime import artifact
-        path,metadata=artifact(pid,private['work_artifact_id']);expected=metadata['sha256']
+        if 'flow_artifact_id' in private:
+            from .business_deliverables import artifact
+            path,metadata=artifact(pid,private['flow_artifact_id'])
+        else:
+            from .work_runtime import artifact
+            path,metadata=artifact(pid,private['work_artifact_id'])
+        expected=metadata['sha256']
     elif kind=='code':path=DATA/private['snapshot']
     elif kind=='office':
         from .office import artifact
@@ -501,6 +520,14 @@ def _chart(rows,columns,x,y,maximum=100):
 def _content_preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,chart_y=None):
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100 or type(text_limit) is not int or not 1<=text_limit<=20000:raise ArtifactError('成果预览分页无效')
     record=_record(pid,aid);kind=record['kind'];private=record['private']
+    if kind=='work' and private.get('flow_artifact_id') and record.get('format')=='html':
+        from .business_deliverables import preview_blocks
+        blocks=preview_blocks(pid,private['flow_artifact_id']);page=blocks[offset:offset+limit];end=offset+len(page)
+        return {'artifact':_verified(record),'render':'document','blocks':page,'offset':offset,'limit':limit,'total':len(blocks),
+                'next_offset':end if end<len(blocks) else None,'unit':'blocks','verified':True,
+                'warnings':['业务口径及财经数字尚需核对'],
+                'fidelity_note':'根据已保存并校验的报告规格显示文本，不执行网页代码；版式请下载原件核对。',
+                'layout_fidelity':False}
     if kind=='result':
         from .project_data import read_result,result_folder
         page=read_result(pid,private['run_id'],offset,limit)

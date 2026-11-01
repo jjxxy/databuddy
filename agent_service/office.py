@@ -182,7 +182,7 @@ def _manifest_text(record,aid):
     return value
 
 
-def render(turn,spec_path,name):
+def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
     from .intents import require
     from .result_delivery import durable_cached_artifact
     from .locks import assert_owned
@@ -193,7 +193,16 @@ def render(turn,spec_path,name):
         raise ValueError('交付文件名须为不含路径和扩展名的基名，仅支持文字、数字、空格、横线，最多91字符') from None
     pid=turn['project_id']
     with workspace.lock(pid):
-        text=workspace.read_file(pid,spec_path);spec=_load_spec(text)
+        # Business flows can provide a frozen JSON value in memory. Its actual
+        # data must not be written into the project Git workspace. The caller
+        # is responsible for persisting the approved input in protected run
+        # storage, and must provide an independently computed expected hash.
+        if frozen_spec is not None and (not isinstance(frozen_spec,str) or expected_sha256 is None):
+            raise ValueError('固定成果规格缺少可验证的输入摘要')
+        text=workspace.read_file(pid,spec_path) if frozen_spec is None else frozen_spec
+        if expected_sha256 is not None and (not isinstance(expected_sha256,str) or not re.fullmatch(r'[a-f0-9]{64}',expected_sha256) or hashlib.sha256(text.encode()).hexdigest()!=expected_sha256):
+            raise ValueError('交付规格与已冻结输入不一致，未生成成果')
+        spec=_load_spec(text)
         ext={'document':'docx','spreadsheet':'xlsx','presentation':'pptx'}[spec.kind]
         identity={'project_id':pid,'source_spec':spec_path,'source_sha256':hashlib.sha256(text.encode()).hexdigest(),
                   'renderer':RENDERER,'name':name+'.'+ext,'precision_policy':'text_exact','precision_notes_format':PRECISION_NOTES_FORMAT}

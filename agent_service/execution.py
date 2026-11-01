@@ -106,6 +106,10 @@ def execute(run):
     runtime_env=dict(os.environ,RUN_DIR=str(folder),PYTHONPATH=str(Path(__file__).resolve().parent.parent))
     try:
         checkpoint(run)
+        if run['kind']=='business_flow':
+            from .business_flows import execute_job as execute_business_flow
+            execute_business_flow(run,folder)
+            return
         if run['kind']=='report_fetch':
             from .project_reports import execute_job as fetch_report_job
             fetch_report_job(run,folder)
@@ -262,4 +266,6 @@ def queue_due():
             _queue_due()
             from .project_data import queue_due as queue_workflows
             queue_workflows()
+            from .business_flows import queue_due as queue_business_flows
+            queue_business_flows()
     except BlockingIOError:return

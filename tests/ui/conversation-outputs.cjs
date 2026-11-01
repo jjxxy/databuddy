@@ -14,7 +14,7 @@ const reply=value=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSO
    assert.equal(options.headers.Authorization,'Bearer fixture-owner');
    if(route==='/api/models')return reply({models:[]});
    if(route==='/api/projects')return reply([{id:'p',name:'项目一'},{id:'p2',name:'项目二'}]);
-   if(route.endsWith('/conversation'))return reply({project:{id:route.includes('/p2/')?'p2':'p',name:'项目'},session_id:'c',sessions:[{id:'c',name:'对话'}],sources:[],applications:[],mode:'rules',turns:route.includes('/p2/')?[]:[{id:'t',text:'生成文件',state:'done',answer:'成果已保存',interaction_mode:'work',created_at:'2026-10-29',outputs:[...items,outside]}]});
+   if(route.endsWith('/conversation'))return reply({project:{id:route.includes('/p2/')?'p2':'p',name:'项目'},session_id:'c',sessions:[{id:'c',name:'对话'}],sources:[],applications:[],mode:'rules',turns:route.includes('/p2/')?[]:[{id:'t',text:'生成文件',state:'done',answer:'成果已保存',interaction_mode:'work',created_at:'2026-10-29',business_flow:{id:'bf_'+'a'.repeat(40),name:'收款流程<img>'},outputs:[...items,outside]}]});
    if(route.endsWith('/preview')){const item=items.find(value=>value.preview_url===route);if(slow)await new Promise(resolve=>release=resolve);return reply({artifact:item,render:'text',text:'此为真实文件的预览内容'})}
    if(route.endsWith('/download'))return {ok:true,status:200,blob:async()=>new w.Blob(['file bytes'])};
    throw Error('Unexpected route '+route);
@@ -22,6 +22,7 @@ const reply=value=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSO
   w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testResultCard=card;');w.eval(fs.readFileSync(path.join(root,'workspace-shell.js'),'utf8'));
   await wait(()=>d.querySelectorAll('#messages .conversation-artifact').length===4);
   const resultCard=d.createElement('div');resultCard.innerHTML=w.testResultCard({title:'收入',candidate:true,fields:[],summary:[],rows:[],records:0,run_id:'r1',application:{id:'a1',name:'收入应用',url:'/data-app.html?project=p&app=a1'}});const planLink=resultCard.querySelector('.application-inline a');assert(planLink.textContent.includes('查看处理方案与预览'));assert.equal(new URL(planLink.href).searchParams.get('run'),'r1');
+  const flow=d.querySelector('.business-flow-card');assert(flow&&flow.textContent.includes('收款流程<img>'));assert.equal(flow.querySelectorAll('img').length,0);const flowUrl=new URL(flow.querySelector('a').href);assert.equal(flowUrl.pathname,'/business-flows.html');assert.equal(flowUrl.searchParams.get('project'),'p');assert.equal(flowUrl.searchParams.get('flow'),'bf_'+'a'.repeat(40));
   assert(d.querySelector('[data-filename="经营报告.md"]').dataset.download.endsWith('?format=md'),'selected download bytes match the displayed extension');
   assert.equal(d.querySelectorAll('.conversation-artifact img').length,0);assert(d.querySelector('.conversation-artifact').textContent.includes('<img>'));
   assert.equal(requests.filter(url=>url.endsWith('/artifacts')).length,0,'inline delivery does not require opening the catalog');

@@ -27,7 +27,7 @@ ALIASES={'remember_memory':'remember','forget_memory':'forget','export_local_wor
  'schedule_data_workflow':'schedule','propose_semantic_alignment':'write','propose_value_mapping':'write',
  'propose_semantic_catalog':'write','propose_catalog_alignment':'analyze',
  'acquire_report_data':'refresh','propose_extracted_data_facts':'write','extract_indented_source':'analyze',
- 'render_business_report':'write'}
+ 'render_business_report':'write', 'create_business_flow':'write', 'update_business_flow':'write', 'prepare_business_flow_skill':'write'}
 
 # A business request need not use an internal tool's storage/execution verb.
 # Keep these synonyms scoped to the actual operation: refusing a download must

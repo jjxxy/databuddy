@@ -158,6 +158,8 @@ TOOLS={
 
 from .data_tools import DEFINITIONS as DATA_TOOLS
 TOOLS.update(DATA_TOOLS)
+from .business_flow_tools import DEFINITIONS as BUSINESS_FLOW_TOOLS
+TOOLS.update(BUSINESS_FLOW_TOOLS)
 from .memory_service import MEMORY_TOOLS
 from .context_compaction import CONTEXT_TOOLS
 from .extension_tools import DEFINITIONS as EXTENSION_TOOLS
@@ -653,6 +655,9 @@ def execute(turn,step):
     if name in DATA_TOOLS:
         from .data_tools import execute as execute_data_tool
         return execute_data_tool(turn,name,args)
+    if name in BUSINESS_FLOW_TOOLS:
+        from .business_flow_tools import execute as execute_business_flow_tool
+        return execute_business_flow_tool(turn,name,args)
     if name=='data_asset_catalog':
         from .data_governance import catalog
         return catalog(pid,**args)

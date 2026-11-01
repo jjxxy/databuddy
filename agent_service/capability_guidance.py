@@ -46,6 +46,10 @@ GUIDANCE={
 def context_for(turn,names):
     active=set(names)
     modules={key:GUIDANCE[key] for key in GUIDANCE if active & TRIGGERS[key]}
+    import re
+    request=turn.get('work_request') or turn.get('text') or ''
+    if isinstance(request,str) and re.search(r'业务流程|业务应用|可复用流程|自动化|定时.*(?:报告|PPT)|自动.*(?:报告|PPT)|工作流',request,re.I):
+        modules['business_flow']='用户需要可复用业务流程时，使用 discover_tools 查找 business_flow_guide、create_business_flow、update_business_flow、list_business_flows、inspect_business_flow；来源、模型和 Skill 的固定版本分别使用 prepare_business_flow_source、prepare_business_flow_model、prepare_business_flow_skill。修改现有流程须先 inspect 获取版本摘要，只编排实际获准支持的步骤；来源版本和业务口径必须有依据。创建或修改仅是草稿，不代表已运行或发布。正式发布由用户在页面明确操作。'
     if turn.get('knowledge_refs') or turn.get('knowledge_read_refs'):modules['company']=GUIDANCE['company']
     from .finance_agent_guidance import guidance_for_turn
     # Accuracy constraints follow the actual data task through its writing

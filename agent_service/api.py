@@ -892,6 +892,8 @@ from .runtime_config_api import install as install_runtime_config
 install_runtime_config(app,auth,operator_auth)
 from .business_proposals import install as install_business_proposals
 install_business_proposals(app,auth)
+from .business_flows import install as install_business_flows
+install_business_flows(app,auth)
 
 @app.get('/api/desktop/runtime',dependencies=[Depends(auth)])
 def desktop_runtime_status():

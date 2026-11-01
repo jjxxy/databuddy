@@ -408,6 +408,13 @@ def public_turn(turn):
     value={k:v for k,v in turn.items() if k in {'id','project_id','text','source_id','state','progress','created_at','finished_at','answer','result','download','plan','mode','session_id','interaction_mode','work_version','agent_trace','application_id','resume_available','outcome','resumed_from','resume_turn_id','suggestions','task_contract','verification','model_usage','knowledge_usage','context_metrics','task_plan','execution_node','model_id','model_name','web_citations'}}
     value['source_ids']=attachment_ids(turn)
     value['attached_sources']=attachment_details(turn)
+    flow_ref=turn.get('business_flow')
+    if isinstance(flow_ref,dict) and isinstance(flow_ref.get('id'),str):
+        from .actor_context import current_actor
+        try:flow=get('business_flow',flow_ref['id'])
+        except KeyError:flow=None
+        if flow and flow.get('project_id')==turn.get('project_id') and flow.get('actor_id')==current_actor() and not flow.get('archived'):
+            value['business_flow']={'id':flow['id'],'name':flow.get('name','业务流程')}
     if turn.get('business_proposal_id'):
         from .actor_context import current_actor
         from .business_proposals import public as public_proposal

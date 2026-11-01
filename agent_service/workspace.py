@@ -22,6 +22,7 @@ from .process_control import executable
 PROJECT_KEYS=('name','source_id','pipeline_id')
 PIPE_KEYS=('name','spec','commit','release_mode','runtime','source_id','source_ids','candidate_run','published_run','active_commit','active_runtime','status','cron','data_as_of','last_success','archived','strategy','schedule_error','application_spec','application_customized','pending_schedule','knowledge_basis','business_plan_confirmation_required')
 SOURCE_KEYS=('name','kind','secret_config','revision','revision_id','content_hash','bytes','status','profile','proposed_spec','planner_mode','archived','error','error_code','warning','schema_diff','suggestions','goal')
+FLOW_KEYS=('name','actor_id','turn_id','published_turn_id','path','candidate_digest','candidate_run','published_digest','published_commit','published_run','pending_refresh_run','created_at','updated_at','archived','cron','next_due','schedule_inputs','schedule_source_bindings','refresh_error')
 
 def folder(pid):
     get('project',pid)
@@ -88,7 +89,8 @@ def git_content(repo,ref,name):
 def state(pid):
     p=get('project',pid)
     return {'project':{k:p.get(k) for k in PROJECT_KEYS},'sources':{s['id']:{k:s[k] for k in SOURCE_KEYS if k in s} for s in all_items('source') if s.get('project_id')==pid},
-            'pipelines':{p['id']:{k:p[k] for k in PIPE_KEYS if k in p} for p in all_items('pipeline') if p.get('project_id')==pid}}
+            'pipelines':{p['id']:{k:p[k] for k in PIPE_KEYS if k in p} for p in all_items('pipeline') if p.get('project_id')==pid},
+            'business_flows':{f['id']:{k:f[k] for k in FLOW_KEYS if k in f} for f in all_items('business_flow') if f.get('project_id')==pid}}
 
 def lock(pid):return FileLock(str(DATA/('workspace-'+pid+'.lock')),timeout=10)
 
@@ -100,7 +102,8 @@ def _init(pid):
 
 def _mirror(repo,snapshot):
     # Git contains reproducible code and nonsecret references only.
-    public={'project':snapshot['project'],'sources':{sid:{k:v.get(k) for k in ('name','kind','revision','revision_id','content_hash','archived')} for sid,v in snapshot['sources'].items()},'pipelines':snapshot['pipelines']}
+    public={'project':snapshot['project'],'sources':{sid:{k:v.get(k) for k in ('name','kind','revision','revision_id','content_hash','archived')} for sid,v in snapshot['sources'].items()},'pipelines':snapshot['pipelines'],
+            'business_flows':{fid:{k:v.get(k) for k in ('name','path','turn_id','published_turn_id','candidate_digest','candidate_run','published_digest','published_commit','published_run','cron','schedule_source_bindings','archived')} for fid,v in snapshot.get('business_flows',{}).items()}}
     for sid,source in snapshot['sources'].items():
         public['sources'][sid]['status']=source.get('status')
         public['sources'][sid]['schema_hash']=hashlib.sha256(json.dumps((source.get('profile') or {}).get('fields',[]),sort_keys=True).encode()).hexdigest()
@@ -165,9 +168,9 @@ def restore(pid,commit,turn_id):
     with lock(pid),FileLock(str(DATA/'scheduler.lock'),timeout=10):
         # All objects and code are verified before altering any current pointer.
         snapshot=unseal(target['secret_state'])
-        current_ids={p['id'] for p in all_items('pipeline') if p.get('project_id')==pid}|{s['id'] for s in all_items('source') if s.get('project_id')==pid}
+        current_ids={p['id'] for p in all_items('pipeline') if p.get('project_id')==pid}|{s['id'] for s in all_items('source') if s.get('project_id')==pid}|{f['id'] for f in all_items('business_flow') if f.get('project_id')==pid}
         with transaction() as c:
-            active=c.execute(select(jobs.c.id).where(jobs.c.target.in_(list(current_ids|set(snapshot['pipelines'])|set(snapshot['sources']))),jobs.c.status.in_(ACTIVE))).first()
+            active=c.execute(select(jobs.c.id).where(jobs.c.target.in_(list(current_ids|set(snapshot['pipelines'])|set(snapshot['sources'])|set(snapshot.get('business_flows',{})))),jobs.c.status.in_(ACTIVE))).first()
             if active:raise ValueError('项目还有正在处理的任务，先停止或等它完成后再回退')
         for sid,source in snapshot['sources'].items():
             current=get('source',sid)
@@ -195,7 +198,7 @@ def _apply_restore(journal):
     # file restoration/commit; new project turns are held until it completes.
     with transaction() as c:
         project=get('project',pid)
-        rows=c.execute(select(items).where(items.c.kind.in_(('project','source','pipeline')))).mappings().all()
+        rows=c.execute(select(items).where(items.c.kind.in_(('project','source','pipeline','business_flow')))).mappings().all()
         for row in rows:
             value=json.loads(row['body']);kind=row['kind'];item_id=row['id']
             if kind=='project' and item_id==pid:value.update(snapshot['project'],pending_connection=None,updated_at=now())
@@ -212,6 +215,16 @@ def _apply_restore(journal):
                         else:value.pop(key,None)
                     value['next_due']=croniter(value['cron'],datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat() if value.get('cron') else None
                 else:value.update(archived=True,cron=None,next_due=None)
+            elif kind=='business_flow' and value.get('project_id')==pid:
+                old=snapshot.get('business_flows',{}).get(item_id)
+                if old is None:value.update(archived=True)
+                else:
+                    for key in FLOW_KEYS:
+                        if key in old:value[key]=old[key]
+                        else:value.pop(key,None)
+                    # The restored project commit itself contains the exact
+                    # candidate document; no circular commit stored in Git.
+                    value['candidate_commit']=target['commit']
             else:continue
             c.execute(update(items).where(items.c.id==item_id).values(body=json.dumps(value,ensure_ascii=False)))
     repo=_init(pid)

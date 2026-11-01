@@ -233,7 +233,11 @@ def test_published_pipeline_true_parquet_pages_full_chart_and_exact_xlsx(api,mon
     enqueue('probe',s['id']);assert process_once();s=get('source',s['id']);assert s['status']=='ready'
     spec=dict(s['proposed_spec'],primary_key='c_1',group_by='c_2',amount_field='c_3',currency='CNY',metric_definition='每笔收入明细金额求和')
     p=generate(s,'月末应用',spec,project_id=pid,release_mode='auto',application={'title':'月末应用','layout':'summary','chart':'bar'})
-    enqueue('pipeline',p['id'],p['commit']);assert process_once();p=get('pipeline',p['id']);assert p['published_run']
+    enqueue('pipeline',p['id'],p['commit']);assert process_once();p=get('pipeline',p['id'])
+    assert p['candidate_run'] and not p['published_run']
+    from agent_service.releases import publish
+    publish(p['id'],p['candidate_run'])  # Explicit adoption of the new business plan.
+    p=get('pipeline',p['id']);assert p['published_run']
     item=entry(pid,'application');page=assets.preview(pid,item['id'],limit=2)
     assert page['total']==3 and len(page['rows'])==2 and page['next_offset']==2
     chart=assets.preview(pid,entry(pid,'chart')['id'])['chart']

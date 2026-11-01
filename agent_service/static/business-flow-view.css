@@ -1,0 +1,16 @@
+.flow-view-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.flow-view-header h2{margin:0;font-size:18px;color:#263a31;overflow-wrap:anywhere}
+.flow-version{border-radius:99px;padding:3px 9px;background:#eef5f0;color:#416950;font-size:12px}
+.flow-notices{font-size:12px;line-height:1.65;color:#67796e;overflow-wrap:anywhere}
+.flow-notices p{margin:5px 0}
+.flow-step-list{list-style:none;counter-reset:flow-step;margin:18px 0 0;padding:0}
+.flow-step{counter-increment:flow-step;position:relative;margin:0;padding:0 0 19px 38px;overflow-wrap:anywhere}
+.flow-step:before{content:counter(flow-step);position:absolute;left:0;top:0;width:24px;height:24px;display:grid;place-items:center;border:1px solid #d5e4d9;background:#f9fcfa;border-radius:50%;font-size:12px;color:#476d53}
+.flow-step:not(:last-child):after{content:'';position:absolute;left:12px;top:26px;bottom:0;width:1px;background:#e2ece5}
+.flow-step-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-height:24px}
+.flow-step-heading strong{font-size:14px;font-weight:600;color:#263d30}
+.flow-step-state{color:#61766a;font-size:12px}
+.flow-step-kind,.flow-step-description,.flow-step-dependencies,.flow-step-receipt{font-size:12px;line-height:1.6;color:#738478;margin:5px 0}
+.flow-step-receipt summary{cursor:pointer;color:#3c7350}
+.flow-step-receipt p{overflow-wrap:anywhere;margin:5px 0}
+.flow-empty{font-size:13px;color:#738478}
