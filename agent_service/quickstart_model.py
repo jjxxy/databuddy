@@ -9,7 +9,8 @@ import stat
 from urllib.parse import urlsplit, urlunsplit
 
 MAX_CONFIGURATION_BYTES = 64 * 1024
-_FIELDS = {'engine', 'base_url', 'model', 'api_key', 'share_data', 'tool_protocol', 'upstream_base_url'}
+_FIELDS = {'engine', 'base_url', 'model', 'api_key', 'share_data', 'tool_protocol', 'upstream_base_url',
+           'context_window_tokens', 'max_output_tokens'}
 _METADATA_HOSTS = {'169.254.169.254', 'metadata.google.internal', 'metadata.azure.internal'}
 
 
@@ -86,6 +87,13 @@ def validate_connection(value, *, container=False):
         if name in value and not isinstance(value[name], str):raise ValueError('模型配置字段类型不正确')
     if 'share_data' in value and type(value['share_data']) is not bool:
         raise ValueError('模型share_data必须为JSON布尔值')
+    for name,minimum in (('context_window_tokens',256),('max_output_tokens',1)):
+        limit=value.get(name)
+        if limit is not None and (type(limit) is not int or not minimum <= limit <= 100000000):
+            raise ValueError('模型窗口和输出上限必须为有效的整数 token')
+    window=value.get('context_window_tokens');output=value.get('max_output_tokens')
+    if window is not None and output is not None and output>=window:
+        raise ValueError('模型输出上限必须小于上下文窗口')
     result = {'engine': 'atlas', 'share_data': False, 'tool_protocol': 'json', 'upstream_base_url': '', **value}
     if result['engine'] not in ('atlas', 'opencode') or result['tool_protocol'] not in ('json', 'native'):
         raise ValueError('模型引擎或工具协议无效')

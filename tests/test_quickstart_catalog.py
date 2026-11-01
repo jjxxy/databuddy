@@ -57,7 +57,8 @@ def test_placeholder_in_nondefault_model_is_not_ignored(tmp_path):
 
 
 def test_cloud_provisions_all_owner_entries_and_does_not_leak_file_to_children(tmp_path):
-    path=write(tmp_path,catalog());data=tmp_path/'data'
+    value=catalog();value['models'][0].update(context_window_tokens=128000,max_output_tokens=4096)
+    path=write(tmp_path,value);data=tmp_path/'data'
     env={**os.environ,'DATA_DIR':str(data),'DATABASE_URL':'sqlite:///'+str(data/'metadata.sqlite'),
          'APP_TOKEN':'fixture-only-workspace-token-123456789','ATLAS_LLM_CONFIG_FILE':str(path),
          'ATLAS_QUICKSTART_CONTAINER':'1','API_ALLOWED_HOSTS':'existing.test'}
@@ -68,6 +69,7 @@ calls=[]
 def provision(value):
     assert value['default_model_id']=='finance'
     assert value['models'][0]['base_url']=='http://host.docker.internal:11434/v1'
+    assert value['models'][0]['context_window_tokens']==128000 and value['models'][0]['max_output_tokens']==4096
     assert value['models'][1]['api_key']=='FIXTURE-PRIVATE-KEY-2'
     calls.append(value)
 model_catalog.provision=provision

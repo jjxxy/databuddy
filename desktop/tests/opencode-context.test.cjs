@@ -173,6 +173,15 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
   assert.deepEqual(await send(extra),extra);assert.equal(admissions.at(-1).native_protocol.atlas_step_only,false);
   const single={...plain,tools:[{type:'function',function:{name:'atlas_step'}}]};
   assert.equal((await send(single)).tool_choice,'required');
+  // The request hook edits the body but must not switch a streaming native
+  // request to JSON, or replace the caller's event-stream Accept header.
+  // The response itself is handled by OpenCode, outside this plugin hook.
+  const streaming={sessionID:'fixture-session',kind:'generation',request:new Request('https://model.example/v1/chat/completions',{
+   method:'POST',headers:{'Content-Type':'application/json','Accept':'text/event-stream'},body:JSON.stringify({...single,stream:true})})};
+  await hooks['http.request'](streaming);
+  assert.equal(streaming.request.headers.get('accept'),'text/event-stream');
+  const streamingBody=JSON.parse(await streaming.request.text());
+  assert.equal(streamingBody.stream,true);assert.equal(streamingBody.tool_choice,'required');
   await hooks.compaction({sessionID:'fixture-session',system:[],options:{}});
   assert.deepEqual(await send(single,'compaction'),{...single,max_tokens:3200});
   assert.equal(admissions.at(-1).kind,'compaction');assert.equal(admissions.at(-1).native_protocol.choice_forced,false);

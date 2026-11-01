@@ -45,7 +45,7 @@ def test_bounded_http_requests_preserve_tools_and_scope_thinking_override(
         'base_url': base_url, 'model': model, 'api_key': 'test-only-key'},
         tools=tools if native_tools else None)
 
-    expected = {'model': model, 'messages': messages, 'max_tokens': 128, 'temperature': 0}
+    expected = {'model': model, 'messages': messages, 'max_tokens': 128, 'temperature': 0, 'stream': False}
     if native_tools:
         expected.update(tools=tools, tool_choice='required', parallel_tool_calls=False)
         assert json.loads(result) == {'kind': 'tool', 'tool': 'connection_check', 'arguments': {'ok': True}}

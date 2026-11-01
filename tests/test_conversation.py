@@ -123,22 +123,19 @@ def test_connection_details_collected_in_chat_and_hidden(monkeypatch):
 
 
 def test_model_plans_are_validated_and_do_not_authorize_operations(monkeypatch):
-    from types import SimpleNamespace
+    import httpx
     import agent_service.conversation as chat
     payload={'action':'pause'}
     captured=[]
-    class Response:
-        def raise_for_status(self):pass
-        def json(self):return {'choices':[{'message':{'content':json.dumps(payload)}}]}
-    class ModelClient:
-        def __init__(self,**kwargs):pass
-        def __enter__(self):return self
-        def __exit__(self,*args):pass
-        def post(self,*args,**kwargs):captured.append(kwargs['json']);return Response()
+    def respond(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(200,json={'choices':[{'message':{'content':json.dumps(payload)}}]})
     monkeypatch.setattr(chat,'LLM_BASE','https://model.invalid')
     monkeypatch.setattr(chat,'LLM_MODEL','test-model')
     from agent_service import provider,context_compaction
-    monkeypatch.setattr(provider,'httpx',SimpleNamespace(Client=ModelClient))
+    client=httpx.Client
+    monkeypatch.setattr(provider.httpx,'Client',lambda **kwargs:client(transport=httpx.MockTransport(respond),**kwargs))
+    monkeypatch.setattr('agent_service.network_policy.check_url',lambda url:None)
     # This isolated router test intentionally has no persisted project/turn;
     # scoped history projection is exercised by test_legacy_model_diagnostics.
     monkeypatch.setattr(context_compaction,'context_for_turn',lambda *args,**kwargs:{'recent_verbatim':[]})

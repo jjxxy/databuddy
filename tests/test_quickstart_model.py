@@ -36,11 +36,22 @@ def test_configuration_loader_has_no_runtime_imports_and_safe_defaults(tmp_path)
     {'base_url': None}, {'model': 123}, {'api_key': ''}, {'api_key': {'nested': 'secret'}},
     {'share_data': 'true'}, {'share_data': 1}, {'tool_protocol': 'automatic'},
     {'engine': 'unknown'}, {'model': 'x' * 121}, {'unexpected': 'secret'},
+    {'context_window_tokens': True}, {'context_window_tokens': 255},
+    {'context_window_tokens': 100000001}, {'max_output_tokens': 0},
+    {'max_output_tokens': 2.0}, {'context_window_tokens': 256, 'max_output_tokens': 256},
 ])
 def test_configuration_rejects_missing_types_extra_fields_and_invalid_values(tmp_path, updates):
     path = write_configuration(tmp_path, configuration(**updates))
     with pytest.raises(ValueError) as error:load_configuration(path)
     assert 'FIXTURE-' not in str(error.value)
+
+
+def test_model_context_limits_are_preserved_and_provider_compatible(tmp_path):
+    value=load_configuration(write_configuration(tmp_path, configuration(context_window_tokens=128000,max_output_tokens=4096)))
+    assert value['context_window_tokens']==128000 and value['max_output_tokens']==4096
+    from agent_service.provider import ProviderInput
+    parsed=ProviderInput.model_validate(value,strict=True)
+    assert parsed.context_window_tokens==128000 and parsed.max_output_tokens==4096
 
 
 @pytest.mark.parametrize('raw', [

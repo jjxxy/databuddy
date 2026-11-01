@@ -77,5 +77,6 @@ def test_native_history_transport_covers_large_context_but_explicit_byte_guards_
     monkeypatch.setattr(runtime.httpx,'Client',lambda **kw:client(transport=httpx.MockTransport(response),**kw))
     value={'base_url':'http://127.0.0.1:1234','api_key':'synthetic-local-auth'}
     assert runtime._request(value,'GET','/api/session/synthetic/context')==body
-    with pytest.raises(ValueError,match='会话上下文超过读取限制'):
+    with pytest.raises(provider.ContextWindowExceeded) as caught:
         runtime._request(value,'GET','/api/session/synthetic/context',limit=1000)
+    assert caught.value.source=='native_history_transport'
