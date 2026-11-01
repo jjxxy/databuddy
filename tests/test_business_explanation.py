@@ -32,6 +32,26 @@ def test_multi_lookup_is_explained_as_combined_business_conditions():
     assert '无法匹配时留空' in _stage_description(stage,{}, {})
 
 
+def test_effective_lookup_explains_dates_keys_and_boundaries():
+    from agent_service.business_explanation import _stage_description, _LABELS
+    stage={'kind':'lookup_effective','right':'mapping','keys':[{'left':'entity','right':'legal_entity'},
+            {'left':'customer','right':'customer'}], 'business_date':'posting_date',
+            'valid_from':'effective_from','valid_to':'effective_to',
+            'outputs':{'version':{'name':'version'}},'unmapped':'error'}
+    text=_stage_description(stage,{'entity':'法人','legal_entity':'法人编码','customer':'客户',
+        'posting_date':'业务日期','effective_from':'生效日','effective_to':'失效日','version':'版本'},
+        {'mapping':'历史归属表'})
+    assert _LABELS['lookup_effective']=='按业务日期关联有效版本'
+    assert '本表 法人 对照 历史归属表 的 法人编码' in text and '客户' in text
+    assert '业务日期' in text and '生效日 至 失效日' in text
+    assert '开始日当天生效，结束日当天不生效；结束日为空时停止处理' in text
+    assert '版本' in text and '无法匹配时停止' in text and '仍需业务核对' in text
+    stage['unmapped']='null'
+    assert '无法匹配时留空' in _stage_description(stage,{}, {})
+    stage['null_end_policy']='open'
+    assert '结束日为空时持续有效' in _stage_description(stage,{}, {})
+
+
 def create_report():
     pid, rid = real_result()
     definition = recipe()
@@ -449,7 +469,9 @@ def test_saved_historic_report_remains_readable_but_unsafe_sql_ancestry_needs_re
         patcher.setattr(data_workflows,'_validate_exact_sql_numeric',lambda tree:None)
         patcher.setattr(project_data,'require_safe_numeric_lineage',lambda *args,**kwargs:None)
         old=project_data.enqueue_workflow(pid,workflow['workflow_id']);assert process_once()
-        project_data.publish_result(pid,old['id'],get_job(old['id'])['commit'])
+        old_job=get_job(old['id'])
+        project_data.publish_result(pid,old['id'],old_job['commit'],review_actor='owner',semantic_review_actor='owner',
+                                    review_handoff_sha256=old_job['data_result']['handoff_sha256'])
         selected=old['id']
         if downstream:
             newer={'version':1,'plan':{'name':'上游结果再加工','inputs':{'detail':schema()},'stages':[
@@ -458,7 +480,9 @@ def test_saved_historic_report_remains_readable_but_unsafe_sql_ancestry_needs_re
             workspace.write_file(pid,'workflows/downstream.json',json.dumps(newer,ensure_ascii=False))
             descendant=project_data.register(pid,'workflows/downstream.json')
             child=project_data.enqueue_workflow(pid,descendant['workflow_id']);assert process_once()
-            project_data.publish_result(pid,child['id'],get_job(child['id'])['commit'])
+            child_job=get_job(child['id'])
+            project_data.publish_result(pid,child['id'],child_job['commit'],review_actor='owner',semantic_review_actor='owner',
+                                        review_handoff_sha256=child_job['data_result']['handoff_sha256'])
             selected=child['id']
         definition=recipe();definition['expected_schema_sha256']=reports.inspect_result(pid,selected)['schema_sha256']
         report=reports.render(pid,selected,definition)

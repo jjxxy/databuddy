@@ -15,7 +15,7 @@ from test_project_data import project, registered, run
 
 def acknowledge(pid, result, actor='owner'):
     return data.publish_result(pid,result['id'],result['commit'],review_actor=actor,
-        review_handoff_sha256=result['data_result']['handoff_sha256'])
+        semantic_review_actor=actor,review_handoff_sha256=result['data_result']['handoff_sha256'])
 
 
 def test_pending_upstream_cannot_be_laundered_and_review_binds_full_receipt():
@@ -86,7 +86,7 @@ def test_api_requires_explicit_confirm_bound_to_result_and_server_identity():
     assert client.post(url,headers=headers,json=wrong).status_code==400
     spoof=dict(body,confirm_source_review=True,expected_handoff_sha256=first['data_result']['handoff_sha256'],review_actor='fake')
     assert client.post(url,headers=headers,json=spoof).status_code==422
-    body.update(confirm_source_review=True,expected_handoff_sha256=first['data_result']['handoff_sha256'])
+    body.update(confirm_source_review=True,confirm_semantic_review=True,expected_handoff_sha256=first['data_result']['handoff_sha256'])
     accepted=client.post(url,headers=headers,json=body);assert accepted.status_code==200,accepted.text
     assert get_job(first['id'])['source_review_receipt']['reviewer']=='owner'
 

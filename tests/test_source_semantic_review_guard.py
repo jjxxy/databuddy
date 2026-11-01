@@ -39,13 +39,13 @@ def test_actual_indented_source_review_flag_reaches_candidate_and_blocks_report(
     with pytest.raises(ValueError,match='待核对'):
         business_reports.inspect_result(pid,result['id'])
     # The existing authenticated manual adoption is the explicit review action.
-    data.publish_result(pid,result['id'],result['commit'],review_actor='owner',review_handoff_sha256=result['data_result']['handoff_sha256'])
+    data.publish_result(pid,result['id'],result['commit'],review_actor='owner',semantic_review_actor='owner',review_handoff_sha256=result['data_result']['handoff_sha256'])
     assert business_reports.inspect_result(pid,result['id'])['server_adopted_result'] is True
 
 
 def test_repeated_unreviewed_input_must_not_auto_publish():
     pid=project();sid=indented_source(pid);workflow=registered(pid,draft(sid))
-    result=run(pid,workflow);data.publish_result(pid,result['id'],result['commit'],review_actor='owner',review_handoff_sha256=result['data_result']['handoff_sha256'])
+    result=run(pid,workflow);data.publish_result(pid,result['id'],result['commit'],review_actor='owner',semantic_review_actor='owner',review_handoff_sha256=result['data_result']['handoff_sha256'])
     later=run(pid,workflow,use_published=True)
     assert later['status']=='validated' and later['data_result']['requires_semantic_review'] is True
     assert data.owned(pid,'data_workflow',workflow)['published_run']==result['id']
@@ -105,7 +105,7 @@ def test_review_obligation_propagates_to_downstream_result():
     pid=project();sid=indented_source(pid);first=run(pid,registered(pid,draft(sid)))
     input_doc=draft(sid);input_doc['bindings']['detail']={'result_id':first['id']}
     with pytest.raises(ValueError,match='人工复核'):data.read_input(pid,{'result_id':first['id']})
-    data.publish_result(pid,first['id'],first['commit'],review_actor='owner',review_handoff_sha256=first['data_result']['handoff_sha256'])
+    data.publish_result(pid,first['id'],first['commit'],review_actor='owner',semantic_review_actor='owner',review_handoff_sha256=first['data_result']['handoff_sha256'])
     second=run(pid,registered(pid,input_doc,path='workflows/second.json'))
     assert second['data_result']['requires_source_review'] is True
     assert second['data_result']['requires_semantic_review'] is True

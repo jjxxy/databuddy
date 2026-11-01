@@ -29,7 +29,7 @@ function catalogRecord(id,status='draft',version=1){
 function response(value,status=200){return {ok:status>=200&&status<300,status,json:async()=>value,blob:async()=>new Blob(['complete-result']),headers:{get:()=>null}};}
 function clone(value){return JSON.parse(JSON.stringify(value));}
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-async function boot({token=true,cookie=false,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null,requiresSourceReview=false,factAlignmentRequired=false,missingManifest=false,deferPublish=false,publishStatus=200,publishDetail='无法确认'}={}){
+async function boot({token=true,cookie=false,project=true,putConflict=false,reviewConflict=false,empty=false,factsBlocked=false,factsReviewConflict=false,latestJob=null,tab='',runGetError=false,schedule=null,refreshError='',catalogFixture=null,catalogBinding=null,requiresSourceReview=false,requiresSemanticReview=false,factAlignmentRequired=false,missingManifest=false,deferPublish=false,publishStatus=200,publishDetail='无法确认'}={}){
  const url='https://atlas.test/data-workbench.html'+(project?'?project=p_1&workflow=wf_1'+(tab?'&tab='+tab:''):'');
  const dom=new JSDOM(html,{url,runScripts:'outside-only'}),w=dom.window,calls=[],timers=[];
  if(token)w.sessionStorage.setItem('atlas_token','test-token-that-must-not-be-logged');
@@ -93,7 +93,7 @@ async function boot({token=true,cookie=false,project=true,putConflict=false,revi
    return response({run_id:'r_1',plan_sha256:sha,manifest_sha256:missingManifest?undefined:'f'.repeat(64),total:603,next_offset:offset+count<603?offset+count:null,
     schema:[{name:'office',label:'办事处<script>bad</script>',meaning:'业务办事处',data_type:'text'},{name:'amount',label:'净收入',meaning:'收入减退款',unit:'CNY',period:'2026-10',data_type:'decimal'}],
     rows:Array.from({length:count},(_,i)=>({office:offset+i===0?'<img src=x onerror=alert(1)>':'O'+(offset+i),amount:'1234567890123456.123456789012'})),
-    context:{input_evidence:{orders:{source_id:'frozen_source',source_revision:2,rows:1200,sheet:'明细'}},output_semantics:{grain:['office']},requires_semantic_review:false,requires_source_review:requiresSourceReview,semantic_review_reasons:factAlignmentRequired?['FACT_SEMANTIC_ALIGNMENT_REQUIRED']:[]},
+    context:{input_evidence:{orders:{source_id:'frozen_source',source_revision:2,rows:1200,sheet:'明细'}},output_semantics:{grain:['office']},requires_semantic_review:requiresSemanticReview,requires_source_review:requiresSourceReview,semantic_review_reasons:factAlignmentRequired?['FACT_SEMANTIC_ALIGNMENT_REQUIRED']:[]},
     stages:[{stage_id:'summed',kind:'aggregate',output_rows:603,checks:{complete_table:true},lineage:{kind:'aggregate',group_by:['office']}}]});
   }
   if(u.pathname.endsWith('/semantic-proposals/sem_1/review')){
@@ -210,6 +210,50 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  assert.deepEqual(JSON.parse(protectedCall.options.body),{run_id:'r_1',expected_plan_sha256:sha,confirm_source_review:true,expected_handoff_sha256:'f'.repeat(64)});
  assert(protectedDoc.querySelector('#workbench-notice').textContent.includes('已采用这份结果'));protectedApp.dom.window.close();
 
+ const semanticApp=await boot({requiresSemanticReview:true}),semDoc=semanticApp.w.document;
+ const semAck=semDoc.querySelector('#workbench-semantic-review-ack'),semPublish=semDoc.querySelector('#workbench-publish');
+ assert.equal(semDoc.querySelector('#workbench-semantic-review').hidden,false);
+ assert(semDoc.querySelector('#workbench-semantic-review').textContent.includes('业务口径'));
+ assert(semDoc.querySelector('#workbench-result-help').textContent.includes('候选文件未完成业务口径核对，下载不代表正式采用'));
+ assert.equal(semPublish.disabled,true);await semanticApp.w.wbTest.publish();
+ assert(!semanticApp.calls.some(call=>call.url.endsWith('/publish')));
+ semAck.checked=true;semAck.dispatchEvent(new semanticApp.w.Event('change'));assert.equal(semPublish.disabled,false);
+ await semanticApp.w.wbTest.publish();
+ assert.deepEqual(JSON.parse(semanticApp.calls.find(call=>call.url.endsWith('/publish')).options.body),
+                  {run_id:'r_1',expected_plan_sha256:sha,confirm_semantic_review:true,expected_handoff_sha256:'f'.repeat(64)});
+ semanticApp.dom.window.close();
+
+ const bothApp=await boot({requiresSourceReview:true,requiresSemanticReview:true}),bothDoc=bothApp.w.document;
+ const sourceAck=bothDoc.querySelector('#workbench-source-review-ack'),bothSemAck=bothDoc.querySelector('#workbench-semantic-review-ack');
+ sourceAck.checked=true;sourceAck.dispatchEvent(new bothApp.w.Event('change'));
+ assert.equal(bothDoc.querySelector('#workbench-publish').disabled,true,'one acknowledgement does not imply the other');
+ bothSemAck.checked=true;bothSemAck.dispatchEvent(new bothApp.w.Event('change'));
+ assert.equal(bothDoc.querySelector('#workbench-publish').disabled,false);await bothApp.w.wbTest.publish();
+ assert.deepEqual(JSON.parse(bothApp.calls.find(call=>call.url.endsWith('/publish')).options.body),
+                  {run_id:'r_1',expected_plan_sha256:sha,confirm_source_review:true,confirm_semantic_review:true,expected_handoff_sha256:'f'.repeat(64)});
+ bothApp.dom.window.close();
+
+ const semNoManifest=await boot({requiresSemanticReview:true,missingManifest:true}),snm=semNoManifest.w.document;
+ assert.equal(snm.querySelector('#workbench-semantic-review-error').hidden,false);
+ assert.equal(snm.querySelector('#workbench-semantic-review-ack').disabled,true);
+ assert.equal(snm.querySelector('#workbench-publish').disabled,true);semNoManifest.dom.window.close();
+
+ const semReplaced=await boot({requiresSemanticReview:true}),srd=semReplaced.w.document,sra=srd.querySelector('#workbench-semantic-review-ack');
+ sra.checked=true;sra.dispatchEvent(new semReplaced.w.Event('change'));assert.equal(srd.querySelector('#workbench-publish').disabled,false);
+ semReplaced.w.wbTest.state.workflow.candidate_run='r_2';semReplaced.w.wbTest.state.resultId='r_2';semReplaced.w.wbTest.state.result={...semReplaced.w.wbTest.state.result,run_id:'r_2',manifest_sha256:'e'.repeat(64)};
+ semReplaced.w.wbTest.renderResult();assert.equal(sra.checked,false);assert.equal(srd.querySelector('#workbench-publish').disabled,true);semReplaced.dom.window.close();
+
+ const semFailed=await boot({requiresSemanticReview:true,publishStatus:409}),sfd=semFailed.w.document,sfa=sfd.querySelector('#workbench-semantic-review-ack');
+ sfa.checked=true;sfa.dispatchEvent(new semFailed.w.Event('change'));await semFailed.w.wbTest.publish();
+ assert.equal(sfa.checked,false);assert.equal(sfd.querySelector('#workbench-publish').disabled,true,'failed submission requires fresh semantic confirmation');semFailed.dom.window.close();
+
+ const semHistory=await boot({requiresSemanticReview:true}),shd=semHistory.w.document;
+ semHistory.w.wbTest.state.workflow.candidate_run=null;semHistory.w.wbTest.state.workflow.published_run='r_1';semHistory.w.wbTest.state.result.semantic_review_confirmed=false;
+ semHistory.w.wbTest.renderResult();assert(shd.querySelector('#workbench-result-help').textContent.includes('尚未按当前要求确认'));
+ semHistory.w.wbTest.state.result.semantic_review_confirmed=true;semHistory.w.wbTest.renderResult();
+ assert(shd.querySelector('#workbench-result-help').textContent.includes('已记录本次结果的业务语义复核'));
+ assert(!shd.querySelector('#workbench-result-help').textContent.includes('仍待业务核对'));semHistory.dom.window.close();
+
  const noManifest=await boot({requiresSourceReview:true,missingManifest:true}),nm=noManifest.w.document;
  assert(nm.querySelector('#workbench-source-review-error').textContent.includes('依据不完整'));
  assert.equal(nm.querySelector('#workbench-source-review-ack').disabled,true);assert.equal(nm.querySelector('#workbench-publish').disabled,true);noManifest.dom.window.close();
@@ -287,6 +331,20 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
  assert(budget.w.document.querySelector('#workbench-failure-next').textContent.includes('调整方案'));
  assert(!budget.w.document.querySelector('#workbench-failure-next').textContent.includes('重试'));
  budget.dom.window.close();
+
+ for(const [code,reason,next] of [
+  ['INVALID_EFFECTIVE_INTERVAL','生效区间无效','核对业务键及生效起止日期'],
+  ['OVERLAPPING_EFFECTIVE_INTERVALS','有效期重叠','开始日包含、结束日不包含'],
+  ['INVALID_BUSINESS_DATE','业务日期缺失','核对原始日期'],
+  ['MISSING_LINEAGE','无法追溯实际匹配依据','保留映射来源的记录标识'],
+ ]){
+  const failedEffective=await boot({latestJob:{...failedJob,workflow_failure:{stage_id:'summed',code,message:'<img src=x> secret raw detail'}}}),ed=failedEffective.w.document;
+  assert(ed.querySelector('#workbench-failure-reason').textContent.includes(reason));
+  assert(ed.querySelector('#workbench-failure-next').textContent.includes(next));
+  assert.equal(ed.querySelector('#workbench-failure-reason').querySelector('img'),null);
+  assert.equal(failedEffective.calls.filter(c=>c.method!=='GET').length,0);
+  failedEffective.dom.window.close();
+ }
 
  for(const [code,reason,next] of [
   ['SOURCE_HASH_MISSING','旧来源缺少可核对的原件摘要','重新上传原件以建立带摘要的来源修订'],

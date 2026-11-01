@@ -17,6 +17,7 @@ class AdoptInput(StrictModel):
     expected_plan_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     run_id:str|None=None
     confirm_source_review:bool=Field(default=False,strict=True)
+    confirm_semantic_review:bool=Field(default=False,strict=True)
     expected_handoff_sha256:str|None=Field(default=None,pattern=r'^[a-f0-9]{64}$')
 class SingleFactConfirmation(StrictModel):
     expected_preview_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
@@ -181,11 +182,16 @@ def install(app,auth):
     def adopt_result(pid:str,rid:str,value:AdoptInput,request:Request):
         if value.run_id and value.run_id!=rid:raise ValueError('结果标识不一致')
         review_actor=None
+        semantic_review_actor=None
         if value.confirm_source_review:
             from .actor_context import actor_from_identity
             review_actor=actor_from_identity(getattr(request.state,'identity',{}))
+        if value.confirm_semantic_review:
+            from .actor_context import actor_from_identity
+            semantic_review_actor=actor_from_identity(getattr(request.state,'identity',{}))
         return data.publish_result(pid,rid,value.expected_plan_sha256,review_actor=review_actor,
-                                   review_handoff_sha256=value.expected_handoff_sha256)
+                                   review_handoff_sha256=value.expected_handoff_sha256,
+                                   semantic_review_actor=semantic_review_actor)
 
     @app.get('/api/projects/{pid}/data-results/{rid}/download',dependencies=dependencies)
     def download_result(pid:str,rid:str,format:Literal['xlsx','csv','handoff']='handoff'):

@@ -6,6 +6,7 @@ workflow rather than returning a truncated result that looks complete.
 from __future__ import annotations
 
 import hashlib
+from bisect import bisect_right
 import json
 import re
 import threading
@@ -204,6 +205,31 @@ class LookupMulti(Stage):
         return self
 
 
+class LookupEffective(Stage):
+    """Exact key plus explicitly bounded business-date matching."""
+    kind: Literal['lookup_effective']
+    input: str = Field(pattern=NAME)
+    right: str = Field(pattern=NAME)
+    keys: list[LookupKey] = Field(min_length=1,max_length=20,
+        description='Explicit business keys; correctness and completeness require review.')
+    business_date: str = Field(pattern=NAME,description='Left-hand ISO business-date column.')
+    valid_from: str = Field(pattern=NAME,description='Right-hand inclusive start date.')
+    valid_to: str = Field(pattern=NAME,description='Right-hand exclusive end date.')
+    null_end_policy: Literal['error','open'] = Field(default='error',
+        description='Missing end dates fail by default; open-ended is allowed only when explicitly configured.')
+    outputs: dict[str,Column] = Field(min_length=1,max_length=100,
+        description='Must include the right table grain and both effective dates so the selected version is traceable.')
+    unmapped: Literal['error','null'] = 'error'
+
+    @model_validator(mode='after')
+    def valid_key_config(self):
+        if len({k.left for k in self.keys})!=len(self.keys) or len({k.right for k in self.keys})!=len(self.keys):
+            raise ValueError('Effective lookup key fields cannot be repeated')
+        if self.valid_from==self.valid_to:
+            raise ValueError('Effective start and end must be different columns')
+        return self
+
+
 class UnionRows(Stage):
     kind: Literal['union_rows']
     inputs: list[str] = Field(min_length=2, max_length=10)
@@ -280,7 +306,7 @@ class Normalize(Stage):
     rules: list[Normalization] = Field(min_length=1, max_length=20)
 
 
-Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | LookupMulti | UnionRows | Normalize | SQL,
+Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | LookupMulti | LookupEffective | UnionRows | Normalize | SQL,
                       Field(discriminator='kind')]
 
 
@@ -322,7 +348,7 @@ class WorkflowPlan(StrictModel):
 def dependencies_for(stage: Stage) -> list[str]:
     if isinstance(stage, (UnionRows, SQL)):
         return stage.inputs
-    if isinstance(stage, (Lookup, LookupMulti)):
+    if isinstance(stage, (Lookup, LookupMulti, LookupEffective)):
         return [stage.input, stage.right]
     return [stage.input]
 
@@ -403,6 +429,12 @@ def _coerce(value, column: Column):
 
 def _columns(schema):
     return {c.name: c for c in schema.columns}
+
+
+def _blank_lookup_key(value):
+    # Never normalize nonblank identifiers: spaces can be meaningful. Blank
+    # text, however, is not a usable business key and must not match blank.
+    return value is None or isinstance(value,str) and not value.strip()
 
 
 def _table(schema: TableSchema, rows, budget: Budget, deadline: float):
@@ -806,6 +838,73 @@ def _operate(stage, tables, budget, deadline):
         return _new_schema(schema, columns), result
     if isinstance(stage, Aggregate):
         return _aggregate(stage, source)
+    if isinstance(stage, LookupEffective):
+        right=tables[stage.right];right_fields=_columns(right['schema'])
+        keys=[(pair.left,pair.right) for pair in stage.keys]
+        _require(list(dict.fromkeys([left for left,_ in keys]+[stage.business_date])),fields)
+        _require(list(dict.fromkeys([right_name for _,right_name in keys]+[stage.valid_from,stage.valid_to]+list(stage.outputs))),right_fields)
+        if not right['schema'].grain or not (set(right['schema'].grain)|{stage.valid_from,stage.valid_to})<=set(stage.outputs):
+            raise WorkflowError('MISSING_LINEAGE','Effective lookup must output the right-hand grain and both effective dates')
+        for left_name,right_name in keys:
+            left_key,right_key=fields[left_name],right_fields[right_name]
+            if (left_key.data_type,left_key.unit,left_key.period,left_key.value_format)!=(right_key.data_type,right_key.unit,right_key.period,right_key.value_format):
+                raise WorkflowError('SEMANTIC_MISMATCH','Lookup keys have incompatible types, units, or reporting periods')
+        if any(column.data_type!='date' for column in (fields[stage.business_date],right_fields[stage.valid_from],right_fields[stage.valid_to])):
+            raise WorkflowError('TYPE_MISMATCH','Business date and effective boundaries must use date columns')
+        outputs=[value.name for value in stage.outputs.values()]
+        if len(outputs)!=len(set(outputs)) or set(outputs)&set(fields):
+            raise WorkflowError('DUPLICATE_COLUMN','Lookup output names would overwrite columns')
+        for column,output in stage.outputs.items():
+            original=right_fields[column]
+            if (original.data_type,original.unit,original.period,original.value_format,original.aggregation)!=(output.data_type,output.unit,output.period,output.value_format,output.aggregation):
+                raise WorkflowError('SEMANTIC_MISMATCH','Lookup cannot silently change source type, unit, period, or additivity')
+        index={}
+        for i,row in enumerate(right['rows']):
+            if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+            key=tuple(row[right_name] for _,right_name in keys)
+            start,end=row[stage.valid_from],row[stage.valid_to]
+            if any(_blank_lookup_key(value) for value in key) or start is None:
+                raise WorkflowError('INVALID_EFFECTIVE_INTERVAL','Effective mapping key and start date must be present')
+            if any(_blank_lookup_key(row[name]) for name in right['schema'].grain):
+                raise WorkflowError('MISSING_LINEAGE','Effective mapping grain must be present for every rule')
+            if end is None and stage.null_end_policy!='open':
+                raise WorkflowError('INVALID_EFFECTIVE_INTERVAL','Effective end date is missing; explicitly confirm an open-ended policy')
+            if end is not None and end<=start:
+                raise WorkflowError('INVALID_EFFECTIVE_INTERVAL','Effective intervals must have end after start')
+            index.setdefault(key,[]).append((start,end,row))
+        # Validate the complete reference table, including keys not used by
+        # this run, so an ambiguous rule is never presented as a valid mapping.
+        for intervals in index.values():
+            if time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+            intervals.sort(key=lambda item:item[0])
+            for i in range(1,len(intervals)):
+                if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+                previous,current=intervals[i-1],intervals[i]
+                if previous[1] is None or current[0]<previous[1]:
+                    raise WorkflowError('OVERLAPPING_EFFECTIVE_INTERVALS','Effective intervals overlap for the same business key')
+        starts={}
+        for key,intervals in index.items():
+            dates=[]
+            for i,item in enumerate(intervals):
+                if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+                dates.append(item[0])
+            starts[key]=dates
+        result=[]
+        for i,row in enumerate(rows):
+            if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+            day=row[stage.business_date]
+            if day is None:raise WorkflowError('INVALID_BUSINESS_DATE','Business date is missing; the effective rule cannot be selected')
+            key=tuple(row[left_name] for left_name,_ in keys)
+            intervals=index.get(key) if not any(_blank_lookup_key(value) for value in key) else None
+            position=bisect_right(starts[key],day)-1 if intervals else -1
+            selected=intervals[position] if position>=0 else None
+            match=selected[2] if selected and (selected[1] is None or day<selected[1]) else None
+            if match is None and stage.unmapped=='error':
+                raise WorkflowError('UNMAPPED_VALUE','No effective mapping matches this business key and date')
+            value=dict(row)
+            value.update({output.name:match[column] if match is not None else None for column,output in stage.outputs.items()})
+            result.append(value)
+        return _new_schema(schema,list(schema.columns)+list(stage.outputs.values())),result
     if isinstance(stage, (Lookup, LookupMulti)):
         right = tables[stage.right]
         right_fields = _columns(right['schema'])
@@ -827,13 +926,15 @@ def _operate(stage, tables, budget, deadline):
         index = {}
         for row in right['rows']:
             key = tuple(row[right_name] for _,right_name in keys)
-            if any(value is None for value in key) or key in index:
+            invalid=any(_blank_lookup_key(value) for value in key)
+            if invalid or key in index:
                 raise WorkflowError('LOOKUP_CARDINALITY', 'Lookup right key must be non-null and unique; one-to-many mapping is ambiguous')
             index[key] = row
         result = []
         for row in rows:
             key=tuple(row[left_name] for left_name,_ in keys)
-            match = None if any(value is None for value in key) else index.get(key)
+            invalid=any(_blank_lookup_key(value) for value in key)
+            match = None if invalid else index.get(key)
             if match is None and stage.unmapped == 'error':
                 raise WorkflowError('UNMAPPED_VALUE', 'Lookup has unmatched left records')
             value = dict(row)
@@ -964,6 +1065,14 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
             receipt['checks']['localized_parsing'] = 'explicit_policy; original_text_columns_retained; business_semantics_require_review'
         if isinstance(stage, LookupMulti):
             receipt['checks']['matching_keys'] = 'explicit_multi_column; business_semantics_require_review'
+        if isinstance(stage, LookupEffective):
+            receipt['checks']['matching_keys']='explicit_keys_and_business_date; business_semantics_require_review'
+            receipt['checks']['interval_policy']='start_inclusive_end_exclusive; null_end_'+stage.null_end_policy
+            unmatched=0
+            for i,row in enumerate(table['rows']):
+                if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget',stage.id)
+                unmatched+=row[stage.outputs[stage.valid_from].name] is None
+            receipt['checks']['unmatched_rows']=unmatched
         if isinstance(stage, Filter):
             receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
         if on_stage is not None:
@@ -975,5 +1084,5 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
     return {'version': 1, 'plan_sha256': digest(plan.model_dump()), 'input_sha256': input_hashes,
             'output': {**exported, 'row_count': len(output['rows']), 'sha256': result_hash},
             'stages': receipts, 'complete': True,
-            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti)) for stage in plan.stages),
+            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti, LookupEffective)) for stage in plan.stages),
             'scope': 'explicit_semantic_tables; isolated_typed_operations; full_bounded_output; not_arbitrary_python'}

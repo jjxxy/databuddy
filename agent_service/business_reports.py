@@ -140,7 +140,10 @@ def evaluate(recipe,table):
         if len(rows)>1:raise ValueError('多行结果缺少唯一业务粒度，无法排除重复汇总')
     else:
         keys=[tuple(row.get(k) for k in schema.grain) for row in rows]
-        if any(any(v is None for v in key) for key in keys) or len(set(keys))!=len(keys):
+        # Blank identifiers are not evidence of a real business entity.
+        # Treat a whitespace-only string as missing without normalizing or
+        # altering valid values, and keep numeric zero as a valid key.
+        if any(any(v is None or isinstance(v,str) and not v.strip() for v in key) for key in keys) or len(set(keys))!=len(keys):
             raise ValueError('结果业务粒度重复或为空，不能生成可能重复计数的报告')
     if not set(recipe.filters)<=set(fields):raise ValueError('报告筛选字段不存在')
     if any(m.kind=='row_count' for m in recipe.metrics) and not recipe.period_column:

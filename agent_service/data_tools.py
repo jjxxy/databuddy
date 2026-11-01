@@ -59,7 +59,7 @@ DEFINITIONS={
  'inspect_data_workflow':(data.WorkflowTarget,False,'查看可编辑加工方案、正式与草稿版本及latest_run.workflow_failure安全诊断；失败按next_step修复，不能将失败运行当结果分页读取'),
  'run_data_workflow':(data.WorkflowTarget,True,'冻结并排队执行多来源加工方案，逐步验证依赖、精度、完整行数和契约；失败保留旧正式结果；等待真实回执'),
  'read_data_workflow_result':(ResultPage,False,'读取当前项目完整结果的有界分页，含精确值、语义、控制校验与完整交接引用；预览页不是全量交接'),
- 'publish_data_workflow_result':(data.PublishWorkflow,True,'仅用户当前明确确认时采用已验证候选；若用户给出确认采用数据结果：运行 <run_id>，方案 <sha256>，参数必须与该运行和方案逐字一致；之后同方案刷新可自动替换'),
+ 'publish_data_workflow_result':(data.PublishWorkflow,True,'仅用户当前明确确认时采用已验证候选；若结果需要来源或语义复核，必须由用户在工作台核对并确认，模型不能代确认；之后无待复核项的同方案刷新可自动替换'),
  'export_data_workflow_result':(data.ExportResult,False,'准备完整Excel、CSV与交接包下载，保留已声明业务列名；按text_exact保留Excel无法精确保存的数值并标注，绝不截断为样本'),
  'schedule_data_workflow':(WorkflowSchedule,True,'按用户本轮明确的每日/每周/每月指定日/每N小时计划调度正式方案；watch_sources需用户明确源表变化后刷新；不是数据库CDC'),
  'propose_semantic_alignment':(Proposal,True,'根据名称/别名/模型候选生成字段语义匹配提案，校验单位、期间、粒度；全部保留人工核对，不得代用户审批'),

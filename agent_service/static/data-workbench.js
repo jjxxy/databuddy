@@ -10,7 +10,7 @@ const wbState = {
   loading: 0, workflowLoading: false, resultLoading: 0, pollTimer: null, activeJob: '', latestJob: null,
   proposals: new Map(), proposalOffset: null, proposalTotal: 0, factsLoaded: false,
   facts: new Map(), factsOffset: null, factsLoading: false, factsGeneration: 0,
-  sourceReviewKey:'',sourceReviewAcknowledged:'',
+  sourceReviewKey:'',sourceReviewAcknowledged:'',semanticReviewAcknowledged:'',
   catalogs: new Map(), catalogsLoaded: false, catalogsLoading: false,
   catalogOffset: null, catalogTotal: 0, catalogActions: new Set(),
 };
@@ -84,7 +84,7 @@ function wbPlanSteps() {return wbState.workflow?.steps || wbState.workflow?.docu
 function wbStageName(step) {
   const names = {filter:'筛选相关记录',select:'保留需要的字段',drop:'删除不相关字段',reclassify:'按业务规则分类',
     arithmetic:'计算业务数值',aggregate:'按业务范围汇总',concat:'拼接全部记录',concatenate:'拼接全部记录',union_rows:'拼接全部记录',
-    lookup:'按关联规则匹配记录',sql:'按已保存的查询规则处理'};
+    lookup:'按关联规则匹配记录',lookup_multi:'按多项业务条件匹配记录',lookup_effective:'按业务日期匹配有效规则',sql:'按已保存的查询规则处理'};
   return step.label || step.name || names[step.kind || step.operation] || '处理业务数据';
 }
 function wbDateTime(value) {
@@ -127,6 +127,10 @@ function wbFailure(job) {
     DIVIDE_BY_ZERO:['有一项计算的除数为零。','确认零值的业务含义，并明确这类记录如何处理。'],
     UNMAPPED_VALUE:['有来源值找不到对应的分类或映射。','先核对并补全未匹配值的处理规则，再运行任务。'],
     LOOKUP_CARDINALITY:['一条记录对应了多个目标，无法唯一关联。','先核对映射关系；如需拆分或分配，明确业务规则。'],
+    INVALID_EFFECTIVE_INTERVAL:['规则的业务键或生效区间无效。','核对业务键及生效起止日期；开始日须早于结束日，结束日为空需先确认是否持续有效。'],
+    OVERLAPPING_EFFECTIVE_INTERVALS:['同一业务键存在有效期重叠的规则，无法确定采用哪个版本。','核对并修正规则有效期，确认开始日包含、结束日不包含，再运行任务。'],
+    INVALID_BUSINESS_DATE:['业务日期缺失，无法选择对应的有效规则。','核对原始日期并补全，不要用默认日期替代。'],
+    MISSING_LINEAGE:['没有保留规则版本标识或生效起止日期，无法追溯实际匹配依据。','让 Agent 在结果中保留映射来源的记录标识及起止日期，再核对业务口径。'],
     ROW_BUDGET:['完整数据超过了这项任务的记录或单元格处理上限。','让 Agent 检查范围并调整处理方案，保持需要的数据完整。'],
     BYTE_BUDGET:['完整数据超过了这项任务的数据量上限。','让 Agent 检查来源范围与中间结果，调整方案后再运行。'],
     TIMEOUT:['本次任务没有在限定时间内完成。','让 Agent 检查数据量和处理步骤，调整方案后再运行。'],
@@ -208,19 +212,24 @@ function wbSyncSingleFact(){
 function wbCandidateReviewKey(){
   const result=wbState.result,candidate=wbRunId(wbState.workflow?.candidate_run);
   if(!wbCurrentProject()||!result||result.run_id!==wbState.resultId||candidate!==result.run_id||
-     result.context?.requires_source_review!==true||wbFactSemanticBlocked()||result.plan_sha256!==wbState.workflow?.draft_sha256||
+     !(result.context?.requires_source_review===true||result.context?.requires_semantic_review===true)||wbFactSemanticBlocked()||result.plan_sha256!==wbState.workflow?.draft_sha256||
      !/^[a-f0-9]{64}$/.test(result.manifest_sha256||''))return '';
-  return JSON.stringify([wbProject,wbState.workflowId,result.run_id,result.plan_sha256,result.manifest_sha256]);
+  return JSON.stringify([wbProject,wbState.workflowId,result.run_id,result.plan_sha256,result.manifest_sha256,
+                         result.context?.requires_source_review===true,result.context?.requires_semantic_review===true]);
 }
 function wbSyncSourceReview(){
   const result=wbState.result,candidate=!!result&&result.run_id===wbState.resultId&&wbState.resultId===wbRunId(wbState.workflow?.candidate_run);
-  const blocked=candidate&&wbFactSemanticBlocked(),required=candidate&&result.context?.requires_source_review===true&&!blocked,key=required?wbCandidateReviewKey():'';
-  if(key!==wbState.sourceReviewKey){wbState.sourceReviewKey=key;wbState.sourceReviewAcknowledged='';wbEl('#workbench-source-review-ack').checked=false;}
+  const blocked=candidate&&wbFactSemanticBlocked(),required=candidate&&result.context?.requires_source_review===true&&!blocked,
+        semanticRequired=candidate&&result.context?.requires_semantic_review===true&&!blocked,
+        key=required||semanticRequired?wbCandidateReviewKey():'';
+  if(key!==wbState.sourceReviewKey){wbState.sourceReviewKey=key;wbState.sourceReviewAcknowledged='';wbState.semanticReviewAcknowledged='';wbEl('#workbench-source-review-ack').checked=false;wbEl('#workbench-semantic-review-ack').checked=false;}
   wbEl('#workbench-source-review').hidden=!required;wbEl('#workbench-source-review-error').hidden=!required||!!key;
+  wbEl('#workbench-semantic-review').hidden=!semanticRequired;wbEl('#workbench-semantic-review-error').hidden=!semanticRequired||!!key;
   wbEl('#workbench-fact-semantic-warning').hidden=!blocked;
   wbEl('#workbench-candidate-title').textContent=blocked?'结果需业务语义对齐':'新结果待你确认';
   wbEl('#workbench-candidate-description').textContent=blocked?'这份结果可以查看，暂不能采用。':'核对数值与来源后，可以将它作为以后继续使用的结果。';
   wbEl('#workbench-source-review-ack').disabled=!key||wbState.busy;
+  wbEl('#workbench-semantic-review-ack').disabled=!key||wbState.busy;
 }
 function wbRenderButtons() {
   const hasWorkflow = !!wbState.workflow && !wbState.workflowLoading;
@@ -230,12 +239,16 @@ function wbRenderButtons() {
   wbEl('#workbench-reset').disabled = !hasWorkflow || wbState.busy;
   wbEl('#workbench-refresh').disabled = wbState.busy || wbState.workflowLoading;
   const candidate = wbRunId(wbState.workflow?.candidate_run);
-  const sourceReviewRequired=wbState.result?.context?.requires_source_review===true,key=sourceReviewRequired?wbCandidateReviewKey():'';
+  const sourceReviewRequired=wbState.result?.context?.requires_source_review===true,
+        semanticReviewRequired=wbState.result?.context?.requires_semantic_review===true,
+        key=sourceReviewRequired||semanticReviewRequired?wbCandidateReviewKey():'';
   wbEl('#workbench-publish').disabled = !hasWorkflow || wbState.busy || wbState.editorDirty || !wbState.result ||
     !wbCurrentProject() || !candidate || candidate !== wbState.resultId || wbState.result.run_id!==wbState.resultId ||
     wbState.result.plan_sha256 !== wbState.workflow?.draft_sha256 || wbFactSemanticBlocked() ||
-    sourceReviewRequired&&(!key||wbState.sourceReviewAcknowledged!==key||!wbEl('#workbench-source-review-ack').checked);
+    sourceReviewRequired&&(!key||wbState.sourceReviewAcknowledged!==key||!wbEl('#workbench-source-review-ack').checked) ||
+    semanticReviewRequired&&(!key||wbState.semanticReviewAcknowledged!==key||!wbEl('#workbench-semantic-review-ack').checked);
   wbEl('#workbench-source-review-ack').disabled=!key||wbState.busy;
+  wbEl('#workbench-semantic-review-ack').disabled=!key||wbState.busy;
   for (const format of ['xlsx', 'csv', 'handoff']) {
     const button=wbEl('#workbench-download-' + format);button.hidden=wbUnalignedFactCandidate();
     button.disabled = !hasWorkflow || !wbState.result || wbState.busy || wbUnalignedFactCandidate();
@@ -380,8 +393,14 @@ function wbRenderResult() {
   const total = result?.total;
   wbEl('#workbench-page-info').textContent = !result ? '尚无结果' : total === 0 ? '共 0 条' :
     '当前第 ' + (wbState.offset + 1) + '–' + (wbState.offset + (result.rows?.length || 0)) + ' 条，共 ' + wbValue(total) + ' 条';
+  let semanticNotice='';
+  if(result?.context?.requires_semantic_review===true){
+    if(result.semantic_review_confirmed===true)semanticNotice=' 已记录本次结果的业务语义复核；仍需按实际用途核对数值与来源。';
+    else if(result.run_id!==wbRunId(wbState.workflow?.candidate_run))semanticNotice=' 业务语义尚未按当前要求确认，不能作为已核验简报或下游已采用结果使用。';
+    else semanticNotice=' 候选文件未完成业务口径核对，下载不代表正式采用。';
+  }
   wbEl('#workbench-result-help').textContent = result ? wbUnalignedFactCandidate()?'当前仅展示这一页；该候选尚未完成业务语义对齐，暂不提供批量下载。':
-    '当前仅展示这一页，完整数据与依据可通过下载获取。' + (result.context?.requires_semantic_review ? ' 部分字段含义或映射仍待核对。' : '') : '结果按页展示，下载可获取完整数据。';
+    '当前仅展示这一页，完整数据与依据可通过下载获取。' + semanticNotice : '结果按页展示，下载可获取完整数据。';
   const contract=result?.context?.data_contract,checks=Array.isArray(contract?.checks)?contract.checks:[];
   const numericEvidence=contract?.numeric_policy==='exact_decimal_v1'&&Number.isSafeInteger(contract?.rows)&&contract.rows>=0&&Number.isSafeInteger(result?.total)&&result.total>=0&&contract.rows===result.total;
   const legacyNumeric=checks.some(check=>typeof check?.name==='string'&&/^(range|total):/.test(check.name))&&!numericEvidence;
@@ -517,15 +536,19 @@ async function wbPublish() {
   wbRenderButtons();
   if (wbEl('#workbench-publish').disabled || !wbState.result) return;
   const result=wbState.result,workflowId=wbState.workflowId,runId=wbState.resultId,token=wbState.token;
-  const plan=result.plan_sha256,handoff=result.manifest_sha256,requiresReview=result.context?.requires_source_review===true;
-  const key=requiresReview?wbCandidateReviewKey():'';
+  const plan=result.plan_sha256,handoff=result.manifest_sha256,requiresReview=result.context?.requires_source_review===true,
+        requiresSemantic=result.context?.requires_semantic_review===true;
+  const key=requiresReview||requiresSemantic?wbCandidateReviewKey():'';
   if(requiresReview&&(!key||wbState.sourceReviewAcknowledged!==key||!wbEl('#workbench-source-review-ack').checked))return;
+  if(requiresSemantic&&(!key||wbState.semanticReviewAcknowledged!==key||!wbEl('#workbench-semantic-review-ack').checked))return;
   const body={run_id:runId,expected_plan_sha256:plan};
-  if(requiresReview){body.confirm_source_review=true;body.expected_handoff_sha256=handoff;}
+  if(requiresReview)body.confirm_source_review=true;
+  if(requiresSemantic)body.confirm_semantic_review=true;
+  if(requiresReview||requiresSemantic)body.expected_handoff_sha256=handoff;
   const current=()=>wbCurrentProject()&&wbState.token===token&&wbState.workflowId===workflowId&&wbState.resultId===runId&&
     wbRunId(wbState.workflow?.candidate_run)===runId&&wbState.result?.run_id===runId&&wbState.result?.plan_sha256===plan&&
-    (!requiresReview||wbState.result?.manifest_sha256===handoff);
-  wbState.sourceReviewAcknowledged='';wbEl('#workbench-source-review-ack').checked=false;
+    (!(requiresReview||requiresSemantic)||wbState.result?.manifest_sha256===handoff);
+  wbState.sourceReviewAcknowledged='';wbState.semanticReviewAcknowledged='';wbEl('#workbench-source-review-ack').checked=false;wbEl('#workbench-semantic-review-ack').checked=false;
   wbSetBusy(true);wbNotice('正在提交采用确认…');
   try {
     const adopted=await wbRequest(wbRoot() + '/data-results/' + wbEnc(runId) + '/publish', {method:'POST',body});
@@ -694,6 +717,7 @@ wbEl('#workbench-login-form').addEventListener('submit', async event => {
 wbEl('#workbench-refresh').onclick = () => wbRefresh().then(() => wbNotice('状态已更新。')).catch(error => wbNotice(error.message,true));
 wbEl('#workbench-run').onclick = wbRun;wbEl('#workbench-publish').onclick = wbPublish;wbEl('#workbench-save').onclick = wbSave;
 wbEl('#workbench-source-review-ack').onchange=()=>{const key=wbCandidateReviewKey();wbState.sourceReviewAcknowledged=key&&wbEl('#workbench-source-review-ack').checked?key:'';wbRenderButtons();};
+wbEl('#workbench-semantic-review-ack').onchange=()=>{const key=wbCandidateReviewKey();wbState.semanticReviewAcknowledged=key&&wbEl('#workbench-semantic-review-ack').checked?key:'';wbRenderButtons();};
 wbEl('#workbench-open-result').onclick = () => wbOpenTab('result');wbEl('#workbench-open-rules').onclick = () => wbOpenTab('rules');
 wbEl('#workbench-reset').onclick = () => wbLoadWorkflow(wbState.workflowId).then(() => wbNotice('已重新载入当前保存的规则。')).catch(error => wbNotice(error.message,true));
 wbEl('#workbench-plan').addEventListener('input', () => {

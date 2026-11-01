@@ -51,6 +51,25 @@ def test_preview_and_duplicate_business_grain_cannot_become_a_report():
     with pytest.raises(ValueError,match='重复'):reports.evaluate(recipe(),duplicate)
 
 
+@pytest.mark.parametrize('missing_key',['',' ', '\t\n'])
+def test_blank_business_grain_is_not_treated_as_a_valid_entity(missing_key):
+    current=table();current['rows'][0]['office']=missing_key
+    with pytest.raises(ValueError,match='粒度重复或为空'):
+        reports.evaluate(recipe(),current)
+
+
+def test_zero_integer_business_grain_is_not_treated_as_missing():
+    current=table();current['schema']['columns'][0].update(data_type='integer',unit='1')
+    current['rows'][0]['office']=0;current['rows'][1]['office']=1
+    r=recipe(current['schema'])
+    assert reports.evaluate(r,current)['assertions'][0]['value']=='9007199254840.000002'
+
+
+def test_nonblank_grain_is_not_automatically_trimmed():
+    current=table();current['rows'][0]['office']='A';current['rows'][1]['office']=' A '
+    assert reports.evaluate(recipe(),current)['selected_rows']==2
+
+
 def test_semantic_drift_and_period_mismatch_stop_reuse():
     current=table();current['schema']['columns'][1]['unit']='USD'
     with pytest.raises(ValueError,match='口径已变化'):reports.evaluate(recipe(),current)
@@ -152,7 +171,12 @@ def real_result(sql=False):
             'inputs':['detail'],'sql':'SELECT office, actual, budget FROM detail','output_schema':schema()}]
     workspace.write_file(pid,'workflows/month.json',json.dumps(doc))
     workflow=project_data.register(pid,'workflows/month.json')
-    run=project_data.enqueue_workflow(pid,workflow['workflow_id']);assert process_once()
+    run=project_data.enqueue_workflow(pid,workflow['workflow_id'])
+    # Other integration scenarios can leave work in the shared queue; wait
+    # for this exact job rather than treating one worker tick as its receipt.
+    for _ in range(100):
+        if get_job(run['id'])['status'] not in ('queued','running','retrying'):break
+        assert process_once()
     assert get_job(run['id'])['status']=='validated'
     return pid,run['id']
 
@@ -190,7 +214,8 @@ def test_sql_result_requires_genuine_server_adoption_before_brief():
     assert job['data_result']['requires_semantic_review'] is True
     with pytest.raises(ValueError,match='待核对'):reports.inspect_result(pid,rid)
     with pytest.raises(ValueError,match='待核对'):reports.render(pid,rid,recipe())
-    project_data.publish_result(pid,rid,job['commit'])
+    project_data.publish_result(pid,rid,job['commit'],semantic_review_actor='owner',
+                                review_handoff_sha256=job['data_result']['handoff_sha256'])
     assert get_job(rid)['status']=='succeeded'
     info=reports.inspect_result(pid,rid)
     assert info['server_adopted_result'] and info['requires_semantic_review']

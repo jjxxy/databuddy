@@ -76,7 +76,11 @@ def registered(pid,doc,path='workflows/orders.json'):
 
 def run(pid,wid,**kw):
     value=data.enqueue_workflow(pid,wid,**kw)
-    assert process_once(),value
+    # A worker tick can legitimately service another integration test's
+    # queued job; verify completion of the requested run itself.
+    for _ in range(100):
+        if get_job(value['id'])['status'] not in ('queued','running','retrying'):break
+        assert process_once(),value
     current=get_job(value['id'])
     assert current['status'] in ('validated','succeeded'),current
     assert current.get('validated') and current['records']>0,current
@@ -292,6 +296,10 @@ def test_auto_publication_rechecks_lease_after_artifact_and_plan_checks(monkeypa
     clock=[time.time()]
     with engine.begin() as c:
         c.execute(update(jobs).where(jobs.c.id==candidate['id']).values(status='running',lease_token='final-fence-test',lease_until=clock[0]+10))
+    # Simulate the auto-publish state before this running job becomes a
+    # candidate; otherwise the newer candidate guard correctly fails first.
+    from agent_service.store import patch
+    patch('data_workflow',wid,candidate_run=None)
     original_load=data.load_document
     def slow_plan_check(*args,**kwargs):
         result=original_load(*args,**kwargs)
@@ -305,6 +313,7 @@ def test_auto_publication_rechecks_lease_after_artifact_and_plan_checks(monkeypa
         assert get('data_workflow',wid)['published_run']==initial['id']
         assert get_job(candidate['id'])['status']=='running'
     finally:
+        patch('data_workflow',wid,candidate_run=candidate['id'])
         with engine.begin() as c:
             c.execute(update(jobs).where(jobs.c.id==candidate['id']).values(status='validated',lease_token=candidate['lease_token'],lease_until=candidate['lease_until']))
 
@@ -322,6 +331,9 @@ def test_upstream_sql_semantic_review_flag_survives_full_result_handoff():
     doc['plan']['output']='sql_rows'
     wid=registered(pid,doc);upstream=run(pid,wid)
     _,meta=data.result_folder(pid,upstream['id']);assert meta['requires_semantic_review'] is True
+    with pytest.raises(ValueError,match='人工复核'):data.read_input(pid,{'result_id':upstream['id']})
+    data.publish_result(pid,upstream['id'],upstream['commit'],semantic_review_actor='owner',
+                        review_handoff_sha256=meta['handoff_sha256'])
     downstream=document(s['id']);downstream['bindings']={'orders':{'result_id':upstream['id']}}
     downstream_id=registered(pid,downstream,path='workflows/downstream-review.json')
     result=run(pid,downstream_id);folder,meta=data.result_folder(pid,result['id'])
@@ -394,6 +406,10 @@ def test_reclassification_review_is_bound_to_exact_mapping_fields_and_payload(re
         assert meta['requires_semantic_review'] is (review_state=='unreferenced')
         rows,_=all_rows(pid,result['id'])
         assert len(rows)==COUNT and {r['region'] for r in rows}=={'East-region','West-region'}
+        if review_state=='approved':
+            # Exact owner-reviewed mapping remains reusable without inventing a
+            # second generic semantic approval; the mapping itself is checked.
+            data.require_safe_numeric_lineage(pid,result['id'])
 
 
 def test_excel_percentage_requires_fraction_declaration_before_workflow_execution():

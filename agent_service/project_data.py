@@ -593,9 +593,13 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
     queued=enqueue('data_workflow',wid,commit=digest(doc.model_dump()),scheduled_key=scheduled_key,max_attempts=1,
         extra={**({'gateway_authority':authority} if authority else {}),'project_id':pid,'workflow_document':doc.model_dump(),'source_snapshot':frozen,
                'originating_turn_id':originating_turn_id,
+               'workflow_pointer_snapshot':{'published_run':w.get('published_run'),'candidate_run':w.get('candidate_run')},
+               'workflow_refresh_published':bool(use_published),
                'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
                'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
     if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow' or queued.get('commit')!=digest(doc.model_dump()):raise ValueError('已有不同版本的加工任务，请等待完成后运行新方案')
+    if not isinstance(queued.get('source_snapshot'),dict) or digest(queued['source_snapshot'])!=digest(frozen):
+        raise ValueError('已有使用不同资料版本的加工任务，请等待结束后重新发起新资料的运行')
     return queued
 
 
@@ -738,6 +742,57 @@ def _new_source_review_receipt(pid,rid,run,meta,context,review_actor):
     return dict(content,receipt_sha256=digest(content))
 
 
+def _semantic_review_receipt_valid(pid,rid,run,meta,context):
+    """An accepted run is not itself proof that a human reviewed its meaning."""
+    receipt=run.get('semantic_review_receipt')
+    if not isinstance(receipt,dict) or run.get('status')!='succeeded':return False
+    required={'version','decision','method','project_id','run_id','plan_sha256','handoff_sha256',
+              'source_snapshot_sha256','input_evidence_sha256','output_semantics_sha256',
+              'reviewer','reviewed_at','receipt_sha256'}
+    if set(receipt)!=required:return False
+    content={key:value for key,value in receipt.items() if key!='receipt_sha256'}
+    return (type(receipt['version']) is int and receipt['version']==1 and receipt['decision']=='confirmed'
+            and receipt['method']=='authenticated_user_semantic_review' and receipt['project_id']==pid
+            and receipt['run_id']==rid and receipt['plan_sha256']==meta.get('plan_sha256')
+            and receipt['handoff_sha256']==meta.get('handoff_sha256')
+            and receipt['source_snapshot_sha256']==digest(run.get('source_snapshot',{}))
+            and receipt['input_evidence_sha256']==digest(context.get('input_evidence'))
+            and receipt['output_semantics_sha256']==digest(context.get('output_semantics'))
+            and isinstance(receipt['reviewer'],str) and re.fullmatch(r'owner|u_[a-f0-9]{64}',receipt['reviewer']) is not None
+            and isinstance(receipt['reviewed_at'],str) and bool(receipt['reviewed_at'])
+            and receipt['receipt_sha256']==digest(content))
+
+
+def _new_semantic_review_receipt(pid,rid,run,meta,context,actor):
+    if not isinstance(actor,str) or not re.fullmatch(r'owner|u_[a-f0-9]{64}',actor):
+        raise ValueError('业务语义和处理口径需要在工作台由已认证用户核对并确认')
+    content={'version':1,'decision':'confirmed','method':'authenticated_user_semantic_review',
+             'project_id':pid,'run_id':rid,'plan_sha256':meta['plan_sha256'],
+             'handoff_sha256':meta['handoff_sha256'],
+             'source_snapshot_sha256':digest(run.get('source_snapshot',{})),
+             'input_evidence_sha256':digest(context.get('input_evidence')),
+             'output_semantics_sha256':digest(context.get('output_semantics')),
+             'reviewer':actor,'reviewed_at':now()}
+    return dict(content,receipt_sha256=digest(content))
+
+
+def _reviewed_reclassification_stages(pid,document):
+    """Recheck real approvals and bind them to the exact frozen mapping."""
+    reviewed=set()
+    if document.reviewed_mapping_ids:
+        from .semantic_service import get_reviewed_mapping
+        for ident in document.reviewed_mapping_ids:
+            mapping=get_reviewed_mapping(pid,ident).mapping
+            expected={entry.source:entry.target for entry in mapping.entries}
+            matched=[stage for stage in document.plan.stages if stage.kind=='reclassify'
+                     and stage.column==mapping.source_field_id and stage.output.name==mapping.target_field_id
+                     and stage.mapping==expected and stage.unmapped==({'error':'error','keep':'preserve'}.get(mapping.unmapped_policy))]
+            if len(matched)!=1:
+                raise ValueError('已核对映射未与本次具体步骤和枚举内容一致绑定，不能借用其他映射的批准')
+            reviewed.add(matched[0].id)
+    return reviewed
+
+
 def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_token=None,allow_root_review_pending=False):
     """Check frozen SQL and all result-input ancestors without materializing rows.
 
@@ -786,18 +841,38 @@ def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_t
                 raise NumericLineageError('unknown',unknown)
             hashes[current]=handoff
             require_current_numeric_evidence(current,meta,context,total)
+            semantic_meta=meta.get('requires_semantic_review') is True
+            semantic_context=context.get('requires_semantic_review') is True
+            if semantic_meta!=semantic_context:
+                raise NumericLineageError('semantic_review_unknown','业务语义复核标记不一致，请重新运行并核对')
+            if semantic_meta and not (current==rid and allow_root_review_pending):
+                if not _semantic_review_receipt_valid(pid,current,run,meta,context):
+                    raise NumericLineageError('semantic_review_unknown','历史业务语义缺少已认证的人工复核记录，请先在工作台核对该候选')
             raw=run.get('workflow_document')
             if not isinstance(raw,dict) or digest(raw)!=meta['plan_sha256']:
                 raise NumericLineageError('unknown',unknown)
             document=WorkflowDocument.model_validate(raw)
+            evidence=context.get('input_evidence')
+            if not isinstance(evidence,dict):raise NumericLineageError('source_review_unknown','历史来源证据不完整，请从原始资料重新运行并核对')
+            # Older runs may lack or have incorrectly cleared both review
+            # flags. Re-derive mandatory review from the frozen plan and input
+            # evidence, rather than trusting two matching false values.
+            if not semantic_meta:
+                mandatory=any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective')
+                              for stage in document.plan.stages)
+                mandatory |= any(isinstance(proof,dict) and proof.get('requires_semantic_review') is True
+                                 for proof in evidence.values())
+                if any(stage.kind=='reclassify' for stage in document.plan.stages):
+                    reviewed=_reviewed_reclassification_stages(pid,document)
+                    mandatory |= any(stage.kind=='reclassify' and stage.id not in reviewed for stage in document.plan.stages)
+                if mandatory:
+                    raise NumericLineageError('semantic_review_unknown','历史业务语义复核依据不完整，请从原始资料重新运行并核对')
             for stage in document.plan.stages:
                 if stage.kind=='sql':
                     try:validate_sql(stage.sql,set(stage.inputs))
                     except WorkflowError as error:
                         raise NumericLineageError('unsafe_sql' if error.code=='SQL_INEXACT_NUMERIC' else 'unknown',
                                                   unsafe if error.code=='SQL_INEXACT_NUMERIC' else unknown) from None
-            evidence=context.get('input_evidence')
-            if not isinstance(evidence,dict):raise NumericLineageError('source_review_unknown','历史来源证据不完整，请从原始资料重新运行并核对')
             evidence_needs_review=any(isinstance(proof,dict) and proof.get('requires_source_review') is True for proof in evidence.values())
             meta_needs_review=meta.get('requires_source_review') is True
             context_needs_review=context.get('requires_source_review') is True
@@ -868,8 +943,36 @@ def read_result(pid,rid,offset=0,limit=100):
     if (meta.get('requires_source_review') is True or context.get('requires_source_review') is True
             or isinstance(evidence,dict) and any(isinstance(proof,dict) and proof.get('requires_source_review') is True for proof in evidence.values())):
         context['requires_source_review']=True
+    from .jobs import get_job
+    run=get_job(rid)
+    semantic_context=context.get('requires_semantic_review') is True
+    semantic_required=meta.get('requires_semantic_review') is True or semantic_context
+    plan_valid=False
+    # The frozen inputs and plan can reveal a missing historical review flag.
+    try:
+        doc=WorkflowDocument.model_validate(run['workflow_document'])
+        plan_valid=(run.get('project_id')==pid and run.get('kind')=='data_workflow' and meta.get('run_id')==rid
+                    and context.get('project_id')==pid and meta.get('workflow_id')==run.get('target')
+                    and context.get('workflow_id')==run.get('target')
+                    and run.get('data_result')==meta and run.get('commit')==meta.get('plan_sha256')
+                    and context.get('plan_sha256')==meta.get('plan_sha256')
+                    and digest(run['workflow_document'])==meta.get('plan_sha256'))
+        semantic_required |= any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective')
+                                 for stage in doc.plan.stages)
+        if any(stage.kind=='reclassify' for stage in doc.plan.stages):
+            reviewed=_reviewed_reclassification_stages(pid,doc)
+            semantic_required |= any(stage.kind=='reclassify' and stage.id not in reviewed for stage in doc.plan.stages)
+        semantic_required |= isinstance(evidence,dict) and any(
+            isinstance(proof,dict) and proof.get('requires_semantic_review') is True for proof in evidence.values())
+    except (KeyError,ValueError,TypeError):
+        semantic_required=True
+    if semantic_required:
+        context['requires_semantic_review']=True
     page['context']=context
-    return dict(page,run_id=rid,workflow_id=meta['workflow_id'],plan_sha256=meta['plan_sha256'],data_as_of=meta['created_at'])
+    confirmed=(plan_valid and semantic_required and meta.get('requires_semantic_review') is True and semantic_context
+               and _semantic_review_receipt_valid(pid,rid,run,meta,page['context']))
+    return dict(page,run_id=rid,workflow_id=meta['workflow_id'],plan_sha256=meta['plan_sha256'],data_as_of=meta['created_at'],
+                semantic_review_confirmed=bool(confirmed))
 
 
 def execute_job(run,folder):
@@ -946,17 +1049,7 @@ def execute_job(run,folder):
                     # a source-declared unit before a later normalization step.
                     if unit and unit!=c.get('unit'):fail_input('INPUT_UNIT_MISMATCH','输入单位与原表明确标识不一致，需要显式转换或重新核对',{'column':c['name']})
             inputs[alias]=rows;evidence[alias]=proof;provenance[alias]=prov
-        reviewed_stages=set()
-        if doc.reviewed_mapping_ids:
-            from .semantic_service import get_reviewed_mapping
-            for ident in doc.reviewed_mapping_ids:
-                review=get_reviewed_mapping(pid,ident);mapping=review.mapping
-                expected={e.source:e.target for e in mapping.entries}
-                matched=[stage for stage in doc.plan.stages if stage.kind=='reclassify'
-                         and stage.column==mapping.source_field_id and stage.output.name==mapping.target_field_id
-                         and stage.mapping==expected and stage.unmapped==({'error':'error','keep':'preserve'}.get(mapping.unmapped_policy))]
-                if len(matched)!=1:raise ValueError('已核对映射未与本次具体步骤和枚举内容一致绑定，不能借用其他映射的批准')
-                reviewed_stages.add(matched[0].id)
+        reviewed_stages=_reviewed_reclassification_stages(pid,doc)
         def on_stage(receipt):
             checkpoint(run);stage_receipts.append(receipt)
             (folder/'stage-receipts.json').write_text(json.dumps(stage_receipts,ensure_ascii=False,indent=2,default=str))
@@ -1012,25 +1105,40 @@ def execute_job(run,folder):
         (folder/'data-result.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2))
         patch_run(run,validated=True,records=meta['records'],stage='完整结果验证通过',data_result=meta)
         w=owned(pid,'data_workflow',run['target'])
-        if w.get('published_run') and w.get('active_sha256')==run['commit'] and not source_review:
-            publish_result(pid,run['id'],run['commit'],lease_token=run['lease_token'])
-        else:
-            patch_run(run,status='validated',finished_at=now(),stage='完整结果验证通过，等待采用',
-                target_patch={'kind':'data_workflow','values':{'candidate_run':run['id']}})
+        pointer=run.get('workflow_pointer_snapshot')
+        valid_pointer=isinstance(pointer,dict) and set(pointer)=={'published_run','candidate_run'}
+        def keep_candidate():
+            values={'status':'validated','finished_at':now(),'stage':'完整结果验证通过；候选变化时请重新核对'}
+            # Background refresh must not replace a pre-existing user candidate.
+            if valid_pointer and not (run.get('workflow_refresh_published') is True and pointer['candidate_run'] is not None):
+                # CAS protects a later candidate or a newly published result.
+                values['target_patch']={'kind':'data_workflow','expected':pointer,'values':{'candidate_run':run['id']}}
+            patch_run(run,**values)
+        if (valid_pointer and w.get('published_run') and w.get('active_sha256')==run['commit']
+                and w.get('published_run')==pointer['published_run']
+                and w.get('candidate_run')==pointer['candidate_run'] and not w.get('candidate_run')
+                and not source_review and not context['requires_semantic_review']):
+            try:publish_result(pid,run['id'],run['commit'],lease_token=run['lease_token'])
+            except AutoRefreshConflict:keep_candidate()
+        else:keep_candidate()
     finally:stop.set();thread.join(timeout=4)
 
 
-def publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None):
+class AutoRefreshConflict(ValueError):
+    """The published or candidate pointer advanced during an automatic run."""
+
+
+def publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None,semantic_review_actor=None):
     from .job_authority import guard
     from .jobs import get_job
     from contextlib import nullcontext
     # Explicit owner adoption is a new authorization; worker auto-publication
     # must retain its originating machine grant through the database commit.
     with guard(get_job(rid)) if lease_token else nullcontext():
-        return _publish_result(pid,rid,expected_sha256,lease_token=lease_token,review_actor=review_actor,review_handoff_sha256=review_handoff_sha256)
+        return _publish_result(pid,rid,expected_sha256,lease_token=lease_token,review_actor=review_actor,review_handoff_sha256=review_handoff_sha256,semantic_review_actor=semantic_review_actor)
 
 
-def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None):
+def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None,review_handoff_sha256=None,semantic_review_actor=None):
     from .jobs import get_job,jobs,render
     from .result_delivery import read_handoff
     folder,meta=result_folder(pid,rid,lease_token=lease_token)
@@ -1038,13 +1146,19 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
     snapshot_hash=digest(before_review.get('source_snapshot',{}))
     page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
     needs_review=meta.get('requires_source_review') is True or page['context'].get('requires_source_review') is True
+    needs_semantic_review=meta.get('requires_semantic_review') is True or page['context'].get('requires_semantic_review') is True
     if needs_review:
         if lease_token or review_handoff_sha256!=meta['handoff_sha256']:
             raise ValueError('来源解释需要在工作台对照原件并明确确认，请刷新结果后核对')
         if not isinstance(review_actor,str) or not re.fullmatch(r'owner|u_[a-f0-9]{64}',review_actor):
             raise ValueError('来源解释需要由已认证用户在工作台明确确认，不能由后台或模型代确认')
+    if needs_semantic_review:
+        if lease_token or review_handoff_sha256!=meta['handoff_sha256']:
+            raise ValueError('业务语义和处理口径需要在工作台明确确认，请刷新结果后核对')
+        if not isinstance(semantic_review_actor,str) or not re.fullmatch(r'owner|u_[a-f0-9]{64}',semantic_review_actor):
+            raise ValueError('业务语义和处理口径需要由已认证用户在工作台明确确认，不能由后台或模型代确认')
     require_safe_numeric_lineage(pid,rid,root_meta=meta,root_page=page,lease_token=lease_token,
-                                 allow_root_review_pending=bool(needs_review and not lease_token))
+                                 allow_root_review_pending=bool((needs_review or needs_semantic_review) and not lease_token))
     if needs_review and not _source_review_receipt_valid(pid,rid,before_review,meta,page['context']):
         try:_verify_review_originals(pid,before_review)
         except ValueError:raise
@@ -1058,6 +1172,17 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
         row=c.execute(select(items.c.body).where(items.c.id==run['target'],items.c.kind=='data_workflow').with_for_update()).first()
         w=json.loads(row[0])
         if w.get('project_id')!=pid:raise ValueError('流程不属于当前项目')
+        # A later run can replace the candidate under the same plan hash.
+        # Never let an old review page adopt that stale result over it.
+        if not lease_token and w.get('candidate_run')!=rid and w.get('published_run')!=rid:
+            raise ValueError('候选结果已变化，请重新打开最新结果核对后再采用')
+        if lease_token:
+            pointer=run.get('workflow_pointer_snapshot')
+            if (not isinstance(pointer,dict) or set(pointer)!={'published_run','candidate_run'}
+                    or w.get('candidate_run') is not None
+                    or w.get('candidate_run')!=pointer['candidate_run']
+                    or w.get('published_run')!=pointer['published_run']):
+                raise AutoRefreshConflict('自动刷新期间候选或正式结果已变化，保留现有版本')
         doc=WorkflowDocument.model_validate(run['workflow_document'])
         if run['commit']!=digest(doc.model_dump()):raise ValueError('流程内容完整性校验失败')
         current=load_document(pid,w['path'])
@@ -1073,6 +1198,8 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
             raise ValueError('结果或来源记录已变化，请重新核对')
         if needs_review and not _source_review_receipt_valid(pid,rid,run,meta,page['context']):
             run['source_review_receipt']=_new_source_review_receipt(pid,rid,run,meta,page['context'],review_actor)
+        if needs_semantic_review and not _semantic_review_receipt_valid(pid,rid,run,meta,page['context']):
+            run['semantic_review_receipt']=_new_semantic_review_receipt(pid,rid,run,meta,page['context'],semantic_review_actor)
         run.update(stage='已采用完整结果',finished_at=now())
         c.execute(update(jobs).where(jobs.c.id==rid).values(status='succeeded',body=json.dumps(run,ensure_ascii=False,default=str)))
     return {'workflow_id':w['id'],'published_run':rid,'plan_sha256':run['commit']}

@@ -103,6 +103,23 @@ def test_private_error_content_not_returned_and_unsafe_error_is_unknown():
     assert run(doc,{}, {'write':Handler(fail,False,False)}, {},checkpoint=result,persist=lambda x:None)==result
 
 
+@pytest.mark.parametrize(('code','expected'),[
+    ('INVALID_EFFECTIVE_INTERVAL','生效区间无效'),
+    ('OVERLAPPING_EFFECTIVE_INTERVALS','有效期重叠'),
+    ('INVALID_BUSINESS_DATE','业务日期缺失'),
+    ('MISSING_LINEAGE','无法追溯'),
+    ('TYPE_MISMATCH','日期格式'),
+])
+def test_temporal_lookup_errors_are_actionable_and_do_not_leak_raw_values(code,expected):
+    from agent_service.data_workflows import WorkflowError
+    doc={'name':'对照规则','inputs':[],'nodes':[{'id':'match','kind':'read','title':'核对规则'}],'outputs':['match']}
+    def fail(*args):raise WorkflowError(code,'private_customer_data')
+    result=run(doc,{}, {'read':Handler(fail,True,True)}, {},persist=lambda value:None)
+    receipt=result['steps'][0]
+    assert result['status']=='failed' and receipt['error_code']==code
+    assert expected in receipt['error_message'] and 'private_customer_data' not in str(result)
+
+
 def test_missing_inputs_and_oversized_or_non_json_values_rejected():
     with pytest.raises(ValueError,match='输入'):
         run(document(),{}, {}, {},persist=lambda x:None)

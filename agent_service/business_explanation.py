@@ -70,7 +70,7 @@ def _field_names(plan):
 
 _LABELS = {'select':'选择字段', 'drop':'移除字段', 'filter':'筛选数据',
            'reclassify':'按映射归类', 'compute':'计算指标', 'aggregate':'汇总数据',
-           'lookup':'关联对照资料', 'lookup_multi':'按多项条件关联资料', 'union_rows':'合并记录', 'sql':'按保存的规则处理',
+           'lookup':'关联对照资料', 'lookup_multi':'按多项条件关联资料', 'lookup_effective':'按业务日期关联有效版本', 'union_rows':'合并记录', 'sql':'按保存的规则处理',
            'normalize':'规范数据格式'}
 _OPS = {'eq':'等于','neq':'不等于','gt':'大于','gte':'大于或等于','lt':'小于',
         'lte':'小于或等于','in':'属于','not_in':'不属于','contains':'包含',
@@ -124,6 +124,17 @@ def _stage_description(stage, names, table_names=None):
         keys=['本表 '+label(pair.get('left'))+' 对照 '+right+' 的 '+label(pair.get('right'))
               for pair in stage.get('keys',[]) if isinstance(pair,dict)]
         return _bounded('同时满足：'+'；'.join(keys)+'，补充 '+outputs+'；'+action+'。关联条件是否完整仍需业务核对。')
+    if kind == 'lookup_effective':
+        action = '无法匹配时停止' if stage.get('unmapped', 'error') == 'error' else '无法匹配时留空'
+        outputs = '、'.join(label(value.get('name')) for value in stage.get('outputs', {}).values() if isinstance(value, dict))
+        right=(table_names or {}).get(stage.get('right'),'名称未记录的参考资料')
+        keys=['本表 '+label(pair.get('left'))+' 对照 '+right+' 的 '+label(pair.get('right'))
+              for pair in stage.get('keys',[]) if isinstance(pair,dict)]
+        null_end = '结束日为空时持续有效' if stage.get('null_end_policy') == 'open' else '结束日为空时停止处理'
+        return _bounded('业务键、日期和规则版本的含义仍需业务核对。按本表 '+label(stage.get('business_date'))+
+            ' 匹配 '+right+' 的 '+label(stage.get('valid_from'))+' 至 '+label(stage.get('valid_to'))+
+            '。开始日当天生效，结束日当天不生效；'+null_end+'；'+action+
+            '。同时满足：'+'；'.join(keys)+'，补充 '+outputs+'。')
     if kind == 'reclassify':
         mapping = stage.get('mapping', {})
         lines = [str(a) + ' → ' + str(b) for a, b in list(mapping.items())[:30]]

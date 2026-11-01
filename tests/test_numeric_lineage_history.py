@@ -27,7 +27,8 @@ def unsafe_sql_history(monkeypatch):
     with monkeypatch.context() as old:
         old.setattr(data_workflows,'validate_sql',lambda sql,allowed_tables,**kwargs:sql)
         workflow=registered(pid,doc);first=run(pid,workflow)
-        project_data.publish_result(pid,first['id'],first['commit'])
+        project_data.publish_result(pid,first['id'],first['commit'],semantic_review_actor='owner',
+                                    review_handoff_sha256=first['data_result']['handoff_sha256'])
         info=business_reports.inspect_result(pid,first['id'])
         recipe={'version':1,'title':'历史合成报告','period':'2026-09','expected_schema_sha256':info['schema_sha256'],
                 'metrics':[{'id':'total','label':'合计','kind':'sum','column':'amount'}]}
@@ -44,7 +45,8 @@ def descendant_of(pid,rid,schema,path):
                     'columns':['id','office','amount','note']}],'output':'keep'},
          'bindings':{'detail':{'result_id':rid}}}
     wid=registered(pid,doc,path=path);result=run(pid,wid)
-    project_data.publish_result(pid,result['id'],result['commit'])
+    project_data.publish_result(pid,result['id'],result['commit'],semantic_review_actor='owner',
+                                review_handoff_sha256=result['data_result']['handoff_sha256'])
     return result
 
 
@@ -55,7 +57,8 @@ def test_actual_old_float_sql_and_two_descendants_cannot_be_reused(monkeypatch):
     for result in (first,second,third):
         rid=result['id']
         assert project_data.read_result(pid,rid)['rows'][0]['amount']=='9007199254740992.000000000000'
-        for action in (lambda:project_data.publish_result(pid,rid,result['commit']),
+        for action in (lambda:project_data.publish_result(pid,rid,result['commit'],semantic_review_actor='owner',
+                                                           review_handoff_sha256=result['data_result']['handoff_sha256']),
                        lambda:project_data.read_input(pid,{'result_id':rid}),
                        lambda:business_reports.inspect_result(pid,rid)):
             with pytest.raises(NumericLineageError,match='重新运行') as error:action()
@@ -88,7 +91,8 @@ def test_safe_historical_sql_is_not_blanket_blocked():
     doc['plan']['stages']=[{'id':'safe','kind':'sql','description':'取所选字段','inputs':['orders'],
          'sql':'SELECT id, office, amount, note FROM orders','output_schema':schema}];doc['plan']['output']='safe'
     result=run(pid,registered(pid,doc))
-    project_data.publish_result(pid,result['id'],result['commit'])
+    project_data.publish_result(pid,result['id'],result['commit'],semantic_review_actor='owner',
+                                review_handoff_sha256=result['data_result']['handoff_sha256'])
     assert len(project_data.read_input(pid,{'result_id':result['id']})[0])==215
 
 

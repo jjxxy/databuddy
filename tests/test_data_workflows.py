@@ -170,6 +170,20 @@ def test_lookup_unmapped_values_require_explicit_policy_and_nullable_output():
     with pytest.raises(WorkflowError,match='missing'):execute(plan,inputs)
 
 
+def test_single_lookup_cannot_treat_blank_identifiers_as_a_business_match():
+    plan,inputs=lookup_plan()
+    for blank in ('',' \t'):
+        changed=copy.deepcopy(inputs);changed['map'][0]['province']=blank
+        with pytest.raises(WorkflowError,match='non-null'):execute(plan,changed)
+        changed=copy.deepcopy(inputs);changed['orders'][0]['province']=blank
+        with pytest.raises(WorkflowError,match='unmatched'):execute(plan,changed)
+        optional=copy.deepcopy(plan);optional['stages'][0]['unmapped']='null'
+        assert execute(optional,changed)['output']['rows'][0]['office'] is None
+    # String zero is an explicit identifier, not an absent/blank value.
+    inputs['map'][0]['province']='0';inputs['orders'][0]['province']='0';inputs['orders'][1]['province']='0'
+    assert [row['office'] for row in execute(plan,inputs)['output']['rows']]==['Hefei','Hefei']
+
+
 def test_multi_field_lookup_keeps_entities_and_periods_distinct():
     keys=[{'left':'company','right':'legal_entity'}, {'left':'customer','right':'customer'},
           {'left':'month','right':'month'}, {'left':'currency','right':'currency'}]
@@ -202,10 +216,101 @@ def test_multi_field_lookup_keeps_entities_and_periods_distinct():
     with pytest.raises(WorkflowError,match='unmatched'):execute(plan,missing)
     null_right=copy.deepcopy(inputs);null_right['mapping'][0]['month']=None
     with pytest.raises(WorkflowError,match='non-null'):execute(plan,null_right)
+    for blank in ('',' \t'):
+        empty=copy.deepcopy(inputs);empty['mapping'][0]['month']=blank
+        with pytest.raises(WorkflowError,match='non-null'):execute(plan,empty)
+        empty=copy.deepcopy(inputs);empty['sales'][0]['company']=blank
+        with pytest.raises(WorkflowError,match='unmatched'):execute(plan,empty)
+        optional=copy.deepcopy(plan);optional['stages'][0]['unmapped']='null'
+        assert execute(optional,empty)['output']['rows'][0]['owner'] is None
+    zero=copy.deepcopy(inputs);zero['mapping'][0]['legal_entity']='0';zero['sales'][0]['company']='0'
+    assert execute(plan,zero)['output']['rows'][0]['owner']=='North'
     mismatched=copy.deepcopy(plan);mismatched['inputs']['mapping']['columns'][3]['period']='2026-01'
     with pytest.raises(WorkflowError,match='reporting periods'):execute(mismatched,inputs)
     repeated=copy.deepcopy(plan);repeated['stages'][0]['keys'].append(keys[0])
     with pytest.raises(ValidationError,match='cannot be repeated'):execute(repeated,inputs)
+
+
+def effective_lookup_fixture():
+    plan={'name':'集团生效规则关联','inputs':{
+        'transactions':schema([col('id'),col('entity'),col('customer'),col('day','date')],['id']),
+        'rules':schema([col('rule_id'),col('entity'),col('customer'),col('start','date'),col('end','date'),col('owner')],['rule_id'])},
+        'stages':[{'kind':'lookup_effective','id':'mapped','description':'按业务日期匹配确认的规则',
+            'input':'transactions','right':'rules','keys':[{'left':'entity','right':'entity'},{'left':'customer','right':'customer'}],
+            'business_date':'day','valid_from':'start','valid_to':'end',
+            'null_end_policy':'open',
+            'outputs':{'rule_id':col('matched_rule_id'),'start':col('matched_start','date'),
+                       'end':col('matched_end','date'),'owner':col('matched_owner')}}], 'output':'mapped'}
+    inputs={'transactions':[{'id':'a','entity':'A','customer':'C','day':'2026-01-31'},
+                            {'id':'b','entity':'A','customer':'C','day':'2026-02-01'},
+                            {'id':'c','entity':'B','customer':'C','day':'2026-01-31'}],
+            'rules':[{'rule_id':'old','entity':'A','customer':'C','start':'2025-01-01','end':'2026-02-01','owner':'东区'},
+                     {'rule_id':'new','entity':'A','customer':'C','start':'2026-02-01','end':None,'owner':'东区'},
+                     {'rule_id':'other','entity':'B','customer':'C','start':'2025-01-01','end':None,'owner':'西区'}]}
+    return plan,inputs
+
+
+def test_effective_lookup_boundaries_distinguish_same_value_rule_versions():
+    plan,inputs=effective_lookup_fixture();result=execute(plan,inputs)
+    rows=result['output']['rows']
+    assert [(r['id'],r['matched_rule_id'],r['matched_start'],r['matched_end'],r['matched_owner']) for r in rows]==[
+        ('a','old','2025-01-01','2026-02-01','东区'),('b','new','2026-02-01',None,'东区'),
+        ('c','other','2025-01-01',None,'西区')]
+    assert result['requires_semantic_review'] is True
+    assert result['stages'][0]['checks']['interval_policy']=='start_inclusive_end_exclusive; null_end_open'
+    assert result['stages'][0]['checks']['unmatched_rows']==0
+    assert result['stages'][0]['lineage']['keys']==plan['stages'][0]['keys']
+
+
+def test_effective_lookup_rejects_invalid_or_ambiguous_rules_even_for_unused_keys():
+    plan,inputs=effective_lookup_fixture()
+    unknown_end=copy.deepcopy(plan);unknown_end['stages'][0].pop('null_end_policy')
+    with pytest.raises(WorkflowError,match='end date is missing'):execute(unknown_end,inputs)
+    unknown_end['stages'][0]['null_end_policy']='error'
+    with pytest.raises(WorkflowError,match='end date is missing'):execute(unknown_end,inputs)
+    for start,end in [('2026-01-01','2026-01-01'),('2026-02-01','2026-01-01'),(None,'2026-01-01')]:
+        changed=copy.deepcopy(inputs);changed['rules'][0].update(start=start,end=end)
+        with pytest.raises(WorkflowError,match='Effective'):execute(plan,changed)
+    for key in (None,'','  '):
+        changed=copy.deepcopy(inputs);changed['rules'][0]['entity']=key
+        with pytest.raises(WorkflowError,match='key and start date'):execute(plan,changed)
+    changed=copy.deepcopy(inputs);changed['rules'][0]['rule_id']=' '
+    with pytest.raises(WorkflowError,match='grain must be present'):execute(plan,changed)
+    changed=copy.deepcopy(inputs)
+    # This unseen entity must still be checked: otherwise an invalid mapping
+    # could be approved merely because today's data did not happen to use it.
+    changed['rules'] += [{'rule_id':'x','entity':'UNUSED','customer':'C','start':'2026-01-01','end':'2026-04-01','owner':'X'},
+                         {'rule_id':'y','entity':'UNUSED','customer':'C','start':'2026-02-01','end':'2026-03-01','owner':'Y'}]
+    with pytest.raises(WorkflowError,match='overlap'):execute(plan,changed)
+    changed=copy.deepcopy(inputs);changed['rules'][0]['end']=None
+    with pytest.raises(WorkflowError,match='overlap'):execute(plan,changed)
+    invalid=copy.deepcopy(plan);invalid['stages'][0]['outputs'].pop('rule_id')
+    with pytest.raises(WorkflowError,match='grain and both effective dates'):execute(invalid,inputs)
+    invalid=copy.deepcopy(plan);invalid['inputs']['rules']['columns'][3]['data_type']='text'
+    with pytest.raises(WorkflowError,match='must use date'):execute(invalid,inputs)
+
+
+def test_effective_lookup_never_guesses_missing_date_or_blank_key():
+    plan,inputs=effective_lookup_fixture()
+    for day in (None,'2026-02-30','2026-01-01T00:00:00+08:00'):
+        changed=copy.deepcopy(inputs);changed['transactions'][0]['day']=day
+        with pytest.raises(WorkflowError):execute(plan,changed)
+    for key in (None,'','  ','UNKNOWN'):
+        changed=copy.deepcopy(inputs);changed['transactions'][0]['entity']=key
+        with pytest.raises(WorkflowError,match='No effective mapping'):execute(plan,changed)
+        optional=copy.deepcopy(plan);optional['stages'][0]['unmapped']='null'
+        result=execute(optional,changed)
+        assert result['output']['rows'][0]['matched_rule_id'] is None
+        assert result['stages'][0]['checks']['unmatched_rows']==1
+    changed=copy.deepcopy(inputs);changed['transactions'][0]['day']='2024-12-31'
+    with pytest.raises(WorkflowError,match='No effective mapping'):execute(plan,changed)
+    # Explicit null behavior still refuses to put missing mapped values into a
+    # field whose declared schema requires a value.
+    optional=copy.deepcopy(plan);optional['stages'][0]['unmapped']='null'
+    optional['stages'][0]['outputs']['rule_id']['nullable']=False
+    with pytest.raises(WorkflowError,match='non-nullable'):execute(optional,changed)
+    zero=copy.deepcopy(inputs);zero['rules'][0]['entity']='0';zero['transactions'][0]['entity']='0'
+    assert execute(plan,zero)['output']['rows'][0]['matched_rule_id']=='old'
 
 
 def test_reclassification_requires_complete_mapping_and_preserves_source():

@@ -10,7 +10,9 @@ def test_agent_guide_has_executable_example_and_project_scoped_reuse():
     project_data.WorkflowDocument.model_validate(example)
     assert 'WorkflowPlan' in guide['schema']['$defs']
     assert 'LookupMulti' in guide['schema']['$defs']
+    assert 'LookupEffective' in guide['schema']['$defs']
     assert any('lookup_multi' in item and '业务键' in item for item in guide['instructions'])
+    assert any('lookup_effective' in item and '开始日包含、结束日不包含' in item for item in guide['instructions'])
     result=execute(example['plan'],{'detail':[{'record_id':'A','amount':'10.01'},
                                             {'record_id':'B','amount':'0'},
                                             {'record_id':'C','amount':'-2'}]})

@@ -2,7 +2,7 @@
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uuid=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
-const CLIENT_REVISION='2026.11.01.15';
+const CLIENT_REVISION='2026.11.01.16';
 let runtimeNodeWarning=false;
 function runtimeVersion(r){
  const revision=r.headers.get('X-Atlas-Runtime-Revision'),label=$('#runtime-version');if(!label)return;
