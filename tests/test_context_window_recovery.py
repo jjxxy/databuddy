@@ -73,6 +73,58 @@ def test_planning_keeps_old_nondeduplicated_tool_facts_until_a_window_requires_p
     assert 'window_checkpoint' not in info
 
 
+def test_model_window_estimate_accounts_for_prompt_tools_and_output_without_fixed_threshold(turn,monkeypatch):
+    current=long_turn(turn)
+    settings=provider.settings()
+    monkeypatch.setattr(provider,'settings',lambda:settings)
+    messages,tools=agent.planning_context(current,native=False)
+    info=json.loads(messages[1]['content']);prompt=messages[0]['content']
+    estimated=context_window.estimated_request_tokens(prompt,info,tools)
+    output=2000
+    settings.update(context_window_tokens=estimated+output,max_output_tokens=output)
+    fits,_=agent.planning_context(get('turn',turn['id']),native=False)
+    assert 'window_checkpoint' not in json.loads(fits[1]['content'])
+    # The input fits on its own but its configured output reserve does not.
+    settings['context_window_tokens']=int(estimated*.72)+output
+    compressed,_=agent.planning_context(get('turn',turn['id']),native=False)
+    projected=json.loads(compressed[1]['content'])
+    assert projected['window_checkpoint']['originals_retained']
+    assert projected['request']==current['text']
+    assert 'target_characters' not in get('turn',turn['id'])['context_window']
+    # A later, larger configured window must restore the full valid context.
+    settings['context_window_tokens']=estimated+output+1000
+    restored,_=agent.planning_context(get('turn',turn['id']),native=False)
+    assert 'window_checkpoint' not in json.loads(restored[1]['content'])
+
+
+def test_unreliable_soft_token_estimate_never_blocks_full_request(turn,monkeypatch):
+    settings=provider.settings();settings.update(context_window_tokens=256,max_output_tokens=1)
+    monkeypatch.setattr(provider,'settings',lambda:settings)
+    attempted=[]
+    def impossible(*args,**kwargs):
+        attempted.append(True)
+        raise provider.ContextWindowExceeded('estimate does not fit',source='irreducible')
+    monkeypatch.setattr(context_window,'_project',impossible)
+    messages,_=agent.planning_context(turn,native=False)
+    assert attempted and json.loads(messages[1]['content'])['request']==turn['text']
+
+
+@pytest.mark.parametrize('allow_recovery',[False,True])
+def test_soft_estimate_never_blocks_or_writes_checkpoint_if_projection_is_unsafe(turn,monkeypatch,allow_recovery):
+    settings=provider.settings();settings.update(context_window_tokens=256,max_output_tokens=1)
+    monkeypatch.setattr(provider,'settings',lambda:settings)
+    if not allow_recovery:monkeypatch.setattr(agent.agent_context,'allowed',lambda _turn:set())
+    # The protected current request is deliberately irreducible even if the
+    # read-only checkpoint tool is available.
+    info={'request':'必要用户要求'*1000,'tools':[]}
+    before=get('turn',turn['id'])
+    view,tools=context_window.fit(before,'系统提示',info,None)
+    after=get('turn',turn['id'])
+    assert view==info and tools is None
+    assert after.get('discovered_tools')==before.get('discovered_tools')
+    assert after.get('context_window')==before.get('context_window')
+
+
 def test_oversized_context_becomes_bound_checkpoint_and_exact_pages_survive(turn,monkeypatch):
     current=long_turn(turn);original=copy.deepcopy(current['agent_trace'])
     messages,_=agent.planning_context(current,native=False)

@@ -50,6 +50,16 @@ def _native_error_status(error):
     return None
 
 
+def _native_context_overflow(error):
+    """Distinguish context size from rate-limit text and gateway failures."""
+    from . import provider
+    status=_native_error_status(error)
+    if status in (None,400,413,422):return provider.context_overflow_error(error)
+    # A gateway may wrap the upstream context error in a 5xx response. Trust
+    # its specific machine-readable code, not ambiguous error prose.
+    return status in (500,502,503,504) and provider._context_overflow_code(error)
+
+
 def _contains_prompt_marker(message,marker):
     if not isinstance(message,dict) or message.get('type')!='user':return False
     if isinstance(message.get('text'),str) and marker in message['text']:return True
@@ -666,7 +676,7 @@ def run_session(turn, prompt, info, callback):
                     error=message.get('error')
                     if error is None and isinstance(message.get('info'),dict):error=message['info'].get('error')
                     if error is None and message.get('type')=='error':error=message
-                    if error is not None and provider.context_overflow_error(error):
+                    if error is not None and _native_context_overflow(error):
                         raise provider.ContextWindowExceeded()
                 if fresh and isinstance(fresh[-1],dict) and fresh[-1].get('type') == 'idle':
                     idle=fresh[-1]
@@ -767,6 +777,7 @@ def compact_session(value,session_id,operation_id,timeout=45):
     HTTP 200 only means accepted. The caller must own a live Atlas bridge so
     the compaction request passes exactly the normal model/privacy budget gate.
     """
+    from . import provider
     before=_request(value,'GET','/api/session/'+session_id+'/context')['data']
     identity=_compaction_identity(operation_id,before)
     _request(value,'POST','/api/session/'+session_id+'/compact',{'id':identity})
@@ -775,6 +786,18 @@ def compact_session(value,session_id,operation_id,timeout=45):
         messages=_request(value,'GET','/api/session/'+session_id+'/context')['data']
         for item in messages:
             if item.get('type')=='compaction' and item.get('id')==identity and item.get('status')=='failed':
+                # The summary itself can exceed the model's window.  Preserve
+                # its structured cause so the normal Atlas checkpoint recovery
+                # retires this session and rebuilds a smaller authorized view.
+                # A provider limit/transport failure is not a context overflow
+                # and must retain its own retry classification.
+                error=item.get('error')
+                status=_native_error_status(error)
+                if _native_context_overflow(error):
+                    raise provider.ContextWindowExceeded('原生上下文压缩遇到窗口限制，正在恢复工作并继续',source='native_compaction')
+                if status is not None:
+                    request=httpx.Request('POST','http://127.0.0.1')
+                    raise httpx.HTTPStatusError('模型服务压缩请求失败',request=request,response=httpx.Response(status,request=request))
                 raise ValueError('OpenCode原生压缩失败，原始工作与回执已保留，请继续或缩小本次任务')
             if item.get('type')=='compaction' and item.get('id')==identity and item.get('status')=='completed' and isinstance(item.get('summary'),str) and item['summary'].strip():
                 return {'requested':True,'completed':True,'request_id':identity,'summary_message_id':item['id'],

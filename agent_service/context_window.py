@@ -68,21 +68,60 @@ def request_size(prompt, info, native_tools):
         'tools':native_tools}))
 
 
+def estimated_request_tokens(prompt, info, native_tools):
+    """Approximate the whole request; unknown tokenizers can differ materially."""
+    payload=encoded({'messages':[{'role':'system','content':prompt},
+        {'role':'user','content':json.dumps(info,ensure_ascii=False,default=str,separators=(',',':'))}],
+        'tools':native_tools})
+    return (len(payload.encode('utf-8'))+2)//3+32
+
+
 def fit(turn, prompt, info, native_tools):
     """Project only when a real/explicit window requires it; no default cliff."""
     from .provider import settings, ContextWindowExceeded
-    from .provider_compatibility import configured_input_character_limit
+    from .provider_compatibility import configured_input_character_limit, managed_model_limits, response_token_allowance
     from .memory_service import actor, generation
     from . import agent_context
     state=state_for(turn)
-    cap=configured_input_character_limit(settings().get('model'))
+    configuration=settings()
+    cap=configured_input_character_limit(configuration.get('model'))
     target=state.get('target_characters')
     before=request_size(prompt,info,native_tools)
+    estimated_only=False
+    # Use a configured, model-specific token window only when the estimated
+    # complete request plus its actual response allowance would not fit. This
+    # is an estimate, so an irreducible estimate alone must not block a request.
+    if target is None and (cap is None or before<=cap):
+        limits=managed_model_limits(configuration.get('base_url',''),configuration.get('model',''),
+            context_window_tokens=configuration.get('context_window_tokens'),max_output_tokens=configuration.get('max_output_tokens'))
+        window=limits.get('context')
+        if window:
+            allowance=response_token_allowance(configuration)
+            estimate=estimated_request_tokens(prompt,info,native_tools)
+            if estimate+allowance>window and 0<window-allowance<estimate:
+                target=max(1,int(before*(window-allowance)/estimate))
+                estimated_only=True
     # An explicit transport limit is a trigger only after it is exceeded. No
     # fixed turn count/character threshold pre-emptively discards working facts.
     if target is None and (cap is None or before<=cap):return info,native_tools
     if cap is not None:target=min(target or cap,int(cap*.85))
     if target is None or before<=target:return info,native_tools
+
+    try:
+        return _project(turn,prompt,info,native_tools,target,before,state,estimated_only=estimated_only)
+    except ContextWindowExceeded as exc:
+        # A token estimate is not proof that the actual model cannot fit the
+        # request. Try the full input and let a genuine provider rejection run
+        # the normal recovery path; explicit transport caps remain binding.
+        if estimated_only and (cap is None or before<=cap):
+            return info,native_tools
+        raise
+
+
+def _project(turn,prompt,info,native_tools,target,before,state,*,estimated_only=False):
+    from .provider import ContextWindowExceeded
+    from .memory_service import actor, generation
+    from . import agent_context
 
     original=copy.deepcopy(info)
     view=copy.deepcopy(info)
@@ -107,8 +146,7 @@ def fit(turn, prompt, info, native_tools):
         raise ContextWindowExceeded('当前授权未包含上下文回查工具，无法安全缩短请求；原任务已保留',limit=target,characters=before)
     # Load a read-only recovery schema; this is selection within existing grants.
     current=get('turn',turn['id'])
-    if 'read_context_checkpoint' not in agent_context.selected(current):
-        patch('turn',turn['id'],discovered_tools=list(dict.fromkeys(current.get('discovered_tools',[])+['read_context_checkpoint']))[-16:])
+    add_recovery='read_context_checkpoint' not in agent_context.selected(current)
     recovery=agent_context.definition('read_context_checkpoint')
     if native_tools is None:
         if not any(tool['name']=='read_context_checkpoint' for tool in view.get('tools',[])):
@@ -193,20 +231,25 @@ def fit(turn, prompt, info, native_tools):
     # Persist exact authorized sections, not a model-invented summary. Reads are
     # actor/project/memory-generation bound and paginated by the existing tool.
     if not coverage:checkpoint_ref('context',original)
+    if after>target:
+        raise ContextWindowExceeded('压缩后，当前需求、关键约束和必要工具仍超过所选模型容量；原任务与资料已保留，需要更大上下文的模型',
+            limit=target,characters=after,source='irreducible')
     if coverage:
         put('context_checkpoint',{'project_id':turn['project_id'],'session_id':turn.get('session_id'),
             'actor_id':actor(),'memory_generation':generation(turn['project_id']),'source_turn_id':turn['id'],
             'kind':'working_context','coverage_sha256':identity,'created_at':now(),
             'secret_summary':seal({'coverage':coverage})},checkpoint_id)
-    if after>target:
-        raise ContextWindowExceeded('压缩后，当前需求、关键约束和必要工具仍超过所选模型容量；原任务与资料已保留，需要更大上下文的模型',
-            limit=target,characters=after,source='irreducible')
+    if add_recovery:
+        patch('turn',turn['id'],discovered_tools=list(dict.fromkeys(current.get('discovered_tools',[])+['read_context_checkpoint']))[-16:])
     kept=[step['step_id'] for step in view.get('completed_steps',[]) if step.get('step_id') and
           not (isinstance(step.get('observation'),dict) and step['observation'].get('context_omitted'))]
     old=set(state.get('retained_step_ids',[]))
     epoch=turn.get('context_window_epoch',0)
     if state.get('needs_epoch') or not state.get('checkpoint_id') or old-set(kept):epoch+=1
-    state.update(model_identity=model_identity(),target_characters=target,checkpoint_id=checkpoint_id,
+    # A soft estimate is recomputed for each request; persisting it as a hard
+    # cap would discard useful context on subsequent requests that actually fit.
+    if not estimated_only:state['target_characters']=target
+    state.update(model_identity=model_identity(),checkpoint_id=checkpoint_id,
         before_characters=before,after_characters=after,originals_retained=True,needs_epoch=False,
         retained_step_ids=kept[-256:],projections=state.get('projections',0)+1)
     patch('turn',turn['id'],context_window=state,context_window_epoch=epoch,

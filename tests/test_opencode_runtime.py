@@ -118,6 +118,32 @@ def test_compaction_failure_preserves_originals_and_does_not_report_success(monk
     with pytest.raises(ValueError,match='原生压缩失败'):runtime.compact_session({},'ses-1','turn-1',timeout=1)
 
 
+@pytest.mark.parametrize('error,expected',[
+    ({'code':'context_length_exceeded'},'context'),
+    ({'name':'APIError','data':{'code':'context_window_exceeded'}},'context'),
+    ({'name':'APIError','data':{'statusCode':500,'code':'context_length_exceeded'}},'context'),
+    ({'data':{'statusCode':429},'message':'private provider detail'},'rate_limit'),
+    ({'data':{'statusCode':429},'message':'too many input tokens per minute'},'rate_limit'),
+])
+def test_compaction_failure_propagates_actual_provider_cause(monkeypatch,error,expected):
+    from agent_service import provider
+    import httpx
+    before=[{'type':'user','id':'original'}]
+    identity=runtime._compaction_identity('turn-1',before)
+    reads=[before,[{'type':'compaction','id':identity,'status':'failed','error':error}]]
+    monkeypatch.setattr(runtime,'_request',lambda value,method,path,body=None:
+        {'data':reads.pop(0)} if method=='GET' else {'data':{'id':identity}})
+    if expected=='context':
+        with pytest.raises(provider.ContextWindowExceeded) as caught:
+            runtime.compact_session({},'ses-1','turn-1',timeout=1)
+        assert caught.value.source=='native_compaction'
+    else:
+        with pytest.raises(httpx.HTTPStatusError) as caught:
+            runtime.compact_session({},'ses-1','turn-1',timeout=1)
+        assert caught.value.response.status_code==429
+        assert 'private provider detail' not in str(caught.value)
+
+
 def test_compaction_request_id_changes_after_more_native_history():
     old=[{'id':'summary-1','type':'compaction'}]
     new=old+[{'id':'user-2','type':'user'},{'id':'assistant-2','type':'assistant'}]

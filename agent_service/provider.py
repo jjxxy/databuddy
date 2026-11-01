@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import Field,SecretStr,model_validator
 from .models import StrictModel
 from .config import LLM_BASE,LLM_KEY,LLM_MODEL
-from .provider_compatibility import bounded_request_options,response_token_allowance,configured_input_character_limit
+from .provider_compatibility import bounded_request_options,response_token_allowance,configured_input_character_limit,managed_model_limits
 
 class ProviderInput(StrictModel):
     engine:Literal['atlas','opencode']='atlas'
@@ -92,19 +92,32 @@ class ContextWindowExceeded(BudgetExceeded):
         self.limit=limit;self.characters=characters;self.source=source
 
 
+_CONTEXT_ERROR_CODES=frozenset(('context_length_exceeded','context_window_exceeded','context_overflow',
+    'contextoverflowerror','contextlengthexceeded','model_context_window_exceeded',
+    'input_token_limit_exceeded','max_prompt_tokens_exceeded'))
+
+
+def _context_overflow_code(value):
+    """Inspect only structured error fields when a gateway misuses HTTP 5xx."""
+    if not isinstance(value,dict):return False
+    if any(str(value.get(key) or '').lower() in _CONTEXT_ERROR_CODES for key in ('code','type','name')):return True
+    return _context_overflow_code(value.get('error')) or _context_overflow_code(value.get('data'))
+
+
 def context_overflow_error(value):
     """Classify a provider error envelope, never arbitrary document/tool text."""
     if isinstance(value,httpx.HTTPStatusError):
-        if value.response.status_code not in (400,413,422):return False
+        status=value.response.status_code
+        if status not in (400,413,422,500,502,503,504):return False
         try:value=value.response.json()
         except (ValueError,httpx.ResponseNotRead):return False
+        if status in (500,502,503,504):return _context_overflow_code(value)
     if isinstance(value,dict):
         if 'error' in value:return context_overflow_error(value['error'])
-        code=str(value.get('code') or value.get('type') or value.get('name') or '').lower()
-        if code in ('context_length_exceeded','context_window_exceeded','context_overflow','contextoverflowerror','contextlengthexceeded'):return True
+        if any(str(value.get(key) or '').lower() in _CONTEXT_ERROR_CODES for key in ('code','type','name')):return True
         return context_overflow_error(value.get('message','')) or (isinstance(value.get('data'),dict) and context_overflow_error(value['data']))
     if not isinstance(value,str):return False
-    return bool(re.search(r'maximum context (?:length|window)|context (?:length|window).{0,60}(?:exceed|limit)|(?:prompt|input).{0,35}(?:too long|too large|exceeds.{0,25}token)|too many (?:input )?tokens|单次模型上下文超过限制|上下文(?:长度)?超过(?:模型)?(?:限制|上限)',value[:4000],re.I))
+    return bool(re.search(r'maximum context (?:length|window)|context (?:length|window).{0,60}(?:exceed|limit)|(?:prompt|input).{0,35}(?:too long|too large|exceeds.{0,25}token)|(?:prompt|input)[ _-]tokens?.{0,35}(?:exceed|above).{0,25}(?:limit|maximum|window)|too many (?:input )?tokens|单次模型上下文超过限制|上下文(?:长度)?超过(?:模型)?(?:限制|上限)',value[:4000],re.I))
 
 
 def _response_text(content):
@@ -160,6 +173,14 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
         from .agent_mesh import assert_project_model_allowed
         assert_project_model_allowed(pid)
     if max_tokens is None:max_tokens=response_token_allowance(value)
+    else:
+        # Callers such as visual inspection may supply their own allowance.
+        # A configured per-model limit still applies to those requests.
+        limits=managed_model_limits(value.get('base_url',''),value.get('model',''),
+            context_window_tokens=value.get('context_window_tokens'),max_output_tokens=value.get('max_output_tokens'))
+        if limits.get('output') is not None:max_tokens=min(max_tokens,limits['output'])
+        if limits.get('context') is not None and max_tokens>=limits['context']:
+            max_tokens=min(max_tokens,max(1,limits['context']//4))
     character_cap=configured_input_character_limit(value.get('model'))
     if character_cap is not None and size>character_cap:
         raise ContextWindowExceeded('此请求超过管理员配置的上下文字符上限，正在压缩后继续',limit=character_cap,characters=size,source='operator')
@@ -214,6 +235,11 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
                     message='模型服务认证失败，请检查模型连接或密钥；任务和已有成果已保留。'
                 elif code in ('rate_limit_exceeded','rate_limit_error'):
                     message='模型服务请求过于频繁，请稍后继续；任务和已有成果已保留。'
+                elif context_overflow_error(payload['error']):
+                    # Some OpenAI-compatible gateways return an error envelope
+                    # with HTTP 200. Route a verified window overflow to the
+                    # same checkpoint/retry path as an HTTP 400/422 rejection.
+                    raise ContextWindowExceeded(characters=size) from None
                 else:message='模型服务返回错误，请检查模型服务状态与配置；任务和已有成果已保留。'
                 raise ModelServiceError(message)
             reported=payload.get('usage') if isinstance(payload.get('usage'),dict) else {}
