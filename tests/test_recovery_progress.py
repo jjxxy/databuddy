@@ -69,6 +69,18 @@ def test_user_continue_and_business_progress_start_new_recovery_episode():
     assert progress.recovery_check({'agent_trace':trace},value=page()) is None
 
 
+def test_unrelated_read_or_plan_does_not_reset_recovery_coverage():
+    trace=[receipt(page()), {'tool':'project_context','status':'done','arguments':{},'observation':{}},
+           {'tool':'set_task_plan','status':'done','arguments':{},'observation':{}}]
+    first=progress.recovery_check({'agent_trace':trace},value=page())
+    assert first['code']==progress.NO_PROGRESS
+    trace.append(receipt(first))
+    trace.append({'tool':'source_schema','status':'done','arguments':{},'observation':{}})
+    assert progress.recovery_check({'agent_trace':trace},value=page())['recovery_guard']['pause']
+    assert progress.recovery_check({'agent_trace':trace},value=page(100)) is None
+    assert progress.recovery_check({'agent_trace':trace},value=page(version='new-version')) is None
+
+
 def test_empty_original_is_delivered_once_and_untrusted_metadata_does_not_invent_identity():
     empty=page(total=0)
     assert progress.recovery_check({'agent_trace':[]},value=empty) is None

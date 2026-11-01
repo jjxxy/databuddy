@@ -166,20 +166,26 @@ def test_explicit_cadences_and_ambiguous_or_negative_requests(text,cron):
 
 def test_ordinary_conversation_ignores_legacy_step_budget_and_keeps_audit(project,monkeypatch):
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://model.invalid/v1','model':'simulated','share_data':True})
+    # Twenty distinct real files are meaningful evidence, not a simulated
+    # loop that repeatedly requests the same two static project views.
+    for index in range(20):workspace.write_file(project,f'notes/evidence-{index}.txt',f'业务资料 {index}')
     count=[0]
     def vary(*args,**kwargs):
         count[0]+=1
         if count[0]>20:return json.dumps({'kind':'final','answer':'已有信息已核对，当前缺少来源资料。','status':'needs_input'})
-        return json.dumps({'kind':'tool','tool':'project_context' if count[0]%2 else 'list_data_applications'})
+        return json.dumps({'kind':'tool','tool':'read_file','arguments':{'path':f'notes/evidence-{count[0]-1}.txt'}})
     monkeypatch.setattr(provider,'complete',vary)
     tid=send(project,'梳理项目资料并制定方案','budget-original')
     from agent_service.tasks import ensure
     from agent_service.task_budget import LEGACY_DEFAULTS
     contract=ensure(get('turn',tid))
     saved={**contract,'budget_policy':'bounded','budgets':dict(LEGACY_DEFAULTS)}
-    patch('turn',tid,task_contract=saved)
+    patch('turn',tid,task_contract=saved,discovered_tools=['read_file'],task_plan={
+        'steps':['逐份核对资料','整理业务方案'],'completed_steps':[],'current_step':0,'missing_information':[]})
     result=complete(tid)
     assert result['outcome']=='needs_input' and len(result['agent_trace'])==20 and count[0]==21
+    assert all(step['status']=='done' for step in result['agent_trace'])
+    assert len({step['arguments']['path'] for step in result['agent_trace']})==20
     assert result['task_contract']['budgets']==LEGACY_DEFAULTS,'historical contract remains available for audit'
 
 

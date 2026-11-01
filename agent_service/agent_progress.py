@@ -70,12 +70,20 @@ def recovery_check(turn,*,value=None,invalid_reference=False):
     Callers resolve/authorize the candidate first. A correct new reference is
     consequently never rejected because earlier references were invalid.
     """
+    from .agent import TOOLS
     trace=turn.get('agent_trace',[])[turn.get('agent_budget_base',0):]
     coverage={};empty=set();stalled=False;epoch=recovery_epoch(turn)
     for prior in trace:
         if prior.get('tool') not in TRANSPARENT_TOOLS:
             observation=prior.get('observation')
+            # A successful read or a plan update does not invalidate exact,
+            # versioned recovery coverage. Otherwise a model can alternate a
+            # harmless inspection with the same page forever. Real mutation
+            # can change the working state, so it starts a new episode.
+            spec=TOOLS.get(prior.get('tool'))
+            may_change=spec is None or bool(spec[1])
             if (prior.get('status')=='done'
+                    and may_change
                     and not (isinstance(observation,dict) and observation.get('executed') is False)):
                 coverage={};empty=set();stalled=False
             continue

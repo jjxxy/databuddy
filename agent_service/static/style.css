@@ -126,3 +126,5 @@
 /* Keep conversations discoverable even when the workspace has many projects. */
 #sidebar #project-list{max-height:min(34vh,260px);overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#c9ceca transparent}
 .sidebar-action-icon svg{width:19px;height:19px}
+
+.work-plan .plan-active>span:first-child,.work-plan .plan-active>small{color:#167963}.work-plan .plan-missing{margin-top:9px;color:#82603c;line-height:1.6}.trace-summary{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:5px}.trace-chronology>summary{cursor:pointer}

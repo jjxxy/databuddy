@@ -70,6 +70,7 @@ class TaskPlan(StrictModel):
     steps:list[str]=Field(min_length=1,max_length=8)
     missing_information:list[str]=Field(default_factory=list,max_length=8)
     completed_steps:list[int]=Field(default_factory=list,max_length=8)
+    current_step:int|None=Field(default=None,ge=0,strict=True)
 class PythonRun(StrictModel):
     path:str=Field(min_length=1,max_length=200)
     inputs:list[str]=Field(default_factory=list,max_length=5)
@@ -462,14 +463,41 @@ def observe(turn,value,error=False):
     from . import agent_progress
     if trace[-1]['tool'] in agent_progress.RECOVERY_TOOLS and agent_progress.recovery_descriptor(value) is not None:
         value=dict(value,recovery_epoch=agent_progress.recovery_epoch(current))
+    # A live read can have changed since the previous call; detect repeated
+    # evidence only *after* the authorized tool returned its actual value.
+    epoch=agent_progress.recovery_epoch(current)
+    inspection=None if error else agent_context.inspection_progress(
+        dict(current,agent_trace=trace[:-1]),trace[-1]['tool'],trace[-1].get('arguments',{}),value,epoch,
+        trace[-1].get('inspection_source_before'))
+    if inspection is not None:
+        trace[-1]['inspection_epoch']=epoch
+        trace[-1]['inspection_signature']=inspection['signature']
     trace[-1].update(status='failed' if error else 'done',observation=value,finished_at=now())
     fields={'agent_trace':trace,'agent_pending':False,'forced_decision':None,'state':'agent','progress':'正在检查结果并继续处理','secret_text':None}
+    previous_feedback=current.get('verification_feedback') or {}
+    if inspection and inspection['streak']>=4:
+        if not previous_feedback or previous_feedback.get('code')=='INSPECTION_NO_NEW_EVIDENCE':
+            fields['verification_feedback']={'code':'INSPECTION_NO_NEW_EVIDENCE',
+                'error':'最近的资料核查多次返回相同结果，没有取得新依据。',
+                'next_step':'请根据已有计划和真实回执推进尚未完成的处理；需要不同资料或分页时明确读取，确实无法推进时说明具体阻碍。'}
+    elif (not error and (inspection is None or not inspection['duplicate'])
+          and previous_feedback.get('code')=='INSPECTION_NO_NEW_EVIDENCE'
+          and (not isinstance(value,dict) or value.get('executed') is not False)):
+        fields['verification_feedback']=None
+    # A prior repetition warning is not a lifetime counter. A new successful
+    # observation or business step starts a fresh progress boundary.
+    if not error and trace[-1]['tool']!='discover_tools' and (inspection is None or not inspection['duplicate']):
+        if not isinstance(value,dict) or value.get('executed') is not False:
+            fields['loop_attempts']=0
     if current.get('state')=='waiting_agent_tasks' and not error:
         fields.update(state='waiting_agent_tasks',progress='正在等待协作任务的实际结果')
     if isinstance(value,dict):
         for key in ('result','download'):
             if key in value:fields['agent_'+key]=value[key]
     patch('turn',turn['id'],**fields)
+    if inspection and inspection['streak']>=12 and fields['state']=='agent':
+        from .conversation import finish
+        finish(get('turn',turn['id']),'多次核查后没有取得新的资料或推进结果，任务尚未完成；已有计划和工作记录已保留。可以继续任务，或补充需要核对的资料。',outcome='paused',resume_available=True)
 
 
 def validation_observation(error,tool):
@@ -663,6 +691,9 @@ def execute(turn,step):
         return run(turn,**args)
     if name=='set_task_plan':
         if any(i<0 or i>=len(args['steps']) for i in args['completed_steps']):raise ValueError('计划完成索引超出步骤范围')
+        current_step=args.get('current_step')
+        if current_step is not None and (current_step>=len(args['steps']) or current_step in args['completed_steps']):
+            raise ValueError('当前步骤索引无效，或已被标记完成')
         if _requires_user_work_plan(turn) and len(args['steps'])<2:
             raise ValueError('这项多步骤工作至少需要两项可理解的计划步骤')
         prior=set((turn.get('task_plan') or {}).get('completed_steps') or [])
@@ -671,7 +702,7 @@ def execute(turn,step):
                              and not (isinstance(s.get('observation'),dict) and s['observation'].get('executed') is False)
                              for s in turn.get('agent_trace',[])):
             raise ValueError('尚无实际工作回执，不能提前标记计划步骤完成')
-        value={'steps':[s[:500] for s in args['steps']],'missing_information':[s[:500] for s in args['missing_information']],'completed_steps':sorted(set(args['completed_steps']))}
+        value={'steps':[s[:500] for s in args['steps']],'missing_information':[s[:500] for s in args['missing_information']],'completed_steps':sorted(set(args['completed_steps'])),'current_step':current_step}
         updates={'task_plan':value}
         if (turn.get('verification_feedback') or {}).get('code')=='WORK_PLAN_REQUIRED':updates['verification_feedback']=None
         patch('turn',turn['id'],**updates)
@@ -914,7 +945,7 @@ def _requires_user_work_plan(turn):
     return bool(stages>=2 or multi_output or explicit_sequence)
 
 
-def _request_missing_plan(turn):
+def _request_missing_plan(turn,call_id=None):
     """Ask the actual model to supply a plan; never manufacture one."""
     from .conversation import finish
     boundary=len(turn.get('agent_trace',[]))
@@ -922,11 +953,42 @@ def _request_missing_plan(turn):
     count=prior.get('attempts',0)+1 if prior.get('trace_length')==boundary else 1
     feedback={'code':'WORK_PLAN_REQUIRED','executed':False,
               'error':'这项工作包含多个步骤。请先调用 set_task_plan 记录具体的工作计划，再执行或宣告完成；计划不等于实际成果。'}
+    # A rejected native call has no tool receipt; retain its call ID separately
+    # so transport replays cannot consume retries or later execute it as new.
+    rejected_ids=list(turn.get('plan_required_call_ids') or [])
+    if isinstance(call_id,str) and call_id and call_id not in rejected_ids:rejected_ids.append(call_id)
     patch('turn',turn['id'],plan_required_rejections={'trace_length':boundary,'attempts':count},
-          verification_feedback=feedback,state='agent',progress='正在制定工作计划')
+          plan_required_call_ids=rejected_ids,verification_feedback=feedback,state='agent',progress='正在制定工作计划')
     if count>=3:
         finish(get('turn',turn['id']),'模型暂未给出可执行的工作计划，任务尚未完成；已有资料和成果已保留。可以继续或更换模型。',
                outcome='blocked',resume_available=True)
+
+
+def _plan_after_exploration(turn, step):
+    """Require a model-authored plan when a fresh work task keeps exploring.
+
+    A few reads can clarify an ambiguous request. Repeated inspection without
+    a plan is not business progress the user can follow. Chat, delegated and
+    already-started/resumed work keep their existing behavior.
+    """
+    if (turn.get('interaction_mode','work')!='work' or turn.get('collaboration_parent_turn_id')
+            or turn.get('gateway_client_id') or turn.get('resumed_from') or turn.get('task_plan')):
+        return False
+    from .agent_progress import RECOVERY_TOOLS
+    # Recovery pages may be needed to reconstruct already completed work;
+    # never make a plan interrupt a legitimate paginated recovery.
+    excluded=RECOVERY_TOOLS|{'set_task_plan','discover_tools'}
+    if step.kind!='tool' or step.tool in excluded:return False
+    trace=[item for item in turn.get('agent_trace',[]) if isinstance(item,dict)]
+    if any(item.get('status')=='done' and bool(TOOLS.get(item.get('tool'),(None,False))[1]) for item in trace):
+        return False
+    inspected=[item for item in trace if item.get('status') in ('done','failed')
+               and item.get('tool') not in excluded
+               and not (isinstance(item.get('observation'),dict) and item['observation'].get('executed') is False)]
+    # Existing in-flight tasks may predate this rule and already have many
+    # completed reads. Do not interrupt such work; enforce only at the first
+    # new exploration boundary rather than retroactively imposing a plan.
+    return len(inspected)==3
 
 
 def _execute_node(state):
@@ -938,10 +1000,11 @@ def _execute_node(state):
     # Allow harmless inspection before planning, but do not run a mutation or
     # claim completion of an explicit multi-stage job until the model supplies
     # a plan. This also applies to the OpenCode tool bridge.
-    if _requires_user_work_plan(turn) and not turn.get('task_plan'):
-        if step.kind=='final' and step.status=='complete' or step.kind=='tool' and TOOLS[step.tool][1]:
-            _request_missing_plan(turn)
-            return {}
+    if not turn.get('task_plan') and (_plan_after_exploration(turn,step) or
+            _requires_user_work_plan(turn) and (step.kind=='final' and step.status=='complete'
+                                                or step.kind=='tool' and TOOLS[step.tool][1])):
+        _request_missing_plan(turn,state.get('opencode_call_id'))
+        return {}
     if step.kind=='final':
         from .task_budget import unsupported_round_stop
         if unsupported_round_stop(turn,step.answer):
@@ -1021,7 +1084,9 @@ def _execute_node(state):
             {'executed':False,'code':'TOOL_NO_PROGRESS','error':repeat,
              'next_step':'使用已有工具结果、修复输入或方案，或说明当前阻碍'},pause=count>=2)
         return {}
+    source_before=agent_context.inspection_source_version(turn,step.tool,step.arguments)
     trace.append({'id':uid(),'tool':step.tool,'arguments':step.arguments,'status':'started','started_at':now(),
+                  **({'inspection_source_before':source_before} if source_before is not None else {}),
                   **({'opencode_call_id':state['opencode_call_id']} if state.get('opencode_call_id') else {})})
     patch('turn',turn['id'],agent_trace=trace,progress='正在'+TOOLS[step.tool][2].split('，')[0][:40],state='agent_tool')
     try:
@@ -1067,6 +1132,11 @@ def opencode_step(turn_id,value,call_id):
     from .locks import assert_owned
     assert_owned()
     turn=get('turn',turn_id)
+    if call_id in (turn.get('plan_required_call_ids') or []):
+        feedback={'code':'WORK_PLAN_REQUIRED','executed':False,
+                  'error':'这次调用先前未执行；请按工作计划使用新的工具调用继续。'}
+        return {'replayed':True,'executed':False,'observation':feedback,'verification_feedback':feedback,
+                'outcome':turn.get('outcome'),'terminal':turn['state'] not in ('agent','agent_tool')}
     prior=next((item for item in turn.get('agent_trace',[]) if item.get('opencode_call_id')==call_id),None)
     if turn['state'] not in ('agent','agent_tool'):
         if prior and isinstance(prior.get('observation'),dict) and prior['observation'].get('executed') is False:

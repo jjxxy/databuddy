@@ -450,3 +450,77 @@ def repetition(turn,step):
     if count>=2:
         return '同一操作和参数已返回相同失败，期间只重复查阅了未变化的工具说明；未再次执行。请修复输入或方案、改变方法，或说明当前阻碍'
     return None
+
+# Read-only inspections and task plan updates with comparable outputs. Dynamic
+# polling, external actions, business writes and uncatalogued tools are
+# excluded; even on a match the real operation runs before giving feedback.
+_INSPECTION_TOOLS=frozenset({
+    'discover_tools','set_task_plan','load_workflow','business_rules','project_context',
+    'search_project_history','source_schema','source_preview','read_source_text',
+    'list_files','read_file','versions','view_result','list_data_applications',
+    'application_info','data_workflow_guide','list_data_workflows',
+    'data_asset_catalog','inspect_source_tables','read_source_table',
+    'read_document_data_evidence','read_tool_result','read_context_original',
+    'read_context_checkpoint',
+})
+_SOURCE_INSPECTIONS=frozenset({'source_schema','source_preview','read_source_text',
+    'inspect_source_tables','read_source_table','read_document_data_evidence'})
+
+
+def inspection_source_version(turn,tool,arguments):
+    if tool not in _SOURCE_INSPECTIONS:return None
+    source_id=arguments.get('source_id') if isinstance(arguments,dict) else None
+    try:source=get('source',source_id) if isinstance(source_id,str) else None
+    except KeyError:return None
+    if (not isinstance(source,dict) or source.get('project_id')!=turn.get('project_id')
+            or source.get('kind')!='file' or type(source.get('revision')) is not int
+            or source['revision']<1 or not isinstance(source.get('revision_id'),str)
+            or not re.fullmatch(r'[a-f0-9]{64}',source.get('content_hash') or '')):
+        return None
+    return [source['revision'],source['revision_id'],source['content_hash']]
+
+
+def inspection_progress(turn,tool,arguments,value,epoch,source_before=None):
+    """Detect repeated *live* observations, never substitute a cached result.
+
+    Novel full arguments, values and compaction epochs are independent. Each
+    success is still read and authorized by its tool before this is called.
+    """
+    if tool not in _INSPECTION_TOOLS or not isinstance(value,(dict,list)):
+        return None
+    if isinstance(value,dict) and (value.get('executed') is False or value.get('error')):
+        return None
+    source_version=None
+    if tool in _SOURCE_INSPECTIONS:
+        # A schema or sample can stay identical when another row changes. Only
+        # compare an unchanged, versioned file observed both before and after
+        # execution; dynamic connectors and concurrent replacements fail open.
+        source_version=inspection_source_version(turn,tool,arguments)
+        if source_version is None or source_before!=source_version:return None
+    def signature(name,args,observation,version):
+        try:
+            raw=json.dumps([name,args,observation,version],sort_keys=True,ensure_ascii=False,default=str,separators=(',',':'))
+        except (ValueError,TypeError,RecursionError):return None
+        return hashlib.sha256(raw.encode()).hexdigest()
+    seen=set();streak=0
+    trace=turn.get('agent_trace',[])
+    start=max(turn.get('agent_budget_base',0),len(trace)-128)
+    for item in trace[start:]:
+        if not isinstance(item,dict):seen.clear();streak=0;continue
+        observation=item.get('observation')
+        if isinstance(observation,dict) and observation.get('executed') is False:
+            continue
+        if item.get('tool') not in _INSPECTION_TOOLS or item.get('status')!='done':
+            seen.clear();streak=0;continue
+        if item.get('inspection_epoch')!=epoch:
+            seen.clear();streak=0;continue
+        # Fingerprints are generated from the actual authorized observation
+        # when it is recorded. Old entries have no proof and fail open.
+        digest=item.get('inspection_signature')
+        if not isinstance(digest,str) or not re.fullmatch(r'[a-f0-9]{64}',digest):
+            seen.clear();streak=0;continue
+        if digest in seen:streak+=1
+        else:seen.add(digest);streak=0
+    digest=signature(tool,arguments,value,source_version)
+    if digest is None:return None
+    return {'duplicate':digest in seen,'streak':streak+1 if digest in seen else 0,'signature':digest}
