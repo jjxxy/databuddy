@@ -11,8 +11,11 @@ def test_agent_guide_has_executable_example_and_project_scoped_reuse():
     assert 'WorkflowPlan' in guide['schema']['$defs']
     assert 'LookupMulti' in guide['schema']['$defs']
     assert 'LookupEffective' in guide['schema']['$defs']
+    assert 'FxConvert' in guide['schema']['$defs']
     assert any('lookup_multi' in item and '业务键' in item for item in guide['instructions'])
     assert any('lookup_effective' in item and '开始日包含、结束日不包含' in item for item in guide['instructions'])
+    assert any('fx_convert' in item and '不自动倒数' in item and '业务核对' in item for item in guide['instructions'])
+    assert any('另行保留完整换算明细' in item for item in guide['instructions'])
     result=execute(example['plan'],{'detail':[{'record_id':'A','amount':'10.01'},
                                             {'record_id':'B','amount':'0'},
                                             {'record_id':'C','amount':'-2'}]})

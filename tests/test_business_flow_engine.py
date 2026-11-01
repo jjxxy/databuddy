@@ -109,6 +109,10 @@ def test_private_error_content_not_returned_and_unsafe_error_is_unknown():
     ('INVALID_BUSINESS_DATE','业务日期缺失'),
     ('MISSING_LINEAGE','无法追溯'),
     ('TYPE_MISMATCH','日期格式'),
+    ('FX_CURRENCY_MISMATCH','换算方向不一致'),
+    ('FX_RATE_TYPE_MISMATCH','汇率类型'),
+    ('FX_RATE_INVALID','汇率无效'),
+    ('DECIMAL_PRECISION','舍入规则'),
 ])
 def test_temporal_lookup_errors_are_actionable_and_do_not_leak_raw_values(code,expected):
     from agent_service.data_workflows import WorkflowError

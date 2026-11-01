@@ -84,7 +84,7 @@ function wbPlanSteps() {return wbState.workflow?.steps || wbState.workflow?.docu
 function wbStageName(step) {
   const names = {filter:'筛选相关记录',select:'保留需要的字段',drop:'删除不相关字段',reclassify:'按业务规则分类',
     arithmetic:'计算业务数值',aggregate:'按业务范围汇总',concat:'拼接全部记录',concatenate:'拼接全部记录',union_rows:'拼接全部记录',
-    lookup:'按关联规则匹配记录',lookup_multi:'按多项业务条件匹配记录',lookup_effective:'按业务日期匹配有效规则',sql:'按已保存的查询规则处理'};
+    lookup:'按关联规则匹配记录',lookup_multi:'按多项业务条件匹配记录',lookup_effective:'按业务日期匹配有效规则',fx_convert:'按匹配汇率换算币种',sql:'按已保存的查询规则处理'};
   return step.label || step.name || names[step.kind || step.operation] || '处理业务数据';
 }
 function wbDateTime(value) {
@@ -121,6 +121,10 @@ function wbFailure(job) {
     LOCALIZED_PRECISION:['转换结果超出精确计算支持的位数。','核对单位倍率和原始值；需要舍入时先明确业务精度。'],
     DUPLICATE_COLUMN:['这一步会产生重名字段。','给不同含义的字段使用不同名称后再运行。'],
     UNIT_MISMATCH:['参与计算的数值单位不一致。','先确认并保存换算规则，再进行计算。'],
+    FX_CURRENCY_MISMATCH:['原金额币种或汇率币对与已确认的换算方向不一致。','核对来源与目标币种、汇率方向及对应版本后重新运行。'],
+    FX_RATE_TYPE_MISMATCH:['匹配到的汇率类型与已确认口径不一致。','核对业务日期、汇率类型和来源版本后重新运行。'],
+    FX_RATE_INVALID:['汇率缺失、无效或不为正数。','核对并补全实际汇率；不要默认按1或取倒数处理。'],
+    DECIMAL_PRECISION:['换算结果超出支持的精度，或需要明确舍入规则。','核对原始金额、汇率及逐笔舍入方式和位数后重新运行。'],
     VALUE_FORMAT_MISMATCH:['比率、百分数或其他数值写法没有对齐。','确认百分数代表小数还是百分点，保存明确的转换规则。'],
     SEMANTIC_MISMATCH:['参与处理的字段在含义、单位或期间上不兼容。','回到对话核对业务口径，明确转换或汇总规则后再运行。'],
     NON_ADDITIVE:['这项指标尚未确认可以直接相加。','核对余额、比率等指标的汇总口径，再选择合适的处理方法。'],

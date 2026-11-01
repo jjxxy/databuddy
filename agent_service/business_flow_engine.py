@@ -295,6 +295,10 @@ def run(document, frozen_inputs, handlers, context, *, checkpoint=None, persist=
                           'TYPE_MISMATCH':'字段类型或日期格式不符合已确认的处理方案，请核对原始资料',
                           'NULL_VALUE':'必要字段有缺失，无法完成计算',
                           'UNIT_MISMATCH':'计算字段的单位不一致',
+                          'FX_CURRENCY_MISMATCH':'金额或汇率币种与确认的换算方向不一致，未计算',
+                          'FX_RATE_TYPE_MISMATCH':'匹配到的汇率类型与确认口径不一致，未计算',
+                          'FX_RATE_INVALID':'汇率无效或不为正数，未计算',
+                          'DECIMAL_PRECISION':'换算结果超出精度或需要明确舍入规则，未计算',
                           'ROW_BUDGET':'数据量超过本次执行范围，未生成截断结果',
                           'BYTE_BUDGET':'数据大小超过本次执行范围，未生成截断结果'}
                 code=exc.code if isinstance(exc,WorkflowError) and exc.code in messages else 'STEP_FAILED'

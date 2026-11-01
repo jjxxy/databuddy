@@ -231,6 +231,132 @@ def test_multi_field_lookup_keeps_entities_and_periods_distinct():
     with pytest.raises(ValidationError,match='cannot be repeated'):execute(repeated,inputs)
 
 
+def fx_case():
+    transaction=schema([col('id'),col('entity'),col('day','date'),col('currency'),
+                        col('amount','decimal',unit='USD',aggregation='additive')],['id'])
+    rates=schema([col('rule_id'),col('entity'),col('start','date'),col('end','date'),
+                  col('rate','decimal',unit='CNY/USD'),col('from_currency'),col('to_currency'),col('rate_kind')],['rule_id'])
+    match={'id':'matched','kind':'lookup_effective','description':'按日期选取汇率版本','input':'transactions','right':'rates',
+           'keys':[{'left':'entity','right':'entity'}],'business_date':'day','valid_from':'start','valid_to':'end',
+           'outputs':{'rule_id':col('rule_id'), 'start':col('valid_start','date'), 'end':col('valid_end','date'),
+                      'rate':col('matched_rate','decimal',unit='CNY/USD'), 'from_currency':col('matched_from'),
+                      'to_currency':col('matched_to'), 'rate_kind':col('matched_type')}}
+    convert={'id':'converted','kind':'fx_convert','description':'依据已匹配汇率换算','input':'matched',
+             'amount_column':'amount','currency_column':'currency','source_currency':'USD','target_currency':'CNY',
+             'rate_column':'matched_rate','rate_source_column':'matched_from','rate_target_column':'matched_to',
+             'rate_type_column':'matched_type','rate_type':'closing','rounding_mode':'exact',
+             'output':col('converted','decimal',unit='CNY',aggregation='additive')}
+    plan={'name':'明确汇率版本和舍入','inputs':{'transactions':transaction,'rates':rates},
+          'stages':[match,convert],'output':'converted'}
+    inputs={'transactions':[{'id':'1','entity':'A','day':'2026-03-31','currency':'USD','amount':'10.25'},
+                            {'id':'2','entity':'A','day':'2026-04-01','currency':'USD','amount':'-5.00'},
+                            {'id':'3','entity':'B','day':'2026-04-01','currency':'USD','amount':'0'}],
+            'rates':[{'rule_id':'r1','entity':'A','start':'2026-01-01','end':'2026-04-01','rate':'7.25',
+                      'from_currency':'USD','to_currency':'CNY','rate_kind':'closing'},
+                     {'rule_id':'r2','entity':'A','start':'2026-04-01','end':'2027-01-01','rate':'7.30',
+                      'from_currency':'USD','to_currency':'CNY','rate_kind':'closing'},
+                     {'rule_id':'r3','entity':'B','start':'2026-01-01','end':'2027-01-01','rate':'7.20',
+                      'from_currency':'USD','to_currency':'CNY','rate_kind':'closing'}]}
+    return plan,inputs
+
+
+def test_fx_conversion_preserves_matched_rate_and_original_amount():
+    plan,inputs=fx_case();before=copy.deepcopy(inputs)
+    result=execute(plan,inputs);rows=result['output']['rows']
+    assert [(r['rule_id'],Decimal(r['matched_rate']),Decimal(r['amount']),Decimal(r['converted'])) for r in rows]==[
+        ('r1',Decimal('7.25'),Decimal('10.25'),Decimal('74.3125')),
+        ('r2',Decimal('7.30'),Decimal('-5.00'),Decimal('-36.5000')),
+        ('r3',Decimal('7.20'),Decimal('0'),Decimal('0'))]
+    assert inputs==before and result['requires_semantic_review'] is True
+    checks=result['stages'][1]['checks']
+    assert checks['rate_direction']=='target_units_per_one_source_unit' and checks['rounding_scope']=='per_transaction'
+    assert result['stages'][1]['lineage']['rounding_mode']=='exact'
+    assert result['stages'][0]['checks']['unmatched_rows']==0
+
+
+def test_fx_rounding_must_be_explicit_and_is_per_transaction():
+    plan,inputs=fx_case();inputs['transactions']=inputs['transactions'][:1];inputs['transactions'][0]['amount']='0.01'
+    inputs['rates'][0]['rate']='0.5'
+    # Exact mode retains the half cent; the declared rounding policies differ.
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal('0.005')
+    plan['stages'][1].update(rounding_mode='half_even',rounding_scale=2)
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal('0.00')
+    plan['stages'][1]['rounding_mode']='half_up'
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal('0.01')
+    plan['stages'][1].pop('rounding_scale')
+    with pytest.raises(ValidationError,match='explicit scale'):execute(plan,inputs)
+    plan['stages'][1].update(rounding_mode='exact',rounding_scale=2)
+    with pytest.raises(ValidationError,match='no scale'):execute(plan,inputs)
+
+
+@pytest.mark.parametrize('change,code',[
+    ('transaction_currency','FX_CURRENCY_MISMATCH'),('rate_source','FX_CURRENCY_MISMATCH'),
+    ('rate_target','FX_CURRENCY_MISMATCH'),('rate_type','FX_RATE_TYPE_MISMATCH'),
+    ('zero_rate','FX_RATE_INVALID'),('negative_rate','FX_RATE_INVALID'),
+    ('null_rate','NULL_VALUE'),('null_amount','NULL_VALUE'),('wrong_rate_unit','FX_CURRENCY_MISMATCH'),
+    ('wrong_amount_unit','FX_CURRENCY_MISMATCH'),('wrong_output_unit','FX_CURRENCY_MISMATCH'),
+    ('missing_rate','UNMAPPED_VALUE'),('overlap','OVERLAPPING_EFFECTIVE_INTERVALS'),
+    ('decimal_precision','DECIMAL_PRECISION')])
+def test_fx_conversion_rejects_unproven_data_or_precision(change,code):
+    plan,inputs=fx_case()
+    if change=='transaction_currency':inputs['transactions'][0]['currency']='EUR'
+    elif change=='rate_source':inputs['rates'][0]['from_currency']='EUR'
+    elif change=='rate_target':inputs['rates'][0]['to_currency']='USD'
+    elif change=='rate_type':inputs['rates'][0]['rate_kind']='average'
+    elif change=='zero_rate':inputs['rates'][0]['rate']='0'
+    elif change=='negative_rate':inputs['rates'][0]['rate']='-1'
+    elif change=='null_rate':inputs['rates'][0]['rate']=None
+    elif change=='null_amount':inputs['transactions'][0]['amount']=None
+    elif change=='wrong_rate_unit':
+        plan['inputs']['rates']['columns'][4]['unit']='USD/CNY';plan['stages'][0]['outputs']['rate']['unit']='USD/CNY'
+    elif change=='wrong_amount_unit':plan['inputs']['transactions']['columns'][4]['unit']='EUR'
+    elif change=='wrong_output_unit':plan['stages'][1]['output']['unit']='EUR'
+    elif change=='missing_rate':inputs['transactions'][0]['entity']='missing'
+    elif change=='overlap':inputs['rates'].append(dict(inputs['rates'][0],rule_id='other'))
+    elif change=='decimal_precision':inputs['transactions'][0]['amount']='0.000000000001';inputs['rates'][0]['rate']='0.000000000001'
+    with pytest.raises(WorkflowError) as error:execute(plan,inputs)
+    assert error.value.code==code
+
+
+def test_fx_rejects_rate_without_effective_source_or_fake_metadata():
+    plan,inputs=fx_case()
+    plan['stages'][0]['unmapped']='null'
+    with pytest.raises(ValidationError,match='unmatched rows rejected'):execute(plan,inputs)
+    plan,inputs=fx_case();plan['stages'][1]['rate_type_column']='currency'
+    with pytest.raises(ValidationError,match='distinct'):execute(plan,inputs)
+    plan,inputs=fx_case();plan['stages'][1]['input']='transactions'
+    with pytest.raises(ValidationError,match='prior effective-rate'):execute(plan,inputs)
+    plan,inputs=fx_case();plan['stages'][0]['outputs'].pop('rate_kind')
+    with pytest.raises(ValidationError,match='matched rate table'):execute(plan,inputs)
+
+
+def test_fx_large_amount_and_negative_rounding_keep_explicit_precision():
+    plan,inputs=fx_case();inputs['transactions']=inputs['transactions'][:1]
+    inputs['transactions'][0]['amount']='99999999999999999999999999.999999999999'
+    inputs['rates'][0]['rate']='1'
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal(inputs['transactions'][0]['amount'])
+    inputs['rates'][0]['rate']='2'
+    with pytest.raises(WorkflowError) as error:execute(plan,inputs)
+    assert error.value.code=='DECIMAL_PRECISION'
+    inputs['transactions'][0]['amount']='-0.01';inputs['rates'][0]['rate']='0.5'
+    plan['stages'][1].update(rounding_mode='half_up',rounding_scale=2)
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal('-0.01')
+    plan['stages'][1]['rounding_mode']='half_even'
+    assert Decimal(execute(plan,inputs)['output']['rows'][0]['converted'])==Decimal('0.00')
+
+
+def test_fx_matches_semantics_and_never_overwrites_original_inputs():
+    plan,inputs=fx_case();plan['stages'][1]['output']['name']='amount'
+    with pytest.raises(WorkflowError) as error:execute(plan,inputs)
+    assert error.value.code=='DUPLICATE_COLUMN'
+    plan,inputs=fx_case();plan['stages'][1]['output']['period']='2026-01'
+    with pytest.raises(WorkflowError) as error:execute(plan,inputs)
+    assert error.value.code=='SEMANTIC_MISMATCH'
+    plan,inputs=fx_case();plan['inputs']['transactions']['columns'][4]['aggregation']='non_additive'
+    with pytest.raises(WorkflowError) as error:execute(plan,inputs)
+    assert error.value.code=='NON_ADDITIVE'
+
+
 def effective_lookup_fixture():
     plan={'name':'集团生效规则关联','inputs':{
         'transactions':schema([col('id'),col('entity'),col('customer'),col('day','date')],['id']),

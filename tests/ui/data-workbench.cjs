@@ -337,6 +337,10 @@ async function openSemantics(w){w.document.querySelector('#workbench-tab-semanti
   ['OVERLAPPING_EFFECTIVE_INTERVALS','有效期重叠','开始日包含、结束日不包含'],
   ['INVALID_BUSINESS_DATE','业务日期缺失','核对原始日期'],
   ['MISSING_LINEAGE','无法追溯实际匹配依据','保留映射来源的记录标识'],
+  ['FX_CURRENCY_MISMATCH','换算方向不一致','汇率方向'],
+  ['FX_RATE_TYPE_MISMATCH','汇率类型与已确认口径不一致','汇率类型'],
+  ['FX_RATE_INVALID','汇率缺失、无效或不为正数','不要默认按1'],
+  ['DECIMAL_PRECISION','换算结果超出支持的精度','逐笔舍入方式和位数'],
  ]){
   const failedEffective=await boot({latestJob:{...failedJob,workflow_failure:{stage_id:'summed',code,message:'<img src=x> secret raw detail'}}}),ed=failedEffective.w.document;
   assert(ed.querySelector('#workbench-failure-reason').textContent.includes(reason));

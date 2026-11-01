@@ -12,7 +12,7 @@ import re
 import threading
 import time
 from datetime import date,datetime
-from decimal import Decimal, Inexact, InvalidOperation, ROUND_HALF_EVEN, localcontext
+from decimal import Decimal, Inexact, InvalidOperation, ROUND_HALF_EVEN, ROUND_HALF_UP, localcontext
 from typing import Annotated, Any, Callable, Literal
 
 import duckdb
@@ -230,6 +230,37 @@ class LookupEffective(Stage):
         return self
 
 
+class FxConvert(Stage):
+    """Convert one explicitly declared currency pair using a matched rate."""
+    kind: Literal['fx_convert']
+    input: str = Field(pattern=NAME, description='Output of an earlier lookup_effective rate match.')
+    amount_column: str = Field(pattern=NAME)
+    currency_column: str = Field(pattern=NAME, description='Source transaction currency on every row.')
+    source_currency: str = Field(pattern=r'^[A-Z]{3}$')
+    target_currency: str = Field(pattern=r'^[A-Z]{3}$')
+    rate_column: str = Field(pattern=NAME, description='Matched positive rate: target units per one source unit.')
+    rate_source_column: str = Field(pattern=NAME)
+    rate_target_column: str = Field(pattern=NAME)
+    rate_type_column: str = Field(pattern=NAME)
+    rate_type: str = Field(min_length=1,max_length=100)
+    rounding_mode: Literal['exact','half_even','half_up']
+    rounding_scale: int | None = Field(default=None,ge=0,le=12,strict=True)
+    output: Column
+
+    @model_validator(mode='after')
+    def explicit_conversion(self):
+        if self.source_currency==self.target_currency:
+            raise ValueError('Currency conversion requires distinct explicitly declared currencies')
+        if not self.rate_type.strip():raise ValueError('A specific rate type is required')
+        if (self.rounding_mode=='exact') != (self.rounding_scale is None):
+            raise ValueError('Exact mode requires no scale; rounded modes require an explicit scale')
+        names=[self.amount_column,self.currency_column,self.rate_column,self.rate_source_column,
+               self.rate_target_column,self.rate_type_column]
+        if len(names)!=len(set(names)):
+            raise ValueError('Transaction and rate evidence columns must be distinct')
+        return self
+
+
 class UnionRows(Stage):
     kind: Literal['union_rows']
     inputs: list[str] = Field(min_length=2, max_length=10)
@@ -306,7 +337,7 @@ class Normalize(Stage):
     rules: list[Normalization] = Field(min_length=1, max_length=20)
 
 
-Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | LookupMulti | LookupEffective | UnionRows | Normalize | SQL,
+Operation = Annotated[Select | Drop | Filter | Reclassify | Compute | Aggregate | Lookup | LookupMulti | LookupEffective | FxConvert | UnionRows | Normalize | SQL,
                       Field(discriminator='kind')]
 
 
@@ -329,6 +360,7 @@ class WorkflowPlan(StrictModel):
     @model_validator(mode='after')
     def dependency_graph(self):
         known = set(self.inputs)
+        previous={}
         if any(not re.fullmatch(NAME, name) for name in known):
             raise ValueError('Invalid input table alias')
         for stage in self.stages:
@@ -339,7 +371,17 @@ class WorkflowPlan(StrictModel):
                 raise ValueError('Stages must reference existing earlier dependencies, not missing or future stages')
             if len(set(dependencies)) != len(dependencies):
                 raise ValueError('Duplicate dependency')
+            if isinstance(stage,FxConvert):
+                matched=previous.get(stage.input)
+                if not isinstance(matched,LookupEffective) or matched.unmapped!='error':
+                    raise ValueError('Currency conversion requires a prior effective-rate match with unmatched rows rejected')
+                rate_names={value.name for value in matched.outputs.values()}
+                if not {stage.rate_column,stage.rate_source_column,stage.rate_target_column,stage.rate_type_column} <= rate_names:
+                    raise ValueError('Rate, currency pair and type must come from the matched rate table')
+                if stage.amount_column in rate_names or stage.currency_column in rate_names:
+                    raise ValueError('Transaction amount and currency must come from the transaction side')
             known.add(stage.id)
+            previous[stage.id]=stage
         if self.output not in {s.id for s in self.stages}:
             raise ValueError('Workflow output must name an executed stage')
         return self
@@ -836,6 +878,49 @@ def _operate(stage, tables, budget, deadline):
             columns.append(rule.output)
             fields[rule.output.name] = rule.output
         return _new_schema(schema, columns), result
+    if isinstance(stage, FxConvert):
+        _require([stage.amount_column,stage.currency_column,stage.rate_column,stage.rate_source_column,
+                  stage.rate_target_column,stage.rate_type_column],fields)
+        amount=fields[stage.amount_column];rate=fields[stage.rate_column];out=stage.output
+        if out.name in fields:raise WorkflowError('DUPLICATE_COLUMN','Currency conversion must preserve all input columns')
+        if amount.data_type not in ('decimal','integer') or amount.value_format!='native':
+            raise WorkflowError('TYPE_MISMATCH','Currency conversion requires a native numeric amount')
+        if amount.unit!=stage.source_currency or out.unit!=stage.target_currency:
+            raise WorkflowError('FX_CURRENCY_MISMATCH','Amount and output units must match the explicitly declared currencies')
+        if rate.data_type!='decimal' or rate.value_format!='native' or rate.unit!=stage.target_currency+'/'+stage.source_currency:
+            raise WorkflowError('FX_CURRENCY_MISMATCH','Rate unit must be target currency per one source currency')
+        if any(fields[name].data_type!='text' for name in (stage.currency_column,stage.rate_source_column,
+                                                          stage.rate_target_column,stage.rate_type_column)):
+            raise WorkflowError('TYPE_MISMATCH','Currency pair and rate type must be declared as text')
+        if out.data_type!='decimal' or out.value_format!='native' or out.period!=amount.period:
+            raise WorkflowError('SEMANTIC_MISMATCH','Converted amount must preserve the source reporting period and use native decimal values')
+        if rate.period and amount.period and rate.period!=amount.period:
+            raise WorkflowError('SEMANTIC_MISMATCH','Rate and transaction reporting periods differ')
+        if out.aggregation=='additive' and amount.aggregation!='additive':
+            raise WorkflowError('NON_ADDITIVE','Converted amounts cannot establish additivity from an unproven source')
+        result=[]
+        for i,row in enumerate(rows):
+            if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget')
+            value=row[stage.amount_column];exchange_rate=row[stage.rate_column]
+            if value is None or exchange_rate is None:
+                raise WorkflowError('NULL_VALUE','Transaction amount and matched rate must be present')
+            if (row[stage.currency_column]!=stage.source_currency or row[stage.rate_source_column]!=stage.source_currency
+                    or row[stage.rate_target_column]!=stage.target_currency):
+                raise WorkflowError('FX_CURRENCY_MISMATCH','Transaction currency or matched rate currency pair differs from the confirmed policy')
+            if row[stage.rate_type_column]!=stage.rate_type:
+                raise WorkflowError('FX_RATE_TYPE_MISMATCH','Matched rate type differs from the confirmed policy')
+            if exchange_rate<=0:raise WorkflowError('FX_RATE_INVALID','Matched exchange rate must be positive')
+            with localcontext() as ctx:
+                # Both inputs fit DECIMAL(38,12); 100 digits are sufficient to
+                # multiply without intermediate rounding before policy applies.
+                ctx.prec=100
+                converted=Decimal(value)*exchange_rate
+                if stage.rounding_mode!='exact':
+                    converted=converted.quantize(Decimal(1).scaleb(-stage.rounding_scale),
+                        rounding=ROUND_HALF_EVEN if stage.rounding_mode=='half_even' else ROUND_HALF_UP)
+                converted=decimal_value(converted)
+            result.append(dict(row,**{out.name:converted}))
+        return _new_schema(schema,list(schema.columns)+[out]),result
     if isinstance(stage, Aggregate):
         return _aggregate(stage, source)
     if isinstance(stage, LookupEffective):
@@ -1073,6 +1158,10 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
                 if i%1000==0 and time.monotonic()>deadline:raise WorkflowError('TIMEOUT','Workflow exceeded its execution time budget',stage.id)
                 unmatched+=row[stage.outputs[stage.valid_from].name] is None
             receipt['checks']['unmatched_rows']=unmatched
+        if isinstance(stage, FxConvert):
+            receipt['checks']['rate_evidence']='matched_effective_rate; business_semantics_require_review'
+            receipt['checks']['rate_direction']='target_units_per_one_source_unit'
+            receipt['checks']['rounding_scope']='per_transaction'
         if isinstance(stage, Filter):
             receipt['reconciliation'] = _filter_reconciliation(stage,tables[stage.input],table,deadline)
         if on_stage is not None:
@@ -1084,5 +1173,5 @@ def execute(plan: WorkflowPlan | dict, inputs: dict[str, list[dict[str, Any]]], 
     return {'version': 1, 'plan_sha256': digest(plan.model_dump()), 'input_sha256': input_hashes,
             'output': {**exported, 'row_count': len(output['rows']), 'sha256': result_hash},
             'stages': receipts, 'complete': True,
-            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti, LookupEffective)) for stage in plan.stages),
+            'requires_semantic_review': any(isinstance(stage, (SQL, Normalize, LookupMulti, LookupEffective, FxConvert)) for stage in plan.stages),
             'scope': 'explicit_semantic_tables; isolated_typed_operations; full_bounded_output; not_arbitrary_python'}

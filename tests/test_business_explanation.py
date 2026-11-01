@@ -52,6 +52,23 @@ def test_effective_lookup_explains_dates_keys_and_boundaries():
     assert '结束日为空时持续有效' in _stage_description(stage,{}, {})
 
 
+def test_fx_conversion_explains_direction_rounding_and_review():
+    from agent_service.business_explanation import _stage_description, _LABELS
+    stage={'kind':'fx_convert','amount_column':'original','rate_column':'rate',
+           'source_currency':'USD','target_currency':'CNY','rate_type':'closing',
+           'rounding_mode':'half_even','rounding_scale':2,'output':{'name':'converted'}}
+    labels={'original':'原币金额','rate':'汇率','converted':'折算金额'}
+    text=_stage_description(stage,labels)
+    assert _LABELS['fx_convert']=='按匹配汇率换算币种'
+    assert '原币金额（USD → CNY）' in text and '1 USD 对应目标币金额' in text
+    assert 'closing' in text and '保留2位小数' in text and '仍需业务核对' in text
+    assert '另行保留完整换算明细' in text and '不能仅靠汇总结果回查逐行' in text
+    stage['rounding_mode']='half_up'
+    assert '每条记录四舍五入' in _stage_description(stage,labels)
+    stage.update(rounding_mode='exact',rounding_scale=None)
+    assert '不允许静默舍入' in _stage_description(stage,labels)
+
+
 def create_report():
     pid, rid = real_result()
     definition = recipe()

@@ -408,6 +408,9 @@ _FAILURE_MESSAGES={
  'TYPE_MISMATCH':'实际字段类型与冻结方案不一致，需检查输入声明或显式转换步骤',
  'VALUE_FORMAT_MISMATCH':'数值表示不一致，比例与百分点需要明确转换',
  'UNIT_MISMATCH':'运算字段单位不一致，需要明确转换规则',
+ 'FX_CURRENCY_MISMATCH':'交易币种与已确认的汇率币种对不一致，未执行换算',
+ 'FX_RATE_TYPE_MISMATCH':'汇率类型与已确认的换算口径不一致，未执行换算',
+ 'FX_RATE_INVALID':'汇率缺失或不是有效正数，未执行换算',
  'SEMANTIC_MISMATCH':'字段含义、期间或粒度不一致，需核对声明',
  'GRAIN_DUPLICATE':'声明的行粒度键存在重复，未忽略或自动合并',
  'NULL_VALUE':'非空字段存在缺失值，未自动补零',
@@ -858,7 +861,7 @@ def require_safe_numeric_lineage(pid,rid,*,root_meta=None,root_page=None,lease_t
             # flags. Re-derive mandatory review from the frozen plan and input
             # evidence, rather than trusting two matching false values.
             if not semantic_meta:
-                mandatory=any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective')
+                mandatory=any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective','fx_convert')
                               for stage in document.plan.stages)
                 mandatory |= any(isinstance(proof,dict) and proof.get('requires_semantic_review') is True
                                  for proof in evidence.values())
@@ -957,7 +960,7 @@ def read_result(pid,rid,offset=0,limit=100):
                     and run.get('data_result')==meta and run.get('commit')==meta.get('plan_sha256')
                     and context.get('plan_sha256')==meta.get('plan_sha256')
                     and digest(run['workflow_document'])==meta.get('plan_sha256'))
-        semantic_required |= any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective')
+        semantic_required |= any(stage.kind in ('sql','normalize','lookup','lookup_multi','lookup_effective','fx_convert')
                                  for stage in doc.plan.stages)
         if any(stage.kind=='reclassify' for stage in doc.plan.stages):
             reviewed=_reviewed_reclassification_stages(pid,doc)

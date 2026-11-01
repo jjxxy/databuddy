@@ -71,7 +71,7 @@ def _field_names(plan):
 _LABELS = {'select':'选择字段', 'drop':'移除字段', 'filter':'筛选数据',
            'reclassify':'按映射归类', 'compute':'计算指标', 'aggregate':'汇总数据',
            'lookup':'关联对照资料', 'lookup_multi':'按多项条件关联资料', 'lookup_effective':'按业务日期关联有效版本', 'union_rows':'合并记录', 'sql':'按保存的规则处理',
-           'normalize':'规范数据格式'}
+           'normalize':'规范数据格式', 'fx_convert':'按匹配汇率换算币种'}
 _OPS = {'eq':'等于','neq':'不等于','gt':'大于','gte':'大于或等于','lt':'小于',
         'lte':'小于或等于','in':'属于','not_in':'不属于','contains':'包含',
         'is_null':'为空','not_null':'不为空'}
@@ -105,6 +105,17 @@ def _stage_description(stage, names, table_names=None):
             scale = item.get('rounding_scale')
             descriptions.append(label(output.get('name')) + ' = ' + expression + ('；保留' + str(scale) + '位小数' if type(scale) is int else '；不允许静默舍入'))
         return _bounded('；'.join(descriptions))
+    if kind == 'fx_convert':
+        source=stage.get('source_currency') or '未记录原币';target=stage.get('target_currency') or '未记录目标币种'
+        mode=stage.get('rounding_mode');scale=stage.get('rounding_scale')
+        rounding=('每条记录四舍六入五成双，保留'+str(scale)+'位小数' if mode=='half_even' and type(scale) is int
+                  else '每条记录四舍五入，保留'+str(scale)+'位小数' if mode=='half_up' and type(scale) is int
+                  else '不允许静默舍入' if mode=='exact' else '舍入规则未记录，请核对')
+        output=stage.get('output') or {}
+        return _bounded('按已匹配的汇率换算 '+label(stage.get('amount_column'))+'（'+str(source)+' → '+str(target)+'）。'
+            '汇率 '+label(stage.get('rate_column'))+' 按 1 '+str(source)+' 对应目标币金额使用；'
+            '汇率类型：'+str(stage.get('rate_type') or '未记录')+'；'+rounding+'；结果保存为 '+label(output.get('name'))+
+            '。本步骤保留原金额、汇率和版本依据；后续汇总请另行保留完整换算明细，不能仅靠汇总结果回查逐行。汇率来源、日期及换算口径仍需业务核对。')
     if kind == 'aggregate':
         groups = stage.get('by', [])
         text = '按' + ('、'.join(label(x) for x in groups) if groups else '全部数据') + '汇总。'
