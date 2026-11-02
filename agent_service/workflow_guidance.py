@@ -2,6 +2,20 @@
 from .project_data import WorkflowDocument
 
 
+def _compact(schema):
+    """Drop Pydantic's redundant per-model ``title`` keys.
+
+    Each title repeats its ``$defs`` name and only inflates the on-demand
+    guide past the inline character budget; the structural schema, field
+    descriptions and constraints stay intact for the authoring agent.
+    """
+    if isinstance(schema, dict):
+        return {key: _compact(value) for key, value in schema.items() if key != 'title'}
+    if isinstance(schema, list):
+        return [_compact(value) for value in schema]
+    return schema
+
+
 def guide():
     # A validated example, deliberately carrying no real source or financial assumptions.
     example={
@@ -19,7 +33,7 @@ def guide():
         'bindings':{'detail':{'source_id':'REPLACE_WITH_REAL_SOURCE_ID',
                              'column_map':{'c_1':'record_id','c_2':'amount'}}}}
     WorkflowDocument.model_validate(example)
-    return {'schema':WorkflowDocument.model_json_schema(),'example':example,
+    return {'schema':_compact(WorkflowDocument.model_json_schema()),'example':example,
             'scope':'agent_authoring_reference; examples_are_not_user_data_or_approved_semantics',
             'instructions':[
                 '由Agent编写workflows/*.json，用户只需描述业务目标；先查项目已有流程再新建。',

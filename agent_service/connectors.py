@@ -88,8 +88,8 @@ def validate_config(kind, cfg):
         if int(cfg.get('page_size',100)) not in range(1,10001):raise SourceError('页大小超出范围')
     elif kind == 'database':
         url = sa.engine.make_url(cfg.get('connection_string', ''))
-        if url.get_backend_name() not in ('postgresql', 'mysql'):
-            raise SourceError('首版数据库连接只支持 PostgreSQL/MySQL')
+        if url.get_backend_name() not in ('postgresql', 'mysql', 'sqlite'):
+            raise SourceError('数据库连接支持 PostgreSQL/MySQL/SQLite')
         if not cfg.get('table'): raise SourceError('需要指定表名')
         if not cfg.get('read_only_ack'): raise SourceError('请确认使用只读数据库账号')
     else:
@@ -456,13 +456,18 @@ def api_rows(source,limit):
 def database_rows(source,limit):
     cfg=unseal(source['secret_config'])
     validate_config('database',cfg)
-    from .network_policy import check_host
     target=sa.engine.make_url(cfg['connection_string'])
-    check_host(target.host,target.port)
-    eng=sa.create_engine(cfg['connection_string'],pool_pre_ping=True,connect_args={'connect_timeout':10})
+    is_sqlite=target.get_backend_name()=='sqlite'
+    if not is_sqlite:
+        from .network_policy import check_host
+        check_host(target.host,target.port)
+    connect_args={'connect_timeout':10} if not is_sqlite else {}
+    eng=sa.create_engine(cfg['connection_string'],pool_pre_ping=True,connect_args=connect_args)
     try:
         with eng.connect() as conn:
-            if eng.dialect.name=='postgresql':
+            if is_sqlite:
+                conn.exec_driver_sql('PRAGMA query_only = ON')
+            elif eng.dialect.name=='postgresql':
                 conn.exec_driver_sql('SET TRANSACTION READ ONLY')
                 conn.exec_driver_sql("SET LOCAL statement_timeout = '30000'")
             else:

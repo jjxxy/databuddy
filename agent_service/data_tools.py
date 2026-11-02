@@ -61,6 +61,7 @@ DEFINITIONS={
  'read_data_workflow_result':(ResultPage,False,'读取当前项目完整结果的有界分页，含精确值、语义、控制校验与完整交接引用；预览页不是全量交接'),
  'publish_data_workflow_result':(data.PublishWorkflow,True,'仅用户当前明确确认时采用已验证候选；若结果需要来源或语义复核，必须由用户在工作台核对并确认，模型不能代确认；之后无待复核项的同方案刷新可自动替换'),
  'export_data_workflow_result':(data.ExportResult,False,'准备完整Excel、CSV与交接包下载，保留已声明业务列名；按text_exact保留Excel无法精确保存的数值并标注，绝不截断为样本'),
+ 'export_data_workflow_code':(data.RunTarget,False,'仅在用户明确要求下载/查看底层工作流代码包时调用；打包并返回该次运行真实执行的冻结工作流代码与阶段回执的可下载链接'),
  'schedule_data_workflow':(WorkflowSchedule,True,'按用户本轮明确的每日/每周/每月指定日/每N小时计划调度正式方案；watch_sources需用户明确源表变化后刷新；不是数据库CDC'),
  'propose_semantic_alignment':(Proposal,True,'根据名称/别名/模型候选生成字段语义匹配提案，校验单位、期间、粒度；全部保留人工核对，不得代用户审批'),
  'propose_value_mapping':(Mapping,True,'保存枚举值/最小粒度映射候选，拒绝无分配规则的一对多，未知枚举不得默默丢弃；人工核对后方可称已确认'),
@@ -179,6 +180,14 @@ def execute(turn,name,args):
         return {'run_id':args['run_id'],'download':{'label':'完整数据结果.xlsx','url':'/api/projects/'+pid+'/data-results/'+args['run_id']+'/download?format=xlsx'},
                 'csv_download':{'label':'完整数据结果.csv','url':'/api/projects/'+pid+'/data-results/'+args['run_id']+'/download?format=csv'},
                 'complete_handoff':'/api/projects/'+pid+'/data-results/'+args['run_id']+'/download?format=handoff'}
+    if name=='export_data_workflow_code':
+        text=(turn.get('work_request') or turn.get('text') or '')
+        if not re.search(r'代码|workflow\s*code|workflow-code',text,re.I):
+            raise ValueError('只有用户明确要求下载或查看底层工作流代码包时才生成；当前请求未提及代码，请先向用户确认是否需要该代码包')
+        data.workflow_code_download(pid,args['run_id'])
+        return {'run_id':args['run_id'],
+                'download':{'label':'真实运行的工作流代码包.zip','url':'/api/projects/'+pid+'/data-results/'+args['run_id']+'/workflow-code'},
+                'note':'此包是引擎真实执行的冻结工作流代码与阶段回执（workflow.json + stage-receipts.json + manifest.json），与工作区可编辑草稿可能不同；仅在用户明确要求时展示'}
     if name=='schedule_data_workflow':
         from .cadence import parse
         cadence=parse(turn.get('work_request') or turn['text'],embedded=True)

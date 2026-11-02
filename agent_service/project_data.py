@@ -1506,6 +1506,52 @@ def result_download(pid,rid,kind='handoff',*,expected_handoff_sha256=None):
             save_committed=lambda sha:save_receipt(sha,'committed'),before_publish=assert_owned)
 
 
+def workflow_code_download(pid,rid):
+    """打包引擎真实执行的冻结工作流代码（不是工作区里可改的草稿）。
+
+    用户明确要求时才通过 /data-results/{rid}/workflow-code 下载；正常结果交接
+    不展示这份代码包。包内是执行器逐字运行的 workflow.json 与每步阶段回执，
+    附带一份 manifest.json 说明运行版本与摘要。
+    """
+    from .jobs import get_job
+    from .locks import FileLock,assert_owned
+    from .result_delivery import durable_cached_artifact
+    folder,meta=result_folder(pid,rid)
+    run=get_job(rid)
+    plan_sha=meta['plan_sha256']
+    workflow_file=folder/'workflow.json'
+    if not workflow_file.is_file():raise ValueError('该运行没有可下载的工作流代码文件')
+    receipt_file=folder/'stage-receipts.json'
+    key='wc_'+digest([pid,rid,plan_sha])[:40]
+    target=folder/'workflow-code.zip'
+    with FileLock(str(folder/'workflow-code.lock'),timeout=30):
+        try:record=owned(pid,'data_export',key)
+        except KeyError:record={}
+        if record and (record.get('run_id')!=rid or record.get('source_manifest')!=plan_sha):
+            raise ValueError('工作流代码包与冻结运行版本不一致，请重新核对')
+        def build(temporary):
+            manifest={'version':1,'run_id':rid,'workflow_id':run.get('target'),
+                      'plan_sha256':plan_sha,'status':run.get('status'),
+                      'records':meta.get('records'),'created_at':meta.get('created_at'),
+                      'processing_fingerprint':meta.get('processing_fingerprint'),
+                      'files':['workflow.json']+(['stage-receipts.json'] if receipt_file.is_file() else []),
+                      'note':'本包是引擎真实执行的冻结工作流代码与阶段回执；如需修改请在工作区草稿上编辑后重新登记运行'}
+            with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as z:
+                z.write(workflow_file,'workflow.json')
+                z.writestr('manifest.json',json.dumps(manifest,ensure_ascii=False,indent=2))
+                if receipt_file.is_file():z.write(receipt_file,'stage-receipts.json')
+            with zipfile.ZipFile(temporary) as z:
+                if z.testzip() is not None:raise ValueError('工作流代码包压缩校验失败')
+        def save_receipt(checksum,state):
+            put('data_export',{'project_id':pid,'run_id':rid,'sha256':checksum,
+                'source_manifest':plan_sha,'state':state},key)
+        pending=record.get('state')=='pending'
+        return durable_cached_artifact(target,expected_sha256=record.get('sha256') if not pending else None,
+            pending_sha256=record.get('sha256') if pending else None,build=build,
+            save_pending=lambda sha:save_receipt(sha,'pending'),
+            save_committed=lambda sha:save_receipt(sha,'committed'),before_publish=assert_owned)
+
+
 class IndentedSource(StrictModel):
     source_id:str=Field(min_length=1,max_length=64)
     columns:list[str]=Field(min_length=2,max_length=40)

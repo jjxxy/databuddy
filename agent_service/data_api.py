@@ -224,6 +224,11 @@ def install(app,auth):
         path=data.result_download(pid,rid,format)
         return FileResponse(path,filename='data-result-'+rid+{'xlsx':'.xlsx','csv':'.csv','handoff':'.zip'}[format])
 
+    @app.get('/api/projects/{pid}/data-results/{rid}/workflow-code',dependencies=dependencies)
+    def download_workflow_code(pid:str,rid:str):
+        path=data.workflow_code_download(pid,rid)
+        return FileResponse(path,filename='workflow-code-'+rid+'.zip',media_type='application/zip')
+
     @app.post('/api/projects/{pid}/semantic-proposals',dependencies=dependencies)
     def propose_alignment(pid:str,value:AlignmentInput):
         from .semantic_service import propose

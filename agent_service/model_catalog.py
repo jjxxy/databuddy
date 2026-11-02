@@ -41,7 +41,14 @@ def _active():
 
 
 def _revision(revision):
-    return unseal(get('model_catalog', revision)['secret_config'])
+    value = unseal(get('model_catalog', revision)['secret_config'])
+    # Pre-rename catalogs recorded the direct-upstream engine as 'atlas'; the
+    # same engine is now 'nexus'. Normalize on read so frozen task revisions do
+    # not strand resumable work or abort OpenCode startup.
+    for entry in value.get('models', []):
+        if entry.get('engine') == 'atlas':
+            entry['engine'] = 'nexus'
+    return value
 
 
 def owner_configuration():

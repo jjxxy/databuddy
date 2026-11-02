@@ -92,8 +92,11 @@ def denied(text,action):
     production=re.search(_produce,unquoted_intent)
     # A quoted example or hypothetical question is not an actual request to
     # execute, even if it contains a literal "请生成报告".
+    # “说明/如何/解释/是否/有没有/举例”在交付请求里是需求文书或数据检查
+    # （明确说明、说明取数过程、检查是否有多页），不是“只讨论”。discussion_prefix
+    # 只保留真正的发问与假设措辞；其中 假如/假设/如果 供下方假设语气检测使用。
     discussion_prefix=bool(production and re.search(
-        r'解释|说明|什么意思|如何|怎么|为什么|假如|假设|如果|举例|是否|有没有',
+        r'什么意思|怎么|为什么|假如|假设|如果',
         unquoted_intent[:production.start()]))
     # A hypothetical about someone saying a request is discussion of that
     # request, rather than authorization to perform it. Keep ordinary
@@ -115,7 +118,8 @@ def denied(text,action):
             r'\s*(?:(?:无法可靠计算|无法核实|未经确认|缺乏依据)的(?:数字|数值|数据|结论|解释|原因)'
             r'(?:不要|不能|不得|不应)(?:生成|输出|展示|编造|写入)'
             r'|(?:不要|不能|不得|不应)(?:将|把)(?:未经确认|无法核实|缺乏依据)的'
-            r'(?:数字|数值|数据|结论|解释|原因)(?:写成|当作|作为|编造成)(?:事实|结论))\s*'
+            r'(?:数字|数值|数据|结论|解释|原因)(?:写成|当作|作为|编造成)(?:事实|结论)'
+            r'|(?:不要|不能|不得|不应)(?:将|把)[^，,。；;]{1,12}(?:当成|当作|作为)[^，,。；;]{1,8})\s*'
         )
         if deliverable_request and re.fullmatch(quality_constraint,clause):continue
         veto=_veto_head+r'.{0,14}(?:'+verbs+r')'
