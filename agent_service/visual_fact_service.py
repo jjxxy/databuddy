@@ -104,7 +104,7 @@ def _ocr_worker_python():
     """Use the independent, bundled interpreter for portable desktop OCR."""
     import os
     import sys
-    if os.getenv('ATLAS_DESKTOP_MODE') != '1':
+    if os.getenv('NEXUS_DESKTOP_MODE') != '1':
         return sys.executable
     from .offline_ocr import OCRError
     root=Path(__file__).resolve().parent.parent
@@ -169,10 +169,10 @@ def _run_ocr_worker(request):
     import subprocess
     import tempfile
     root=Path(tempfile.gettempdir()).resolve(strict=True)
-    scratch=Path(tempfile.mkdtemp(prefix='atlas-ocr-',dir=str(root)))
+    scratch=Path(tempfile.mkdtemp(prefix='nexus-ocr-',dir=str(root)))
     expected=root/scratch.name
     try:
-        if scratch!=expected or scratch.resolve(strict=True)!=expected or not scratch.name.startswith('atlas-ocr-'):
+        if scratch!=expected or scratch.resolve(strict=True)!=expected or not scratch.name.startswith('nexus-ocr-'):
             raise OSError('OCR scratch directory is not confined')
         env={'PATH':'','TEMP':str(scratch),'TMP':str(scratch)}
         for name in ('SystemRoot','WINDIR'):
@@ -183,7 +183,7 @@ def _run_ocr_worker(request):
         # Only remove the exact freshly-created directory if it still resolves
         # under the same trusted temp root; never recurse into a moved target.
         try:
-            if scratch.parent==root and scratch.name.startswith('atlas-ocr-') and scratch.resolve(strict=True)==expected:
+            if scratch.parent==root and scratch.name.startswith('nexus-ocr-') and scratch.resolve(strict=True)==expected:
                 shutil.rmtree(scratch)
         except OSError:
             pass

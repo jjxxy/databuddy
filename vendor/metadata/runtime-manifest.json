@@ -177,7 +177,7 @@
       "sha256": "cea5a5a5a32b9ab5da66f9cc2e3079e38e3fab9c2e2df2dd9ced5288cf719b08"
     },
     {
-      "path": "runtime/git/mingw64/bin/Atlassian.Bitbucket.dll",
+      "path": "runtime/git/mingw64/bin/Nexus WorkStudiosian.Bitbucket.dll",
       "bytes": 103968,
       "sha256": "fb2918a38906c93f125ad3e9e8fa0296ef986277e4fa394e738d7e17d1fa840c"
     },
@@ -55897,12 +55897,12 @@
       "sha256": "128601e5ce59138aec34a66f9754d1432d95a360f74f61fe62e9f20f68bab1ad"
     },
     {
-      "path": "runtime/python/Lib/site-packages/networkx/generators/atlas.dat.gz",
+      "path": "runtime/python/Lib/site-packages/networkx/generators/nexus.dat.gz",
       "bytes": 8887,
       "sha256": "73fc416df0164923607751cb759f4ae81deb5f6550bf25be59c86de3b747e41d"
     },
     {
-      "path": "runtime/python/Lib/site-packages/networkx/generators/atlas.py",
+      "path": "runtime/python/Lib/site-packages/networkx/generators/nexus.py",
       "bytes": 6955,
       "sha256": "e3fd26974b03ed92c56259b8b49cc55a0ae58070f53a20b6fb5b3b7132cd8949"
     },
@@ -56037,7 +56037,7 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "path": "runtime/python/Lib/site-packages/networkx/generators/tests/test_atlas.py",
+      "path": "runtime/python/Lib/site-packages/networkx/generators/tests/test_nexus.py",
       "bytes": 2530,
       "sha256": "9f05c92f83b98d4aa14f0aa190fc4763cb372971d04c311db1f6e0e0cb12cd54"
     },

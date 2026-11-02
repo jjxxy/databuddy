@@ -109,7 +109,7 @@ def subprocess_environment(tmp_path, path):
     environment={'PATH': os.environ.get('PATH', ''), 'DATA_DIR': str(data),
             'DATABASE_URL': 'sqlite:///' + str(data / 'metadata.sqlite'),
             'APP_TOKEN': 'fixture-only-access-token-123456789',
-            'ATLAS_LLM_CONFIG_FILE': str(path), 'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'}
+            'NEXUS_LLM_CONFIG_FILE': str(path), 'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'}
     for key in ('SystemRoot','SYSTEMROOT','WINDIR'):
         if os.environ.get(key):environment[key]=os.environ[key]
     return environment
@@ -118,7 +118,7 @@ def subprocess_environment(tmp_path, path):
 def test_cloud_file_provisioning_is_once_only_encrypted_and_drops_bootstrap_environment(tmp_path):
     path = write_configuration(tmp_path, configuration(base_url='http://localhost:11434/v1/chat/completions', share_data=True))
     environment = subprocess_environment(tmp_path, path)
-    environment.update(ATLAS_QUICKSTART_CONTAINER='1', API_ALLOWED_HOSTS='existing.test')
+    environment.update(NEXUS_QUICKSTART_CONTAINER='1', API_ALLOWED_HOSTS='existing.test')
     script = '''import json,os
 from agent_service import provider
 from agent_service.store import put,seal,unseal,get
@@ -129,7 +129,7 @@ def configure(value):
     put('system',{'secret_config':seal(raw)},'model-provider')
 provider.configure=configure
 assert prepare()==8000
-assert 'ATLAS_LLM_CONFIG_FILE' not in os.environ and 'ATLAS_INITIAL_MODEL' not in os.environ
+assert 'NEXUS_LLM_CONFIG_FILE' not in os.environ and 'NEXUS_INITIAL_MODEL' not in os.environ
 assert provider.settings()['share_data'] is True
 assert provider.settings()['api_key']=='FIXTURE-QUICKSTART-SECRET'
 assert 'host.docker.internal' in os.environ['API_ALLOWED_HOSTS'].split(',')
@@ -137,7 +137,7 @@ assert 'existing.test' in os.environ['API_ALLOWED_HOSTS'].split(',')
 # A later UI-selected endpoint wins over the bootstrap file after restart.
 current=provider.settings();current.update(base_url='https://later-ui.test/v1',share_data=False)
 put('system',{'secret_config':seal(current)},'model-provider')
-os.environ['ATLAS_LLM_CONFIG_FILE']=__import__('sys').argv[1]
+os.environ['NEXUS_LLM_CONFIG_FILE']=__import__('sys').argv[1]
 os.environ['API_ALLOWED_HOSTS']='existing.test'
 assert prepare()==8000
 assert provider.settings()['base_url']=='https://later-ui.test/v1'
@@ -157,7 +157,7 @@ print('BOOTSTRAP_ONCE_AND_RESTART_OK')
 def test_cloud_reads_private_configuration_before_switching_identity(tmp_path):
     path = write_configuration(tmp_path)
     environment = subprocess_environment(tmp_path, path)
-    environment['ATLAS_DROP_PRIVILEGES'] = '1'
+    environment['NEXUS_DROP_PRIVILEGES'] = '1'
     script = '''import os,sys
 from pathlib import Path
 from agent_service import cloud
@@ -196,7 +196,7 @@ def test_cloud_model_read_errors_do_not_log_private_configuration(tmp_path, fail
     path = write_configuration(tmp_path)
     environment = subprocess_environment(tmp_path, path)
     if failure == 'invalid-file':path.write_text('invalid JSON FIXTURE-QUICKSTART-SECRET',encoding='utf-8')
-    else:environment['ATLAS_INITIAL_MODEL'] = json.dumps(configuration())
+    else:environment['NEXUS_INITIAL_MODEL'] = json.dumps(configuration())
     result = subprocess.run([sys.executable, '-X', 'utf8', '-m', 'agent_service.cloud'], env=environment,
                             capture_output=True, text=True, encoding='utf-8', timeout=10)
     assert result.returncode == 2

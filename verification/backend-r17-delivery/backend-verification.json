@@ -1,7 +1,7 @@
 {
   "ok": true,
   "platform": "native Windows",
-  "app_root": "C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\dist\\Atlas-DataBuddy-win32-x64-r17\\resources\\app",
+  "app_root": "C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\dist\\Nexus WorkStudio-WorkStudio-win32-x64-r17\\resources\\app",
   "synthetic_data_only": true,
   "real_ai_evaluated": false,
   "os_firewall_or_disconnected_vm_evaluated": false,

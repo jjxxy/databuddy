@@ -42,11 +42,11 @@ def settings(tmp_path):
     jwks = tmp_path / 'public-jwks.json'
     jwks.write_text(json.dumps({'keys': [jwk]}))
     config = {
-        'schema_version': 1, 'public_origin': 'https://atlas.example',
-        'oidc': {'issuer': 'https://identity.example/realm', 'audience': 'atlas', 'jwks_file': str(jwks)},
+        'schema_version': 1, 'public_origin': 'https://nexus.example',
+        'oidc': {'issuer': 'https://identity.example/realm', 'audience': 'nexus', 'jwks_file': str(jwks)},
         'workspaces': [
-            {'id': 'alice', 'backend_url': 'http://atlas-alice:8000', 'subjects': ['alice-sub']},
-            {'id': 'bob', 'backend_url': 'http://atlas-bob:8000', 'subjects': ['bob-sub']},
+            {'id': 'alice', 'backend_url': 'http://nexus-alice:8000', 'subjects': ['alice-sub']},
+            {'id': 'bob', 'backend_url': 'http://nexus-bob:8000', 'subjects': ['bob-sub']},
         ],
     }
     return config, key, jwks, jwk
@@ -54,7 +54,7 @@ def settings(tmp_path):
 
 def access_token(settings, subject='alice-sub', **claims):
     now = int(time.time())
-    payload = {'iss': settings[0]['oidc']['issuer'], 'aud': 'atlas', 'sub': subject, 'iat': now, 'exp': now + 300}
+    payload = {'iss': settings[0]['oidc']['issuer'], 'aud': 'nexus', 'sub': subject, 'iat': now, 'exp': now + 300}
     payload.update(claims)
     return jwt.encode(payload, settings[1], algorithm='RS256', headers={'kid': 'fixture-rsa'})
 
@@ -68,18 +68,18 @@ def client_for(settings, handler=None, **limits):
     if limits:
         config['limits'] = limits
     app = create_app(GatewayConfig.parse(config), transport=httpx.MockTransport(handler or (lambda request: response())))
-    return TestClient(app, base_url='https://atlas.example')
+    return TestClient(app, base_url='https://nexus.example')
 
 
 def test_independent_workspaces_preserve_full_bytes_and_verified_bearer(settings):
-    values = {'atlas-alice': {}, 'atlas-bob': {}}
+    values = {'nexus-alice': {}, 'nexus-bob': {}}
     tokens = {name: access_token(settings, name + '-sub') for name in ('alice', 'bob')}
     seen = []
 
     async def backend(request):
         host = request.url.host
-        claims = jwt.decode(request.headers['authorization'][7:], settings[1].public_key(), algorithms=['RS256'], audience='atlas', issuer=settings[0]['oidc']['issuer'])
-        assert host == 'atlas-' + claims['sub'].removesuffix('-sub')
+        claims = jwt.decode(request.headers['authorization'][7:], settings[1].public_key(), algorithms=['RS256'], audience='nexus', issuer=settings[0]['oidc']['issuer'])
+        assert host == 'nexus-' + claims['sub'].removesuffix('-sub')
         data = await request.aread()
         seen.append((host, request.method, data))
         if request.method == 'POST':
@@ -109,7 +109,7 @@ def test_public_shell_explicit_allowlist_and_no_business_auth_bypass(settings):
         assert client.get('/').status_code == 200
         legacy = client.get('/local-data.html')
         assert legacy.status_code == 200 and 'http-equiv="refresh"' in legacy.text
-        assert 'atlas_token' in client.get('/app.js').text
+        assert 'nexus_token' in client.get('/app.js').text
         assert client.get('/health').json()['scope'] == 'isolated_workspace_gateway'
         for path in ('/api/projects', '/api/browser/register'):
             assert client.get(path).status_code == 401
@@ -146,7 +146,7 @@ def test_workbench_and_data_application_assets_are_served_by_isolated_gateway(se
 
 
 @pytest.mark.parametrize('changes', [
-    {'iss': 'https://evil.example'}, {'aud': 'other'}, {'aud': ['other', 'not-atlas']},
+    {'iss': 'https://evil.example'}, {'aud': 'other'}, {'aud': ['other', 'not-nexus']},
     {'exp': 1}, {'sub': 123}, {'iat': 'future-fixture'},
     {'exp': 'overlong-fixture'}, {'exp': '9999999999'}, {'iat': True},
 ])
@@ -167,7 +167,7 @@ def test_unknown_subject_and_algorithm_confusion(settings):
     with pytest.raises(HTTPException) as denied:
         config.authenticate(access_token(settings, 'unassigned'))
     assert denied.value.status_code == 403
-    payload = {'iss': settings[0]['oidc']['issuer'], 'aud': 'atlas', 'sub': 'alice-sub', 'iat': int(time.time()), 'exp': int(time.time()) + 120}
+    payload = {'iss': settings[0]['oidc']['issuer'], 'aud': 'nexus', 'sub': 'alice-sub', 'iat': int(time.time()), 'exp': int(time.time()) + 120}
     forged = jwt.encode(payload, 'test-only-HMAC-not-a-service-secret', algorithm='HS256', headers={'kid': 'fixture-rsa'})
     with pytest.raises(HTTPException) as denied:
         config.authenticate(forged)
@@ -183,7 +183,7 @@ def test_only_explicit_headers_forwarded_and_response_credentials_removed(settin
         captured.append(request)
         return response(headers={'Set-Cookie': 'foreign=secret', 'Location': 'https://evil.example', 'X-Internal-Secret': 'secret', 'Content-Type': 'text/event-stream', 'Cache-Control': 'public'})
     with client_for(settings, backend) as client:
-        headers = auth(settings) | {'Cookie': 'private=secret', 'X-Atlas-Operator-Token': 'operator-secret',
+        headers = auth(settings) | {'Cookie': 'private=secret', 'X-Nexus-Operator-Token': 'operator-secret',
             'X-Forwarded-Access-Token': 'different-token', 'X-Forwarded-Host': 'evil.example',
             'X-Workspace': 'bob', 'Connection': 'X-Hop-Secret', 'X-Hop-Secret': 'must-not-forward', 'Accept': 'text/event-stream', 'If-Match': 'revision-2'}
         result = client.get('/api/projects?workspace=bob', headers=headers)
@@ -192,10 +192,10 @@ def test_only_explicit_headers_forwarded_and_response_credentials_removed(settin
         assert not any(k in result.headers for k in ('set-cookie', 'location', 'x-internal-secret'))
         assert result.headers['cache-control'] == 'no-store'
     request = captured[0]
-    assert request.url.host == 'atlas-alice'
+    assert request.url.host == 'nexus-alice'
     assert request.headers['authorization'] == headers['Authorization']
     assert request.headers['if-match'] == 'revision-2'
-    for name in ('cookie', 'x-atlas-operator-token', 'x-forwarded-access-token', 'x-forwarded-host', 'x-workspace', 'x-hop-secret'):
+    for name in ('cookie', 'x-nexus-operator-token', 'x-forwarded-access-token', 'x-forwarded-host', 'x-workspace', 'x-hop-secret'):
         assert name not in request.headers
     assert request.headers.get('connection') != 'X-Hop-Secret'
 
@@ -272,7 +272,7 @@ def test_failures_never_retry_and_release_capacity(settings, failure, status):
         if failure == 'timeout':
             raise httpx.ReadTimeout('fixture', request=request)
         result = response(status=302 if failure == 'redirect' else 200,
-                          headers={'Location': 'http://atlas-bob:8000'} if failure == 'redirect' else {'Content-Encoding': 'gzip'})
+                          headers={'Location': 'http://nexus-bob:8000'} if failure == 'redirect' else {'Content-Encoding': 'gzip'})
         streams.append(result.stream)
         return result
     with client_for(settings, backend, max_concurrent_requests=1) as client:
@@ -285,13 +285,13 @@ def test_failures_never_retry_and_release_capacity(settings, failure, status):
 
 @pytest.mark.parametrize('mutation', [
     lambda c: c.update(schema_version=True), lambda c: c.update(unknown=True),
-    lambda c: c.update(public_origin='http://atlas.example'),
+    lambda c: c.update(public_origin='http://nexus.example'),
     lambda c: c['workspaces'][1].update(id='alice'),
     lambda c: c['workspaces'][1].update(subjects=['alice-sub']),
-    lambda c: c['workspaces'][1].update(backend_url='http://ATLAS-ALICE:8000/'),
-    lambda c: c['workspaces'][0].update(backend_url='http://user:secret@atlas-alice:8000'),
-    lambda c: c['workspaces'][0].update(backend_url='http://atlas-alice:8000/path'),
-    lambda c: c['workspaces'][0].update(backend_url='http://atlas-alice:8000?x=1'),
+    lambda c: c['workspaces'][1].update(backend_url='http://NEXUS-ALICE:8000/'),
+    lambda c: c['workspaces'][0].update(backend_url='http://user:secret@nexus-alice:8000'),
+    lambda c: c['workspaces'][0].update(backend_url='http://nexus-alice:8000/path'),
+    lambda c: c['workspaces'][0].update(backend_url='http://nexus-alice:8000?x=1'),
     lambda c: c['workspaces'][0].update(backend_url='http://8.8.8.8'),
     lambda c: c['workspaces'][0].update(backend_url='http://evil.example'),
     lambda c: c.update(limits={'max_request_bytes': True}),
@@ -434,8 +434,8 @@ def test_disconnected_upload_never_forwarded_and_tempfile_closed(settings, monke
                 sent.append(message)
             scope = {'type': 'http', 'asgi': {'version': '3.0', 'spec_version': '2.4'}, 'http_version': '1.1',
                 'method': 'POST', 'scheme': 'https', 'path': '/api/upload', 'raw_path': b'/api/upload',
-                'query_string': b'', 'root_path': '', 'server': ('atlas.example', 443), 'client': ('127.0.0.1', 1),
-                'headers': [(b'host', b'atlas.example'), (b'authorization', ('Bearer ' + access_token(settings)).encode())]}
+                'query_string': b'', 'root_path': '', 'server': ('nexus.example', 443), 'client': ('127.0.0.1', 1),
+                'headers': [(b'host', b'nexus.example'), (b'authorization', ('Bearer ' + access_token(settings)).encode())]}
             await app(scope, receive, send)
             assert sent[0]['status'] == 499
             assert not app.state.semaphore.locked()
@@ -448,7 +448,7 @@ def test_oidc_audience_membership_and_configured_lifetime(settings):
     config = deepcopy(settings[0])
     config['oidc']['max_token_lifetime_seconds'] = 7200
     parsed = GatewayConfig.parse(config)
-    token = access_token(settings, aud=['other', 'atlas'], exp=int(time.time()) + 7000)
+    token = access_token(settings, aud=['other', 'nexus'], exp=int(time.time()) + 7000)
     assert parsed.authenticate(token)[0] == 'alice'
     with pytest.raises(HTTPException):
         GatewayConfig.parse(settings[0]).authenticate(token)
@@ -477,7 +477,7 @@ def test_active_download_capacity_is_bounded_and_released(settings):
             return httpx.Response(200, stream=stream) if len(calls) == 1 else response(b'next')
         app = create_app(GatewayConfig.parse(config), transport=httpx.MockTransport(backend))
         async with app.router.lifespan_context(app):
-            async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='https://atlas.example') as client:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='https://nexus.example') as client:
                 first = asyncio.create_task(client.get('/api/projects', headers=auth(settings)))
                 await asyncio.wait_for(stream.started.wait(), 1)
                 saturated = await client.get('/api/projects', headers=auth(settings, 'bob-sub'))
@@ -539,8 +539,8 @@ def test_upload_total_deadline_closes_spool_without_backend(settings, monkeypatc
                 sent.append(message)
             scope = {'type': 'http', 'asgi': {'version': '3.0', 'spec_version': '2.4'}, 'http_version': '1.1',
                 'method': 'POST', 'scheme': 'https', 'path': '/api/upload', 'raw_path': b'/api/upload',
-                'query_string': b'', 'root_path': '', 'server': ('atlas.example', 443), 'client': ('127.0.0.1', 1),
-                'headers': [(b'host', b'atlas.example'), (b'authorization', ('Bearer ' + access_token(settings)).encode())]}
+                'query_string': b'', 'root_path': '', 'server': ('nexus.example', 443), 'client': ('127.0.0.1', 1),
+                'headers': [(b'host', b'nexus.example'), (b'authorization', ('Bearer ' + access_token(settings)).encode())]}
             await app(scope, receive, send)
             assert sent[0]['status'] == 504
             assert not app.state.semaphore.locked()
@@ -565,7 +565,7 @@ def test_backend_cookies_never_persist_or_cross_workspace_ports(settings):
         ])
 
     app = create_app(GatewayConfig.parse(config), transport=httpx.MockTransport(backend))
-    with TestClient(app, base_url='https://atlas.example') as client:
+    with TestClient(app, base_url='https://nexus.example') as client:
         for subject in ('alice-sub', 'bob-sub', 'alice-sub', 'bob-sub'):
             result = client.get('/api/projects', headers=auth(settings, subject))
             assert result.status_code == 200
@@ -577,10 +577,10 @@ def test_backend_cookies_never_persist_or_cross_workspace_ports(settings):
 def test_gateway_preserves_backend_runtime_revision_for_ui_diagnostics(settings):
     revision='2026.10.30.1'
     with client_for(settings,lambda request:response(b'{}',headers={'content-type':'application/json',
-            'x-atlas-runtime-revision':revision})) as client:
+            'x-nexus-runtime-revision':revision})) as client:
         value=client.get('/api/projects',headers=auth(settings))
         assert value.status_code==200
-        assert value.headers['x-atlas-runtime-revision']==revision
+        assert value.headers['x-nexus-runtime-revision']==revision
         assert value.headers['cache-control']=='no-store'
 
 
@@ -590,7 +590,7 @@ def test_web_gateway_forwards_multiple_attachments_to_real_workspace_api(setting
     from agent_service.store import get, uid
     from agent_service.connectors import verified_file_source
 
-    monkeypatch.setenv('ATLAS_AUTH_MODE', 'oidc')
+    monkeypatch.setenv('NEXUS_AUTH_MODE', 'oidc')
     monkeypatch.setenv('OIDC_ISSUER', settings[0]['oidc']['issuer'])
     monkeypatch.setenv('OIDC_AUDIENCE', settings[0]['oidc']['audience'])
     monkeypatch.setenv('OIDC_JWKS_URL', 'https://identity.example/jwks')
@@ -601,7 +601,7 @@ def test_web_gateway_forwards_multiple_attachments_to_real_workspace_api(setting
     app = create_app(config, transport=httpx.ASGITransport(app=api.app))
     files = [('one.csv', b'id,amount\n1,12\n'), ('two.txt', b'notes\n'),
              ('three.json', b'{"meta":{"unit":"CNY"},"items":[{"amount":1}]}')]
-    with TestClient(app, base_url='https://atlas.example') as client:
+    with TestClient(app, base_url='https://nexus.example') as client:
         shell = client.get('/')
         assert shell.status_code == 200
         assert 'id="file" multiple' in shell.text

@@ -9,8 +9,8 @@ from contextvars import ContextVar
 from .store import get,all_items
 from .errors import Cancelled
 
-_held=ContextVar('atlas_job_authority_locks',default=frozenset())
-_turn_held=ContextVar('atlas_job_turn_locks',default=frozenset())
+_held=ContextVar('nexus_job_authority_locks',default=frozenset())
+_turn_held=ContextVar('nexus_job_turn_locks',default=frozenset())
 
 
 @contextmanager

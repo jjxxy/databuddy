@@ -13,11 +13,11 @@
 # v0.11 历史验证
 
 - 118 项后端回归通过，用时 253.80 秒，包含真实 Git/dlt/dbt。
-- 真实 OpenCode 2.0.32 二进制 + 模拟模型 + 实际 Atlas API/Agent/Worker 的多步、暂时失败、重启、跨会话与回退协议验收通过。
+- 真实 OpenCode 2.0.32 二进制 + 模拟模型 + 实际 Nexus WorkStudio API/Agent/Worker 的多步、暂时失败、重启、跨会话与回退协议验收通过。
 - 直接模型原生工具协议（6 步）及评测器协议回归通过；模拟模型，不是智能评测。
 - 公司检索独立授权、引用、加密和权限失效协议回归通过；模拟公司 API。
 - UI DOM 回归通过：保留未变节点、展开详情、导航滚动位置、抽屉焦点。未完成真实浏览器滚轮及 CSS 布局验收。
-- 云端真实 DeepSeek V4 Pro / thinking high 经 OpenCode 2.0.32 验收通过：精确文件（31 字节）与 Git、聊天只读、Git 回退。正式第二轮共 3 次 Atlas 模型请求，上游实际 token 未报告；第一次标点遗漏及其修复保留在记录中。
+- 云端真实 DeepSeek V4 Pro / thinking high 经 OpenCode 2.0.32 验收通过：精确文件（31 字节）与 Git、聊天只读、Git 回退。正式第二轮共 3 次 Nexus WorkStudio 模型请求，上游实际 token 未报告；第一次标点遗漏及其修复保留在记录中。
 - 两个服务均部署成功且有运行副本。数据应用历史、对话和审计在更新后仍可访问；旧样例 dbt 结果复用历史验证，并非本次重新跑了云端 dbt。
 - 完整结果见 deploy/opencode-verification-v11.json；不能将连接成功、模拟协议或有限验收当成商业智能对标。
 
@@ -37,7 +37,7 @@ Railway首轮0.8部署与重启验收通过，UID10001，原项目、应用、�
 
 - 独立API/Worker及重启验收通过：每日/工作日/每周/小时计划、固定版本CSV、发布前差异、来源/时效、对话健康查询及回退保留数据。
 - 独立模拟模型HTTP协议验收通过，增加一次真实503响应后自动重试；多步工具、配置跨重启保留、历史检索和文件恢复通过。这不是实际大模型智能测试。
-- Railway首轮升级5a1faf98-43d7-48f6-9945-5fccc1649002达到SUCCESS，ATLAS_EXPERIENCE_ACCEPTANCE通过，UID10001。最终修订部署2a451893-2ae6-4859-989c-f010062d07ee达到SUCCESS，ATLAS_EXPERIENCE_RESTART_VERIFIED以及原项目/工作区/应用重启检查通过；标识与时间见部署报告。
+- Railway首轮升级5a1faf98-43d7-48f6-9945-5fccc1649002达到SUCCESS，NEXUS_EXPERIENCE_ACCEPTANCE通过，UID10001。最终修订部署2a451893-2ae6-4859-989c-f010062d07ee达到SUCCESS，NEXUS_EXPERIENCE_RESTART_VERIFIED以及原项目/工作区/应用重启检查通过；标识与时间见部署报告。
 - Python编译、两个前端脚本语法通过。浏览器视觉、点击、移动端及无障碍尚未验收；静态检查不替代浏览器。
 - 本轮没有真实模型密钥，仍为规则模式。外部真实数据库、OCR、长期容量/并发、Docker/PG完整环境和外部Git远端仍沿用之前的未验收边界。
 
@@ -65,7 +65,7 @@ Railway首轮0.8部署与重启验收通过，UID10001，原项目、应用、�
 
 - 本次全量回归24项通过（470.30秒）；后续新增的连接分步收集与模型操作授权校验2项另行通过。
 - 新增 `tests/test_conversation.py`：真实对话驱动 dlt/dbt、净额118.15、发布确认、调度/暂停、问答/导出、同仓修改、重试去重、生成中断恢复、项目归属和凭证保护。
-- `scripts/verify_conversation_service.py` 在临时空间启动独立 API + Worker，复用云端对话验收并重启；已通过 `ATLAS_CHAT_ACCEPTANCE` 和 `ATLAS_CHAT_RESTART_VERIFIED`。
+- `scripts/verify_conversation_service.py` 在临时空间启动独立 API + Worker，复用云端对话验收并重启；已通过 `NEXUS_CHAT_ACCEPTANCE` 和 `NEXUS_CHAT_RESTART_VERIFIED`。
 - `node --check agent_service/static/app.js` 已通过。当前环境的浏览器二进制下载失败，未宣称浏览器视觉/点击验证通过。
 - 已观察 Railway 部署 c0c6e326-3762-42e6-ace1-06226b65914b 达到 SUCCESS；线上对话验收通过，UID10001，2条净额118.1500，并验证调度/暂停及导出。
 - 线上对话验收结果以 `deploy/railway-deployment.json` 为准；语言模型仍未配置。
@@ -153,11 +153,11 @@ node --check agent_service/static/app.js
 
 ## 实际 Railway 部署验收 · 2026-10-14
 
-部署 09283a81-df6b-480b-acb3-ffcbe22d7b35 为 SUCCESS，域名 atlas-trial.up.railway.app 路由到8080，DNS/TLS由平台管理。
+部署 09283a81-df6b-480b-acb3-ffcbe22d7b35 为 SUCCESS，域名 nexus-trial.up.railway.app 路由到8080，DNS/TLS由平台管理。
 
-真实云端验收：上传样例 → 画像 → 生成 Git/dbt → dlt 采集 → dbt构建及测试 → 人工发布 → 2条对象及118.1500金额；审计校验通过。云端日志的 ATLAS_CLOUD_ACCEPTANCE 明确报告 UID10001。
+真实云端验收：上传样例 → 画像 → 生成 Git/dbt → dlt 采集 → dbt构建及测试 → 人工发布 → 2条对象及118.1500金额；审计校验通过。云端日志的 NEXUS_CLOUD_ACCEPTANCE 明确报告 UID10001。
 
-重启实际实例后，ATLAS_RESTART_VERIFIED 报告正式结果和审计仍可读取。修复了降权后dbt仍访问 /root/.dbt/user_settings.yml 的权限缺陷。云端进程降权已验证；本地chown受限并不等于云端测试失败。
+重启实际实例后，NEXUS_RESTART_VERIFIED 报告正式结果和审计仍可读取。修复了降权后dbt仍访问 /root/.dbt/user_settings.yml 的权限缺陷。云端进程降权已验证；本地chown受限并不等于云端测试失败。
 
 当前环境下载命令行工具失败，实际用已连接云接口部署公共Python镜像及校验源码包；不是Dockerfile.cloud构建验收。依赖安装在容器中，原件、任务Git、元数据和结果在/data持久化卷。
 
@@ -172,7 +172,7 @@ node --check agent_service/static/app.js
 - `scripts/verify_company_protocol.py`：独立实际 API、Agent、数据 Worker 与模拟 HTTP 模型/公司 API，验证独立模型授权、聊天引用、工作报告、Git 提交、整套服务停止再启动后的凭证/证据保存，以及上游 403 后隐藏相关回答。此测试是协议集成，**没有测真实模型智能或真实公司 API**。
 - Python 编译与前端 JavaScript 语法检查通过；未做真实浏览器点击、视觉或移动端验收。
 - Railway 部署 `337db2be-e445-44f6-ae62-0ee1db4d2b88` 为 SUCCESS，环境 Online，1 个运行副本、0 个崩溃副本，无待应用变更。运行代码包 SHA256：`7900a54ccae65a723ac74d455449b1dc1d4f3e211831b2e10691801ca3f96f68`。本地逐项比对已部署包与源码字节一致。
-- 云日志 `ATLAS_COMPANY_SEARCH_ACCEPTANCE` 验证内部检索路由、工具存在、凭证不返回及 UID10001；已有项目/工作区/应用与审计仍可读。此发布没有额外发起云端 dlt/dbt 重跑；原有样例运行 `bb16374d6853962b7ca8bd11` 保留，不能将旧运行写成此次新运行。
+- 云日志 `NEXUS_COMPANY_SEARCH_ACCEPTANCE` 验证内部检索路由、工具存在、凭证不返回及 UID10001；已有项目/工作区/应用与审计仍可读。此发布没有额外发起云端 dlt/dbt 重跑；原有样例运行 `bb16374d6853962b7ca8bd11` 保留，不能将旧运行写成此次新运行。
 - 云端明确报告 `model_configured=false`、`company_api_configured=false`、`real_model_evaluated=false`。真实接入仍需公司 API 文档/脱敏协议、可达网络、个人权限和获准模型；未配置公司凭证、隧道或公开内部数据。
 - 云资源保持 1 GB 内存、500 MB 卷；首次验收 cgroup 瞬时采样 anon=321630208、file=598011904、kernel=78966784、总计999628800字节，包含文件缓存，接近额度。没有负载/容量保证，未提高资源或费用额度。
 
@@ -187,7 +187,7 @@ node --check agent_service/static/app.js
 
 JSON兼容协议、公司检索 HTTP 协议集成也通过。Python编译和两个前端脚本语法通过。18个真实模型任务仅做清单校验，**没有接入真实模型、没有商业产品对照、没有智能分数**。案例清单 SHA256：72f69814776567c920c1727f92442f154973ab01c41407132bae18385e6dfd99。
 
-Railway 部署 `35dead4f-d0d7-4617-b8f2-d97a6f66b87c` 为 SUCCESS、环境 Online，1运行副本、0崩溃副本，无待应用变更。`ATLAS_HARNESS_V10_ACCEPTANCE` 验证新能力接口；日志明确 model_configured=false、native_tool_calling=false、intelligence_score=null，表示线上尚无真实模型，不能将模拟原生协议测试说成线上真实模型已验收。现有项目、Git、应用及内部检索路由仍可读；此发布未新跑云端dlt/dbt，保留此前样例结果。
+Railway 部署 `35dead4f-d0d7-4617-b8f2-d97a6f66b87c` 为 SUCCESS、环境 Online，1运行副本、0崩溃副本，无待应用变更。`NEXUS_HARNESS_V10_ACCEPTANCE` 验证新能力接口；日志明确 model_configured=false、native_tool_calling=false、intelligence_score=null，表示线上尚无真实模型，不能将模拟原生协议测试说成线上真实模型已验收。现有项目、Git、应用及内部检索路由仍可读；此发布未新跑云端dlt/dbt，保留此前样例结果。
 
 部署运行代码 SHA256 为 a4a9ee249020b41aaafe3c7f3b8cdf617deabb4fb9dbfa8a87c9677904611414；逐项比对部署包与最终运行源码字节一致。资源未改变，仍为1GB内存、500MB卷。运行后瞬时cgroup采样总量999882752字节，anon321921024、file598724608、kernel78934016，包含文件缓存；不能据此给出容量承诺。没有生产负载验收、真实企业网络/模型联调、自由代码执行后端、SSO或本轮浏览器视觉验收。
 

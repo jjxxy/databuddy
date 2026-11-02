@@ -141,7 +141,7 @@ def test_active_model_request_does_not_hit_admission_timeout(turn,monkeypatch):
     monkeypatch.setattr(runtime,'time',SimpleNamespace(monotonic=lambda:clock[0]))
     def request_model(metadata,number):
         if number!=1:return
-        bridge=metadata['atlas_bridge']
+        bridge=metadata['nexus_bridge']
         body={'session_id':'ses_idle','op':'model_request','kind':'generation',
               'input_characters':100,'target_url':'https://fixture.test/v1/chat/completions','model_id':'fixture'}
         request=Request(bridge['url'],data=json.dumps(body).encode(),headers={'Content-Type':'application/json',

@@ -2,7 +2,7 @@
 
 This layer addresses H1/H2 in `DOUBAO-ACCEPTANCE-v0.md`: a self-contained Windows
 desktop entry and local startup that does not need a package manager or network.
-The existing Atlas business workbench remains the primary UI. React Flow is an
+The existing Nexus WorkStudio business workbench remains the primary UI. React Flow is an
 additional read-only provenance view, opened from **工作设置与工具 → 数据来源与处理链**.
 Local processing is part of the web workbench's **工作 → 本地电脑** context. It
 uses the current project and an actual bound workspace; the old local-data URL
@@ -17,21 +17,21 @@ only on the portable startup failure page and rejects workbench-origin IPC.
 From an installed Python environment with the project dependencies and Git:
 
 ```bash
-python run_debug.py --state-dir .atlas-debug --port 8000
+python run_debug.py --state-dir .nexus-debug --port 8000
 ```
 
 This source entry detects Git with `shutil.which("git")` and sets an absolute
-`ATLAS_GIT_BINARY` before starting the desktop backend. An explicit existing
-`ATLAS_GIT_BINARY` takes precedence. Packaged desktop builds still require their
+`NEXUS_GIT_BINARY` before starting the desktop backend. An explicit existing
+`NEXUS_GIT_BINARY` takes precedence. Packaged desktop builds still require their
 bundled Git; their binary lookup does not fall back to the system PATH.
 Source debugging also checks PATH and the project runtime folder for OpenCode.
 The startup message identifies the selected planning mode; an explicit runtime
-choice is respected, and missing OpenCode uses the compatible Atlas planner.
+choice is respected, and missing OpenCode uses the compatible Nexus WorkStudio planner.
 
 The server binds to `127.0.0.1`. Credentials are saved in the selected state
 directory's `credentials.json` and reused on restart; an explicit `APP_TOKEN`
 environment value takes precedence and is not printed. The default state directory
-is `.atlas-debug`; without `--state-dir`, existing `DATA_DIR` / `DATABASE_URL`
+is `.nexus-debug`; without `--state-dir`, existing `DATA_DIR` / `DATABASE_URL`
 settings are preserved. Optional `--model-config /path/to/llm.json` selects the
 model configuration. Project data is never cleared by this entry.
 
@@ -82,7 +82,7 @@ Before packaging, stage the verified Windows runtimes under `runtime/python`,
 `portable_runtime.py`; its readiness/stop protocol is described below. The build
 fails rather than emitting a bundle with a missing Python or Git runtime.
 The builder refuses to overwrite an existing output. Use a new child directory
-of this checkout's `dist` via `ATLAS_DESKTOP_OUTPUT` for later comparison builds.
+of this checkout's `dist` via `NEXUS_DESKTOP_OUTPUT` for later comparison builds.
 
 For the optional offline image OCR capability, stage a separate `runtime/ocr`
 from a build machine using the pinned, hash-verified local wheelhouse and the
@@ -102,8 +102,8 @@ hashes. If the OCR worker is not included, OCR reports that it is unavailable;
 the other local capabilities remain usable. A build and synthetic OCR test do
 not establish accuracy for real financial documents or scanned PDF support.
 
-The output folder is `dist/Atlas-DataBuddy-win32-x64`. Copy or zip the **whole
-folder**. The only user entry is `Atlas DataBuddy.exe`; there is no first-run npm,
+The output folder is `dist/Nexus WorkStudio-WorkStudio-win32-x64`. Copy or zip the **whole
+folder**. The only user entry is `Nexus WorkStudio.exe`; there is no first-run npm,
 pip, WSL, Docker, download, global PATH configuration, or compiler step.
 
 ## Host contract

@@ -113,7 +113,7 @@
     ],
     "synthetic_data": true
   },
-  "portable_package": "Atlas-DataBuddy-win32-x64-r22-ocr-finance",
+  "portable_package": "Nexus WorkStudio-WorkStudio-win32-x64-r22-ocr-finance",
   "portable_backend": {
     "ok": true,
     "platform": "native Windows",

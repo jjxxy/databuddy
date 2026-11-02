@@ -5,9 +5,9 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function until(check){const end=Date.now()+6000;while(Date.now()<end){if(check())return;await new Promise(resolve=>setTimeout(resolve,5))}throw Error('Batch UI did not settle')}
 const reply=value=>({ok:true,status:200,json:async()=>value});
 async function boot({probeFailed=false,insecure=false,transient=false,persistentPoll=false,retryAfter='0.001'}={}){
- const dom=new JSDOM('<main id="view"></main>',{url:insecure?'http://192.168.1.7/':'https://atlas.fixture/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[],sources=[];let fail=true,delay=false,release,previewSource,uploadFailures=0,pollFailures=0,historyFailures=0;
+ const dom=new JSDOM('<main id="view"></main>',{url:insecure?'http://192.168.1.7/':'https://nexus.fixture/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[],sources=[];let fail=true,delay=false,release,previewSource,uploadFailures=0,pollFailures=0,historyFailures=0;
  if(insecure){Object.defineProperty(w.crypto,'randomUUID',{value:undefined});w.eval(fs.readFileSync(path.resolve(__dirname,'../../agent_service/static/secure-id.js'),'utf8'))}
- w.sessionStorage.setItem('atlas_token','batch-test-token');
+ w.sessionStorage.setItem('nexus_token','batch-test-token');
  w.fetch=async(url,options={})=>{
   const method=options.method||'GET';calls.push({url,method,options});
   if(url==='/api/desktop/runtime')return reply({notice:'本地处理'});
@@ -27,7 +27,7 @@ async function boot({probeFailed=false,insecure=false,transient=false,persistent
   if(url==='/api/pipelines/pipe/preview')return reply({run_id:'run',manifest:{fields:[],summary:[],records:1},rows:[]});
   throw Error('Unexpected '+method+' '+url);
  };
- w.eval(script);const view=w.createAtlasLocalData({root:d.querySelector('#view'),prefix:'batch-',projectId:()=> 'p'});await view.open();
+ w.eval(script);const view=w.createNexusLocalData({root:d.querySelector('#view'),prefix:'batch-',projectId:()=> 'p'});await view.open();
  return {dom,w,d,calls,view,sources,fail:value=>fail=value,delay:()=>delay=true,waiting:()=>!!release,release:()=>release?.()};
 }
 function choose(app,files){Object.defineProperty(app.d.querySelector('#batch-file'),'files',{configurable:true,value:files});app.d.querySelector('#batch-file').dispatchEvent(new app.w.Event('change'))}

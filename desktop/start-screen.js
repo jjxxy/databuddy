@@ -7,14 +7,14 @@ function show(value) {
   document.getElementById('choose-folder').hidden = !value.failed;
   document.getElementById('log').textContent = value.logPath ? '诊断日志：' + value.logPath : '';
 }
-window.atlasDesktop.onStatus(show);
-window.atlasDesktop.status().then(show).catch(() => show({failed:true,message:'桌面服务连接中断，请关闭后重新打开。'}));
+window.nexusDesktop.onStatus(show);
+window.nexusDesktop.status().then(show).catch(() => show({failed:true,message:'桌面服务连接中断，请关闭后重新打开。'}));
 document.getElementById('retry').onclick = async () => {
   document.getElementById('retry').disabled = true;
-  try { await window.atlasDesktop.retry(); }
+  try { await window.nexusDesktop.retry(); }
   catch { show({failed:true,message:'重新启动失败，请关闭后再打开，并查看诊断日志。'}); }
 };
 document.getElementById('choose-folder').onclick = async () => {
-  try { await window.atlasDesktop.chooseWorkspace(); }
+  try { await window.nexusDesktop.chooseWorkspace(); }
   catch { show({failed:true,message:'工作空间未切换，请选择普通本地文件夹后重试。'}); }
 };

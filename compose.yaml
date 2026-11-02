@@ -1,4 +1,4 @@
-name: atlas-personal-agent
+name: nexus-personal-agent
 x-runtime: &runtime
   build: .
   env_file: .env
@@ -6,12 +6,12 @@ x-runtime: &runtime
     DATA_DIR: /data
     RUNTIME__DLTHUB_TELEMETRY: "false"
     DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
-    DATABASE_URL: postgresql+psycopg2://atlas:${POSTGRES_PASSWORD:?Run python bootstrap.py}@postgres:5432/atlas
+    DATABASE_URL: postgresql+psycopg2://nexus:${POSTGRES_PASSWORD:?Run python bootstrap.py}@postgres:5432/nexus
     SCHEDULER_MODE: dagster
     AGENT_ORCHESTRATION_MODE: separate
     # Compatibility deployment: each role overrides the cloud supervisor, so
     # no local OpenCode runtime is started. Native OpenCode uses quickstart.
-    ATLAS_OPENCODE_RUNTIME: "0"
+    NEXUS_OPENCODE_RUNTIME: "0"
     DAGSTER_HOME: /data/dagster
   volumes:
     - agent_data:/data
@@ -26,12 +26,12 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: atlas
-      POSTGRES_USER: atlas
+      POSTGRES_DB: nexus
+      POSTGRES_USER: nexus
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python bootstrap.py}
     volumes: ["postgres_data:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U atlas -d atlas"]
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
       interval: 5s
       timeout: 5s
       retries: 15

@@ -339,7 +339,7 @@ def test_deleted_session_native_history_is_retired_before_next_prompt(project,mo
         requests.append((method,path,body))
         if path=='/api/session':metadata.update(body['metadata']);return {'data':{'id':'native-after-trash'}}
         if path.endswith('/prompt'):
-            bridge=metadata['atlas_bridge']
+            bridge=metadata['nexus_bridge']
             with httpx.Client(trust_env=False,timeout=5) as client:
                 reply=client.post(bridge['url'],headers={'Authorization':'Bearer '+bridge['token']},json={
                     'session_id':'native-after-trash','op':'step','call_id':'final','message_id':'new-message',
@@ -356,7 +356,7 @@ def test_deleted_session_native_history_is_retired_before_next_prompt(project,mo
         def callback(step,call_id):
             patch('turn',survivor['id'],state='done',outcome='answered',answer=step['answer'])
             return {'answered':True}
-        receipt=native.run_session(get('turn',survivor['id']),'Use current Atlas context.',{'project_history_matches':[]},callback)
+        receipt=native.run_session(get('turn',survivor['id']),'Use current Nexus WorkStudio context.',{'project_history_matches':[]},callback)
         final=get('turn',survivor['id'])
         assert receipt['session_id']=='native-after-trash'
         assert final['opencode_retired_sessions']==['native-containing-deleted-chat']
@@ -375,7 +375,7 @@ def test_native_own_memory_write_rebuilds_context_without_user_pause(project,mon
         if path=='/api/session':
             identity='native-'+str(len(sessions));sessions.append(identity);metadata[identity]=body['metadata'];return {'data':{'id':identity}}
         if path.endswith('/prompt'):
-            identity=path.split('/')[3];bridge=metadata[identity]['atlas_bridge']
+            identity=path.split('/')[3];bridge=metadata[identity]['nexus_bridge']
             with httpx.Client(trust_env=False,timeout=5) as client:
                 response=client.post(bridge['url'],headers={'Authorization':'Bearer '+bridge['token']},
                     json={'session_id':identity,'op':'step','call_id':'call-1','message_id':'msg-1',
@@ -394,7 +394,7 @@ def test_native_own_memory_write_rebuilds_context_without_user_pause(project,mon
             remembered=create(project,title='View order',content='先看表格')
             patch('turn',turn['id'],agent_trace=[{'id':'step','opencode_call_id':call_id,'tool':'remember_memory','status':'done','arguments':{},'observation':remembered}])
             return {'saved':True}
-        receipt=native.run_session(turn,'Use Atlas tools.',{},callback)
+        receipt=native.run_session(turn,'Use Nexus WorkStudio tools.',{},callback)
         final=get('turn',turn['id'])
         assert receipt['context_rebuild_required'] and final['state']=='agent'
         assert final['opencode_session_id'] is None and final['opencode_retired_sessions']==sessions
@@ -411,7 +411,7 @@ def test_native_external_memory_change_stops_next_old_context_request(project,mo
     def request(value,method,path,body=None,**kwargs):
         if path=='/api/session':metadata.update(body['metadata']);return {'data':{'id':'native-external'}}
         if path.endswith('/prompt'):
-            bridge=metadata['atlas_bridge']
+            bridge=metadata['nexus_bridge']
             with httpx.Client(trust_env=False,timeout=5) as client:
                 for payload in ({'op':'step','call_id':'call','message_id':'msg','step':{'kind':'tool','tool':'project_context','arguments':{}}},
                                 {'op':'model_request'}):
@@ -428,5 +428,5 @@ def test_native_external_memory_change_stops_next_old_context_request(project,mo
             memory.forget(project,remembered['id'],1)
             return {'project_available':True}
         with pytest.raises(provider.BudgetExceeded,match='记忆已被修改或撤回'):
-            native.run_session(turn,'Use Atlas tools.',{},callback)
+            native.run_session(turn,'Use Nexus WorkStudio tools.',{},callback)
         assert '记忆已被修改或撤回' in responses[-1]['error']

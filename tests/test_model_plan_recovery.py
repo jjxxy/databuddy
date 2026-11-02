@@ -12,11 +12,11 @@ from test_opencode_agent_bridge import turn
 @pytest.fixture
 def model(monkeypatch):
     config={'base_url':'https://fixture-model.test/v1','model':'fixture','api_key':'fixture-only',
-            'tool_protocol':'native','share_data':True,'engine':'atlas'}
+            'tool_protocol':'native','share_data':True,'engine':'nexus'}
     monkeypatch.setattr(provider,'settings',lambda:config)
     monkeypatch.setattr('agent_service.network_policy.check_url',lambda url:None)
     monkeypatch.setattr(opencode_runtime,'is_enabled',lambda:False)
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     client=httpx.Client;requests=[];responses=[]
     def respond(request):
         requests.append(json.loads(request.content))
@@ -227,7 +227,7 @@ def test_native_schema_error_feedback_includes_allowed_tool_schema(turn,model):
 @pytest.mark.parametrize('status',[401,429,503])
 def test_desktop_real_http_error_is_not_retried_as_invalid_plan(turn,model,monkeypatch,status):
     _,requests,responses=model;responses.append(status)
-    monkeypatch.setenv('ATLAS_DESKTOP_MODE','1')
+    monkeypatch.setenv('NEXUS_DESKTOP_MODE','1')
     with provider.task_scope(turn['id']),pytest.raises(httpx.HTTPStatusError):
         agent.plan(get('turn',turn['id']))
     assert len(requests)==1 and not get('turn',turn['id']).get('planning_errors')
@@ -235,7 +235,7 @@ def test_desktop_real_http_error_is_not_retried_as_invalid_plan(turn,model,monke
 
 def test_desktop_rate_limit_retries_and_finishes_original_chat(turn,model,monkeypatch):
     _,requests,responses=model
-    monkeypatch.setenv('ATLAS_DESKTOP_MODE','1')
+    monkeypatch.setenv('NEXUS_DESKTOP_MODE','1')
     responses.extend([429,choice(calls=[call('finish_task',{'answer':'继续正常回答','status':'complete'})])])
     agent.advance(ordinary_chat(turn))
     waiting=get('turn',turn['id'])
@@ -247,7 +247,7 @@ def test_desktop_rate_limit_retries_and_finishes_original_chat(turn,model,monkey
 
 
 def test_desktop_auth_failure_is_reported_without_sensitive_gateway_body(turn,model,monkeypatch):
-    _,requests,responses=model;monkeypatch.setenv('ATLAS_DESKTOP_MODE','1')
+    _,requests,responses=model;monkeypatch.setenv('NEXUS_DESKTOP_MODE','1')
     responses.append((401,{'error':{'message':'FIXTURE-SECRET-KEY'}}))
     agent.advance(ordinary_chat(turn))
     current=get('turn',turn['id'])
@@ -308,7 +308,7 @@ def test_native_compaction_selects_fresh_checkpoint_tool(turn,model,monkeypatch)
     current=long_turn(turn)
     messages,tools=agent.planning_context(current,native=True)
     size=request_size(messages[0]['content'],json.loads(messages[1]['content']),tools)
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':int(size*.7)}))
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':int(size*.7)}))
     seen=[]
     def respond(messages,*,tools):
         seen.extend(tool['function']['name'] for tool in tools)

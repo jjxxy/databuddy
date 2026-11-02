@@ -89,13 +89,13 @@ DEFINITIONS = {
 
 
 def status():
-    default=bool(os.getenv('ATLAS_BROWSER_URL') and len(os.getenv('ATLAS_BROWSER_TOKEN',''))>=32)
-    try:registry=json.loads(os.getenv('ATLAS_BROWSER_ENDPOINTS_JSON','{}'))
+    default=bool(os.getenv('NEXUS_BROWSER_URL') and len(os.getenv('NEXUS_BROWSER_TOKEN',''))>=32)
+    try:registry=json.loads(os.getenv('NEXUS_BROWSER_ENDPOINTS_JSON','{}'))
     except ValueError:registry={}
     registered=isinstance(registry,dict) and any(isinstance(v,dict) and isinstance(v.get('url'),str) and v.get('url')
         and isinstance(v.get('token'),str) and len(v['token'])>=32 for v in registry.values())
-    return {'configured': bool((default or registered) and (web.status()['enabled'] or os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED')=='1')),
-            'private_enabled': os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED')=='1',
+    return {'configured': bool((default or registered) and (web.status()['enabled'] or os.getenv('NEXUS_BROWSER_PRIVATE_ENABLED')=='1')),
+            'private_enabled': os.getenv('NEXUS_BROWSER_PRIVATE_ENABLED')=='1',
             'service': 'independent_chromium', 'login': 'human_takeover', 'session_minutes': 30,
             'agent_network_methods': ['GET', 'HEAD'], 'deployment_verified': False}
 
@@ -103,9 +103,9 @@ def status():
 def _request(sid, operation, body):
     if not status()['configured']: raise ValueError('尚未配置独立浏览器与公开网页权限')
     try:
-        registry=json.loads(os.getenv('ATLAS_BROWSER_ENDPOINTS_JSON','{}'))
+        registry=json.loads(os.getenv('NEXUS_BROWSER_ENDPOINTS_JSON','{}'))
         configured=registry.get((body or {}).get('workspace_id'))
-        if configured is None:configured={'url':os.getenv('ATLAS_BROWSER_URL',''),'token':os.getenv('ATLAS_BROWSER_TOKEN','')}
+        if configured is None:configured={'url':os.getenv('NEXUS_BROWSER_URL',''),'token':os.getenv('NEXUS_BROWSER_TOKEN','')}
         base=configured.get('url','');token=configured.get('token','')
     except (ValueError,AttributeError):raise ValueError('浏览器服务注册配置无效') from None
     if not isinstance(base,str) or not base or not isinstance(token,str) or len(token)<32:raise ValueError('当前项目尚未分配浏览器服务')
@@ -142,8 +142,8 @@ def _browser_url(turn, raw):
     try:
         p=urlsplit(raw)
         host=p.hostname.encode('idna').decode().lower().rstrip('.')
-        approved={v.strip().lower().rstrip('.') for v in os.getenv('ATLAS_BROWSER_PRIVATE_HOSTS','').split(',') if v.strip() and v.strip()!='*'}
-        if (os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED')!='1' or host not in approved or p.scheme not in ('http','https')
+        approved={v.strip().lower().rstrip('.') for v in os.getenv('NEXUS_BROWSER_PRIVATE_HOSTS','').split(',') if v.strip() and v.strip()!='*'}
+        if (os.getenv('NEXUS_BROWSER_PRIVATE_ENABLED')!='1' or host not in approved or p.scheme not in ('http','https')
                 or p.username or p.password or p.port not in (None,80,443) or '\\' in raw
                 or any(ord(c)<33 or ord(c)==127 for c in raw)):
             raise ValueError()
@@ -157,7 +157,7 @@ def _scope(turn):
         from . import provider,company_search
         assert_turn_live(turn)
         if turn.get('actor_id','owner')!=current_actor():raise ValueError('任务不属于当前用户')
-        if os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED')!='1':raise ValueError('内部业务浏览器未开启')
+        if os.getenv('NEXUS_BROWSER_PRIVATE_ENABLED')!='1':raise ValueError('内部业务浏览器未开启')
         if not provider.settings().get('share_data'):raise ValueError('模型尚未获准读取项目内容')
         company_search.assert_model_allowed(turn['project_id'])
     else:web._scope(turn)
@@ -221,7 +221,7 @@ def _fill_digest(payload):
     cipher()
     key=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
     encoded=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
-    return hmac.new(key,b'atlas-browser-fill-v1\0'+encoded,hashlib.sha256).hexdigest()
+    return hmac.new(key,b'nexus-browser-fill-v1\0'+encoded,hashlib.sha256).hexdigest()
 
 
 def _update_fill_trace(record,state):

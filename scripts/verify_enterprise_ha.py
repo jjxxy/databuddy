@@ -1,7 +1,7 @@
 """Explicit, bounded acceptance against an already provisioned enterprise cluster.
 
 Creates one isolated probe project. Pod deletion requires --disrupt-agent plus
-an explicit kubectl context and namespace, and targets only the owning Atlas pod.
+an explicit kubectl context and namespace, and targets only the owning Nexus WorkStudio pod.
 This is a failover experiment, never an uptime-SLO certification.
 """
 import argparse,json,os,re,subprocess,time
@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 import httpx
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--url',required=True);p.add_argument('--token-env',default='ATLAS_VERIFY_TOKEN');p.add_argument('--disrupt-agent',action='store_true');p.add_argument('--context');p.add_argument('--namespace');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--url',required=True);p.add_argument('--token-env',default='NEXUS_VERIFY_TOKEN');p.add_argument('--disrupt-agent',action='store_true');p.add_argument('--context');p.add_argument('--namespace');a=p.parse_args()
     target=urlsplit(a.url)
     if target.scheme!='https' or target.username or target.password or target.query or target.fragment:p.error('Use an HTTPS application origin without credentials')
     if a.disrupt_agent and (not a.context or not a.namespace):p.error('Disruption requires explicit --context and --namespace')
@@ -32,7 +32,7 @@ def main():
                     cmd=['kubectl','--context',a.context,'--namespace',a.namespace]
                     pod=json.loads(subprocess.check_output([*cmd,'get','pod',owner,'-o','json'],text=True))
                     labels=pod['metadata']['labels']
-                    if labels.get('app.kubernetes.io/name')!='atlas' or labels.get('role')!='agent':raise ValueError('Refusing to disrupt a non-Atlas agent pod')
+                    if labels.get('app.kubernetes.io/name')!='nexus' or labels.get('role')!='agent':raise ValueError('Refusing to disrupt a non-Nexus WorkStudio agent pod')
                     subprocess.run([*cmd,'delete','pod',owner,'--wait=false'],check=True,capture_output=True);disrupted=True
                 if current['state'] in ('done','failed') and current.get('work_version'):break
             except (httpx.ConnectError,httpx.ReadTimeout,httpx.RemoteProtocolError):pass

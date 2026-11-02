@@ -3,13 +3,13 @@ const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),a
 const root=path.resolve(__dirname,'../../agent_service/static');
 const wait=async f=>{for(let i=0;i<200;i++){if(f())return;await new Promise(r=>setTimeout(r,5))}throw Error('UI did not settle')};
 async function run(decision,fail=false){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test',runScripts:'outside-only'}),w=dom.window,d=w.document;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test',runScripts:'outside-only'}),w=dom.window,d=w.document;
  try{
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};w.HTMLMediaElement.prototype.pause=function(){};
   let project='p',calls=[],confirmCount=0;const session='b'.repeat(64),digest='a'.repeat(64),id='bfill_'+'c'.repeat(48),value='<img src=x onerror=alert(1)>金额 500';
   const item={id,digest,kind:'fill',origin:'https://erp.example',label:'金额',ref:1};
   w.confirm=()=>{confirmCount++;return true};
-  w.atlasBusiness={getState:()=>({projectId:project}),toast:()=>{},setDraft:()=>true,authFetch:async()=>({ok:true}),api:async(route,opt={})=>{
+  w.nexusBusiness={getState:()=>({projectId:project}),toast:()=>{},setDraft:()=>true,authFetch:async()=>({ok:true}),api:async(route,opt={})=>{
    calls.push({route,opt});
    if(route.endsWith('/browsers'))return {configured:true,sessions:[{id:session,state:'open',mode:'agent',created_at:'2026-10-31T00:00:00Z'}]};
    if(route.endsWith('/observe'))return {url:'https://erp.example/report',mode:'agent',revision:digest,image_base64:'fixture',controls:[]};
@@ -31,7 +31,7 @@ async function run(decision,fail=false){
   assert.equal(requests.length,1);assert.equal(requests[0].opt.body.approve,decision==='确认执行');
   assert.equal(requests[0].opt.body.digest,digest);
   if(fail){await wait(()=>d.querySelector('[data-browser-notice]').textContent.includes('不要盲目重试'));assert.equal(calls.filter(c=>c.route.endsWith('/decision')).length,1)}
-  project='other';w.atlasInteractive.projectChanged();
+  project='other';w.nexusInteractive.projectChanged();
   assert.equal(d.querySelector('[data-browser-controls]').textContent,'');assert.equal(d.querySelector('#cloud-browser-dialog').open,false);
   assert.equal(confirmCount,decision==='确认执行'?1:0);
  }finally{w.close()}

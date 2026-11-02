@@ -73,7 +73,7 @@ def test_new_cache_namespace_stays_writable_after_dropping_root():
                    (map(int, line.split()) for line in Path(path).read_text().splitlines()))
     if not mapped('/proc/self/uid_map', nobody.pw_uid) or not mapped('/proc/self/gid_map', nobody.pw_gid):
         pytest.skip('container user namespace does not map the nobody identity')
-    with tempfile.TemporaryDirectory(prefix='atlas-cache-permissions-') as folder:
+    with tempfile.TemporaryDirectory(prefix='nexus-cache-permissions-') as folder:
         base = Path(folder)
         base.chmod(0o777)
         (base / 'fixture_module.py').write_text('value=42\n', encoding='utf-8')

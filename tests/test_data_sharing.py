@@ -13,8 +13,8 @@ from agent_service.store import get, patch, put, uid,all_items,delete
 
 @pytest.fixture
 def configured(monkeypatch):
-    values={'ATLAS_AUTH_MODE':'oidc','OIDC_ISSUER':'https://identity.example.test',
-            'OIDC_AUDIENCE':'atlas','OIDC_JWKS_URL':'https://identity.example.test/jwks',
+    values={'NEXUS_AUTH_MODE':'oidc','OIDC_ISSUER':'https://identity.example.test',
+            'OIDC_AUDIENCE':'nexus','OIDC_JWKS_URL':'https://identity.example.test/jwks',
             'OIDC_ALLOWED_SUBJECTS':'workspace-owner'}
     for name,value in values.items():monkeypatch.setenv(name,value)
     pid=put('project',{'name':'结果共享'},'p_'+uid())['id']
@@ -88,7 +88,7 @@ def test_owner_scope_and_input_boundaries(configured):
 
 def test_shared_workspace_token_does_not_enable_scoped_sharing(configured,monkeypatch):
     pid,_,_=configured;record=create(pid)
-    monkeypatch.setenv('ATLAS_AUTH_MODE','token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE','token')
     monkeypatch.setattr(sharing,'verified_subject',lambda r:'recipient-a')
     with pytest.raises(ValueError,match='OIDC'):create(pid)
     with pytest.raises(HTTPException) as error:sharing.authorize(request('workspace-token'),record['id'])
@@ -120,7 +120,7 @@ def signer(configured,monkeypatch):
     monkeypatch.setattr(identity,'keys',lambda refresh=False:[jwk])
     def sign(**updates):
         now=datetime.now(timezone.utc)
-        payload={'sub':'recipient-a','iss':'https://identity.example.test','aud':'atlas',
+        payload={'sub':'recipient-a','iss':'https://identity.example.test','aud':'nexus',
                  'exp':now+timedelta(minutes=5),'iat':now}
         payload.update(updates)
         return jwt.encode(payload,private,algorithm='RS256',headers={'kid':'fixed-key'})
@@ -154,7 +154,7 @@ def test_unsigned_proxy_headers_and_ambiguous_jwks_are_not_trusted(configured,si
 
 
 def test_unapproved_jwt_algorithm_is_rejected(configured):
-    payload={'sub':'recipient-a','iss':'https://identity.example.test','aud':'atlas',
+    payload={'sub':'recipient-a','iss':'https://identity.example.test','aud':'nexus',
              'exp':datetime.now(timezone.utc)+timedelta(minutes=1)}
     token=jwt.encode(payload,'a'*64,algorithm='HS256',headers={'kid':'fixed-key'})
     with pytest.raises(HTTPException) as error:sharing.verified_subject(request(token))

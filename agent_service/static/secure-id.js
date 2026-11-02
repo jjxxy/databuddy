@@ -14,5 +14,5 @@
     const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
     return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
   }
-  Object.defineProperty(root, 'atlasSecureUUID', {value:uuid, writable:false, configurable:false});
+  Object.defineProperty(root, 'nexusSecureUUID', {value:uuid, writable:false, configurable:false});
 })(window);

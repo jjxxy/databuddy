@@ -1,4 +1,4 @@
-# DOUBAO-REVIEW-v03 — Atlas DataBuddy v0.20.0 本机交付（Codex v0.3）独立复审
+# DOUBAO-REVIEW-v03 — Nexus WorkStudio v0.20.0 本机交付（Codex v0.3）独立复审
 
 2026-10-24。本轮范围：独立复审 **FG-1（US-D1 真实模型三件套）**、**FG-2（US-E1 Windows 文件夹模式）**、**US-E3（工作位置选择 + 本地数据处理集成）**，并按用户最新要求**新增页面/操作/布局/UI 实测评审**（回应"看起来还是像 DEMO"）。只读审查，不修改代码，未读取/回显 llm.json、.env 或任何密钥。
 
@@ -61,7 +61,7 @@
 
 ### 3. 代码质量
 - `windows_dirfd.py` 实现严谨（句柄生命周期 `retain/release`、`can_rename` 发布语义、`st_ctime_ns` 用 change-time 检测 mtime 改写，注释解释了 Windows 语义差异）。
-- `portable_runtime.py`：启动只探本地 `/api/status`+`/ready`，无外网探测；token 仅 IPC emit，不进 URL/日志（注释明确）；`ATLAS_OPENCODE_RUNTIME='1'`（:79）DV-1 已修复；错误只暴露白名单信息（:185）。
+- `portable_runtime.py`：启动只探本地 `/api/status`+`/ready`，无外网探测；token 仅 IPC emit，不进 URL/日志（注释明确）；`NEXUS_OPENCODE_RUNTIME='1'`（:79）DV-1 已修复；错误只暴露白名单信息（:185）。
 - `security.cjs`：`loopbackOrigin` 严格（仅 127.0.0.1、禁 userinfo/pathname）、`parseReady` 校验 token 长度/禁换行、`trustedMainFrame` 限定主 frame、`createTransitionGate` 串行。✅
 - 魔法数字/命名：可读；无吞错（catch 均有诊断日志）。
 - 小观察：`main.cjs:181` `choosingWorkspace||starting` 守卫与 `transitions.run` 双保险冗余但无害，非缺陷。
@@ -79,8 +79,8 @@
 
 ## 【页面/操作/布局/UI 实测评审】（新增维度，回应"像 DEMO"）
 
-我实际用 `user32.PrintWindow` 截取运行中的 r3 主窗口（hwnd=0x2c0b76「Atlas · 我的工作空间」），并做了点击交互，证据截图存于项目根：
-`atlas_ui_shot.png`（主工作台）、`atlas_ui_workdata.png`（工作资料面板）、`atlas_ui_results2.png`（成果页）。
+我实际用 `user32.PrintWindow` 截取运行中的 r3 主窗口（hwnd=0x2c0b76「Nexus WorkStudio · 我的工作空间」），并做了点击交互，证据截图存于项目根：
+`nexus_ui_shot.png`（主工作台）、`nexus_ui_workdata.png`（工作资料面板）、`nexus_ui_results2.png`（成果页）。
 
 **实测结论**：
 - **主工作台**：左导航（新建项目/我的项目/工作设置与工具/个人业务空间）+ 中主区（引导文案 + 三引导按钮：检查底稿与口径/加工数据并生成汇报/复用已有业务任务）+ 底部输入区（聊天/工作模式切换、工作位置=本地电脑、工作资料按钮、执行工作↑、同步状态「已与工作空间同步·草稿已同步」）。布局三栏、白底、配色克制，**完成度高，不是粗糙 DEMO**。

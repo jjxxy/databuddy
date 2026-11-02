@@ -22,10 +22,10 @@ def _column(name,kind='text',**extra):
     return {'name':name,'data_type':kind,'meaning':name,**extra}
 
 
-def _plan(*,include_atlas_row):
+def _plan(*,include_nexus_row):
     def table(columns):
         return {'meaning':'已授权上传的完整资料','grain':['c_1'],
-                'columns':([_column('atlas_row')] if include_atlas_row else [])+columns}
+                'columns':([_column('nexus_row')] if include_nexus_row else [])+columns}
     fx_rate={'data_type':'decimal','unit':'CNY/USD','aggregation':'non_additive'}
     return {'name':'按法人与日期匹配经确认的汇率','inputs':{
         'transactions':table([_column('c_1'),_column('c_2'),_column('c_3'),_column('c_4','date'),
@@ -83,7 +83,7 @@ def test_uploaded_sources_match_effective_rates_and_keep_verified_lineage(monkey
                {'id':'convert','kind':'table_workflow','title':'按实际规则换算',
                 'depends_on':['transactions','rates'],
                 'inputs':{'transactions':{'source':'node','name':'transactions'},'rates':{'source':'node','name':'rates'}},
-                'config':{'plan':_plan(include_atlas_row=True)}}]
+                'config':{'plan':_plan(include_nexus_row=True)}}]
         handlers={'source_table':Handler(source_table,True,True,validate_source),
                   'table_workflow':Handler(table_workflow,True,True,validate_table)}
         return run({'name':'汇率换算测试','inputs':[],'nodes':nodes,'outputs':['convert']},
@@ -112,7 +112,7 @@ def test_uploaded_sources_match_effective_rates_and_keep_verified_lineage(monkey
     from agent_service import project_data, workspace, business_reports
     from agent_service.jobs import get_job
     from agent_service.result_delivery import read_handoff
-    doc={'version':1,'plan':_plan(include_atlas_row=False),
+    doc={'version':1,'plan':_plan(include_nexus_row=False),
          'bindings':{'transactions':{'source_id':transactions['id']},'rates':{'source_id':rates['id']}}}
     workspace.write_file(pid,'workflows/fx-integration.json',json.dumps(doc,ensure_ascii=False))
     workflow=project_data.register(pid,'workflows/fx-integration.json')

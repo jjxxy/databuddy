@@ -4,9 +4,9 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(check){for(let i=0;i<60;i++){await tick();if(check())return}throw Error('application navigation did not settle')}
 const reply=(value,status=200)=>({ok:status<400,status,json:async()=>value});
 async function boot({status='building',error='',ready=false,missing=false,factBlocked=false,history=false,historicalRisk=false,insecure=false,cookie=false}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:(insecure?'http://192.168.1.7':'https://atlas.test')+'/data-app.html'+(missing?'':'?project=p_1&app=app_1&session=c_1'),runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:(insecure?'http://192.168.1.7':'https://nexus.test')+'/data-app.html'+(missing?'':'?project=p_1&app=app_1&session=c_1'),runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
  if(insecure){Object.defineProperty(w.crypto,'randomUUID',{value:undefined});w.eval(fs.readFileSync(path.join(root,'secure-id.js'),'utf8'))}
- if(!cookie)w.sessionStorage.setItem('atlas_token','fixture-owner');w.setInterval=()=>0;
+ if(!cookie)w.sessionStorage.setItem('nexus_token','fixture-owner');w.setInterval=()=>0;
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href);calls.push({path:u.pathname,method:options.method||'GET',body:options.body});
   if(u.pathname==='/auth/status')return reply({enabled:true,authenticated:cookie});
   if(cookie)assert.equal(options.headers?.Authorization,undefined);

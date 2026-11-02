@@ -22,7 +22,7 @@ def test_paging_verifies_every_snapshot_and_scans_target_once(monkeypatch):
         assert process_once()
     source=get('source',source['id']);assert source['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处生成收入汇总','request_id':uid(),'source_id':source['id']})
-    schema={'meaning':'收入明细','grain':['atlas_row'],'columns':[{'name':'atlas_row','data_type':'text','meaning':'行号'},
+    schema={'meaning':'收入明细','grain':['nexus_row'],'columns':[{'name':'nexus_row','data_type':'text','meaning':'行号'},
         {'name':'c_1','data_type':'text','meaning':'办事处'}, {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}
     plan={'version':1,'name':'汇总','inputs':{'table':schema},'stages':[{'id':'total','kind':'aggregate','description':'汇总','input':'table',
         'by':['c_1'],'meaning':'各办事处收入','aggregations':[{'function':'sum','column':'c_2','output':{'name':'amount','data_type':'decimal','meaning':'金额','unit':'CNY'}}]}],'output':'total'}

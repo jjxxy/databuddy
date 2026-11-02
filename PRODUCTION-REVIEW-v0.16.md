@@ -1,4 +1,4 @@
-# Atlas v0.16：正式产品复核与实现记录
+# Nexus WorkStudio v0.16：正式产品复核与实现记录
 
 核阅日期：2026-10-21。定位：财经及经营分析用户持续使用的个人业务数据空间。本文区分官方文档说明、代码已实现、自动测试已验证、真实业务及生产环境待验证。没有进行竞品账号实测，也没有据此宣称性能或准确率领先。
 
@@ -16,11 +16,11 @@ AI 写代码有助于自动化，但不能证明数字准确。正确性还依�
 
 以下是针对本产品的取舍判断，不是各产品的完整功能清单。官网可访问并不等于商业授权、API、地区或套餐适用性已落实。
 
-| 产品/技术 | 官方资料可核对的能力 | Atlas 的采用方式及边界 |
+| 产品/技术 | 官方资料可核对的能力 | Nexus WorkStudio 的采用方式及边界 |
 | --- | --- | --- |
 | ChatGPT | 数据分析强调整理、关联、核对数据并产出可复用材料；Workspace agents 的官方示例把重复任务组织为可预览测试的流程 | 保留“目标→方案→运行→证据→产物”的连续任务；复用已有逻辑。Workspace agents 的相关资料标注研究预览，不能据此视为通用可嵌入后端 |
 | Google NotebookLM | 选定来源的问答及来源引用；报告、数据表可导出；导出件修改不自动同步回原笔记本，权限也不自动继承 | 每个数保留来源、单位及期间；报告绑定固定结果。外部 Word/PPT/Excel 是版本化快照，不能把旧下载件当成随源刷新的实时视图 |
-| 腾讯云 DataBuddy | 分析空间；模型、指标、维度语义层；资产和数据权限；官方提供分析空间 iframe 嵌出与 SSO 配置流程 | 引入可复用语义包、版本与适用日期。语义包当前为 owner 核阅，未实现组织 IT 签名或指标权限。DataBuddy 可列为采购/集成选项，不能声称商业产品一概不能集成 |
+| 腾讯云 WorkStudio | 分析空间；模型、指标、维度语义层；资产和数据权限；官方提供分析空间 iframe 嵌出与 SSO 配置流程 | 引入可复用语义包、版本与适用日期。语义包当前为 owner 核阅，未实现组织 IT 签名或指标权限。WorkStudio 可列为采购/集成选项，不能声称商业产品一概不能集成 |
 | WorkBuddy | 项目承载指令、连接器、技能和资料，任务继承项目上下文；资料与持续任务组织 | 空间保存任务、做法、来源与产物；默认让业务用户在对话中修改做法。个人偏好记忆不能替代已批准的财务口径 |
 | 豆包工作 | 官方搜索索引可核对任务、技能、插件及云盘入口；插件区分外部数据访问与技能方法 | 借鉴“任务目标＋方法复用＋成果保存”的组织方式。正文页面在本次检索中不可稳定打开，证据强度低于已打开文档；没有据索引断言其财务准确率或开放 API 能力 |
 | Claude Code | 官方实践强调可执行验证、探索与实现；可复用工作流；文件编辑检查点有其覆盖范围 | Agent 必须读取真实工具回执、有界修复并保留失败上下文；文件回退不能代替数据库事务、外部副作用幂等和结果发布恢复 |
@@ -99,9 +99,9 @@ Agent 可查看、整理草稿、提出匹配，不能批准或退休语义包�
 3. [OpenAI：Workspace agents 示例，2026-04-22](https://developers.openai.com/cookbook/articles/chatgpt-agents-sales-meeting-prep)
 4. [Google：NotebookLM 笔记与导出](https://support.google.com/gemininotebook/answer/16206563?hl=en)
 5. [Google：来源与引用问答](https://support.google.com/gemininotebook/answer/16179559?hl=en)
-6. [腾讯云 DataBuddy：分析空间](https://cloud.tencent.com/document/product/1835/135589)
-7. [腾讯云 DataBuddy：语义模型，2026-09-11 更新](https://cloud.tencent.com/document/product/1835/137906)
-8. [腾讯云 DataBuddy：分析空间嵌出，2026-09-17 更新](https://cloud.tencent.com/document/product/1835/138310)
+6. [腾讯云 WorkStudio：分析空间](https://cloud.tencent.com/document/product/1835/135589)
+7. [腾讯云 WorkStudio：语义模型，2026-09-11 更新](https://cloud.tencent.com/document/product/1835/137906)
+8. [腾讯云 WorkStudio：分析空间嵌出，2026-09-17 更新](https://cloud.tencent.com/document/product/1835/138310)
 9. [WorkBuddy：项目](https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/Project)
 10. [WorkBuddy：记忆](https://www.workbuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/Memory)
 11. [豆包工作：技能](https://www.doubao.com/work/docs/zh-cn/articles/081010973544-skills)

@@ -4,7 +4,7 @@
 
 两个月的Excel通过artifact-tool生成：每个工作簿四页签，金额/日期类型与格式有意混合，收入表在B列起始，成本表在C列起始，收入两级合并表头及同页第二控制表均为特意测试点。数值没有通过调用LLM生成。金额文本的括号、千位分组、币种和行单位保留原样。负例Excel包含故意的`=1/0`错误公式；不是文件损坏。
 
-标准答案由`generate_gold.py`用Python标准库Decimal独立计算，未调用Atlas处理器或模型。该脚本只重建`expected/`中的CSV/JSON，不重建源Excel。结果校验器`verify_export.py`独立读取下载件，不调用Atlas服务，不执行Excel公式，也不把预览或报告文案当作完整数值结果。
+标准答案由`generate_gold.py`用Python标准库Decimal独立计算，未调用Nexus WorkStudio处理器或模型。该脚本只重建`expected/`中的CSV/JSON，不重建源Excel。结果校验器`verify_export.py`独立读取下载件，不调用Nexus WorkStudio服务，不执行Excel公式，也不把预览或报告文案当作完整数值结果。
 
 自动化验证覆盖：真实产品Excel读取器对两个源文件的坐标、多级表头、混合金额和显式比例归一；原始记录归一后的月度控制数；公式错误阻断；校验器对缺行、多行、重复业务键、错数、NaN、百分比文本及不正确平均比例的拒绝；标准库隔离模式的命令行执行。详见项目测试`tests/test_business_acceptance_kit.py`，这是确定性文件与代码验证。
 

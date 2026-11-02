@@ -79,7 +79,7 @@ def test_opencode_idle_text_plan_then_runs_next_tool(turn, monkeypatch):
     ]
     def on_context(metadata, number):
         if number == 2:
-            bridge=metadata['atlas_bridge']
+            bridge=metadata['nexus_bridge']
             for call_id,step in [('context',{'kind':'tool','tool':'project_context','arguments':{}}),
                                  ('finish',{'kind':'final','answer':'请确认后续资料。','status':'needs_input'})]:
                 data=json.dumps({'session_id':'ses_idle','op':'step','message_id':'msg_work','call_id':call_id,'step':step}).encode()

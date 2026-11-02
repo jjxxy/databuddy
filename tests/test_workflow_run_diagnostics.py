@@ -17,7 +17,7 @@ from test_project_data import project,registered
 def finish_only_this_test_diagnostic_turns():
     # tick() is a real global worker. Preserve receipts/logs, but do not let an
     # unfinished synthetic diagnostic consume a later test's mocked model.
-    assert DATA.resolve().name.startswith('atlas-tests-')
+    assert DATA.resolve().name.startswith('nexus-tests-')
     previous={value['id'] for value in all_items('turn')}
     yield
     for value in all_items('turn'):

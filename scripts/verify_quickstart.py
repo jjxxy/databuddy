@@ -52,7 +52,7 @@ class ModelFixture:
 
     @staticmethod
     def context(messages):
-        """Locate the Atlas context in either direct or OpenCode messages."""
+        """Locate the Nexus WorkStudio context in either direct or OpenCode messages."""
         decoder = json.JSONDecoder()
         found = None
         for message in messages:
@@ -67,11 +67,11 @@ class ModelFixture:
                 if isinstance(value, dict) and ({'request','mode','completed_steps'} <= value.keys()
                                                or {'baseline','fields'} <= value.keys()):found=value
         if found is not None:return found
-        raise ValueError('No synthetic Atlas context')
+        raise ValueError('No synthetic Nexus WorkStudio context')
 
     def reply(self, body):
         messages = body['messages']
-        if len(messages) == 1 and not any(tool.get('function',{}).get('name')=='atlas_step' for tool in body.get('tools',[])):
+        if len(messages) == 1 and not any(tool.get('function',{}).get('name')=='nexus_step' for tool in body.get('tools',[])):
             self.calls['connection'] += 1
             return 'OK'
         context = self.context(messages)
@@ -104,10 +104,10 @@ class ModelFixture:
             {'kind': 'tool', 'tool': 'read_file', 'arguments': {'path': path}},
             {'kind': 'final', 'answer': '说明文件已保存并读取核对。数据加工由后续明确操作执行。'},
             ]
-        # Direct Atlas calls rebuild completed_steps; OpenCode native sessions
+        # Direct Nexus WorkStudio calls rebuild completed_steps; OpenCode native sessions
         # append their tool calls to the original immutable prompt context.
         native_steps = sum(1 for message in messages for call in message.get('tool_calls', [])
-                           if call.get('function', {}).get('name') == 'atlas_step')
+                           if call.get('function', {}).get('name') == 'nexus_step')
         return json.dumps(actions[min(max(len(context['completed_steps']), native_steps), len(actions)-1)], ensure_ascii=False)
 
     def message(self, body):
@@ -118,8 +118,8 @@ class ModelFixture:
             self.agent_models.append(body.get('model'))
             return {'role':'assistant','content':'## Objective\n继续当前合成业务验收。\n## Constraints\n不要将期末余额求和。金额单位为元。\n## Next Move\n沿用完整来源和已验证回执；压缩摘要不是数值证据。'},'stop'
         names = {tool.get('function', {}).get('name') for tool in body.get('tools', [])}
-        if 'atlas_step' in names:
-            if names != {'atlas_step'}:raise ValueError('OpenCode exposed an unexpected native tool')
+        if 'nexus_step' in names:
+            if names != {'nexus_step'}:raise ValueError('OpenCode exposed an unexpected native tool')
             self.native_loop_calls += 1
         if 'connection_check' in names:
             self.tool_probes += 1
@@ -128,8 +128,8 @@ class ModelFixture:
             decision = self.reply(body)
             if not names:return {'role':'assistant','content':decision}, 'stop'
             value = json.loads(decision)
-            if 'atlas_step' in names:
-                name, arguments = 'atlas_step', value
+            if 'nexus_step' in names:
+                name, arguments = 'nexus_step', value
             elif value['kind'] == 'final':
                 name = 'finish_task'
                 arguments = {key:item for key,item in value.items() if key != 'kind'}
@@ -195,17 +195,17 @@ def local_model():
 def isolated_environment(folder: Path, port: int, token: str) -> dict:
     """Avoid real account, backup, migration, or runner settings from the shell."""
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(('ATLAS_', 'LLM_', 'RAILWAY_', 'RESTIC_', 'AWS_', 'OPENCODE_',
+           if not key.startswith(('NEXUS_', 'LLM_', 'RAILWAY_', 'RESTIC_', 'AWS_', 'OPENCODE_',
                                   'OPENAI_', 'ANTHROPIC_', 'GEMINI_', 'GOOGLE_', 'AZURE_', 'DEEPSEEK_'))
            and key not in ('APP_TOKEN', 'DATABASE_URL', 'DATA_DIR', 'PORT', 'API_ALLOWED_HOSTS')}
     data = folder / 'data'
     env.update(DATA_DIR=str(data), DATABASE_URL='sqlite:///' + str(data / 'metadata.sqlite'),
         APP_TOKEN=token, PORT=str(port), PYTHONPATH=str(ROOT),
-        ATLAS_LLM_CONFIG_FILE=str(folder / 'llm.json'),
-        ATLAS_CLOUD_VERIFY='0', ATLAS_DROP_PRIVILEGES='0', ATLAS_MIGRATE_SQLITE='0',
-        ATLAS_OPENCODE_RUNTIME='0',
-        ATLAS_DEPLOYMENT_PROFILE='single', ATLAS_AUTH_MODE='token',
-        ATLAS_OPERATOR_TOKEN=FIXTURE_OPERATOR_TOKEN,
+        NEXUS_LLM_CONFIG_FILE=str(folder / 'llm.json'),
+        NEXUS_CLOUD_VERIFY='0', NEXUS_DROP_PRIVILEGES='0', NEXUS_MIGRATE_SQLITE='0',
+        NEXUS_OPENCODE_RUNTIME='0',
+        NEXUS_DEPLOYMENT_PROFILE='single', NEXUS_AUTH_MODE='token',
+        NEXUS_OPERATOR_TOKEN=FIXTURE_OPERATOR_TOKEN,
         APP_TIMEZONE='Asia/Shanghai',
         PYTHONUTF8='1',PYTHONIOENCODING='utf-8',
         DO_NOT_TRACK='1', DLT_TELEMETRY='false')
@@ -277,19 +277,19 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
         env = isolated_environment(folder, port, token)
         # Only this verifier supplies a PIPE and sends the Stop command.
         # Other users of isolated_environment must not exit on inherited EOF.
-        env['ATLAS_SUPERVISOR_STDIN']='1'
+        env['NEXUS_SUPERVISOR_STDIN']='1'
         selected_folder=folder/'业务资料'
         if workspace_features:
             selected_folder.mkdir()
-            data=selected_folder/'.atlas'
-            env.update(ATLAS_LOCAL_WORKSPACE=str(selected_folder),ATLAS_LOCAL_MODE='1',
+            data=selected_folder/'.nexus'
+            env.update(NEXUS_LOCAL_WORKSPACE=str(selected_folder),NEXUS_LOCAL_MODE='1',
                        DATA_DIR=str(data),DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'))
         if opencode_binary:
             binary=opencode_binary.resolve(strict=True)
             checked=subprocess.run([str(binary),'--version'],capture_output=True,text=True,encoding='utf-8',timeout=15)
             if checked.returncode or checked.stdout.strip() not in ('2.1.2','opencode v2.1.2'):
                 raise ValueError('The optional OpenCode integration requires verified version 2.1.2')
-            env.update(ATLAS_OPENCODE_RUNTIME='1',ATLAS_OPENCODE_BINARY=str(binary))
+            env.update(NEXUS_OPENCODE_RUNTIME='1',NEXUS_OPENCODE_BINARY=str(binary))
         process = None
         log_path = folder / 'service.log'
         with log_path.open('w',encoding='utf-8') as log, httpx.Client(base_url=f'http://127.0.0.1:{port}',
@@ -372,7 +372,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                 assert catalog == {'configured':True,'default_model_id':'finance','models':[
                     {'id':'finance','name':'财经分析'},{'id':'fast','name':'快速处理'}]}
                 assert client.get('/api/model').status_code == 403
-                operator_headers={'X-Atlas-Operator-Token':FIXTURE_OPERATOR_TOKEN}
+                operator_headers={'X-Nexus-Operator-Token':FIXTURE_OPERATOR_TOKEN}
                 status = call('GET', '/api/model',headers=operator_headers)
                 assert status['configured'] and status['share_data'] and status['model'] == FIXTURE_MODEL
                 assert 'api_key' not in status
@@ -424,7 +424,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                     observed=next(value for request,value in fixture.observed_contexts.items() if 'quickstart-fixture-plan' in request)
                     assert observed['attached_source_ids']==plan_turn['source_ids']
                     assert [item['revision_id'] for item in observed['attached_sources']]==[item['revision_id'] for item in input_sources]
-                    assert (selected_folder/'Atlas工作区'/project['id']/'files/workflows/month.json').is_file()
+                    assert (selected_folder/'Nexus WorkStudio工作区'/project['id']/'files/workflows/month.json').is_file()
                     feature_checks.update(multifile_input_order_and_versions=True,agent_authored_code_visible_locally=True,
                                           complete_cross_file_lookup=True)
                 assert json.loads(response('GET', root + '/file', params={'path': 'workflows/month.json'}).text) == fixture.workflow
@@ -485,7 +485,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                         action('write_file',path='notes/skill-proof.md',content=proof),final_step()],
                         text='请读取已安装技能及参考文件，生成 notes/skill-proof.md。'+marker,expected='verified_complete')
                     assert all(step['status']=='done' for step in skill_turn['agent_trace'])
-                    assert (selected_folder/'Atlas工作区'/project['id']/'files/notes/skill-proof.md').read_text(encoding='utf-8')==proof
+                    assert (selected_folder/'Nexus WorkStudio工作区'/project['id']/'files/notes/skill-proof.md').read_text(encoding='utf-8')==proof
                     reference_step=next(step for step in skill_turn['agent_trace'] if step['tool']=='read_skill_file')
                     assert 'FIXTURE-SKILL-REFERENCE' in json.dumps(reference_step['observation'],ensure_ascii=False)
                     feature_checks['installed_skill_loaded_by_agent']=True
@@ -493,7 +493,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                     # A real stdio MCP subprocess, explicitly approved for the
                     # synthetic models; no simulated MCP response is substituted.
                     mcp=call('POST',root+'/extensions/mcp',json={'name':'本地时钟验收','transport':'stdio',
-                        'command':'atlas-local-clock','read_tools':['get_local_time'],'write_tools':[],
+                        'command':'nexus-local-clock','read_tools':['get_local_time'],'write_tools':[],
                         'storage_approved':True,'model_approved':True,'approved_model_ids':['finance','fast'],
                         'command_approved':True})
                     marker='fixture-v18-mcp'
@@ -647,7 +647,7 @@ def main(argv=None):
         if folder.exists() and any(folder.iterdir()): parser.error('--evidence-dir must be empty')
         folder.mkdir(parents=True, exist_ok=True); folder.chmod(0o700)
         return execute(folder)
-    with tempfile.TemporaryDirectory(prefix='atlas-quickstart-check-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='nexus-quickstart-check-') as temporary:
         return execute(Path(temporary))
 
 

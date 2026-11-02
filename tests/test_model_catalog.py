@@ -21,8 +21,8 @@ def managed(monkeypatch):
     revisions = {item['id'] for item in all_items('model_catalog')}
     pid = 'p_' + uid()
     put('project', {'name': '模型选择测试', 'created_at': now()}, pid)
-    monkeypatch.setenv('ATLAS_AUTH_MODE', 'token')
-    monkeypatch.delenv('ATLAS_OPERATOR_TOKEN', raising=False)
+    monkeypatch.setenv('NEXUS_AUTH_MODE', 'token')
+    monkeypatch.delenv('NEXUS_OPERATOR_TOKEN', raising=False)
     monkeypatch.setattr(api, '_requests', {})
     yield pid, TestClient(api.app)
     for kind in ('turn', 'conversation'):
@@ -78,13 +78,13 @@ def test_business_token_cannot_access_operator_configuration(managed, method, pa
 def test_operator_needs_both_credentials_and_unconfigured_operator_is_closed(managed, monkeypatch):
     _, client = managed
     operator = 'fixture-operator-token-123456789'
-    headers = dict(H, **{'X-Atlas-Operator-Token': operator})
+    headers = dict(H, **{'X-Nexus-Operator-Token': operator})
     assert client.get('/api/model', headers=headers).status_code == 403
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN', operator)
-    assert client.get('/api/model', headers={'X-Atlas-Operator-Token': operator}).status_code == 401
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN', operator)
+    assert client.get('/api/model', headers={'X-Nexus-Operator-Token': operator}).status_code == 401
     assert client.get('/api/model', headers=headers).status_code == 200
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN', TOKEN)
-    assert client.get('/api/model', headers=dict(H, **{'X-Atlas-Operator-Token': TOKEN})).status_code == 403
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN', TOKEN)
+    assert client.get('/api/model', headers=dict(H, **{'X-Nexus-Operator-Token': TOKEN})).status_code == 403
 
 
 def test_model_is_pinned_per_turn_and_session_choice_is_persistent(managed):
@@ -121,7 +121,7 @@ def test_configured_model_window_is_pinned_and_loaded_for_each_native_provider(m
     new=catalog.default_settings()
     assert (new['context_window_tokens'],new['max_output_tokens'])==(256000,8192)
     assert opencode_runtime._identity(old)!=opencode_runtime._identity(new)
-    monkeypatch.setenv('ATLAS_OPENCODE_BINARY',sys.executable)
+    monkeypatch.setenv('NEXUS_OPENCODE_BINARY',sys.executable)
     monkeypatch.setattr(opencode_runtime,'_root',lambda:tmp_path/'runtime')
     opencode_runtime.prepare(catalog.owner_configuration(),{'type':'object'})
     providers=json.loads((tmp_path/'runtime/config/opencode/opencode.json').read_text())['providers']
@@ -169,7 +169,7 @@ def test_runtime_startup_preserves_frozen_legacy_resume_model(managed, monkeypat
     patch('turn', turn['id'], state='done', resume_available=True)
     changed = dict(original, base_url='https://new-legacy.test/v1', model='new-model', api_key='FIXTURE-NEW-SECRET')
     put('system', {'secret_config': seal(changed)}, 'model-provider')
-    monkeypatch.setenv('ATLAS_OPENCODE_BINARY', sys.executable)
+    monkeypatch.setenv('NEXUS_OPENCODE_BINARY', sys.executable)
     monkeypatch.setattr(opencode_runtime, '_root', lambda: tmp_path / 'runtime')
     opencode_runtime.prepare(catalog.owner_configuration(), {'type': 'object'})
     runtime_config = json.loads((tmp_path / 'runtime/config/opencode/opencode.json').read_text())

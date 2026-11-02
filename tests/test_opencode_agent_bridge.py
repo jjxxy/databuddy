@@ -1,4 +1,4 @@
-"""OpenCode tool calls retain Atlas's actual authorization and durable effects."""
+"""OpenCode tool calls retain Nexus WorkStudio's actual authorization and durable effects."""
 import json
 import pytest
 from agent_service import agent, provider, tasks, workspace, opencode_runtime
@@ -94,7 +94,7 @@ def test_advance_uses_native_session_loop_when_enabled(turn,monkeypatch):
     def unexpected(*args,**kwargs):raise AssertionError('legacy planner must not run')
     monkeypatch.setattr(provider,'complete',unexpected)
     def session(value,prompt,info,callback):
-        assert info['request']==turn['text'] and 'atlas_step' in prompt
+        assert info['request']==turn['text'] and 'nexus_step' in prompt
         callback(write(),'session:one')
         callback({'kind':'final','answer':'报告已保存','status':'complete'},'session:two')
         return {'integration':'native_session_tool_loop','version':'2.1.2','model_requests':2}

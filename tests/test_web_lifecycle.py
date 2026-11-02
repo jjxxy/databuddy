@@ -31,7 +31,7 @@ def sub():
     return {'endpoint':'https://fcm.googleapis.com/fcm/send/private-capability','keys':{'p256dh':encode(key),'auth':encode(os.urandom(16))}}
 
 def enable(workspace,monkeypatch):
-    monkeypatch.setenv('PUBLIC_APP_URL','https://atlas.example')
+    monkeypatch.setenv('PUBLIC_APP_URL','https://nexus.example')
     did=workspace[2];a.preferences(did,a.Preferences(desktop=True));a.subscribe(did,a.SubscriptionInput(**sub()))
 
 @pytest.mark.parametrize(('value','kind'),[({'outcome':'needs_input'},'needs_input'),({'state':'failed','outcome':'paused'},'partial'),({'outcome':'partial'},'partial'),({'outcome':'cancelled'},'cancelled'),({'result':{'candidate':True}},'approval'),({'outcome':'verified_complete'},'completed')])

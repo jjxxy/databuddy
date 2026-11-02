@@ -119,7 +119,7 @@
     "new_report_and_downstream": false,
     "paid_model_calls": 0
   },
-  "portable_package": "Atlas-DataBuddy-win32-x64-r23-single-fact",
+  "portable_package": "Nexus WorkStudio-WorkStudio-win32-x64-r23-single-fact",
   "portable_backend": {
     "ok": true,
     "platform": "native Windows",

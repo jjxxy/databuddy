@@ -23,7 +23,7 @@ def digest(value):
 def file_path(value):
     path = PurePosixPath(value)
     if (not value or len(value) > 240 or path.is_absolute() or '\\' in value
-            or any(part in ('', '.', '..') or part.startswith('.atlas') for part in value.split('/'))
+            or any(part in ('', '.', '..') or part.startswith('.nexus') for part in value.split('/'))
             or len(value.split('/')) > 16 or any(ord(char) < 32 for char in value)):
         raise ValueError('Only ordinary relative workspace paths are allowed')
     return path.as_posix()

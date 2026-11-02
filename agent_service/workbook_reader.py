@@ -380,7 +380,7 @@ def inspect_workbook(path):
                         [s['name'], candidate['proposed_options']], sort_keys=True).encode()).hexdigest()
                     if len(proposals) < MAX_DISCOVERY_REGIONS:
                         proposals.append(candidate)
-            return {'parser': 'atlas_coordinate_xlsx', 'version': 1, 'sheets': output,
+            return {'parser': 'nexus_coordinate_xlsx', 'version': 1, 'sheets': output,
                     'candidate_regions': proposals, 'needs_confirmation': bool(proposals),
                     'region_discovery_truncated': sum(len(s['candidate_regions']) for s in output) > MAX_DISCOVERY_REGIONS or any(s['region_discovery_truncated'] for s in output),
                     'calculation_properties': dict(calculation.attrib) if calculation is not None else {},
@@ -652,10 +652,17 @@ def parse_localized_value(value, *, kind, currency=None, unit=None, unit_multipl
         allowed = {'%Y-%m-%d', '%Y/%m/%d', '%Y年%m月%d日', '%d/%m/%Y', '%m/%d/%Y', '%Y%m%d'}
         if date_format not in allowed or currency is not None or unit is not None or multiplier != 1:
             raise WorkbookReadError('日期必须明确完整年月日格式，不能推断03/04的含义', 'LOCALIZED_POLICY_INVALID')
+        # 对“年-月-日”与“年/月/日”这类月日顺序无歧义的格式，容忍 - 与 / 分隔符混用
+        # （同一导出系统中常见）；%d/%m/%Y 与 %m/%d/%Y 存在月日歧义，不做分隔符容错。
+        candidate, fmt = text, date_format
+        if date_format in ('%Y-%m-%d', '%Y/%m/%d'):
+            candidate, fmt = text.replace('/', '-'), '%Y-%m-%d'
         try:
-            result = datetime.strptime(text, date_format).date().isoformat()
+            result = datetime.strptime(candidate, fmt).date().isoformat()
         except ValueError as exc:
             raise WorkbookReadError('文本与声明的日期格式不一致', 'LOCALIZED_VALUE_INVALID') from exc
+        if candidate != text:
+            receipt['transformations'].append('mixed_separator_normalized_to_hyphen')
         receipt['transformations'].append('explicit_date_format_to_iso')
         return {'value': result, 'receipt': receipt}
     if date_format is not None:
@@ -1204,7 +1211,7 @@ def read_table(path, *, sheet=None, table=None, header_rows=None, cell_range=Non
                   'special_cells': special, 'complete': metadata_complete and not truncated and missing_caches == 0 and not representation_conflicts,
                   'header_cells': header_cells,
                   'coordinate_rule': 'columns[field].excel_column + source_rows[row_index]; special_cells may override source_coordinate'}
-    result = {'version': 1, 'parser': 'atlas_coordinate_xlsx', 'table_id': table_id, 'selection': table_identity,
+    result = {'version': 1, 'parser': 'nexus_coordinate_xlsx', 'table_id': table_id, 'selection': table_identity,
             'rows': rows, 'fields': fields, 'source_rows': source_rows, 'special_cells': special,
             'header_cells': header_cells,
             'provenance': provenance,

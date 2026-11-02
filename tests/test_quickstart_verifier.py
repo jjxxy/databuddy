@@ -14,21 +14,21 @@ SPEC.loader.exec_module(verifier)
 
 
 def test_isolated_cloud_environment_cannot_use_shell_accounts_or_real_model_keys(tmp_path, monkeypatch):
-    for key in ('LLM_API_KEY', 'LLM_BASE_URL', 'ATLAS_INITIAL_MODEL', 'ATLAS_BACKUP_KEY',
-                'ATLAS_S3_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'RAILWAY_ENVIRONMENT_ID',
-                'ATLAS_RUNNER_TOKEN', 'DATABASE_URL', 'API_ALLOWED_HOSTS',
+    for key in ('LLM_API_KEY', 'LLM_BASE_URL', 'NEXUS_INITIAL_MODEL', 'NEXUS_BACKUP_KEY',
+                'NEXUS_S3_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'RAILWAY_ENVIRONMENT_ID',
+                'NEXUS_RUNNER_TOKEN', 'DATABASE_URL', 'API_ALLOWED_HOSTS',
                 'OPENCODE_CONFIG_CONTENT','OPENAI_API_KEY','ANTHROPIC_API_KEY',
                 'GOOGLE_APPLICATION_CREDENTIALS'):
         monkeypatch.setenv(key, 'must-not-be-used')
     environment = verifier.isolated_environment(tmp_path, 8123, 'disposable-token-123456789')
     assert 'must-not-be-used' not in environment.values()
-    assert environment['ATLAS_LLM_CONFIG_FILE'] == str(tmp_path / 'llm.json')
+    assert environment['NEXUS_LLM_CONFIG_FILE'] == str(tmp_path / 'llm.json')
     assert environment['DATA_DIR'] == str(tmp_path / 'data')
-    assert environment['ATLAS_MIGRATE_SQLITE'] == '0'
-    assert 'ATLAS_INITIAL_MODEL' not in environment and 'LLM_API_KEY' not in environment
+    assert environment['NEXUS_MIGRATE_SQLITE'] == '0'
+    assert 'NEXUS_INITIAL_MODEL' not in environment and 'LLM_API_KEY' not in environment
     assert 'API_ALLOWED_HOSTS' not in environment  # cloud derives the chosen local model host
-    assert environment['ATLAS_OPENCODE_RUNTIME']=='0'
-    assert 'ATLAS_SUPERVISOR_STDIN' not in environment  # Each caller owns its own stdin lifetime.
+    assert environment['NEXUS_OPENCODE_RUNTIME']=='0'
+    assert 'NEXUS_SUPERVISOR_STDIN' not in environment  # Each caller owns its own stdin lifetime.
 
 
 def test_local_model_is_an_explicit_authenticated_protocol_fixture():
@@ -88,7 +88,7 @@ def test_setup_real_cloud_agent_exact_deliveries_and_restart_with_simulated_mode
                   'context_checkpoint_persists_restart'):
         assert evidence['workspace_features'][check] is True,check
     assert verifier.FIXTURE_KEY not in result.stdout + result.stderr
-    assert verifier.FIXTURE_KEY.encode() not in (target / '业务资料/.atlas/metadata.sqlite').read_bytes()
+    assert verifier.FIXTURE_KEY.encode() not in (target / '业务资料/.nexus/metadata.sqlite').read_bytes()
 
 
 def test_fixture_advertises_real_native_tool_arguments_instead_of_json_prose():
@@ -101,15 +101,15 @@ def test_fixture_advertises_real_native_tool_arguments_instead_of_json_prose():
     assert fixture.tool_probes==1 and fixture.models_seen==[verifier.FIXTURE_MODEL_ALTERNATE]
 
 
-def test_fixture_recovers_atlas_context_and_session_step_from_opencode_messages():
+def test_fixture_recovers_nexus_context_and_session_step_from_opencode_messages():
     fixture=verifier.ModelFixture();fixture.workflow={'version':1}
     context={'request':'quickstart-fixture-plan','mode':'work','completed_steps':[]}
     message,reason=fixture.message({'model':verifier.FIXTURE_MODEL,
         'messages':[{'role':'system','content':'synthetic harness'},
-            {'role':'user','content':[{'type':'text','text':'Atlas task:\n'+json.dumps(context)}]},
-            {'role':'assistant','tool_calls':[{'function':{'name':'atlas_step'}}]},
+            {'role':'user','content':[{'type':'text','text':'Nexus WorkStudio task:\n'+json.dumps(context)}]},
+            {'role':'assistant','tool_calls':[{'function':{'name':'nexus_step'}}]},
             {'role':'tool','content':'{"state":"agent"}'}],
-        'tools':[{'type':'function','function':{'name':'atlas_step'}}]})
+        'tools':[{'type':'function','function':{'name':'nexus_step'}}]})
     value=json.loads(message['tool_calls'][0]['function']['arguments'])
     assert reason=='tool_calls' and value['tool']=='write_file'
     assert json.loads(value['arguments']['content'])==fixture.workflow
@@ -119,6 +119,6 @@ def test_compaction_fixture_is_counted_separately_from_native_tool_execution():
     fixture=verifier.ModelFixture()
     message,reason=fixture.message({'model':verifier.FIXTURE_MODEL,
         'messages':[{'role':'system','content':'Summarize ongoing work without inventing facts'}],
-        'tools':[{'type':'function','function':{'name':'atlas_step'}}]})
+        'tools':[{'type':'function','function':{'name':'nexus_step'}}]})
     assert reason=='stop' and message['content'] and 'tool_calls' not in message
     assert fixture.native_compaction_calls==1 and fixture.native_loop_calls==0

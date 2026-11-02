@@ -30,7 +30,7 @@ def main():
                           headers={'Authorization': 'Bearer ' + os.environ['APP_TOKEN']})
         with opener.open(request, timeout=2) as response:
             value = json.loads(response.read(256 * 1024))
-        instance = os.getenv('ATLAS_INSTANCE_ID') or os.getenv('RAILWAY_REPLICA_ID') or socket.gethostname()
+        instance = os.getenv('NEXUS_INSTANCE_ID') or os.getenv('RAILWAY_REPLICA_ID') or socket.gethostname()
         return 0 if ready(value, instance=instance) else 1
     except Exception:
         return 1

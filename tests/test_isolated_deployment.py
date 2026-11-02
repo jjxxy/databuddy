@@ -15,10 +15,10 @@ def test_topology_and_independent_auth(manifest):
     compose, gateway = render(manifest)
     assert len(compose['networks']) == len(compose['volumes']) == 2
     assert gateway['limits']['max_concurrent_requests'] == 2
-    assert set(compose['services']) == {'gateway', 'atlas-alice', 'atlas-bob'}
+    assert set(compose['services']) == {'gateway', 'nexus-alice', 'nexus-bob'}
     data_mounts, networks, tokens, model_secrets = [], [], [], []
     for wid in ('alice', 'bob'):
-        backend = compose['services']['atlas-' + wid]
+        backend = compose['services']['nexus-' + wid]
         assert 'ports' not in backend and 'network_mode' not in backend
         assert backend['user'] == '10001:10001' and backend['read_only']
         assert backend['cap_drop'] == ['ALL']
@@ -28,7 +28,7 @@ def test_topology_and_independent_auth(manifest):
         data_mounts += backend['volumes']
         networks += backend['networks']
         env = backend['environment']
-        assert env['ATLAS_AUTH_MODE'] == 'oidc'
+        assert env['NEXUS_AUTH_MODE'] == 'oidc'
         assert env['OIDC_ACCEPT_PROXY_HEADER'] == '0'
         assert env['OIDC_ALLOWED_SUBJECTS'] == 'idp-' + wid + '-exact-sub'
         assert env['DATABASE_URL'] == 'sqlite:////data/metadata.sqlite'
@@ -102,14 +102,14 @@ def test_duplicates_rejected(manifest, mutation):
 @pytest.mark.parametrize('field,value', [
     ('gateway_port', True), ('gateway_port', 80), ('gateway_port', 65536),
     ('project', 'shared'), ('project', '${PROJECT}'), ('schema_version', True),
-    ('public_origin', 'http://atlas.example.com'),
-    ('public_origin', 'https://atlas.example.com?'),
-    ('public_origin', 'https://atlas.example.com#'),
-    ('public_origin', 'https://atlas example.com'),
-    ('public_origin', 'https://user:password@atlas.example.com'),
-    ('public_origin', 'https://atlas.example.com/path'),
-    ('public_origin', 'https://atlas.example.com?redirect=evil'),
-    ('public_origin', 'https://atlas.example.com/${PATH}'),
+    ('public_origin', 'http://nexus.example.com'),
+    ('public_origin', 'https://nexus.example.com?'),
+    ('public_origin', 'https://nexus.example.com#'),
+    ('public_origin', 'https://nexus example.com'),
+    ('public_origin', 'https://user:password@nexus.example.com'),
+    ('public_origin', 'https://nexus.example.com/path'),
+    ('public_origin', 'https://nexus.example.com?redirect=evil'),
+    ('public_origin', 'https://nexus.example.com/${PATH}'),
     ('workspaces', []), ('env_file', '.env'),
 ])
 def test_invalid_manifest_rejected(manifest, field, value):
@@ -151,13 +151,13 @@ def test_fresh_instance_requires_model_provisioning(manifest):
 
 
 @pytest.mark.parametrize('name,value', [
-    ('DATA_DIR', '/shared'), ('HOME', '/root'), ('ATLAS_AUTH_MODE', 'token'),
+    ('DATA_DIR', '/shared'), ('HOME', '/root'), ('NEXUS_AUTH_MODE', 'token'),
     ('OIDC_ACCEPT_PROXY_HEADER', '1'),
 ])
 def test_runtime_rejects_weakened_boundary(monkeypatch, name, value):
     from agent_service import isolated_runtime
     for key, setting in {'DATA_DIR': '/data', 'HOME': '/data/home',
-                         'ATLAS_AUTH_MODE': 'oidc', 'OIDC_ACCEPT_PROXY_HEADER': '0'}.items():
+                         'NEXUS_AUTH_MODE': 'oidc', 'OIDC_ACCEPT_PROXY_HEADER': '0'}.items():
         monkeypatch.setenv(key, setting)
     monkeypatch.setattr(isolated_runtime.os, 'geteuid', lambda: 10001, raising=False)
     monkeypatch.setenv(name, value)

@@ -15,7 +15,7 @@ def main():
             if folder.is_relative_to((Path(os.environ['DATA_DIR'])/'runs').resolve()):
                 logfile=folder/'execution.log'
                 if logfile.exists():details['sample_execution_log']=logfile.read_text(errors='replace')[-3500:]
-            print('ATLAS_SAMPLE_FAILURE '+json.dumps(details),flush=True)
+            print('NEXUS_SAMPLE_FAILURE '+json.dumps(details),flush=True)
         def wait(check,seconds=300):
             deadline=time.monotonic()+seconds
             while time.monotonic()<deadline:
@@ -33,7 +33,7 @@ def main():
             p=next((p for p in pipelines if p['id']==old['pipeline_id']),None)
             if p and p.get('published_run'):request('GET','/api/pipelines/'+p['id']+'/result')
             assert request('GET','/api/audit/verify')['ok']
-            print('ATLAS_RESTART_VERIFIED '+json.dumps({'ok':True,'uid':os.geteuid(),'pipeline_id':old['pipeline_id']}),flush=True)
+            print('NEXUS_RESTART_VERIFIED '+json.dumps({'ok':True,'uid':os.geteuid(),'pipeline_id':old['pipeline_id']}),flush=True)
             verify_conversation(client, request, wait)
             verify_workspace(client,request,wait)
             verify_data_application(client,request,wait)
@@ -74,7 +74,7 @@ def main():
         assert request('GET','/api/audit/verify')['ok']
         report={'ok':True,'pipeline_id':p['id'],'run_id':result['manifest']['run_id'],'records':2,'net_amount':'118.1500','uid':os.geteuid(),'commit':result['manifest']['commit']}
         marker.write_text(json.dumps(report));marker.chmod(0o600)
-        print('ATLAS_CLOUD_ACCEPTANCE '+json.dumps(report),flush=True)
+        print('NEXUS_CLOUD_ACCEPTANCE '+json.dumps(report),flush=True)
         verify_conversation(client, request, wait)
         verify_workspace(client,request,wait)
         verify_data_application(client,request,wait)
@@ -89,14 +89,14 @@ def verify_conversation(client, request, wait):
         conversation=request('GET','/api/projects/'+report['project_id']+'/conversation')
         assert conversation['turns'] and conversation['project']['pipeline_id']==report['pipeline_id']
         assert request('GET','/api/pipelines/'+report['pipeline_id']+'/result')['total']==2
-        print('ATLAS_CHAT_RESTART_VERIFIED '+json.dumps({'ok':True,'project_id':report['project_id']}),flush=True)
+        print('NEXUS_CHAT_RESTART_VERIFIED '+json.dumps({'ok':True,'project_id':report['project_id']}),flush=True)
         return
-    p=request('POST','/api/projects',json={'name':'订单分析 · 对话示例','request_id':'atlas-chat-v4-acceptance'})
+    p=request('POST','/api/projects',json={'name':'订单分析 · 对话示例','request_id':'nexus-chat-v4-acceptance'})
     path='/api/projects/'+p['id']
     data='订单号,客户,金额,退款,状态\nC1,示例客户,100.25,10.10,已付款\nC2,示例客户,20,0,待付款\nC3,示例客户,30,2,已付款\n'
-    source=request('POST',path+'/attachments',files={'file':('对话示例订单.csv',data.encode(),'text/csv')},data={'request_id':'atlas-chat-v4-attachment'})
+    source=request('POST',path+'/attachments',files={'file':('对话示例订单.csv',data.encode(),'text/csv')},data={'request_id':'nexus-chat-v4-attachment'})
     def say(text,key,source_id=None):
-        return request('POST',path+'/messages',json={'text':text,'request_id':'atlas-chat-v4-'+key,'source_id':source_id})
+        return request('POST',path+'/messages',json={'text':text,'request_id':'nexus-chat-v4-'+key,'source_id':source_id})
     def completed(tid):
         t=next(t for t in request('GET',path+'/conversation')['turns'] if t['id']==tid)
         if t['state']=='failed':raise RuntimeError('Chat acceptance failed: '+t.get('answer','unknown'))
@@ -119,7 +119,7 @@ def verify_conversation(client, request, wait):
     assert request('GET','/api/audit/verify')['ok']
     report={'ok':True,'version':'0.4.0','project_id':p['id'],'pipeline_id':pipeline['id'],'run_id':t['result']['run_id'],'records':2,'net_amount':'118.1500','chat_schedule_and_pause':True,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_CHAT_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_CHAT_ACCEPTANCE '+json.dumps(report),flush=True)
 
 def verify_workspace(client,request,wait):
     marker=Path(os.environ['DATA_DIR'])/'workspace-acceptance-v5.json'
@@ -128,11 +128,11 @@ def verify_workspace(client,request,wait):
         versions=request('GET','/api/projects/'+report['project_id']+'/versions')
         assert any(v['commit']==report['restored_commit'] for v in versions)
         assert request('GET','/api/audit/verify')['ok']
-        print('ATLAS_WORKSPACE_RESTART_VERIFIED '+json.dumps({'ok':True,'project_id':report['project_id']}),flush=True)
+        print('NEXUS_WORKSPACE_RESTART_VERIFIED '+json.dumps({'ok':True,'project_id':report['project_id']}),flush=True)
         return
-    p=request('POST','/api/projects',json={'name':'模式与版本 · 示例','request_id':'atlas-workspace-v5-project'})
+    p=request('POST','/api/projects',json={'name':'模式与版本 · 示例','request_id':'nexus-workspace-v5-project'})
     path='/api/projects/'+p['id']
-    s=request('POST',path+'/sessions',json={'name':'版本验收','request_id':'atlas-workspace-v5-session'})
+    s=request('POST',path+'/sessions',json={'name':'版本验收','request_id':'nexus-workspace-v5-session'})
     initial=request('GET',path+'/versions')[-1]['commit']
     def say(text,key,mode='work',session_id=None):
         value=request('POST',path+'/messages',json={'text':text,'request_id':'workspace-v5-'+key,'interaction_mode':mode,'session_id':session_id})
@@ -156,7 +156,7 @@ def verify_workspace(client,request,wait):
     assert os.environ['APP_TOKEN'].encode() not in archive.content
     report={'ok':True,'version':'0.5.0','project_id':p['id'],'sessions':2,'chat_read_only':True,'work_commit':work['work_version']['commit'],'restored_commit':restored['work_version']['commit'],'later_versions_retained':True,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_WORKSPACE_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_WORKSPACE_ACCEPTANCE '+json.dumps(report),flush=True)
 
 def verify_data_application(client,request,wait):
     from decimal import Decimal
@@ -166,14 +166,14 @@ def verify_data_application(client,request,wait):
         current=request('GET',path);data=request('GET',path+'/data')
         assert current['run_id'] and data['total']==2 and Decimal(data['metric']['total'])==Decimal('118.15')
         assert request('GET','/api/audit/verify')['ok']
-        print('ATLAS_APPLICATION_RESTART_VERIFIED '+json.dumps({'ok':True,'application_id':report['application_id']}),flush=True)
+        print('NEXUS_APPLICATION_RESTART_VERIFIED '+json.dumps({'ok':True,'application_id':report['application_id']}),flush=True)
         verify_conversation_experience(client,request,wait);return
-    project=request('POST','/api/projects',json={'name':'我的收款应用 · 示例','request_id':'atlas-application-v6-project'})
+    project=request('POST','/api/projects',json={'name':'我的收款应用 · 示例','request_id':'nexus-application-v6-project'})
     root='/api/projects/'+project['id']
     text='订单号,客户,金额,退款,状态\nAPP1,示例甲,100.25,10.10,已付款\nAPP2,示例乙,20,0,待付款\nAPP3,示例乙,30,2,已付款\n'
-    source=request('POST',root+'/attachments',files={'file':('应用示例订单.csv',text.encode(),'text/csv')},data={'request_id':'atlas-application-v6-source'})
+    source=request('POST',root+'/attachments',files={'file':('应用示例订单.csv',text.encode(),'text/csv')},data={'request_id':'nexus-application-v6-source'})
     def say(text,key,application_id=None,source_id=None,mode='work'):
-        value=request('POST',root+'/messages',json={'text':text,'request_id':'atlas-application-v6-'+key,'source_id':source_id,'application_id':application_id,'interaction_mode':mode})
+        value=request('POST',root+'/messages',json={'text':text,'request_id':'nexus-application-v6-'+key,'source_id':source_id,'application_id':application_id,'interaction_mode':mode})
         def completed():
             t=next(t for t in request('GET',root+'/conversation')['turns'] if t['id']==value['id'])
             if t['state']=='failed':raise RuntimeError('Data application acceptance failed')
@@ -201,7 +201,7 @@ def verify_data_application(client,request,wait):
     assert request('GET','/api/audit/verify')['ok']
     report={'ok':True,'version':'0.6.0','project_id':project['id'],'application_id':application_id,'records':2,'net_amount':'118.15','generated_ui_code':True,'rerun_same_code':True,'revise_preserves_published_app':True,'schedule_and_pause':True,'app_chat':True,'rollback_restores_ui_and_data':True,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_APPLICATION_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_APPLICATION_ACCEPTANCE '+json.dumps(report),flush=True)
     verify_conversation_experience(client,request,wait)
 
 
@@ -214,13 +214,13 @@ def verify_conversation_experience(client,request,wait):
         assert request('GET',path)['run_id']
         assert request('GET',root+'/conversation',params={'session_id':old['session_id']})['current_application_id']==aid
         assert request('GET','/api/audit/verify')['ok']
-        print('ATLAS_EXPERIENCE_RESTART_VERIFIED '+json.dumps({'ok':True,'application_id':aid}),flush=True)
+        print('NEXUS_EXPERIENCE_RESTART_VERIFIED '+json.dumps({'ok':True,'application_id':aid}),flush=True)
         verify_agent_contracts(request,wait,pid,aid)
         return
     baseline=request('GET',root+'/versions')[0]['commit']
-    session=request('POST',root+'/sessions',json={'name':'应用日常使用','request_id':'atlas-experience-v7-session'})['id']
+    session=request('POST',root+'/sessions',json={'name':'应用日常使用','request_id':'nexus-experience-v7-session'})['id']
     def say(text,key,mode='work',bind=False):
-        t=request('POST',root+'/messages',json={'text':text,'request_id':'atlas-experience-v7-'+key,'session_id':session,'application_id':aid if bind else None,'interaction_mode':mode})
+        t=request('POST',root+'/messages',json={'text':text,'request_id':'nexus-experience-v7-'+key,'session_id':session,'application_id':aid if bind else None,'interaction_mode':mode})
         def completed():
             current=next(v for v in request('GET',root+'/conversation',params={'session_id':session})['turns'] if v['id']==t['id'])
             if current['state']=='failed':raise RuntimeError('Conversation experience acceptance failed')
@@ -241,7 +241,7 @@ def verify_conversation_experience(client,request,wait):
     assert request('GET',path)['config']['chart']=='bar' and not request('GET',path)['schedule']
     report={'ok':True,'version':'0.7.0','project_id':pid,'application_id':aid,'session_id':session,'session_focus':True,'weekly_weekdays_hourly_schedule':True,'pinned_export':True,'publication_diff':True,'provenance_and_freshness':True,'conversation_health':True,'restore_preserved_data':True,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_EXPERIENCE_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_EXPERIENCE_ACCEPTANCE '+json.dumps(report),flush=True)
     verify_agent_contracts(request,wait,pid,aid)
 
 
@@ -292,7 +292,7 @@ def verify_agent_contracts(request,wait,pid,aid):
     except (OSError,ValueError):pass
     report={'ok':True,'version':'0.20.0','agent_process_healthy':True,'worker_healthy':True,'negative_instructions_blocked':True,'conditional_query_api':conditional_api,'model_configured':bool(model['configured']),'real_model_evaluated':False,'remote_code_execution_configured':status['code_execution']['configured'],'sample_run_id':run_id,'sample_real_dbt_rerun':True,'memory_cgroup':memory,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print(('ATLAS_AGENT_CONTRACTS_RESTART_VERIFIED ' if restart else 'ATLAS_AGENT_CONTRACTS_ACCEPTANCE ')+json.dumps(report),flush=True)
+    print(('NEXUS_AGENT_CONTRACTS_RESTART_VERIFIED ' if restart else 'NEXUS_AGENT_CONTRACTS_ACCEPTANCE ')+json.dumps(report),flush=True)
     verify_company_search(request,pid)
 
 
@@ -306,11 +306,11 @@ def verify_company_search(request,pid):
     marker=Path(os.environ['DATA_DIR'])/'company-search-v9.json';restart=marker.exists()
     report={'ok':True,'version':'0.20.0','project_id':pid,'api_available':True,'credentials_redacted':True,'tools_available':True,'company_api_configured':value['status']['configured'],'real_company_api_evaluated':False,'real_model_evaluated':False,'uid':os.geteuid()}
     marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print(('ATLAS_COMPANY_SEARCH_RESTART_VERIFIED ' if restart else 'ATLAS_COMPANY_SEARCH_ACCEPTANCE ')+json.dumps(report),flush=True)
+    print(('NEXUS_COMPANY_SEARCH_RESTART_VERIFIED ' if restart else 'NEXUS_COMPANY_SEARCH_ACCEPTANCE ')+json.dumps(report),flush=True)
     capabilities=request('GET','/api/agent/capabilities')
     assert capabilities['version']=='0.20.0' and capabilities['intelligence_score'] is None
     assert all(f in capabilities['features'] for f in ('tool_discovery','recoverable_tool_results','optimistic_file_edit','repeat_detection'))
-    print('ATLAS_HARNESS_V11_ACCEPTANCE '+json.dumps({'ok':True,'version':'0.20.0','model_configured':capabilities['model_configured'],'tool_protocol':capabilities['tool_protocol'],'native_tool_calling':capabilities['native_tool_calling'],'capabilities_available':True,'real_model_evaluated':False,'intelligence_score':None,'uid':os.geteuid()}),flush=True)
+    print('NEXUS_HARNESS_V11_ACCEPTANCE '+json.dumps({'ok':True,'version':'0.20.0','model_configured':capabilities['model_configured'],'tool_protocol':capabilities['tool_protocol'],'native_tool_calling':capabilities['native_tool_calling'],'capabilities_available':True,'real_model_evaluated':False,'intelligence_score':None,'uid':os.geteuid()}),flush=True)
 
 
 
@@ -322,7 +322,7 @@ def verify_opencode_smoke(client,request,wait):
     marker=Path(os.environ['DATA_DIR'])/'opencode-smoke-v11-r2.json'
     if marker.exists():
         report=json.loads(marker.read_text())
-        print('ATLAS_OPENCODE_SMOKE '+json.dumps(dict(report,reused=True)),flush=True)
+        print('NEXUS_OPENCODE_SMOKE '+json.dumps(dict(report,reused=True)),flush=True)
         return
     p=request('POST','/api/projects',json={'name':'OpenCode 接入验收','request_id':'opencode-smoke-v11-project'})
     root='/api/projects/'+p['id'];initial=request('GET',root+'/versions')[0]['commit']
@@ -341,7 +341,7 @@ def verify_opencode_smoke(client,request,wait):
     rollback=client.get(root+'/file',params={'path':'reports/opencode-check.md'}).status_code==404 and bool(restored.get('work_version',{}).get('changed'))
     report={'ok':bool(wrote and readonly and rollback),'version':'0.20.0','opencode_version':'2.0.32','model':model['model'],'real_model_evaluated':True,'scope':'file creation, chat read-only and Git rollback smoke only','file_exact_and_git':wrote,'work_outcome':work.get('outcome'),'file_byte_length':len(response.content) if response.status_code==200 else None,'chat_read_only':readonly,'git_restore':rollback,'commercial_baseline_evaluated':False,'model_calls':work.get('model_usage',{}).get('calls',0)+chat.get('model_usage',{}).get('calls',0),'upstream_usage_unavailable':True,'project_id':p['id']}
     marker.write_text(json.dumps(report,ensure_ascii=False));marker.chmod(0o600)
-    print('ATLAS_OPENCODE_SMOKE '+json.dumps(report),flush=True)
+    print('NEXUS_OPENCODE_SMOKE '+json.dumps(report),flush=True)
 
 def verify_web_lifecycle(request):
     p=request('POST','/api/projects',json={'name':'Web 工作空间验收','request_id':'web-lifecycle-v12-acceptance'})
@@ -359,20 +359,20 @@ def verify_web_lifecycle(request):
     assert device['push_available'] and device['vapid_public_key'] and not device['push_enabled']
     report={'ok':True,'version':'0.20.0','encrypted_view_roundtrip':True,'activity_api':True,'idempotency_lookup':True,'push_configured':True,'desktop_permission_requested':False,'real_os_notification_evaluated':False,'uid':os.geteuid()}
     marker=Path(os.environ['DATA_DIR'])/'web-lifecycle-v12.json';marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_WEB_LIFECYCLE_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_WEB_LIFECYCLE_ACCEPTANCE '+json.dumps(report),flush=True)
 
 def verify_enterprise(request,wait):
     platform=request('GET','/api/platform')
     assert platform['metadata']=='postgresql' and not platform['high_availability_verified']
     assert platform['readiness']['ready']
     report={'ok':True,'version':'0.20.0','metadata':'postgresql','readiness':True,'ha_configuration_gaps':platform['ha_configuration_gaps'],'high_availability_verified':False,'real_model_evaluated':False}
-    if os.getenv('ATLAS_ENTERPRISE_MODEL_SMOKE')=='1':
+    if os.getenv('NEXUS_ENTERPRISE_MODEL_SMOKE')=='1':
         marker=Path(os.environ['DATA_DIR'])/'enterprise-office-model-v13.json'
         if marker.exists():report['office_agent_smoke']=dict(json.loads(marker.read_text()),reused=True)
         else:
             p=request('POST','/api/projects',json={'name':'办公Agent验收','request_id':'office-v13-smoke-project'})
             root='/api/projects/'+p['id']
-            t=request('POST',root+'/messages',json={'request_id':'office-v13-smoke-create','text':'请生成一个可下载的Word文档，文件名为Atlas验收，标题为工作交付验证，正文只有一句：这是实际生成的可编辑办公文件。请先保存JSON规格，再使用render_office_artifact生成docx，给出真实下载链接。不要声称视觉验收或公式重算。'})
+            t=request('POST',root+'/messages',json={'request_id':'office-v13-smoke-create','text':'请生成一个可下载的Word文档，文件名为Nexus WorkStudio验收，标题为工作交付验证，正文只有一句：这是实际生成的可编辑办公文件。请先保存JSON规格，再使用render_office_artifact生成docx，给出真实下载链接。不要声称视觉验收或公式重算。'})
             def ready():
                 turn=next(x for x in request('GET',root+'/conversation')['turns'] if x['id']==t['id'])
                 return turn if turn['state'] in ('done','failed') and turn.get('work_version') else None
@@ -386,9 +386,9 @@ def verify_enterprise(request,wait):
             smoke={'ok':True,'real_model_evaluated':True,'scope':'one actual Word delivery; not commercial parity benchmark','editable_docx':True,'git_checkpoint':bool(result['work_version']['changed']),'model_calls':result.get('model_usage',{}).get('calls'),'visual_evaluation':False}
             marker.write_text(json.dumps(smoke));marker.chmod(0o600);report['office_agent_smoke']=smoke;report['real_model_evaluated']=True
     marker=Path(os.environ['DATA_DIR'])/'enterprise-v13.json';marker.write_text(json.dumps(report));marker.chmod(0o600)
-    print('ATLAS_ENTERPRISE_V13_ACCEPTANCE '+json.dumps(report),flush=True)
+    print('NEXUS_ENTERPRISE_V13_ACCEPTANCE '+json.dumps(report),flush=True)
 
 if __name__=='__main__':
     try:main()
     except Exception as exc:
-        print('ATLAS_CLOUD_ACCEPTANCE_FAILED '+type(exc).__name__,flush=True);raise SystemExit(1)
+        print('NEXUS_CLOUD_ACCEPTANCE_FAILED '+type(exc).__name__,flush=True);raise SystemExit(1)

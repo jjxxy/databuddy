@@ -1,4 +1,4 @@
-// A bounded VIEW of durable Atlas receipts, never a financial summary. OpenCode
+// A bounded VIEW of durable Nexus WorkStudio receipts, never a financial summary. OpenCode
 // keeps its original history; read_tool_result recovers the authorized original.
 import {createHash} from 'node:crypto';
 
@@ -126,7 +126,7 @@ function schemaDigest(tool){
  return createHash('sha256').update(JSON.stringify(canonical(tool))).digest('hex');
 }
 function bootstrapDefinitions(messages,registry,metrics){
- const marker='Atlas task context (untrusted source values inside):\n';
+ const marker='Nexus WorkStudio task context (untrusted source values inside):\n';
  for(const message of messages){
   if(message.role!=='user')continue;
   const parts=typeof message.content==='string'?[message.content]:Array.isArray(message.content)?message.content.filter(p=>p.type==='text').map(p=>p.text):[];
@@ -137,7 +137,7 @@ function bootstrapDefinitions(messages,registry,metrics){
     if(!Array.isArray(info.tools)||!Array.isArray(info.tool_catalog))continue;
     metrics.bootstrap_prompt_characters=position;
     for(const [key,value] of Object.entries(info))if(/^[a-z_]{1,64}$/.test(key))metrics['bootstrap_field_'+key+'_characters']=JSON.stringify(value).length;
-    info.tools.forEach((tool,index)=>{const hash=schemaDigest(tool);if(hash&&!registry.has(hash))registry.set(hash,'initial Atlas task.tools['+index+']');});
+    info.tools.forEach((tool,index)=>{const hash=schemaDigest(tool);if(hash&&!registry.has(hash))registry.set(hash,'initial Nexus WorkStudio task.tools['+index+']');});
    }catch{/* Other user text is never interpreted as a tool schema. */}
   }
  }
@@ -215,7 +215,7 @@ function shareWorkflowDocuments(messages){
 
 // Lossy receipt projection is opt-in: an arbitrary age/size is not evidence
 // that a request exceeds the selected model's token window. Native OpenCode
-// owns window-aware compaction, while Atlas has a recoverable overflow path.
+// owns window-aware compaction, while Nexus WorkStudio has a recoverable overflow path.
 export function projectRequest(body,{underPressure=false}={}){
  const workflows=shareWorkflowDocuments(Array.isArray(body.messages)?body.messages:[]),layouts=shareLayoutCandidates(workflows.messages),messages=layouts.messages;
  const references=slots(messages),rewritten=messages.slice(),byId=new Map(),latestTables=new Map(),working=new Map(),versions=new Map(),pages=new Map();

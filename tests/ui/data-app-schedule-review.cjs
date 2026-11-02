@@ -3,8 +3,8 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(fn){for(let i=0;i<200;i++){await tick();if(fn())return}throw Error('page did not settle')}
 const reply=(v,status=200)=>({ok:status>=200&&status<300,status,json:async()=>structuredClone(v)});
 async function boot({count=1,ready=true,mode='ok'}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:'https://atlas.test/data-app.html?project=p_1&app=app_1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture');w.setInterval=()=>0;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:'https://nexus.test/data-app.html?project=p_1&app=app_1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture');w.setInterval=()=>0;
  const config={name:'核对应用',status:'ready',schedule:'0 9 * * *',timezone:'Asia/Shanghai',schedule_uncertain_run:'job_1',...(ready?{run_id:'r_1',config:{page_size:25,default_sort:'amount',descending:false}}:{})};
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href),p=u.pathname;calls.push({path:p,method:options.method||'GET',body:options.body});
   if(p.endsWith('/business-plan'))return reply({detail:'无方案'},404);

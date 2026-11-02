@@ -26,12 +26,12 @@ def save(path, value):
 def campaign(tmp_path, monkeypatch):
     folder = tmp_path / "operator-evidence"
     folder.mkdir()
-    monkeypatch.setenv("ATLAS_DEPLOYMENT_ID", "fixture-deployment")
-    monkeypatch.setenv("ATLAS_PUBLIC_ORIGIN", "https://fixture.test")
-    monkeypatch.setenv("ATLAS_DEPLOYMENT_PROFILE", "single")
-    monkeypatch.setenv("ATLAS_AUTH_MODE", "token")
-    monkeypatch.delenv("ATLAS_RUNNER_URL", raising=False)
-    monkeypatch.delenv("ATLAS_RUNNER_TOKEN", raising=False)
+    monkeypatch.setenv("NEXUS_DEPLOYMENT_ID", "fixture-deployment")
+    monkeypatch.setenv("NEXUS_PUBLIC_ORIGIN", "https://fixture.test")
+    monkeypatch.setenv("NEXUS_DEPLOYMENT_PROFILE", "single")
+    monkeypatch.setenv("NEXUS_AUTH_MODE", "token")
+    monkeypatch.delenv("NEXUS_RUNNER_URL", raising=False)
+    monkeypatch.delenv("NEXUS_RUNNER_TOKEN", raising=False)
     monkeypatch.setattr("agent_service.config.TOKEN", "fixture-token-" + "x" * 40)
     # Positive tests simulate only the OS boundary in temporary storage. No test
     # mounts a filesystem, calls a model, or supplies deployable evidence.
@@ -160,7 +160,7 @@ def test_case_failure_simulation_observation_and_raw_measurements_fail_closed(ca
 def test_operator_cannot_silently_disable_deployment_requirements(campaign, monkeypatch):
     policy = campaign[2]
     policy.update(profile="ha", require_capacity=False, require_sso=False)
-    monkeypatch.setenv("ATLAS_DEPLOYMENT_PROFILE", "ha")
+    monkeypatch.setenv("NEXUS_DEPLOYMENT_PROFILE", "ha")
     save(campaign[1] / "policy.json", policy)
     assert not result(campaign)["eligible"]  # capacity and HA cases now missing
     policy["identity_architecture"] = "multi_tenant"
@@ -200,7 +200,7 @@ def test_unknown_or_duplicate_json_fields_rejected(campaign):
 
 def test_health_checks_running_builds_three_roles_freshness_and_ha_counts(monkeypatch):
     from agent_service import runtime
-    monkeypatch.setenv("ATLAS_DEPLOYMENT_PROFILE", "single")
+    monkeypatch.setenv("NEXUS_DEPLOYMENT_PROFILE", "single")
     monkeypatch.setattr(runtime, "readiness", lambda: {"ready": True, "profile": "single",
                                                      "checks": {"database": True, "storage": True}})
     node = {"instance": "fixture-node", "heartbeat": AT.isoformat(), "build_fingerprint": BUILD}
@@ -220,7 +220,7 @@ def test_health_checks_running_builds_three_roles_freshness_and_ha_counts(monkey
     with pytest.raises(ValueError, match="healthy_nodes_missing"):
         release.runtime_health(BUILD, AT)
     node["heartbeat"] = AT.isoformat()
-    monkeypatch.setenv("ATLAS_DEPLOYMENT_PROFILE", "ha")
+    monkeypatch.setenv("NEXUS_DEPLOYMENT_PROFILE", "ha")
     with pytest.raises(ValueError, match="healthy_nodes_missing"):
         release.runtime_health(BUILD, AT)
 
@@ -251,7 +251,7 @@ def test_fingerprint_hashes_actual_source_dependencies_and_static_not_docs_or_re
 
 def test_cli_check_nonzero_without_production_evidence_but_app_preflight_still_single(tmp_path):
     environment = dict(os.environ, DATA_DIR=str(tmp_path), DATABASE_URL="sqlite:///" + str(tmp_path / "metadata.sqlite"),
-                       ATLAS_DEPLOYMENT_PROFILE="single", ATLAS_AUTH_MODE="token")
+                       NEXUS_DEPLOYMENT_PROFILE="single", NEXUS_AUTH_MODE="token")
     run = subprocess.run([sys.executable, "-m", "agent_service.production_release", "--check"],
                          env=environment, capture_output=True, text=True, timeout=30)
     assert run.returncode == 1 and json.loads(run.stdout)["status"] == "blocked"

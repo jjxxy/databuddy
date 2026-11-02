@@ -13,7 +13,7 @@ from .config import LLM_BASE,LLM_KEY,LLM_MODEL
 from .provider_compatibility import bounded_request_options,response_token_allowance,configured_input_character_limit,managed_model_limits
 
 class ProviderInput(StrictModel):
-    engine:Literal['atlas','opencode']='atlas'
+    engine:Literal['nexus','opencode']='nexus'
     base_url:str=Field(min_length=8,max_length=500)
     model:str=Field(min_length=1,max_length=120)
     api_key:SecretStr=Field(default=SecretStr(''))
@@ -50,13 +50,13 @@ def settings():
     return legacy_settings()
 
 def status():
-    if os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')=='1':
-        return {'configured':False,'base_url':'','model':'','share_data':False,'engine':'atlas','tool_protocol':'native','upstream_base_url':'','opencode_version':None}
+    if os.getenv('NEXUS_DESKTOP_MODEL_DISABLED')=='1':
+        return {'configured':False,'base_url':'','model':'','share_data':False,'engine':'nexus','tool_protocol':'native','upstream_base_url':'','opencode_version':None}
     value=settings()
-    return {'base_url':value.get('base_url',''),'configured':bool(value.get('base_url') and value.get('model')),'model':value.get('model',''),'share_data':bool(value.get('share_data')),'tool_protocol':value.get('tool_protocol','json'),'engine':value.get('engine','atlas'),'upstream_base_url':value.get('upstream_base_url',''),'opencode_version':value.get('opencode_version')}
+    return {'base_url':value.get('base_url',''),'configured':bool(value.get('base_url') and value.get('model')),'model':value.get('model',''),'share_data':bool(value.get('share_data')),'tool_protocol':value.get('tool_protocol','json'),'engine':value.get('engine','nexus'),'upstream_base_url':value.get('upstream_base_url',''),'opencode_version':value.get('opencode_version')}
 
-_scope=ContextVar('atlas_model_scope',default=None)
-_project_scope=ContextVar('atlas_project_scope',default=None)
+_scope=ContextVar('nexus_model_scope',default=None)
+_project_scope=ContextVar('nexus_project_scope',default=None)
 
 def current_turn_id():return _scope.get()
 
@@ -257,7 +257,7 @@ def _stream_response_payload(body):
 
 
 def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning',tools=None):
-    if os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')=='1':raise ValueError(os.getenv('ATLAS_DESKTOP_MODEL_NOTICE','云端模型不可用，本地能力可用。'))
+    if os.getenv('NEXUS_DESKTOP_MODEL_DISABLED')=='1':raise ValueError(os.getenv('NEXUS_DESKTOP_MODEL_NOTICE','云端模型不可用，本地能力可用。'))
     from .store import get,patch,put,now,uid
     value=configuration or settings()
     from .network_policy import check_url
@@ -267,8 +267,8 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
     size=len(json.dumps({'messages':messages,'tools':tools},ensure_ascii=False));tid=_scope.get();usage={};started=time.monotonic()
     pid=_project_scope.get()
     if tid:pid=get('turn',tid)['project_id']
-    if not pid and os.getenv('ATLAS_MODEL_SOURCE_ID'):
-        try:pid=get('source',os.environ['ATLAS_MODEL_SOURCE_ID']).get('project_id')
+    if not pid and os.getenv('NEXUS_MODEL_SOURCE_ID'):
+        try:pid=get('source',os.environ['NEXUS_MODEL_SOURCE_ID']).get('project_id')
         except KeyError:pass
     if pid:
         from .company_search import assert_model_allowed
@@ -307,7 +307,7 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
         patch('turn',tid,model_usage=usage)
     from .quotas import reserve
     reserve(max_tokens)
-    event={'purpose':purpose,'model':value['model'],'engine':value.get('engine','atlas'),'protocol':'native' if tools else 'json','turn_id':tid,'source_id':os.getenv('ATLAS_MODEL_SOURCE_ID'),'started_at':now(),'input_characters':size,'max_output_tokens':max_tokens,'status':'failed'}
+    event={'purpose':purpose,'model':value['model'],'engine':value.get('engine','nexus'),'protocol':'native' if tools else 'json','turn_id':tid,'source_id':os.getenv('NEXUS_MODEL_SOURCE_ID'),'started_at':now(),'input_characters':size,'max_output_tokens':max_tokens,'status':'failed'}
     try:
         if value.get('engine')=='opencode':
             from .opencode import complete as opencode_complete
@@ -317,7 +317,7 @@ def complete(messages,max_tokens=None,configuration=None,purpose='agent_planning
                 current=get('turn',tid).get('model_usage',{})
                 for k,v in tokens.items():current[k]=current.get(k,0)+v
                 # OpenCode may issue internal requests; reserve our full allowance.
-                current.update(usage_incomplete=True,budget_scope='atlas_requests_not_upstream_billing')
+                current.update(usage_incomplete=True,budget_scope='nexus_requests_not_upstream_billing')
                 patch('turn',tid,model_usage=current)
             return content
         body={'model':value['model'],'messages':messages,'max_tokens':max_tokens,'temperature':0,'stream':False}
@@ -464,7 +464,7 @@ def validate_configuration(value,old=None):
     from .connectors import safe_api_url
     raw=value.model_dump();raw['api_key']=value.api_key.get_secret_value();raw['base_url']=raw['base_url'].rstrip('/')
     old=legacy_settings() if old is None else old
-    if not raw['api_key'] and old.get('engine','atlas')==raw['engine'] and old.get('base_url','').rstrip('/')==raw['base_url']:raw['api_key']=old.get('api_key','')
+    if not raw['api_key'] and old.get('engine','nexus')==raw['engine'] and old.get('base_url','').rstrip('/')==raw['base_url']:raw['api_key']=old.get('api_key','')
     parsed=urlsplit(raw['base_url'])
     if parsed.scheme!='https' and parsed.hostname not in {x.strip() for x in os.getenv('API_ALLOWED_HOSTS','').split(',') if x.strip()}:raise ValueError('模型接口请使用HTTPS；本地模型需在服务配置中允许其地址')
     if parsed.username or parsed.password or parsed.query or parsed.fragment:raise ValueError('模型地址不应携带凭证或查询参数')

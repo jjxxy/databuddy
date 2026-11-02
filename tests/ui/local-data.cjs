@@ -12,7 +12,7 @@ function response(value,status=200){return {ok:status>=200&&status<300,status,js
 const exact='1234567890123456.123456789012';
 async function boot({publishConflict=false,delayPublish=false,token=true,risk=false,alignment=false}={}){
  const dom=new JSDOM(html,{url:'http://127.0.0.1:8123/local-data.html',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- if(token)w.sessionStorage.setItem('atlas_token','local-test-owner-token');
+ if(token)w.sessionStorage.setItem('nexus_token','local-test-owner-token');
  let sequence=0,pipeline=false,published=false,releasePublish,downloaded=null;
  w.setTimeout=()=>++sequence;w.clearTimeout=()=>{};
  w.URL.createObjectURL=()=> 'blob:http://127.0.0.1:8123/result';w.URL.revokeObjectURL=()=>{};
@@ -44,7 +44,7 @@ async function boot({publishConflict=false,delayPublish=false,token=true,risk=fa
   if(u.pathname==='/api/pipelines/p_1/export')return response({});
   throw Error('Unexpected request (including any model/network path): '+method+' '+u.pathname);
  };
- w.eval(script);const view=w.createAtlasLocalData({root:d.querySelector('#fixture')});void view.open();await tick();await tick();
+ w.eval(script);const view=w.createNexusLocalData({root:d.querySelector('#fixture')});void view.open();await tick();await tick();
  return {dom,w,d,calls,release:()=>releasePublish(),downloaded:()=>downloaded};
 }
 function submit(app,id){app.d.querySelector(id).dispatchEvent(new app.w.Event('submit',{bubbles:true,cancelable:true}));}
@@ -78,7 +78,7 @@ async function preview(app){
  app.d.querySelector('#publish').click();await tick();app.d.querySelector('#publish').click();
  assert.equal(app.calls.filter(c=>c.path.endsWith('/publish')).length,1,'concurrent publish clicks must produce one request');
  app.release();await until(()=>!app.d.querySelector('#download').hidden&&!app.d.querySelector('#download').disabled);
- app.d.querySelector('#download').click();await until(()=>app.downloaded());assert.equal(app.downloaded().name,'Atlas-完整结果.csv');
+ app.d.querySelector('#download').click();await until(()=>app.downloaded());assert.equal(app.downloaded().name,'Nexus WorkStudio-完整结果.csv');
  assert.equal(app.calls.filter(c=>c.path.endsWith('/export')).length,1);app.dom.window.close();
  const risky=await boot({risk:true});await preview(risky);assert.equal(risky.d.querySelector('#source-review-label').hidden,false);risky.d.querySelector('#publish').click();await until(()=>risky.d.querySelector('#status').textContent.includes('勾选确认'));assert.equal(risky.calls.filter(c=>c.path.endsWith('/publish')).length,0);risky.d.querySelector('#source-review-confirm').checked=true;risky.d.querySelector('#publish').click();await until(()=>!risky.d.querySelector('#download').hidden);assert.equal(risky.calls.filter(c=>c.path.endsWith('/publish')).length,1);risky.dom.window.close();
  const alignment=await boot({risk:true,alignment:true});await preview(alignment);assert.equal(alignment.d.querySelector('#publish').hidden,true);assert.equal(alignment.d.querySelector('#source-review-label').hidden,true);assert(alignment.d.querySelector('#receipt').textContent.includes('不能发布'));alignment.d.querySelector('#publish').click();await tick();assert.equal(alignment.calls.filter(c=>c.path.endsWith('/publish')).length,0);alignment.dom.window.close();

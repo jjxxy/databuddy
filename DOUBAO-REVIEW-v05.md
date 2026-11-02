@@ -1,6 +1,6 @@
 # DOUBAO-REVIEW-v05 — 多模态能力审计独立复审（_github-publish/databuddy）
 
-- 审查者：豆包侧首席架构评审官（只读审查，未改源码、未读密钥/真实用户库、未操作现有 Atlas）
+- 审查者：豆包侧首席架构评审官（只读审查，未改源码、未读密钥/真实用户库、未操作现有 Nexus WorkStudio）
 - 审查对象：`C:\Users\001\Documents\ChatGPT\New project\_github-publish\databuddy` 工作树 + `docs/multimodal-capability-audit.md`（49 项）
 - 审查重点：①CSV 短行/坏引号财务完整性；②来源待复核标记/自动发布/历史上游链；③RapidOCR 复用（本地识别、版本/哈希绑定、UI 复核、并发超时）；④49 项审计有无遗漏/夸大。
 - 证据：`agent_service/connectors.py:139-172`、`tests/test_csv_financial_integrity.py`、`agent_service/offline_ocr.py`、`agent_service/visual_fact_service.py`、`agent_service/project_data.py:183-193,255-261,585-679`、`agent_service/releases.py:35-113`。

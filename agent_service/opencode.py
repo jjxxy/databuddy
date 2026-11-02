@@ -1,4 +1,4 @@
-"""OpenCode 2 decision backend; Atlas owns tools, durable state and acceptance.
+"""OpenCode 2 decision backend; Nexus WorkStudio owns tools, durable state and acceptance.
 
 Uses V2's stateless generate API, deliberately not V1 session/SDK contracts.
 No shell, workspace mount, MCP token or connector secret is sent to OpenCode.
@@ -65,8 +65,8 @@ def complete(messages,value,tools,max_tokens):
     # The V2 generate API has no native tool/schema/max-token parameter. Do not
     # falsely advertise V1 structured output or a hard upstream token budget.
     if tools:raise ModelOutputError('OpenCode V2适配使用服务端JSON校验，不支持V1原生工具协议')
-    prompt=('Follow the role-tagged Atlas messages below in order. Return only the requested final text/JSON, never reasoning. '
-            'Tool descriptions are a proposal interface: do not execute tools. Atlas will validate and execute one decision. '
+    prompt=('Follow the role-tagged Nexus WorkStudio messages below in order. Return only the requested final text/JSON, never reasoning. '
+            'Tool descriptions are a proposal interface: do not execute tools. Nexus WorkStudio will validate and execute one decision. '
             f'Keep the output within approximately {max_tokens} tokens.\n'+json.dumps(messages,ensure_ascii=False))
     provider_id,model_id=value['model'].split('/',1)
     from .model_transport import model_http_timeout

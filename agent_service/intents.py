@@ -23,7 +23,7 @@ ALIASES={'remember_memory':'remember','forget_memory':'forget','export_local_wor
  'pause_updates':'pause','run_data_application':'refresh','refresh_data':'refresh',
  'rename_project':'rename','run_python_file':'refresh','build_transform':'analyze','create_data_application':'analyze',
  'revise_data_application':'analyze','write_file':'write','edit_file':'write','delete_file':'delete','switch_source':'switch',
- 'register_data_workflow':'write','run_data_workflow':'refresh','publish_data_workflow_result':'publish',
+ 'register_data_workflow':'write','run_data_workflow':'refresh','run_business_flow':'refresh','publish_data_workflow_result':'publish',
  'schedule_data_workflow':'schedule','propose_semantic_alignment':'write','propose_value_mapping':'write',
  'propose_semantic_catalog':'write','propose_catalog_alignment':'analyze',
  'acquire_report_data':'refresh','propose_extracted_data_facts':'write','extract_indented_source':'analyze',

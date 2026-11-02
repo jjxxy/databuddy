@@ -1,0 +1,10 @@
+const {JSDOM}=require('jsdom');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const src=fs.readFileSync(path.join(__dirname,'../../agent_service/static/data-workbench.js'),'utf8');
+const code=src.slice(src.indexOf('function wbRenderRules() {'),src.indexOf('function wbRenderSources() {'));
+assert(code.includes('workbench-graph-edit'));
+const dom=new JSDOM('<a id="workbench-graph-edit" hidden></a><div id="workbench-graph"></div><ol id="workbench-steps"></ol><p id="workbench-steps-empty"></p>',{url:'https://nexus.test/data-workbench.html',runScripts:'outside-only'}),w=dom.window;
+w.eval(`const wbEl=s=>document.querySelector(s),wbEnc=encodeURIComponent,wbProject='p one',wbState={workflowId:'wf_${'a'.repeat(40)}',workflow:{workflow_id:'wf_${'a'.repeat(40)}',draft_sha256:'${'b'.repeat(64)}'},editorDirty:false,editorConflict:false,busy:false,workflowLoading:false};const wbPlanSteps=()=>[];let notice='';function wbNotice(t){notice=t}function wbNode(t){return document.createElement(t)}function wbValue(v){return String(v)} ${code};window.testState=wbState;window.render=wbRenderRules;window.getNotice=()=>notice;`);
+w.render();const link=w.document.getElementById('workbench-graph-edit'),target=new URL(link.href);assert(!link.hidden);assert.equal(target.searchParams.get('project'),'p one');assert.equal(target.searchParams.get('flow_kind'),'data');assert.equal(target.searchParams.get('flow_edit'),'wf_'+'a'.repeat(40));assert.equal(target.searchParams.get('flow_digest'),'b'.repeat(64));
+w.testState.editorDirty=true;const click=new w.MouseEvent('click',{bubbles:true,cancelable:true});assert.equal(link.dispatchEvent(click),false);assert.match(w.getNotice(),/未保存/);
+w.testState.editorDirty=false;w.testState.workflow.draft_sha256='invalid';w.render();assert(link.hidden);dom.window.close();console.log(JSON.stringify({data_workbench_link_scoped:true,unsaved_editor_blocks_navigation:true,invalid_digest_hidden:true}));

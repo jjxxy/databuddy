@@ -57,13 +57,13 @@ def _call(url):
 
 
 def test_separate_connection_and_reasoning_inactivity_timeout(monkeypatch):
-    monkeypatch.delenv('ATLAS_MODEL_READ_TIMEOUT_SECONDS',raising=False)
+    monkeypatch.delenv('NEXUS_MODEL_READ_TIMEOUT_SECONDS',raising=False)
     t=model_transport.model_http_timeout()
     assert t.connect==15 and t.read==900 and t.write==60 and t.pool==15
-    monkeypatch.setenv('ATLAS_MODEL_READ_TIMEOUT_SECONDS','900')
+    monkeypatch.setenv('NEXUS_MODEL_READ_TIMEOUT_SECONDS','900')
     assert model_transport.model_http_timeout().read==900
     for value in ['0','7201','nan','inf','invalid']:
-        monkeypatch.setenv('ATLAS_MODEL_READ_TIMEOUT_SECONDS',value)
+        monkeypatch.setenv('NEXUS_MODEL_READ_TIMEOUT_SECONDS',value)
         with pytest.raises(ValueError,match='配置'):model_transport.model_http_timeout()
 
 

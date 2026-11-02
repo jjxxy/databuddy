@@ -11,7 +11,7 @@ from .locks import FileLock,Timeout
 log=logging.getLogger(__name__)
 
 def _limit():
-    value=int(os.getenv('ATLAS_AGENT_TEAM_CONCURRENCY','2'))
+    value=int(os.getenv('NEXUS_AGENT_TEAM_CONCURRENCY','2'))
     if not 1<=value<=8:raise ValueError('协作Agent并发数须在1至8之间')
     return value
 
@@ -27,8 +27,8 @@ def _child(turn_id,limit):
 def run(stop):
     from . import agent_team,agent_mesh
     limit=_limit();active={};poll=None;next_poll=0
-    children=ThreadPoolExecutor(max_workers=limit,thread_name_prefix='atlas-specialist')
-    remote=ThreadPoolExecutor(max_workers=1,thread_name_prefix='atlas-agent-poll')
+    children=ThreadPoolExecutor(max_workers=limit,thread_name_prefix='nexus-specialist')
+    remote=ThreadPoolExecutor(max_workers=1,thread_name_prefix='nexus-agent-poll')
     def inspect(future):
         try:return future.result()
         except Exception as error:
@@ -59,5 +59,5 @@ def run(stop):
 
 def start(stop):
     _limit()
-    thread=threading.Thread(target=run,args=(stop,),name='atlas-collaboration',daemon=True)
+    thread=threading.Thread(target=run,args=(stop,),name='nexus-collaboration',daemon=True)
     thread.start();return thread

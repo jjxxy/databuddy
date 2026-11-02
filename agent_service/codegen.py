@@ -139,8 +139,8 @@ def generate(source,name,spec,existing=None,release_mode='manual',runtime=None, 
         # individual transactions. Preserve every row; use an occurrence
         # index only for stable identification within the same snapshot.
         base=('select * from raw.records' if spec['primary_key'] else
-              'select *, row_number() over (partition by record_hash order by _source_index, _dlt_id) as _atlas_occ from raw.records')
-        projections=['r.* exclude (_dlt_id, _dlt_load_id'+('' if spec['primary_key'] else ', _atlas_occ')+')'];join_sql=[]
+              'select *, row_number() over (partition by record_hash order by _source_index, _dlt_id) as _nexus_occ from raw.records')
+        projections=['r.* exclude (_dlt_id, _dlt_load_id'+('' if spec['primary_key'] else ', _nexus_occ')+')'];join_sql=[]
         for i,j in enumerate(joins,1):
             projections.extend(f'j{i}."{f["name"]}" as "j{i}_{f["name"]}"' for f in j['fields'])
             join_sql.append(f'left join raw.{j["table"]} j{i} on cast(r."{j["left_field"]}" as varchar)=cast(j{i}."{j["right_field"]}" as varchar)')
@@ -148,7 +148,7 @@ def generate(source,name,spec,existing=None,release_mode='manual',runtime=None, 
             if j['required_match']:
                 (repo/'dbt'/'tests'/f'generated_join_{i}_matched.sql').write_text('select * from '+"{{ ref('business_objects') }}"+f' where "j{i}_{j["right_field"]}" is null\n',encoding='utf-8')
         identity=(f'sha256(cast(r."{spec["primary_key"]}" as varchar))' if spec['primary_key'] else
-                  "case when r._atlas_occ=1 then r.record_hash else sha256(r.record_hash || ':occ:' || cast(r._atlas_occ as varchar)) end")
+                  "case when r._nexus_occ=1 then r.record_hash else sha256(r.record_hash || ':occ:' || cast(r._nexus_occ as varchar)) end")
         joined='select '+identity+' as object_id, '+', '.join(projections)+' from ('+base+') r '+' '.join(join_sql)
         if spec['trim_fields']:
             replacements=', '.join(f'nullif(trim(cast("{f}" as varchar)),\'\') as "{f}"' for f in spec['trim_fields'])

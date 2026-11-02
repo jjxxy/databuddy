@@ -19,9 +19,9 @@ def save(ctx,char):
 
 
 def quotas(monkeypatch,actor='1',project='1'):
-    monkeypatch.setenv('ATLAS_FLOW_SNAPSHOT_TOTAL_MB','100')
-    monkeypatch.setenv('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',actor)
-    monkeypatch.setenv('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',project)
+    monkeypatch.setenv('NEXUS_FLOW_SNAPSHOT_TOTAL_MB','100')
+    monkeypatch.setenv('NEXUS_FLOW_SNAPSHOT_ACTOR_MB',actor)
+    monkeypatch.setenv('NEXUS_FLOW_SNAPSHOT_PROJECT_MB',project)
 
 
 def test_quota_is_per_actor_and_project_and_preserves_existing_files(monkeypatch):

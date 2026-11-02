@@ -135,8 +135,8 @@ def test_model_connection_credentials_are_sealed_and_not_returned(monkeypatch):
     from agent_service import connectors
     monkeypatch.setattr(connectors,'safe_api_url',lambda url:'203.0.113.1')
     monkeypatch.setattr(provider,'complete',lambda *args,**kwargs:'OK')
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN','fixture-operator-token-123456789')
-    operator_headers=dict(H,**{'X-Atlas-Operator-Token':'fixture-operator-token-123456789'})
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN','fixture-operator-token-123456789')
+    operator_headers=dict(H,**{'X-Nexus-Operator-Token':'fixture-operator-token-123456789'})
     try:
         r=client.put('/api/model',headers=operator_headers,json={'base_url':'https://model.example/v1','model':'strong-model','api_key':'sensitive-model-key','share_data':False})
         assert r.status_code==200,r.text

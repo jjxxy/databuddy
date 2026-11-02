@@ -5,7 +5,7 @@ from sqlalchemy import text,select,func
 from .config import DATA
 
 def maybe_migrate():
-    if os.getenv('ATLAS_MIGRATE_SQLITE')!='1':return None
+    if os.getenv('NEXUS_MIGRATE_SQLITE')!='1':return None
     from .store import engine,metadata,items
     from . import jobs,audit,activity
     source=DATA/'metadata.sqlite'

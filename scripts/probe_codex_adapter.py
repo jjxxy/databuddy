@@ -1,4 +1,4 @@
-"""Offline Codex app-server protocol probe; never enables an Atlas runtime.
+"""Offline Codex app-server protocol probe; never enables an Nexus WorkStudio runtime.
 
 Uses a temporary Codex state directory and a local, synthetic Responses API.
 No user credentials or business data are used.  A passed probe demonstrates
@@ -28,7 +28,7 @@ class Model(BaseHTTPRequestHandler):
         Model.calls.append(body)
         if len(Model.calls) == 1:
             item = {'type': 'function_call', 'id': 'fc_fixture', 'call_id': 'call_fixture',
-                    'name': 'atlas_step', 'arguments': '{"text":"fixture"}', 'status': 'completed'}
+                    'name': 'nexus_step', 'arguments': '{"text":"fixture"}', 'status': 'completed'}
         else:
             item = {'type': 'message', 'id': 'msg_fixture', 'role': 'assistant', 'status': 'completed',
                     'content': [{'type': 'output_text', 'text': 'fixture complete', 'annotations': []}]}
@@ -50,9 +50,9 @@ class Model(BaseHTTPRequestHandler):
 
 
 def main():
-    binary = os.environ.get('ATLAS_CODEX_BINARY') or shutil.which('codex')
+    binary = os.environ.get('NEXUS_CODEX_BINARY') or shutil.which('codex')
     if not binary:
-        print(json.dumps({'status': 'unavailable', 'reason': 'Set ATLAS_CODEX_BINARY to a Codex executable.'}))
+        print(json.dumps({'status': 'unavailable', 'reason': 'Set NEXUS_CODEX_BINARY to a Codex executable.'}))
         return 2
     model = HTTPServer(('127.0.0.1', 0), Model)
     threading.Thread(target=model.serve_forever, daemon=True).start()
@@ -61,14 +61,14 @@ def main():
              'native_tools': [], 'production_security_verified': False,
              'crash_recovery_verified': False}
     try:
-        with tempfile.TemporaryDirectory(prefix='atlas-codex-fixture-') as root:
+        with tempfile.TemporaryDirectory(prefix='nexus-codex-fixture-') as root:
             # Explicit allowlist: never inherit user credentials, model settings,
             # proxy configuration, or the active Codex session.
             env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'CODEX_HOME': root,
-                   'ATLAS_FIXTURE_KEY': 'not-a-real-key', 'NO_PROXY': 'localhost,127.0.0.1'}
+                   'NEXUS_FIXTURE_KEY': 'not-a-real-key', 'NO_PROXY': 'localhost,127.0.0.1'}
             config = ['model_provider="fixture"', 'model_providers.fixture.name="Fixture"',
                       f'model_providers.fixture.base_url="http://127.0.0.1:{model.server_port}/v1"',
-                      'model_providers.fixture.env_key="ATLAS_FIXTURE_KEY"',
+                      'model_providers.fixture.env_key="NEXUS_FIXTURE_KEY"',
                       'model_providers.fixture.wire_api="responses"',
                       'model_providers.fixture.supports_websockets=false',
                       'features.shell_tool=false', 'features.multi_agent=false',
@@ -115,7 +115,7 @@ def main():
                 return answer['result']
 
             try:
-                request(1, 'initialize', {'clientInfo': {'name': 'atlas-probe', 'title': 'Atlas probe',
+                request(1, 'initialize', {'clientInfo': {'name': 'nexus-probe', 'title': 'Nexus WorkStudio probe',
                                                          'version': '1'},
                                           'capabilities': {'experimentalApi': True}})
                 state['initialized'] = True
@@ -123,14 +123,14 @@ def main():
                 thread = request(2, 'thread/start', {
                     'model': 'fixture-model', 'cwd': root, 'sandbox': 'read-only',
                     'approvalPolicy': 'never', 'environments': [],
-                    'dynamicTools': [{'type': 'function', 'name': 'atlas_step',
+                    'dynamicTools': [{'type': 'function', 'name': 'nexus_step',
                                       'description': 'Synthetic local fixture',
                                       'inputSchema': {'type': 'object', 'properties': {'text': {'type': 'string'}},
                                                       'required': ['text'], 'additionalProperties': False}}],
                 })['thread']['id']
                 state['thread_started'] = True
                 request(3, 'turn/start', {'threadId': thread,
-                                          'input': [{'type': 'text', 'text': 'Call atlas_step with fixture.',
+                                          'input': [{'type': 'text', 'text': 'Call nexus_step with fixture.',
                                                      'text_elements': []}]})
                 state['turn_started'] = True
                 deadline = time.monotonic()+35
@@ -139,7 +139,7 @@ def main():
                     method = event.get('method')
                     if method == 'item/tool/call':
                         params = event.get('params', {})
-                        if params.get('threadId') != thread or params.get('tool') != 'atlas_step':
+                        if params.get('threadId') != thread or params.get('tool') != 'nexus_step':
                             raise RuntimeError('unexpected dynamic tool request')
                         state['dynamic_tool_called'] = True
                         send({'id': event['id'], 'result': {'contentItems': [{'type': 'inputText', 'text': 'fixture result'}],

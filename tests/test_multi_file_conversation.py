@@ -21,7 +21,7 @@ def project(monkeypatch):
     monkeypatch.setattr(api,'enqueue',enqueue)
     monkeypatch.setattr(execution,'enqueue',enqueue)
     monkeypatch.setattr(api,'_requests',{})
-    monkeypatch.setenv('ATLAS_AUTH_MODE','token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE','token')
     monkeypatch.setattr('agent_service.model_catalog.select',lambda *a,**k:{})
     monkeypatch.setattr(provider,'status',lambda:{'configured':True})
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://fixture.test','model':'fixture','share_data':True})

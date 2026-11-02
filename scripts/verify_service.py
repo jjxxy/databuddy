@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--cloud',action='store_true');parser.add_argument('--drop-privileges',action='store_true');options=parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix='atlas-service-check-') as directory:
+    with tempfile.TemporaryDirectory(prefix='nexus-service-check-') as directory:
         directory=Path(directory)
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         token=secrets.token_urlsafe(32)
@@ -16,7 +16,7 @@ def main():
         if options.cloud:env.update(PORT=str(port),RAILWAY_ENVIRONMENT_ID='acceptance-only',RAILWAY_VOLUME_MOUNT_PATH=str(directory/'data'))
         if options.drop_privileges:
             if not options.cloud or not hasattr(os,'geteuid') or os.geteuid()!=0:raise ValueError('--drop-privileges requires Linux root and --cloud')
-            directory.chmod(0o755);env['ATLAS_DROP_PRIVILEGES']='1'
+            directory.chmod(0o755);env['NEXUS_DROP_PRIVILEGES']='1'
         processes=[]
         with (directory/'api.log').open('w') as api_log,(directory/'worker.log').open('w') as worker_log:
             try:

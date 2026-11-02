@@ -35,7 +35,7 @@ def parent(monkeypatch):
         request_id='team-parent-'+uid(),source_ids=[source['id']]))
     turn=patch('turn',turn['id'],state='agent',task_contract={'version':1,'kind':'answer','requirements':[],
         'application_ids':[],'goal':'核对收入','acceptance':'核对来源后回答','budgets':{'model_calls':20,'input_characters':1000000,'output_tokens':64000,'duration_ms':120000}})
-    monkeypatch.setenv('ATLAS_OPENCODE_RUNTIME','0')
+    monkeypatch.setenv('NEXUS_OPENCODE_RUNTIME','0')
     yield turn,source
     for kind in reversed(kinds):
         for item in all_items(kind):

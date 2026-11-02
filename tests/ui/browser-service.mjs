@@ -4,7 +4,7 @@ import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-if(!process.env.ATLAS_BROWSER_EXECUTABLE)throw Error('Set ATLAS_BROWSER_EXECUTABLE; no browser is downloaded');
+if(!process.env.NEXUS_BROWSER_EXECUTABLE)throw Error('Set NEXUS_BROWSER_EXECUTABLE; no browser is downloaded');
 let loginPosts=0;
 const fixture=http.createServer(async(req,res)=>{
  res.setHeader('Content-Type','text/html');
@@ -18,8 +18,8 @@ const fixture=http.createServer(async(req,res)=>{
 await new Promise(r=>fixture.listen(0,'127.0.0.1',r));
 const reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
 const root=fileURLToPath(new URL('../..',import.meta.url)),token=randomBytes(24).toString('hex'),scope='b'.repeat(64),session='a'.repeat(64),second='c'.repeat(64);
-const child=spawn(process.execPath,[root+'/browser_runner/service.mjs'],{cwd:root,env:{...process.env,PORT:String(port),ATLAS_BROWSER_TOKEN:token,
- ATLAS_BROWSER_TEST_MODE:'1',ATLAS_BROWSER_PROXY:'',ATLAS_BROWSER_WORKSPACE_ID:scope,ATLAS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',ATLAS_BROWSER_PLAYWRIGHT_ROOT:root+'/tests/ui/package.json'},stdio:['ignore','pipe','pipe']});
+const child=spawn(process.execPath,[root+'/browser_runner/service.mjs'],{cwd:root,env:{...process.env,PORT:String(port),NEXUS_BROWSER_TOKEN:token,
+ NEXUS_BROWSER_TEST_MODE:'1',NEXUS_BROWSER_PROXY:'',NEXUS_BROWSER_WORKSPACE_ID:scope,NEXUS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',NEXUS_BROWSER_PLAYWRIGHT_ROOT:root+'/tests/ui/package.json'},stdio:['ignore','pipe','pipe']});
 let serviceOutput='';child.stdout.on('data',b=>serviceOutput+=b);child.stderr.on('data',b=>serviceOutput+=b);
 const api='http://127.0.0.1:'+port;
 async function call(id,operation,body={},expected=200){

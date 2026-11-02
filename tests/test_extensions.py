@@ -131,7 +131,7 @@ def remote(monkeypatch):
             self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(data)
         def log_message(self,*args):pass
     server=ThreadingHTTPServer(('127.0.0.1',0),Server);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1');monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(DATA));monkeypatch.setenv('API_ALLOWED_HOSTS','127.0.0.1')
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1');monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(DATA));monkeypatch.setenv('API_ALLOWED_HOSTS','127.0.0.1')
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'base_url':'https://model.test/v1','model':'fixture','api_key':'not-user-visible'})
     value=e.MCPInput(name='Local finance MCP',url=f'http://127.0.0.1:{server.server_port}/mcp',credential='Bearer fixture-private-mcp-key',read_tools=['search'],write_tools=['write_report'],storage_approved=True,model_approved=True)
     yield value,calls
@@ -188,8 +188,8 @@ def test_main_api_requires_login_and_distinct_operator_for_presets(monkeypatch):
     assert response.status_code==200,response.text
     assert response.json()['origin']=='personal'
     assert client.post('/api/operator/extensions/skills',headers=headers,files={'file':('SKILL.md',b'admin preset')}).status_code==403
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN','fixture-only-operator-secret-long')
-    operator={**headers,'X-Atlas-Operator-Token':'fixture-only-operator-secret-long'}
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN','fixture-only-operator-secret-long')
+    operator={**headers,'X-Nexus-Operator-Token':'fixture-only-operator-secret-long'}
     assert client.post('/api/operator/extensions/skills',headers=operator,files={'file':('SKILL.md',b'admin preset')}).status_code==200
 
 
@@ -206,10 +206,10 @@ def test_trusted_preset_bootstrap_is_idempotent_and_does_not_contact_optional_se
 
 
 def test_default_local_stdio_template_is_operational_without_custom_install(tmp_path,monkeypatch):
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1');monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(tmp_path))
-    monkeypatch.delenv('ATLAS_STDIO_TEMPLATES',raising=False)
-    assert 'atlas-local-clock' in e.catalog()['policy']['stdio_allowed_commands']
-    value=e.MCPInput(name='本机时间',transport='stdio',command='atlas-local-clock',command_approved=True,read_tools=['get_local_time'],storage_approved=True,model_approved=True)
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1');monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(tmp_path))
+    monkeypatch.delenv('NEXUS_STDIO_TEMPLATES',raising=False)
+    assert 'nexus-local-clock' in e.catalog()['policy']['stdio_allowed_commands']
+    value=e.MCPInput(name='本机时间',transport='stdio',command='nexus-local-clock',command_approved=True,read_tools=['get_local_time'],storage_approved=True,model_approved=True)
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'base_url':'https://model.test','model':'fixture'})
     t=turn();connector=e.configure_mcp(t['project_id'],value)
     result=w.read_tool(t,w.ToolCall(connector_id=connector['id'],tool='get_local_time',arguments={'timezone':'Asia/Shanghai'}))

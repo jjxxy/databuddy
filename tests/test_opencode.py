@@ -4,11 +4,11 @@ from agent_service import opencode,provider,company_search
 from agent_service.store import put,get,delete,unseal,uid
 
 
-def value():return {'engine':'opencode','base_url':'https://oc.test','model':'atlas/deepseek-v4-pro','api_key':'private-service-password','upstream_base_url':'https://api.deepseek.com','tool_protocol':'json','share_data':True}
+def value():return {'engine':'opencode','base_url':'https://oc.test','model':'nexus/deepseek-v4-pro','api_key':'private-service-password','upstream_base_url':'https://api.deepseek.com','tool_protocol':'json','share_data':True}
 
 def server(monkeypatch,change=None):
-    model={'id':'deepseek-v4-pro','providerID':'atlas','modelID':'deepseek-v4-pro','enabled':True,'settings':{'baseURL':'https://api.deepseek.com'}}
-    data={'/api/info':{'version':opencode.VERSION},'/api/config':[{'type':'document','info':{'permissions':[{'action':'*','resource':'*','effect':'deny'}]}}],'/api/provider/atlas':{'data':{'package':'@opencode/ai/providers/openai-compatible'}},'/api/model/default':{'data':model},'/api/experimental/generate':{'data':{'text':'{"kind":"final","answer":"已完成"}'}}}
+    model={'id':'deepseek-v4-pro','providerID':'nexus','modelID':'deepseek-v4-pro','enabled':True,'settings':{'baseURL':'https://api.deepseek.com'}}
+    data={'/api/info':{'version':opencode.VERSION},'/api/config':[{'type':'document','info':{'permissions':[{'action':'*','resource':'*','effect':'deny'}]}}],'/api/provider/nexus':{'data':{'package':'@opencode/ai/providers/openai-compatible'}},'/api/model/default':{'data':model},'/api/experimental/generate':{'data':{'text':'{"kind":"final","answer":"已完成"}'}}}
     if change:change(data)
     calls=[]
     def request(v,method,path,body=None,**kwargs):calls.append((method,path,body));return copy.deepcopy(data[path])
@@ -21,7 +21,7 @@ def test_v2_decisions_use_v2_api_and_not_v1_tool_protocol(monkeypatch):
     content,tokens,receipt=opencode.complete([{'role':'user','content':'你好'}],v,None,128)
     assert json.loads(content)['kind']=='final' and tokens=={} and receipt['upstream_token_limit_enforced'] is False
     method,path,body=calls[-1]
-    assert path=='/api/experimental/generate' and body['model']=={'providerID':'atlas','id':'deepseek-v4-pro'}
+    assert path=='/api/experimental/generate' and body['model']=={'providerID':'nexus','id':'deepseek-v4-pro'}
     assert set(body)=={'prompt','model'} and 'private-service-password' not in json.dumps(body)
 
 @pytest.mark.parametrize('change',[
@@ -29,7 +29,7 @@ def test_v2_decisions_use_v2_api_and_not_v1_tool_protocol(monkeypatch):
     lambda d:d['/api/info'].update(version='2.0.33'),
     lambda d:d['/api/model/default']['data']['settings'].update(baseURL='https://unapproved.test'),
     lambda d:d['/api/model/default']['data'].update(enabled=False),
-    lambda d:d['/api/provider/atlas']['data'].update(package='untrusted-npm-package'),
+    lambda d:d['/api/provider/nexus']['data'].update(package='untrusted-npm-package'),
 ])
 def test_unverified_runtime_and_changed_destination_fail_before_prompt(monkeypatch,change):
     data,calls=server(monkeypatch,change)
@@ -64,7 +64,7 @@ def test_private_approval_changes_when_runtime_changes(monkeypatch):
     monkeypatch.setattr(provider,'settings',lambda:v)
     before=company_search.model_fingerprint();v['opencode_fingerprint']='second'
     assert company_search.model_fingerprint()!=before
-    v['engine']='atlas';assert company_search.model_fingerprint()!=before
+    v['engine']='nexus';assert company_search.model_fingerprint()!=before
 
 
 def test_configure_encrypts_service_password_and_uses_json(monkeypatch):

@@ -18,8 +18,8 @@ def setup(monkeypatch):
     app=FastAPI()
     async def auth(authorization:str=Header(default='')):
         if authorization!='Bearer business-fixture-token':raise HTTPException(401)
-    async def operator(authorization:str=Header(default=''),x_atlas_operator_token:str=Header(default='')):
-        if authorization!='Bearer business-fixture-token' or x_atlas_operator_token!='operator-fixture-token':raise HTTPException(403)
+    async def operator(authorization:str=Header(default=''),x_nexus_operator_token:str=Header(default='')):
+        if authorization!='Bearer business-fixture-token' or x_nexus_operator_token!='operator-fixture-token':raise HTTPException(403)
     gateway.install(app,auth,operator)
     @app.get('/api/business',dependencies=[Depends(auth)])
     def business():return {'owner':True}
@@ -30,7 +30,7 @@ def setup(monkeypatch):
         for item in all_items(kind):
             if item['id'] not in before[kind]:delete(kind,item['id'])
 
-OP={'Authorization':'Bearer business-fixture-token','X-Atlas-Operator-Token':'operator-fixture-token'}
+OP={'Authorization':'Bearer business-fixture-token','X-Nexus-Operator-Token':'operator-fixture-token'}
 
 def issue(setup,**extra):
     client,pid,_=setup
@@ -189,13 +189,13 @@ def test_model_and_active_task_budgets_are_durable(setup):
 
 def a2a1(pid,request_id):
     return {'jsonrpc':'2.0','id':request_id,'method':'SendMessage','params':{'message':{'role':'ROLE_USER','messageId':request_id,
-        'parts':[{'text':'请核对来源'},{'data':{'atlas':{'project_id':pid,'request_id':request_id,'goal':'请核对来源'}}}]},'configuration':{'returnImmediately':True}}}
+        'parts':[{'text':'请核对来源'},{'data':{'nexus':{'project_id':pid,'request_id':request_id,'goal':'请核对来源'}}}]},'configuration':{'returnImmediately':True}}}
 
 def test_a2a1_async_envelope_partial_failure_and_03_compatibility(setup):
     client,pid,_=setup;_,headers=issue(setup);h={**headers,'A2A-Version':'1.0'}
     card=client.get('/.well-known/agent-card.json',headers=h).json()
     assert card['supportedInterfaces'][0]['protocolVersion']=='1.0' and not card['capabilities']['streaming']
-    assert card['securitySchemes']['atlasBearer']['httpAuthSecurityScheme']['scheme']=='Bearer'
+    assert card['securitySchemes']['nexusBearer']['httpAuthSecurityScheme']['scheme']=='Bearer'
     response=client.post('/a2a',headers=h,json=a2a1(pid,'a2a-request-123'))
     task=response.json()['result']['task'];assert task['status']['state']=='TASK_STATE_SUBMITTED' and 'kind' not in task
     record=get('gateway_task',task['id']);patch('turn',record['turn_id'],state='done',outcome='partial',answer='尚缺预算',verification={'verified':False})
@@ -216,18 +216,18 @@ def test_a2a1_requires_async_and_rejects_wrong_shapes_and_urls(setup):
 
 def test_mcp_real_initialize_directory_submit_and_read(setup):
     client,pid,_=setup;created,headers=issue(setup)
-    def rpc(method,params=None):return client.post('/mcp/atlas',headers=headers,json={'jsonrpc':'2.0','id':1,'method':method,'params':params or {}})
+    def rpc(method,params=None):return client.post('/mcp/nexus',headers=headers,json={'jsonrpc':'2.0','id':1,'method':method,'params':params or {}})
     init=rpc('initialize',{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'test','version':'1'}}).json()['result']
     assert init['protocolVersion']=='2025-06-18' and 'tools' in init['capabilities']
-    assert client.post('/mcp/atlas',headers=headers,json={'jsonrpc':'2.0','method':'notifications/initialized'}).status_code==202
-    names={t['name'] for t in rpc('tools/list').json()['result']['tools']};assert names=={'atlas_submit_task','atlas_get_task','atlas_cancel_task','atlas_read_artifact'}
-    accepted=rpc('tools/call',{'name':'atlas_submit_task','arguments':{'project_id':pid,'request_id':'mcp-request-123','goal':'只解释已有结果'}}).json()['result']
+    assert client.post('/mcp/nexus',headers=headers,json={'jsonrpc':'2.0','method':'notifications/initialized'}).status_code==202
+    names={t['name'] for t in rpc('tools/list').json()['result']['tools']};assert names=={'nexus_submit_task','nexus_get_task','nexus_cancel_task','nexus_read_artifact'}
+    accepted=rpc('tools/call',{'name':'nexus_submit_task','arguments':{'project_id':pid,'request_id':'mcp-request-123','goal':'只解释已有结果'}}).json()['result']
     status=accepted['structuredContent'];assert status['status']=='submitted' and not accepted['isError']
-    read=rpc('tools/call',{'name':'atlas_get_task','arguments':{'task_id':status['id']}}).json()['result']
+    read=rpc('tools/call',{'name':'nexus_get_task','arguments':{'task_id':status['id']}}).json()['result']
     assert read['structuredContent']['id']==status['id'] and created['token'] not in json.dumps(read)
     assert 'error' in rpc('tools/call',{'name':'shell','arguments':{}}).json()
 
-@pytest.mark.parametrize('path',['/api/agent/v1/tasks','/a2a','/mcp/atlas'])
+@pytest.mark.parametrize('path',['/api/agent/v1/tasks','/a2a','/mcp/nexus'])
 def test_origins_body_limits_and_duplicate_json_do_not_reach_executor(setup,path):
     client,pid,_=setup;_,headers=issue(setup)
     assert client.post(path,headers={**headers,'Origin':'https://attacker.invalid'},json={}).status_code==403

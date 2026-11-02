@@ -69,7 +69,7 @@ def test_docx_cell_grid_offsets_merges_hidden_text_and_hashes(tmp_path):
       <w:tr><w:trPr><w:gridBefore w:val="1"/></w:trPr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>''' + paragraph('') + '''</w:tc><w:tc>''' + paragraph('200') + '</w:tc></w:tr></w:tbl>'
     path = docx(tmp_path/'source.docx', body)
     document = read_document(path)
-    assert document['supported'] and document['parser'] == 'atlas_docx_xml'
+    assert document['supported'] and document['parser'] == 'nexus_docx_xml'
     assert document['source_file_sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert '999999' not in document['text'] and '888' not in document['text']
     assert '正文\t单位：元' in document['text']
@@ -111,7 +111,7 @@ def test_pptx_uses_presentation_order_and_retains_table_cells_and_hidden_slide(t
       </a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>'''
     path = pptx(tmp_path/'report.pptx', [('slide10.xml',shape('第一张 单位：元')+table,False),('slide2.xml',shape('第二张')+'<p:pic/>',True)])
     doc = read_document(path)
-    assert doc['parser'] == 'atlas_pptx_xml' and doc['slide_count'] == 2
+    assert doc['parser'] == 'nexus_pptx_xml' and doc['slide_count'] == 2
     assert doc['text'].index('第一张') < doc['text'].index('第二张')
     cells = [s for s in doc['segments'] if s['kind'] == 'table_cell_paragraph']
     assert [s['column_index'] for s in cells] == [1,2,3]
@@ -245,7 +245,7 @@ def test_regular_upload_rows_preserve_block_coordinates_without_docling(tmp_path
     assert block['locator'] and block['text_sha256']
     assert evidence['source_file_sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert not evidence['semantic_facts_verified'] and not evidence['ocr_executed']
-    assert evidence['parser'] == ('.pdf' == extension and 'pypdf' or 'atlas_'+extension[1:]+'_xml')
+    assert evidence['parser'] == ('.pdf' == extension and 'pypdf' or 'nexus_'+extension[1:]+'_xml')
 
 
 def test_image_upload_fails_explicitly_and_fact_api_returns_unsupported(tmp_path,monkeypatch):

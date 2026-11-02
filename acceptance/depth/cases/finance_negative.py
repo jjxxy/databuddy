@@ -216,7 +216,7 @@ def _new_context(parent, code):
 
 
 def _turn_snapshot(turn):
-    private_keys = {'api_key', 'authorization', 'app_token', 'atlas_operator_token', 'secret_config', 'secret_text'}
+    private_keys = {'api_key', 'authorization', 'app_token', 'nexus_operator_token', 'secret_config', 'secret_text'}
     def public(value):
         if isinstance(value, dict):return {key: '[redacted]' if key.lower() in private_keys else public(item) for key, item in value.items()}
         if isinstance(value, list):return [public(item) for item in value]

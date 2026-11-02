@@ -1,5 +1,5 @@
 /* Actual Chromium + browser service + local business fixture; no live company
- * site, Atlas deployment, model, or gVisor. Set ATLAS_BROWSER_EXECUTABLE to a
+ * site, Nexus WorkStudio deployment, model, or gVisor. Set NEXUS_BROWSER_EXECUTABLE to a
  * locally installed Chromium. No browser is downloaded by this test. */
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -10,8 +10,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const executable=process.env.ATLAS_BROWSER_EXECUTABLE;
-if(!executable)throw Error('Set ATLAS_BROWSER_EXECUTABLE to a locally installed Chromium; the test does not download browsers');
+const executable=process.env.NEXUS_BROWSER_EXECUTABLE;
+if(!executable)throw Error('Set NEXUS_BROWSER_EXECUTABLE to a locally installed Chromium; the test does not download browsers');
 await access(executable);
 const reports=Buffer.from('office,amount\n'+'Shanghai,123.45\n'.repeat(180000));
 assert(reports.length>2*1024*1024);
@@ -57,9 +57,9 @@ const reserve=http.createServer();await new Promise(r=>reserve.listen(0,'127.0.0
 const root=fileURLToPath(new URL('../..',import.meta.url)),token=randomBytes(24).toString('hex');
 const scope='b'.repeat(64),session='a'.repeat(64),other='c'.repeat(64);
 const origin='http://127.0.0.1:'+fixture.address().port,api='http://127.0.0.1:'+port;
-const child=spawn(process.execPath,[root+'/browser_runner/service.mjs'],{cwd:root,env:{...process.env,PORT:String(port),ATLAS_BROWSER_TOKEN:token,
-  ATLAS_BROWSER_TEST_MODE:'1',ATLAS_BROWSER_PROXY:'',ATLAS_BROWSER_WORKSPACE_ID:scope,ATLAS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',
-  ATLAS_BROWSER_ALLOW_DOWNLOADS:'1',ATLAS_BROWSER_MAX_DOWNLOAD_MB:'6',ATLAS_BROWSER_PLAYWRIGHT_ROOT:root+'/tests/ui/package.json'},stdio:['ignore','pipe','pipe']});
+const child=spawn(process.execPath,[root+'/browser_runner/service.mjs'],{cwd:root,env:{...process.env,PORT:String(port),NEXUS_BROWSER_TOKEN:token,
+  NEXUS_BROWSER_TEST_MODE:'1',NEXUS_BROWSER_PROXY:'',NEXUS_BROWSER_WORKSPACE_ID:scope,NEXUS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',
+  NEXUS_BROWSER_ALLOW_DOWNLOADS:'1',NEXUS_BROWSER_MAX_DOWNLOAD_MB:'6',NEXUS_BROWSER_PLAYWRIGHT_ROOT:root+'/tests/ui/package.json'},stdio:['ignore','pipe','pipe']});
 let serviceOutput='';child.stdout.on('data',b=>serviceOutput+=b);child.stderr.on('data',b=>serviceOutput+=b);
 async function call(id,operation,body={},expected=200){
   const payload={workspace_id:scope,action_id:randomBytes(32).toString('hex'),...body};
@@ -113,16 +113,16 @@ try{
   // Import via the *real* Python download handler and its real HTTP client,
   // into a disposable project database. No browser or download call is mocked.
   page=await call(session,'observe');
-  const dataDir=await mkdtemp(join(tmpdir(),'atlas-live-browser-'));
+  const dataDir=await mkdtemp(join(tmpdir(),'nexus-live-browser-'));
   try{
-    const childImport=spawnSync(process.env.ATLAS_TEST_PYTHON||root+'/.venv/bin/python',
+    const childImport=spawnSync(process.env.NEXUS_TEST_PYTHON||root+'/.venv/bin/python',
       [root+'/tests/browser_business_import_helper.py'],{
         cwd:root,encoding:'utf8',timeout:60000,maxBuffer:2*1024*1024,
         input:JSON.stringify({session_id:session,workspace_id:scope,origin,snapshot:page,
           export_ref:pick(page,'导出数据'),bytes:reports.length,sha256:receipt.content_sha256}),
         env:{...process.env,DATA_DIR:dataDir,APP_TOKEN:'synthetic-local-fixture-token-only',PYTHONPATH:root,
-          ATLAS_BROWSER_URL:api,ATLAS_BROWSER_TOKEN:token,ATLAS_WEB_ENABLED:'1',
-          API_ALLOWED_HOSTS:'127.0.0.1',ATLAS_NETWORK_MODE:'connected'}
+          NEXUS_BROWSER_URL:api,NEXUS_BROWSER_TOKEN:token,NEXUS_WEB_ENABLED:'1',
+          API_ALLOWED_HOSTS:'127.0.0.1',NEXUS_NETWORK_MODE:'connected'}
       });
     assert.equal(childImport.status,0,'Python project import failed: '+String(childImport.stderr||'').slice(-2000));
     const imported=JSON.parse(childImport.stdout.trim().split('\n').at(-1));

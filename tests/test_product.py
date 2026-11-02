@@ -89,7 +89,7 @@ def test_unique_enqueue_lease_recovery_and_cancellation():
 
 def test_backup_restore_audit_integrity_and_security_headers(tmp_path):
     assert verify()['ok']
-    archive=tmp_path/'workspace.atlas';saved=backup(archive);assert saved['files']>0
+    archive=tmp_path/'workspace.nexus';saved=backup(archive);assert saved['files']>0
     target=tmp_path/'restored';env=dict(os.environ,DATA_DIR=str(target),DATABASE_URL='sqlite:///'+str(target/'metadata.sqlite'),PYTHONPATH=str(Path('personal-data-agent').resolve()))
     # Full-session backup has >9k files; measured Windows restore is 72s.
     r=subprocess.run([sys.executable,'-m','agent_service.maintenance','restore',str(archive)],env=env,capture_output=True,text=True,encoding='utf-8',timeout=180);assert r.returncode==0,r.stderr

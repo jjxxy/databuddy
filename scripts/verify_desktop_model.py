@@ -144,7 +144,7 @@ def artifacts(host, pid, evidence, sid):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app-root', type=Path,
-                        default=ROOT / 'dist/Atlas-DataBuddy-win32-x64-r2/resources/app')
+                        default=ROOT / 'dist/Nexus WorkStudio-WorkStudio-win32-x64-r2/resources/app')
     parser.add_argument('--model-config', type=Path, required=True)
     parser.add_argument('--evidence-dir', type=Path, required=True)
     parser.add_argument('--timeout', type=int, default=420)
@@ -163,7 +163,7 @@ def main(argv=None):
     started = time.monotonic()
     # All test data and encrypted operational model state are removed after the
     # host has stopped. No plaintext model configuration copy is created.
-    with tempfile.TemporaryDirectory(prefix='atlas-real-model-', ignore_cleanup_errors=True) as temporary:
+    with tempfile.TemporaryDirectory(prefix='nexus-real-model-', ignore_cleanup_errors=True) as temporary:
         state = Path(temporary) / 'state'
         try:
             host = helper.Host(app, state, config, offline=False).start()

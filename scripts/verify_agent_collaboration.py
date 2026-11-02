@@ -1,4 +1,4 @@
-"""Run two real Atlas instances against an explicit deterministic model fixture.
+"""Run two real Nexus WorkStudio instances against an explicit deterministic model fixture.
 
 This checks execution, protocol and data integrity. It does not evaluate an LLM's
 business intelligence, Docker, operating-system isolation or production HA.
@@ -65,7 +65,7 @@ def final(text='合成协议检查已完成，业务数值以完整结果为准�
 
 
 class CollaborationFixture:
-    """Return predefined tool choices; all actual work runs in Atlas processes."""
+    """Return predefined tool choices; all actual work runs in Nexus WorkStudio processes."""
     def __init__(self,fixture):
         self.fixture=fixture;self.original_reply=fixture.reply
         self.original_message=fixture.message
@@ -91,7 +91,7 @@ class CollaborationFixture:
             except ValueError:continue
             if 'completed_steps' in candidate:boundary=index
         native=sum(1 for message in body['messages'][boundary+1:] for call in message.get('tool_calls',[])
-                   if call.get('function',{}).get('name')=='atlas_step')
+                   if call.get('function',{}).get('name')=='nexus_step')
         return len(context.get('completed_steps',[]))+native
 
     @staticmethod
@@ -112,7 +112,7 @@ class CollaborationFixture:
         child='fixture-child-' in request
         with self.lock:
             self.requests.append({'request':request[:180],'model':body['model'],'child':child,
-                                  'native':any(t.get('function',{}).get('name')=='atlas_step' for t in body.get('tools',[]))})
+                                  'native':any(t.get('function',{}).get('name')=='nexus_step' for t in body.get('tools',[]))})
             if child:
                 self.active_children+=1;self.max_children=max(self.max_children,self.active_children)
         try:
@@ -175,11 +175,11 @@ class Node:
             'api_key':FIXTURE_KEY,'share_data':True}]})
         self.environment=isolated_environment(self.path,self.port,self.token)
         selected=self.path/'selected';selected.mkdir()
-        self.data=selected/'.atlas'
-        self.environment.update(ATLAS_LOCAL_MODE='1',ATLAS_LOCAL_WORKSPACE=str(selected),
+        self.data=selected/'.nexus'
+        self.environment.update(NEXUS_LOCAL_MODE='1',NEXUS_LOCAL_WORKSPACE=str(selected),
             DATA_DIR=str(self.data),DATABASE_URL='sqlite:///'+str(self.data/'metadata.sqlite'),
-            ATLAS_AGENT_EFFORT='deep',API_ALLOWED_HOSTS='127.0.0.1',ATLAS_AGENT_PUBLIC_URL=self.url)
-        if opencode_binary:self.environment.update(ATLAS_OPENCODE_RUNTIME='1',ATLAS_OPENCODE_BINARY=str(opencode_binary))
+            NEXUS_AGENT_EFFORT='deep',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_AGENT_PUBLIC_URL=self.url)
+        if opencode_binary:self.environment.update(NEXUS_OPENCODE_RUNTIME='1',NEXUS_OPENCODE_BINARY=str(opencode_binary))
         self.process=None;self.log=None
         self.client=httpx.Client(base_url=self.url,headers={'Authorization':'Bearer '+self.token},trust_env=False,timeout=20)
 
@@ -187,12 +187,12 @@ class Node:
         response=self.client.request(method,path,**kwargs);response.raise_for_status();return response.json()
 
     def operator(self,method,path,**kwargs):
-        return self.call(method,path,headers={'X-Atlas-Operator-Token':FIXTURE_OPERATOR_TOKEN},**kwargs)
+        return self.call(method,path,headers={'X-Nexus-Operator-Token':FIXTURE_OPERATOR_TOKEN},**kwargs)
 
     def wait(self,check,label,timeout=120):
         deadline=time.monotonic()+timeout
         while time.monotonic()<deadline:
-            if self.process is not None and self.process.poll() is not None:raise RuntimeError('Atlas stopped during '+label)
+            if self.process is not None and self.process.poll() is not None:raise RuntimeError('Nexus WorkStudio stopped during '+label)
             try:value=check()
             except (httpx.ConnectError,httpx.ReadError):value=None
             if value:return value
@@ -210,7 +210,7 @@ class Node:
         if self.process and self.process.poll() is None:
             self.process.terminate()
             try:self.process.wait(timeout=20)
-            except subprocess.TimeoutExpired:self.process.kill();self.process.wait(timeout=5);raise RuntimeError('Atlas supervisor did not stop')
+            except subprocess.TimeoutExpired:self.process.kill();self.process.wait(timeout=5);raise RuntimeError('Nexus WorkStudio supervisor did not stop')
         if self.log:self.log.close();self.log=None
         self.process=None
 
@@ -236,7 +236,7 @@ class Node:
             'max_input_characters':1000000,'task_timeout_seconds':300})
 
     def peer(self,pid,target,grant,*,transport='a2a',url=None):
-        path='/a2a' if transport=='a2a' else '/mcp/atlas'
+        path='/a2a' if transport=='a2a' else '/mcp/nexus'
         return self.call('POST',f'/api/projects/{pid}/agent-peers',json={
             'name':'Synthetic '+transport+' peer','transport':transport,'protocol_version':'1.0',
             'url':url or target.url+path,'credential':grant['token'],
@@ -313,9 +313,9 @@ def verify_output(bundle):
             def unpack(value):
                 if isinstance(value,list):return [unpack(item) for item in value]
                 if isinstance(value,dict):
-                    if value.get('$atlas')=='object' and set(value)=={'$atlas','items'}:
+                    if value.get('$nexus')=='object' and set(value)=={'$nexus','items'}:
                         return {key:unpack(item) for key,item in value['items']}
-                    if value.get('$atlas')=='decimal' and set(value)=={'$atlas','value'}:return Decimal(value['value'])
+                    if value.get('$nexus')=='decimal' and set(value)=={'$nexus','value'}:return Decimal(value['value'])
                     raise AssertionError('Unexpected synthetic result type')
                 return value
             rows=[unpack(json.loads(line)['values']) for line in archive.read('rows.jsonl').decode().splitlines()]

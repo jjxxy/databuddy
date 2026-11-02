@@ -1,4 +1,4 @@
-# Atlas 0.8：有证据的对话工作
+# Nexus WorkStudio 0.8：有证据的对话工作
 
 本轮围绕现有 LangGraph 工具循环修复可靠性，没有把更换框架当作智能升级。实际业务理解仍取决于所接模型、资料完整性和任务评测。当前交付范围仍是单人、项目式的数据应用，默认生成表格/汇总页面及采集、dbt、语义代码。
 
@@ -35,7 +35,7 @@
 python scripts/evaluate_agent.py
 # 仅检查案例格式，结果明确为 not_executed，不产生智能得分。
 
-export ATLAS_URL=https://你的实例
+export NEXUS_URL=https://你的实例
 export APP_TOKEN=实例访问令牌
 python scripts/evaluate_agent.py --execute --limit 3 --output eval-results.json
 ```
@@ -49,9 +49,9 @@ python scripts/evaluate_agent.py --execute --limit 3 --output eval-results.json
 当前提供的是可关闭的接入客户端，**没有随此版本部署一个隔离计算平台**。试用服务默认不启用。只有独立执行服务完成隔离、租户、网络、资源与日志验收后，运维再配置：
 
 ```
-ATLAS_RUNNER_URL=https://独立执行服务
-ATLAS_RUNNER_TOKEN=单独的服务凭证
-ATLAS_RUNNER_ISOLATION=microvm 或 gvisor
+NEXUS_RUNNER_URL=https://独立执行服务
+NEXUS_RUNNER_TOKEN=单独的服务凭证
+NEXUS_RUNNER_ISOLATION=microvm 或 gvisor
 ```
 
 客户端要求 HTTPS，禁止重定向，校验并固定目标 IP。POST `/v1/execute`，协议版本1：发送稳定 idempotency_key、entrypoint、显式选取的 files、timeout_seconds（最多30）、memory_mb=256、network=none、isolation，以及对其余载荷规范 JSON 的 SHA256。外部服务必须真正实现这些限制及同键去重；配置字符串和返回字段本身不能证明隔离已经生效。

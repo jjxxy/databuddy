@@ -1,8 +1,8 @@
-# Atlas 0.7 · Railway 云端试用部署
+# Nexus WorkStudio 0.7 · Railway 云端试用部署
 
-0.7进一步补齐会话目标隔离、停止/继续、发布差异、时效提醒和每日/工作日/每周/小时计划，新增ATLAS_EXPERIENCE_ACCEPTANCE与ATLAS_EXPERIENCE_RESTART_VERIFIED。仍沿用现有域名、访问口令和数据卷。
+0.7进一步补齐会话目标隔离、停止/继续、发布差异、时效提醒和每日/工作日/每周/小时计划，新增NEXUS_EXPERIENCE_ACCEPTANCE与NEXUS_EXPERIENCE_RESTART_VERIFIED。仍沿用现有域名、访问口令和数据卷。
 
-0.6新增可持续使用的数据应用，页面与处理代码一起版本化，支持预览发布、重跑、对话调整、定时更新和数据问答。运行与部署拓扑沿用现有实例及持久化卷，不增加服务。云端增加ATLAS_APPLICATION_ACCEPTANCE与ATLAS_APPLICATION_RESTART_VERIFIED；本次部署的实际结果以deploy/railway-deployment.json为准。详见DATA-APPLICATIONS.md。
+0.6新增可持续使用的数据应用，页面与处理代码一起版本化，支持预览发布、重跑、对话调整、定时更新和数据问答。运行与部署拓扑沿用现有实例及持久化卷，不增加服务。云端增加NEXUS_APPLICATION_ACCEPTANCE与NEXUS_APPLICATION_RESTART_VERIFIED；本次部署的实际结果以deploy/railway-deployment.json为准。详见DATA-APPLICATIONS.md。
 
 部署现有应用的核心服务：一个实例中 API + Worker，真实采集、Git、dlt、dbt、业务发布和 cron。默认元数据使用同一持久化卷中的 SQLite；可配置外部 PostgreSQL。Dagster 管理界面不在此实例中启动，定时功能使用已有 Worker 调度逻辑。原 Docker Compose 方案仍保留。
 
@@ -10,7 +10,7 @@
 
 0.5新增项目多会话、聊天/工作模式、页内模型连接、LangGraph多步工具循环及项目统一Git版本/回退。模型密钥加密保存在同一持久化卷，可在界面配置，无需改部署变量。源码包和原件仍不含密钥。原 `/data` 卷、访问口令和域名沿用；新工作区位于 `/data/workspaces`。
 
-新增云端 `ATLAS_WORKSPACE_ACCEPTANCE`/`ATLAS_WORKSPACE_RESTART_VERIFIED` 验证聊天只读、跨会话共享版本、回退保留后续版本、代码导出与持久性；真实模型尚未接入，不以此声称模型智能已验证。
+新增云端 `NEXUS_WORKSPACE_ACCEPTANCE`/`NEXUS_WORKSPACE_RESTART_VERIFIED` 验证聊天只读、跨会话共享版本、回退保留后续版本、代码导出与持久性；真实模型尚未接入，不以此声称模型智能已验证。
 
 ## 对话版更新
 
@@ -18,13 +18,13 @@
 
 ## 实际状态
 
-2026-10-15 已升级0.7并部署成功： https://atlas-trial.up.railway.app
+2026-10-15 已升级0.7并部署成功： https://nexus-trial.up.railway.app
 
-项目 Atlas Personal Trial / trial / atlas；实例上限为1 GB内存、1 vCPU、500 MB持久化卷，使用当前账号允许的资源。部署达到 SUCCESS，云端运行验收报告和项目标识见 deploy/railway-deployment.json。真实订单样例经 dlt/dbt 生成2条正式对象、118.1500净金额，运行 UID 10001，Git commit 和审计可追溯；重启后正式结果及审计仍可读。
+项目 Nexus WorkStudio Personal Trial / trial / nexus；实例上限为1 GB内存、1 vCPU、500 MB持久化卷，使用当前账号允许的资源。部署达到 SUCCESS，云端运行验收报告和项目标识见 deploy/railway-deployment.json。真实订单样例经 dlt/dbt 生成2条正式对象、118.1500净金额，运行 UID 10001，Git commit 和审计可追溯；重启后正式结果及审计仍可读。
 
 当前命令行下载受到本地网络限制，因此实际采用已连接 Railway 接口部署 python:3.12-slim 公共镜像，并以带 SHA256 校验的源码包安装同一应用。入口为 deploy/railway_bootstrap.py；requirements-cloud.lock 是同版本约束下的核心运行依赖，显式包含 DuckDB/Parquet 所需依赖，不启动 Dagster 管理界面。源码包配置在服务变量中，不包含原始资料和连接凭证；APP_TOKEN 作为单独服务变量保存，交付源码不含其值。
 
-依赖和程序安装在容器 /opt/atlas 中，不占500 MB数据卷；容器重新创建时按锁定版本重新安装。此分发方式用于本次受限环境部署，后续正式发布可改用提供的 Dockerfile.cloud 构建并锁定镜像 digest。Dockerfile.cloud 本身尚未执行构建。
+依赖和程序安装在容器 /opt/nexus 中，不占500 MB数据卷；容器重新创建时按锁定版本重新安装。此分发方式用于本次受限环境部署，后续正式发布可改用提供的 Dockerfile.cloud 构建并锁定镜像 digest。Dockerfile.cloud 本身尚未执行构建。
 
 用户 UID 切换后删除继承的 root HOME，由账户目录解析确定 dbt 用户设置路径；云端已经验证这一修复。浏览器导航验收超时，因此没有宣称视觉/点击验收通过。当前未配置真实大模型，规划和建议采用明确标识的规则模式，OCR扩展未启用。
 
@@ -47,7 +47,7 @@
 | PORT | 使用平台提供的值，入口动态绑定；生成域名时端口匹配 |
 | 持久化卷 | 创建并挂载 `/data`，由平台提供 RAILWAY_VOLUME_MOUNT_PATH |
 | SCHEDULER_MODE | 启动器设置为 worker |
-| ATLAS_DROP_PRIVILEGES | 云镜像设置为1 |
+| NEXUS_DROP_PRIVILEGES | 云镜像设置为1 |
 | LLM_BASE_URL / LLM_API_KEY / LLM_MODEL | 可选；未配置时明确采用规则模式，不能说已经接入真实模型 |
 | API_ALLOWED_HOSTS | 可选，明确允许的私网 API 域名 |
 

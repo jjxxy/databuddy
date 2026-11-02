@@ -69,7 +69,7 @@ def test_single_use_exact_approval_no_auto_external_replay(project,remote):
     w.decide(project,a['id'],w.ActionDecision(digest=a['digest'],approve=True));w.decide(project,a['id'],w.ActionDecision(digest=a['digest'],approve=True))
     assert w.perform(a['id'])['state']=='succeeded';assert w.perform(a['id'])['state']=='succeeded'
     writes=[x for x in remote[0] if x['method']=='tools/call'];assert len(writes)==1 and writes[0]['params']['arguments']=={'title':'具体任务'}
-    assert writes[0]['params']['_meta']['atlas/idempotencyKey']==a['id']
+    assert writes[0]['params']['_meta']['nexus/idempotencyKey']==a['id']
 
 def test_interrupted_external_write_becomes_unknown_not_resent(project,remote):
     c=connect(project);a=w.propose(turn(project),w.ToolCall(connector_id=c['id'],tool='create_ticket',arguments={'title':'原系统核对'}));w.decide(project,a['id'],w.ActionDecision(digest=a['digest'],approve=True));patch('work_action',a['id'],state='executing')
@@ -112,21 +112,21 @@ def test_office_chat_and_path_escape_denied(project):
 
 def test_ha_profile_fails_closed_and_readiness_does_not_claim_ha(monkeypatch):
     assert runtime.readiness()['high_availability_verified'] is False
-    monkeypatch.setenv('ATLAS_DEPLOYMENT_PROFILE','ha')
+    monkeypatch.setenv('NEXUS_DEPLOYMENT_PROFILE','ha')
     with pytest.raises(ValueError):runtime.preflight()
     assert not runtime.readiness()['ready']
 
 def test_oidc_signature_audience_subject_and_no_token_fallback(monkeypatch):
     key=rsa.generate_private_key(public_exponent=65537,key_size=2048);jwk=json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()));jwk['kid']='key-1'
-    monkeypatch.setenv('ATLAS_AUTH_MODE','oidc');monkeypatch.setenv('OIDC_ISSUER','https://identity.test');monkeypatch.setenv('OIDC_AUDIENCE','atlas');monkeypatch.setenv('OIDC_JWKS_URL','https://identity.test/keys');monkeypatch.setenv('OIDC_ALLOWED_SUBJECTS','owner');monkeypatch.setattr(identity,'keys',lambda refresh=False:[jwk])
-    token=jwt.encode({'iss':'https://identity.test','aud':'atlas','sub':'owner','exp':int(time.time())+120},key,algorithm='RS256',headers={'kid':'key-1'})
+    monkeypatch.setenv('NEXUS_AUTH_MODE','oidc');monkeypatch.setenv('OIDC_ISSUER','https://identity.test');monkeypatch.setenv('OIDC_AUDIENCE','nexus');monkeypatch.setenv('OIDC_JWKS_URL','https://identity.test/keys');monkeypatch.setenv('OIDC_ALLOWED_SUBJECTS','owner');monkeypatch.setattr(identity,'keys',lambda refresh=False:[jwk])
+    token=jwt.encode({'iss':'https://identity.test','aud':'nexus','sub':'owner','exp':int(time.time())+120},key,algorithm='RS256',headers={'kid':'key-1'})
     # Lifespan does not expose a shared-token bypass in OIDC mode.
     with TestClient(app) as c:
         assert c.get('/api/identity',headers={'Authorization':'Bearer '+token}).json()['mode']=='oidc'
         assert c.get('/api/identity',headers=H).status_code==401
         wrong=jwt.encode({'iss':'https://identity.test','aud':'other','sub':'owner','exp':int(time.time())+120},key,algorithm='RS256',headers={'kid':'key-1'})
         assert c.get('/api/identity',headers={'Authorization':'Bearer '+wrong}).status_code==401
-        other=jwt.encode({'iss':'https://identity.test','aud':'atlas','sub':'another','exp':int(time.time())+120},key,algorithm='RS256',headers={'kid':'key-1'})
+        other=jwt.encode({'iss':'https://identity.test','aud':'nexus','sub':'another','exp':int(time.time())+120},key,algorithm='RS256',headers={'kid':'key-1'})
         assert c.get('/api/identity',headers={'Authorization':'Bearer '+other}).status_code==403
 
 def test_daily_reservation_is_atomic_and_fails_at_cap(monkeypatch):

@@ -1,17 +1,17 @@
-name: atlas-cloud-browser
+name: nexus-cloud-browser
 services:
   browser:
-    image: ${ATLAS_BROWSER_IMAGE:?Build and push the browser image with an immutable sha256 digest}
+    image: ${NEXUS_BROWSER_IMAGE:?Build and push the browser image with an immutable sha256 digest}
     runtime: runsc
     user: "10001:10001"
     environment:
-      ATLAS_BROWSER_TOKEN: ${ATLAS_BROWSER_TOKEN:?Use a dedicated random token of at least 32 characters}
-      ATLAS_BROWSER_WORKSPACE_ID: ${ATLAS_BROWSER_WORKSPACE_ID:?Bind one container stack to one actor and project}
-      ATLAS_BROWSER_PROXY: http://egress:8092
-      ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
-      ATLAS_BROWSER_ALLOW_DOWNLOADS: ${ATLAS_BROWSER_ALLOW_DOWNLOADS:-0}
-      ATLAS_BROWSER_MAX_DOWNLOAD_MB: ${ATLAS_BROWSER_MAX_DOWNLOAD_MB:-25}
-    ports: ["127.0.0.1:${ATLAS_BROWSER_PORT:-8091}:8091"]
+      NEXUS_BROWSER_TOKEN: ${NEXUS_BROWSER_TOKEN:?Use a dedicated random token of at least 32 characters}
+      NEXUS_BROWSER_WORKSPACE_ID: ${NEXUS_BROWSER_WORKSPACE_ID:?Bind one container stack to one actor and project}
+      NEXUS_BROWSER_PROXY: http://egress:8092
+      NEXUS_BROWSER_ALLOWED_HOSTS: ${NEXUS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+      NEXUS_BROWSER_ALLOW_DOWNLOADS: ${NEXUS_BROWSER_ALLOW_DOWNLOADS:-0}
+      NEXUS_BROWSER_MAX_DOWNLOAD_MB: ${NEXUS_BROWSER_MAX_DOWNLOAD_MB:-25}
+    ports: ["127.0.0.1:${NEXUS_BROWSER_PORT:-8091}:8091"]
     networks: [restricted]
     depends_on: [egress]
     read_only: true
@@ -27,10 +27,10 @@ services:
   egress:
     build: {context: ../.., dockerfile: deploy/browser-runner/Dockerfile.proxy}
     environment:
-      ATLAS_BROWSER_ALLOWED_HOSTS: ${ATLAS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
-      ATLAS_BROWSER_PRIVATE_ENABLED: ${ATLAS_BROWSER_PRIVATE_ENABLED:-0}
-      ATLAS_BROWSER_PRIVATE_HOSTS: ${ATLAS_BROWSER_PRIVATE_HOSTS:-}
-      ATLAS_BROWSER_PRIVATE_HOSTS_JSON: ${ATLAS_BROWSER_PRIVATE_HOSTS_JSON:-}
+      NEXUS_BROWSER_ALLOWED_HOSTS: ${NEXUS_BROWSER_ALLOWED_HOSTS:?Explicitly approve browsing and login hosts}
+      NEXUS_BROWSER_PRIVATE_ENABLED: ${NEXUS_BROWSER_PRIVATE_ENABLED:-0}
+      NEXUS_BROWSER_PRIVATE_HOSTS: ${NEXUS_BROWSER_PRIVATE_HOSTS:-}
+      NEXUS_BROWSER_PRIVATE_HOSTS_JSON: ${NEXUS_BROWSER_PRIVATE_HOSTS_JSON:-}
     networks: [restricted, public]
     read_only: true
     cap_drop: [ALL]

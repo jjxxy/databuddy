@@ -74,7 +74,7 @@ class HTTPSession:
         if not isinstance(value.get('result'),dict):raise RPCError('工作系统返回结构无效')
         return value['result']
     def __enter__(self):
-        value=self.request('initialize',{'protocolVersion':self.version,'capabilities':{},'clientInfo':{'name':'atlas-workspace','version':'0.16.1'}})
+        value=self.request('initialize',{'protocolVersion':self.version,'capabilities':{},'clientInfo':{'name':'nexus-workspace','version':'0.16.1'}})
         version=value.get('protocolVersion')
         if version not in ('2025-06-18','2025-03-26'):raise RPCError('工作系统协商了当前未验证的MCP协议版本')
         self.version=version
@@ -268,7 +268,7 @@ def perform(aid,before_call=None):
             if p['tool'] not in fresh or fingerprint(fresh[p['tool']])!=p['tool_fingerprint']:raise ValueError('工具定义已变化')
             if before_call:before_call()
             called=True
-            result=session.request('tools/call',{'name':p['tool'],'arguments':p['arguments'],'_meta':{'atlas/idempotencyKey':aid}})
+            result=session.request('tools/call',{'name':p['tool'],'arguments':p['arguments'],'_meta':{'nexus/idempotencyKey':aid}})
         state='failed' if result.get('isError') else 'succeeded'
         patch('work_action',aid,state=state,secret_output=seal(result),finished_at=now())
     except Exception:

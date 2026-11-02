@@ -2,9 +2,9 @@
 /* Bind each page to the gateway session seen at boot. No access token is stored. */
 (function(){
  if(typeof window.fetch!=='function')return;
- const rawFetch=window.fetch.bind(window),pending=new Set(),generationKey='atlas_gateway_generation',broadcastKey='atlas_gateway_auth_changed';
+ const rawFetch=window.fetch.bind(window),pending=new Set(),generationKey='nexus_gateway_generation',broadcastKey='nexus_gateway_auth_changed';
  let generation=null,enabled=false,invalid=false;
- function clear(){for(const key of Object.keys(sessionStorage))if(key.startsWith('atlas_'))sessionStorage.removeItem(key)}
+ function clear(){for(const key of Object.keys(sessionStorage))if(key.startsWith('nexus_'))sessionStorage.removeItem(key)}
  function seal(){
   if(invalid)return;invalid=true;for(const item of pending)item.abort();pending.clear();clear();
   const draw=()=>{if(!document.body)return;const wrap=document.createElement('main'),title=document.createElement('h1'),note=document.createElement('p'),button=document.createElement('button');title.textContent='登录账号已变化';note.textContent='为保护之前的工作内容，当前页面已关闭。请重新进入工作空间。';button.textContent='重新进入';button.type='button';button.onclick=()=>location.reload();wrap.append(title,note,button);document.body.replaceChildren(wrap)};
@@ -40,8 +40,8 @@
  });
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void check()});
  window.addEventListener('focus',()=>void check());
- window.atlasGatewayNotifyChange=()=>{try{localStorage.setItem(broadcastKey,'changed:'+Date.now()+':'+Math.random())}catch{}};
- window.atlasGatewaySessionGeneration=async()=>{await ready;if(invalid)throw Error('登录账号已变化');return generation};
+ window.nexusGatewayNotifyChange=()=>{try{localStorage.setItem(broadcastKey,'changed:'+Date.now()+':'+Math.random())}catch{}};
+ window.nexusGatewaySessionGeneration=async()=>{await ready;if(invalid)throw Error('登录账号已变化');return generation};
  async function waitReady(signal){
   if(!signal)return ready;if(signal.aborted)throw cancelled();
   let stop;const cancelledPromise=new Promise((_,reject)=>{stop=()=>reject(cancelled());signal.addEventListener('abort',stop,{once:true})});
@@ -55,7 +55,7 @@
   await waitReady(original);if(invalid)throw Error('登录账号已变化，请重新进入');
   if(!enabled||!generation)return rawFetch(input,options);
   const headers=new Headers(input instanceof Request?input.headers:undefined);
-  new Headers(options.headers||{}).forEach((value,key)=>headers.set(key,value));headers.set('X-Atlas-Session',generation);
+  new Headers(options.headers||{}).forEach((value,key)=>headers.set(key,value));headers.set('X-Nexus-Session',generation);
   const controller=new AbortController();pending.add(controller);
   const stop=()=>controller.abort();if(original){if(original.aborted)stop();else original.addEventListener('abort',stop,{once:true})}
   let response;

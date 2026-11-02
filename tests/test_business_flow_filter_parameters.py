@@ -22,8 +22,8 @@ def test_parameter_changes_exact_sum_without_changing_formula_or_schema():
     s=get('source',s['id']);assert s['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处生成汇总报告','request_id':uid(),'source_id':s['id']})
     context={'project_id':pid,'actor_id':'owner','turn_id':turn['id'],'run_id':uid()}
-    plan={'version':1,'name':'收入','inputs':{'table':{'meaning':'明细','grain':['atlas_row'],'columns':[
-        {'name':'atlas_row','data_type':'text','meaning':'行号'}, {'name':'c_1','data_type':'text','meaning':'办事处'},
+    plan={'version':1,'name':'收入','inputs':{'table':{'meaning':'明细','grain':['nexus_row'],'columns':[
+        {'name':'nexus_row','data_type':'text','meaning':'行号'}, {'name':'c_1','data_type':'text','meaning':'办事处'},
         {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},'stages':[
         {'id':'filtered','kind':'filter','description':'选择办事处','input':'table','conditions':[{'column':'c_1','operator':'eq','value':'东部'}]},
         {'id':'total','kind':'aggregate','description':'汇总','input':'filtered','by':['c_1'],'meaning':'收入',

@@ -10,10 +10,10 @@ from pathlib import Path
 repo=Path(__file__).resolve().parents[1];sys.path.insert(0,str(repo))
 git=shutil.which('git')
 if not git:raise RuntimeError('Git is required for this isolated workspace validation')
-root=Path(tempfile.mkdtemp(prefix='atlas-legacy-model-'))
+root=Path(tempfile.mkdtemp(prefix='nexus-legacy-model-'))
 os.environ.update(DATA_DIR=str(root/'data'),DATABASE_URL='sqlite:///'+str(root/'data/metadata.sqlite'),
-    APP_TOKEN='local-synthetic-access-token-only',ATLAS_DESKTOP_MODE='1',ATLAS_OPENCODE_RUNTIME='0',
-    ATLAS_AUTH_MODE='token',API_ALLOWED_HOSTS='127.0.0.1',ATLAS_GIT_BINARY=git)
+    APP_TOKEN='local-synthetic-access-token-only',NEXUS_DESKTOP_MODE='1',NEXUS_OPENCODE_RUNTIME='0',
+    NEXUS_AUTH_MODE='token',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_GIT_BINARY=git)
 from agent_service import agent,conversation,model_catalog,workspace
 from agent_service.store import get,patch
 
@@ -48,7 +48,7 @@ class Handler(BaseHTTPRequestHandler):
 server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
 thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
 try:
-    entry={'id':'fixture','name':'Fixture','engine':'atlas','base_url':f'http://127.0.0.1:{server.server_port}/v1',
+    entry={'id':'fixture','name':'Fixture','engine':'nexus','base_url':f'http://127.0.0.1:{server.server_port}/v1',
         'model':'synthetic','api_key':'fixture-only','share_data':True,'tool_protocol':'native'}
     model_catalog.provision({'default_model_id':'fixture','models':[entry]},verify=False)
     pid=conversation.create_project(conversation.ProjectInput(name='Legacy model fixture',request_id='legacy-fixture-project'))['id']

@@ -43,7 +43,7 @@ def long_turn(turn):
 
 
 def test_no_compression_below_actual_window_and_no_fixed_history_turn_cut(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     for i in range(12):
         put('turn',{'project_id':turn['project_id'],'state':'done','created_at':'2025-01-%02d'%(i+1),
             'text':'第%d轮原文：'%i+'约定'*2000,'answer':'保留完整回答'+str(i)},'hist_'+uid())
@@ -53,13 +53,13 @@ def test_no_compression_below_actual_window_and_no_fixed_history_turn_cut(turn,m
     assert all(len(item['user'])>3500 for item in info['conversation'])
     assert 'window_checkpoint' not in info
     size=context_window.request_size(messages[0]['content'],info,None)
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':int(size/0.9)}))
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':int(size/0.9)}))
     again,_=agent.planning_context(get('turn',turn['id']),native=False)
     assert json.loads(again[1]['content'])['conversation']==info['conversation'],'90% of a cap must not trigger an arbitrary 85% early cut'
 
 
 def test_planning_keeps_old_nondeduplicated_tool_facts_until_a_window_requires_projection(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     precise='9007199254740993.000000000001'
     source={'source_id':'old-source','rows':[{'金额':precise,'备注':'x'*12000}]}
     current=patch('turn',turn['id'],agent_trace=[
@@ -129,7 +129,7 @@ def test_oversized_context_becomes_bound_checkpoint_and_exact_pages_survive(turn
     current=long_turn(turn);original=copy.deepcopy(current['agent_trace'])
     messages,_=agent.planning_context(current,native=False)
     full=json.loads(messages[1]['content']);size=context_window.request_size(messages[0]['content'],full,None)
-    cap=int(size*.7);monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':cap}))
+    cap=int(size*.7);monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',json.dumps({'fixture':cap}))
     compacted,_=agent.planning_context(get('turn',turn['id']),native=False)
     info=json.loads(compacted[1]['content']);saved=get('turn',turn['id'])
     assert saved['context_window']['after_characters']<cap<size
@@ -158,7 +158,7 @@ def test_oversized_context_becomes_bound_checkpoint_and_exact_pages_survive(turn
 @pytest.mark.parametrize('desktop',[False,True])
 def test_http_context_rejection_compresses_and_retries_same_task_automatically(turn,monkeypatch,desktop):
     current=long_turn(turn);sent=[];original=httpx.Client
-    monkeypatch.setenv('ATLAS_DESKTOP_MODE','1' if desktop else '0')
+    monkeypatch.setenv('NEXUS_DESKTOP_MODE','1' if desktop else '0')
     monkeypatch.setattr('agent_service.network_policy.check_url',lambda url:None)
     def respond(request):
         body=json.loads(request.content);sent.append(body)

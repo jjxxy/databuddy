@@ -19,13 +19,13 @@
 
 ## 上下文怎样压缩
 
-普通任务不因为固定轮次将历史对话改成摘要；默认请求对未撤回、获授权的历史采用窗口管理方式。上下文查看和协作辅助路径同样不会按固定轮次或字符数自动摘录；明确调用压缩时才生成工作索引。手动请求索引、根据已配置的模型容量估计请求放不下、或真实超限时，Atlas 可以生成可回查检查点：保存覆盖轮次与哈希、工作目标、来源和结果版本定位、待解决状态。完整覆盖清单通过 `read_context_checkpoint` 分页，原文通过 `read_context_original` 回查。大型旧工具结果不会单因大小和轮次被替换为引用；相同内容、工具定义和已撤回的资料仍按既有去重与隐私规则处理。
+普通任务不因为固定轮次将历史对话改成摘要；默认请求对未撤回、获授权的历史采用窗口管理方式。上下文查看和协作辅助路径同样不会按固定轮次或字符数自动摘录；明确调用压缩时才生成工作索引。手动请求索引、根据已配置的模型容量估计请求放不下、或真实超限时，Nexus WorkStudio 可以生成可回查检查点：保存覆盖轮次与哈希、工作目标、来源和结果版本定位、待解决状态。完整覆盖清单通过 `read_context_checkpoint` 分页，原文通过 `read_context_original` 回查。大型旧工具结果不会单因大小和轮次被替换为引用；相同内容、工具定义和已撤回的资料仍按既有去重与隐私规则处理。
 
 明确否定、期间、单位、币种、财务口径、未解决事项等关键条件单独保留。关键条件本身超过安全预算会明确暂停，要求明确本次适用范围，不能静默抛弃约束。当前任务的模型版本、来源版本、任务契约和执行回执仍由原有服务持久化与核对。索引里的数字、描述和模型摘要都不能替代完整结果、计算代码、来源和正式核阅记录。
 
-OpenCode 2.1.2 同时启用原生自动压缩及输出缓冲。管理员可在 `llm.json` 每个模型的配置中填入从服务商核实的 `context_window_tokens` 和 `max_output_tokens`（均为正整数，输出上限须小于窗口），由已冻结的模型目录版本传递给对应 OpenCode 提供方；例如 `"context_window_tokens":128000,"max_output_tokens":4096` 只是配置示例，不是所有模型的规格。未配置的未知模型不凭字符数伪造精确 token 数量，依赖原生元数据或上游实际超限响应；显式字符上限仍按运维配置生效。更改模型窗口配置后，需要重新加载运行服务；运行中任务固定原模型配置。复用的原生会话触发 Atlas 显式压缩请求时，等待同一请求 ID 的 `status=completed` 和真实摘要；HTTP 受理不等于完成。原生摘要继续调用本轮冻结的同一模型，经过相同的数据读取授权、目的地址校验和模型预算检查。原始消息保留。压缩失败会保留原任务，不会伪造成功。
+OpenCode 2.1.2 同时启用原生自动压缩及输出缓冲。管理员可在 `llm.json` 每个模型的配置中填入从服务商核实的 `context_window_tokens` 和 `max_output_tokens`（均为正整数，输出上限须小于窗口），由已冻结的模型目录版本传递给对应 OpenCode 提供方；例如 `"context_window_tokens":128000,"max_output_tokens":4096` 只是配置示例，不是所有模型的规格。未配置的未知模型不凭字符数伪造精确 token 数量，依赖原生元数据或上游实际超限响应；显式字符上限仍按运维配置生效。更改模型窗口配置后，需要重新加载运行服务；运行中任务固定原模型配置。复用的原生会话触发 Nexus WorkStudio 显式压缩请求时，等待同一请求 ID 的 `status=completed` 和真实摘要；HTTP 受理不等于完成。原生摘要继续调用本轮冻结的同一模型，经过相同的数据读取授权、目的地址校验和模型预算检查。原始消息保留。压缩失败会保留原任务，不会伪造成功。
 
-Atlas 自身执行路径会对系统提示、对话、工具定义和输出预留一并做容量估算。估算使用 UTF-8 字节近似，不是模型实际分词，可能高估或低估；没有模型窗口配置时不能准确提前判断。估算显示超限但无法安全生成可回查投影时，不会仅凭估算拒绝请求，而会交由模型服务实际判断。
+Nexus WorkStudio 自身执行路径会对系统提示、对话、工具定义和输出预留一并做容量估算。估算使用 UTF-8 字节近似，不是模型实际分词，可能高估或低估；没有模型窗口配置时不能准确提前判断。估算显示超限但无法安全生成可回查投影时，不会仅凭估算拒绝请求，而会交由模型服务实际判断。
 
 压缩有损，也有模型调用成本；它不能保证无限历史都能放入当前提示词，不能修复固定工具结构、系统提示或单次请求本身过大。长任务仍需要分步读取完整结果、检查点和回执。`share_data=false` 时，记忆和历史业务内容都不会自动发给模型；用户手动查阅原文不等于批准模型读取。
 
@@ -34,7 +34,7 @@ Atlas 自身执行路径会对系统提示、对话、工具定义和输出预�
 ## 接口与验证
 
 - `GET/POST /api/projects/{pid}/memories`；`PUT/DELETE /api/projects/{pid}/memories/{id}`。修改正文含 `expected_version`，删除在查询参数提交它。
-- `GET /api/projects/{pid}/context?session_id=...`，`POST /api/projects/{pid}/context/compact` 请求体为可选 `session_id`。面板“压缩”生成 Atlas 工作索引，原生 OpenCode 压缩由活动任务运行时负责。
+- `GET /api/projects/{pid}/context?session_id=...`，`POST /api/projects/{pid}/context/compact` 请求体为可选 `session_id`。面板“压缩”生成 Nexus WorkStudio 工作索引，原生 OpenCode 压缩由活动任务运行时负责。
 - `GET /api/projects/{pid}/context/original?turn_id=...&offset=0&limit=4000` 用于手动分页回查。所有接口使用现有认证。
 
 运行单元与 API 回归：
@@ -46,7 +46,7 @@ python -m pytest tests/test_memory_and_context.py tests/test_opencode_runtime.py
 用部署镜像内的真实 OpenCode 二进制验证压缩协议：
 
 ```sh
-ATLAS_OPENCODE_BINARY=/path/to/opencode python scripts/verify_context_runtime.py
+NEXUS_OPENCODE_BINARY=/path/to/opencode python scripts/verify_context_runtime.py
 ```
 
 该脚本使用临时数据目录、实际 OpenCode 服务和本地模拟模型，验证主调用→摘要调用→主调用、相同模型路由、预算计数、真实完成消息、关键条件与忘记后原生会话更换。它验证集成和确定性协议，不代表商业 LLM 的业务判断、摘要质量或财务准确率已通过评测。

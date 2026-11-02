@@ -4,7 +4,7 @@
 
 ## 【本轮改动摘要】
 
-版本 **v1.2**，候选 **Atlas DataBuddy v0.20.0 / r20**。本轮恢复的是现有工作稿验证与必要修复，没有实施新的报告设计器、离线模型或云端迁移；没有启动新的豆包评审。
+版本 **v1.2**，候选 **Nexus WorkStudio v0.20.0 / r20**。本轮恢复的是现有工作稿验证与必要修复，没有实施新的报告设计器、离线模型或云端迁移；没有启动新的豆包评审。
 
 | 对应问题 | 改动文件 | 用户可见行为 |
 | --- | --- | --- |
@@ -57,7 +57,7 @@ def _exact_query_value(value):
 
 已完成的独立验收：
 
-- `acceptance/offline/verify_backend.py --app-root dist/Atlas-DataBuddy-win32-x64-r20/resources/app --evidence-dir verification/backend-r20-20261027`：包内 Python/Git、空 PATH、新目录、导入→加工→人工发布→导出/审计、重启保留数据与错误模型配置均 `ok=true`；精确总额 `118.150000000000`，只是确定性链路，`real_ai_evaluated=false`、物理断网未测。
+- `acceptance/offline/verify_backend.py --app-root dist/Nexus WorkStudio-WorkStudio-win32-x64-r20/resources/app --evidence-dir verification/backend-r20-20261027`：包内 Python/Git、空 PATH、新目录、导入→加工→人工发布→导出/审计、重启保留数据与错误模型配置均 `ok=true`；精确总额 `118.150000000000`，只是确定性链路，`real_ai_evaluated=false`、物理断网未测。
 - `verification/r20-source-inventory.json`：15,240 个包清单文件、154 个一方输入、15,006 个运行时文件摘要全部匹配；无遗漏/额外业务文件、配置密钥路径或个人工作数据。清单 SHA256：`8a96804bbfa016ed1f303e217a7e72016d973ff35daab91f6c63a78dc6ac90cf`。
 - `verification/node-validation-20261027.json`：40 项桌面测试和 21 个 UI DOM/交互脚本退出码全部为 0；各条命令与日志摘要保留。不是完整真实浏览器视觉验收。
 - `verification/windows-report-long-stage-regression-v15.xml`：86 项回归通过；独立重叠 9 项复核见 `windows-longpath-independent-review-v15.xml`。真正运行超过 260 字符的报告四格式导出，并校验哈希、篡改拒绝、同句柄发布和 junction 清理；UNC 仅测路径转换，未连真实 SMB。

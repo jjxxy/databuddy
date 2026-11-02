@@ -10,9 +10,9 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function until(fn){for(let i=0;i<200;i++){if(fn())return;await tick()}throw Error('Timed out waiting for UI');}
 function response(data,status=200){return {status,ok:status>=200&&status<300,json:async()=>data,blob:async()=>data};}
 async function boot(options={}){
- const dom=new JSDOM(html,{url:'https://atlas.test/data-workbench.html?project=p_1',runScripts:'outside-only'}),w=dom.window,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture-token');Object.defineProperty(w.crypto,'subtle',{value:options.noCrypto?undefined:webcrypto.subtle});
- w.URL.createObjectURL=()=> 'blob:https://atlas.test/fixture';w.URL.revokeObjectURL=()=>{};
+ const dom=new JSDOM(html,{url:'https://nexus.test/data-workbench.html?project=p_1',runScripts:'outside-only'}),w=dom.window,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture-token');Object.defineProperty(w.crypto,'subtle',{value:options.noCrypto?undefined:webcrypto.subtle});
+ w.URL.createObjectURL=()=> 'blob:https://nexus.test/fixture';w.URL.revokeObjectURL=()=>{};
  w.setTimeout=()=>1;w.clearTimeout=()=>{};
  const source={id:'src_1',project_id:'p_1',kind:'file',name:options.pdf?'账单.pdf':'账单<img src=x>.png',revision:1,content_hash:sha},foreign={...source,id:'foreign',project_id:'p_2',name:'其他项目.png'};
  const quote='2026-10 合肥办事处净收入 123.45 元 <img src=x onerror=alert(1)>';

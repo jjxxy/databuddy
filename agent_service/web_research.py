@@ -69,8 +69,8 @@ DEFINITIONS = {
 
 def status():
     from .network_policy import mode
-    enabled = os.getenv('ATLAS_WEB_ENABLED') == '1' and mode() != 'local_only'
-    return {'enabled': enabled, 'search_configured': enabled and bool(os.getenv('ATLAS_WEB_SEARCH_URL')),
+    enabled = os.getenv('NEXUS_WEB_ENABLED') == '1' and mode() != 'local_only'
+    return {'enabled': enabled, 'search_configured': enabled and bool(os.getenv('NEXUS_WEB_SEARCH_URL')),
             'page_reading': enabled, 'browser_interaction': False, 'authenticated_sites': False,
             'citation_scope': 'immutable_read_snapshot; not_fact_or_inference_verification'}
 
@@ -104,9 +104,9 @@ def _url(raw, *, service=False):
     except (ValueError, UnicodeError):
         raise WebResearchError('网页地址必须是不含凭证的HTTP(S)地址') from None
     if not service:
-        allowed = {v.strip().lower().rstrip('.') for v in os.getenv('ATLAS_WEB_ALLOWED_HOSTS', '').split(',') if v.strip()}
+        allowed = {v.strip().lower().rstrip('.') for v in os.getenv('NEXUS_WEB_ALLOWED_HOSTS', '').split(',') if v.strip()}
         if '*' not in allowed and host not in allowed:
-            raise WebResearchError('此公开站点尚未在ATLAS_WEB_ALLOWED_HOSTS中批准')
+            raise WebResearchError('此公开站点尚未在NEXUS_WEB_ALLOWED_HOSTS中批准')
     return urlunsplit((p.scheme, p.netloc, p.path or '/', p.query, ''))
 
 
@@ -124,10 +124,10 @@ def _fetch(raw, *, service=False, params=None):
         # Public reads never inherit the general API private-host exceptions.
         if not service and (not address.is_global or address.is_multicast or address.is_reserved):
             raise WebResearchError('网页研究禁止访问本机、私网、组播和云元数据地址')
-        headers = {'Host': original.netloc.decode(), 'User-Agent': 'AtlasDataBuddy/1.0 (public research)',
+        headers = {'Host': original.netloc.decode(), 'User-Agent': 'NexusWorkStudio/1.0 (public research)',
                    'Accept': 'application/json' if service else 'text/html,text/plain;q=0.9'}
-        if service and os.getenv('ATLAS_WEB_SEARCH_TOKEN'):
-            headers['Authorization'] = 'Bearer ' + os.environ['ATLAS_WEB_SEARCH_TOKEN']
+        if service and os.getenv('NEXUS_WEB_SEARCH_TOKEN'):
+            headers['Authorization'] = 'Bearer ' + os.environ['NEXUS_WEB_SEARCH_TOKEN']
         # A new pool per hop prevents an IP-pinned TLS connection established
         # for one hostname being reused with another hostname's Host/SNI.
         with httpx.Client(timeout=httpx.Timeout(8, connect=4, read=4), trust_env=False, follow_redirects=False) as client, \
@@ -204,7 +204,7 @@ def _save(turn, actor, url, title, text, kind, *, truncated=False):
         payload = seal({'url': url, 'title': title, 'content': text, 'sha256': checksum,
                         'kind': kind, 'retrieved_at': now(), 'truncated': truncated})
         size = len(json.dumps(payload).encode()) + 1024
-        try:quota = int(os.getenv('ATLAS_WEB_STORAGE_MB', '32'))
+        try:quota = int(os.getenv('NEXUS_WEB_STORAGE_MB', '32'))
         except ValueError:raise WebResearchError('网页证据存储预算配置无效') from None
         if not 1 <= quota <= 1024:raise WebResearchError('网页证据存储预算须为1到1024MiB')
         from .store import all_items
@@ -233,7 +233,7 @@ def search(turn, args):
         raise WebResearchError('尚未配置搜索服务；已有公开URL可以直接read_web_page')
     params = {'q': args.query, 'format': 'json', 'categories': 'general', 'safesearch': 1}
     if args.time_range:params['time_range'] = args.time_range
-    _, raw, _, _ = _fetch(os.environ['ATLAS_WEB_SEARCH_URL'], service=True, params=params)
+    _, raw, _, _ = _fetch(os.environ['NEXUS_WEB_SEARCH_URL'], service=True, params=params)
     try:
         payload = json.loads(raw)
         rows = payload['results']

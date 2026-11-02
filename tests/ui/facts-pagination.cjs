@@ -8,9 +8,9 @@ async function wait(condition){for(let n=0;n<100;n++){if(condition())return;awai
 const reply=(value,status=200)=>({ok:status>=200&&status<300,status,headers:{get:()=>null},json:async()=>value});
 
 async function boot({project='p_1',account='alice',deferSecond=false,deferJson=false,failSecond=false}={}){
- const dom=new JSDOM(html,{url:'https://atlas.test/data-workbench.html?project='+project,runScripts:'outside-only'});
+ const dom=new JSDOM(html,{url:'https://nexus.test/data-workbench.html?project='+project,runScripts:'outside-only'});
  const w=dom.window,d=w.document,calls=[];let release=null,reloads=0,failed=false;
- w.sessionStorage.setItem('atlas_token',account);
+ w.sessionStorage.setItem('nexus_token',account);
  const records=Array.from({length:25},(_,index)=>({id:'facts_'+(index+1),name:account+' '+project+' 原件 '+(index+1)+(index===24?' <img src=x>':''),status:'proposed',content_sha256:'a'.repeat(64)}));
  w.fetch=async(url,options={})=>{
   const u=new URL(url,w.location.href),offset=Number(u.searchParams.get('offset')||0);

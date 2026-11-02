@@ -306,7 +306,7 @@ def catalog(pid=None):
         linked=next((c for c in connectors if c.get('preset_id')==record['id']),None)
         presets.append({k:record[k] for k in ('id','name','digest','version','transport')}|{'kind':'mcp','permissions':record.get('permissions',{}),'installed':bool(linked),'enabled':bool(linked and linked.get('enabled')),'update_available':bool(linked and linked.get('preset_digest')!=record['digest'])})
     local=local_mode()
-    return {'scope':'current_actor','skills':list_skills()['items'],'mcp':[mcp_public(c) for c in connectors],'presets':presets,'policy':{'local_mode':local,'stdio_available':local and bool(templates()),'stdio_allowed_commands':list(templates()) if local else [],'os_network_isolation':False,'stdio_network_unrestricted':local and os.getenv('ATLAS_NETWORK_MODE','connected')!='local_only','privacy':'个人连接配置和凭据按已验证身份隔离；共享口令对应同一用户。在项目中取得的数据、任务记录和成果按项目范围共享。'}}
+    return {'scope':'current_actor','skills':list_skills()['items'],'mcp':[mcp_public(c) for c in connectors],'presets':presets,'policy':{'local_mode':local,'stdio_available':local and bool(templates()),'stdio_allowed_commands':list(templates()) if local else [],'os_network_isolation':False,'stdio_network_unrestricted':local and os.getenv('NEXUS_NETWORK_MODE','connected')!='local_only','privacy':'个人连接配置和凭据按已验证身份隔离；共享口令对应同一用户。在项目中取得的数据、任务记录和成果按项目范围共享。'}}
 
 
 def provision_presets(configuration=None):

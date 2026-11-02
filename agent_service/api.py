@@ -92,8 +92,8 @@ def operator_auth(request:Request, identity=Depends(auth)):
     An unset operator token intentionally leaves configuration file-only.
     OIDC business identities also need the separate operator credential.
     """
-    expected=os.getenv('ATLAS_OPERATOR_TOKEN','')
-    supplied=request.headers.get('X-Atlas-Operator-Token','')
+    expected=os.getenv('NEXUS_OPERATOR_TOKEN','')
+    supplied=request.headers.get('X-Nexus-Operator-Token','')
     if len(expected)<16 or secrets.compare_digest(expected.encode(),TOKEN.encode()) or not secrets.compare_digest(supplied.encode(),expected.encode()):
         raise HTTPException(403,'此配置仅供后台管理员维护')
     return identity
@@ -106,7 +106,7 @@ async def boundary(request:Request,call_next):
     from contextlib import nullcontext
     from .maintenance import guard
     request_id=uid();ip=request.client.host if request.client else 'local'
-    api_surface=request.url.path.startswith(('/api/','/a2a','/mcp/atlas'))
+    api_surface=request.url.path.startswith(('/api/','/a2a','/mcp/nexus'))
     key=(ip,api_surface)
     if key[1]:
         bucket=_requests.setdefault(key,deque())
@@ -120,7 +120,7 @@ async def boundary(request:Request,call_next):
         with guard() if mutating else nullcontext():
             response=await call_next(request)
             response.headers['X-Request-ID']=request_id
-            response.headers['X-Atlas-Runtime-Revision']=RUNTIME_REVISION
+            response.headers['X-Nexus-Runtime-Revision']=RUNTIME_REVISION
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Referrer-Policy']='no-referrer'
             response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
@@ -147,6 +147,11 @@ def invalid_model(request,exc):
 @app.exception_handler(ValueError)
 def invalid(request,exc):return JSONResponse(status_code=400,content={'detail':str(exc)[:1000]})
 
+from .conversation import WorkflowContextConflict
+@app.exception_handler(WorkflowContextConflict)
+def workflow_context_conflict(request,exc):
+    return JSONResponse(status_code=409,content={'detail':str(exc)[:1000],'code':'WORKFLOW_CONTEXT_CONFLICT'})
+
 @app.get('/api/platform',dependencies=[Depends(auth)])
 def platform_status():
     from .runtime import readiness,nodes
@@ -155,10 +160,10 @@ def platform_status():
     counts={r:sum(n['healthy'] for n in values) for r,values in roles.items()}
     gaps=[]
     if engine.dialect.name!='postgresql':gaps.append('metadata_is_not_postgresql')
-    if os.getenv('ATLAS_STORAGE_MODE')!='rwx':gaps.append('storage_is_not_shared_rwx')
+    if os.getenv('NEXUS_STORAGE_MODE')!='rwx':gaps.append('storage_is_not_shared_rwx')
     for role,count in counts.items():
         if count<2:gaps.append(role+'_has_fewer_than_two_healthy_nodes')
-    if os.getenv('ATLAS_AUTH_MODE','token')!='oidc':gaps.append('oidc_not_enabled')
+    if os.getenv('NEXUS_AUTH_MODE','token')!='oidc':gaps.append('oidc_not_enabled')
     try:backup_state=get('system','backup-health')
     except KeyError:backup_state={'ok':False}
     return {'backup':backup_state,'version':'0.20.0','readiness':readiness(),'metadata':engine.dialect.name,'healthy_nodes':counts,'nodes':roles,'ha_configuration_gaps':gaps,'high_availability_verified':False,'scope':'owner_workspace','note':'配置检查不能证明故障切换或SLO，需执行故障验收'}
@@ -903,11 +908,11 @@ install_business_flows(app,auth)
 def desktop_runtime_status():
     from .model_catalog import public_catalog
     from .local_workspace import enabled as local_folder_enabled
-    desktop=os.getenv('ATLAS_DESKTOP_MODE')=='1'
-    location='local' if local_folder_enabled() else 'cloud' if os.getenv('ATLAS_WORKSPACE_LOCATION')=='cloud' else 'unbound'
+    desktop=os.getenv('NEXUS_DESKTOP_MODE')=='1'
+    location='local' if local_folder_enabled() else 'cloud' if os.getenv('NEXUS_WORKSPACE_LOCATION')=='cloud' else 'unbound'
     return {'desktop':desktop,'local_capabilities_available':True,
             'workspace_location':location,'cloud_workspace_configured':location=='cloud',
             'model_configured':public_catalog()['configured'],'connection_checked_at_startup':False,
-            'notice':os.getenv('ATLAS_DESKTOP_MODEL_NOTICE','云端模型按需连接；断网时本地导入、加工、查看和导出仍可用。')}
+            'notice':os.getenv('NEXUS_DESKTOP_MODEL_NOTICE','云端模型按需连接；断网时本地导入、加工、查看和导出仍可用。')}
 
 app.mount('/',StaticFiles(directory=Path(__file__).parent/'static',html=True),name='workbench')

@@ -3,10 +3,10 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(test){for(let i=0;i<100;i++){await tick();if(test())return}throw Error('business flow page did not settle')}
 const reply=(value,status=200)=>({ok:status>=200&&status<300,status,json:async()=>structuredClone(value)});
 (async()=>{
- const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://atlas.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture');const digest='a'.repeat(64),other='b'.repeat(64),commit='c'.repeat(40);
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://nexus.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture');const digest='a'.repeat(64),other='b'.repeat(64),commit='c'.repeat(40);
  let delayResolve,attempt=0,modeUnknown=false;const bodies=[];const delayed=new Promise(resolve=>delayResolve=resolve);
- w.atlasSecureUUID=()=> 'safe-request-1';w.confirm=()=>true;
+ w.nexusSecureUUID=()=> 'safe-request-1';w.confirm=()=>true;
  w.fetch=async (url,opts={})=>{const route=new URL(url,w.location.href).pathname;calls.push({route,method:opts.method||'GET'});
   if(route.endsWith('/business-flows'))return reply({items:[{id:'first',name:'第一个'},{id:'second',name:'第二个'}]});
   if(route.endsWith('/business-flows/first')){await delayed;return reply({candidate_digest:digest,candidate_commit:commit,candidate_run:'r_old',candidate_document:{name:'旧页面',nodes:[{id:'a',kind:'source',title:'旧内容'}]}})}

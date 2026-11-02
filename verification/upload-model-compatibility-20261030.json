@@ -225,28 +225,28 @@
             "kind": "primary",
             "model": "quickstart-simulated-model",
             "tools": [
-              "atlas_step"
+              "nexus_step"
             ]
           },
           {
             "kind": "compaction",
             "model": "quickstart-simulated-model",
             "tools": [
-              "atlas_step"
+              "nexus_step"
             ]
           },
           {
             "kind": "primary",
             "model": "quickstart-simulated-model",
             "tools": [
-              "atlas_step"
+              "nexus_step"
             ]
           },
           {
             "kind": "primary",
             "model": "quickstart-simulated-model",
             "tools": [
-              "atlas_step"
+              "nexus_step"
             ]
           }
         ],

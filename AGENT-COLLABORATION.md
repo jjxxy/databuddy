@@ -1,4 +1,4 @@
-# Atlas Agent 协作（v0.19）
+# Nexus WorkStudio Agent 协作（v0.19）
 
 业务用户可以在同一个项目对话中把明确的子任务交给本地专业 Agent 或已授权的远端 Agent，主任务会等待、接回实际状态并继续核对。当前实现侧重可追踪、可恢复、可检查的数据处理协作。多个 Agent 的一致意见、协议完成状态和文件哈希都不能替代财务口径批准或独立控制数核对。
 
@@ -20,13 +20,13 @@
 | --- | --- | --- |
 | A2A 1.0 | SendMessage / GetTask / CancelTask | ROLE_USER、TASK_STATE_*，明确 returnImmediately=true；默认用于新连接 |
 | A2A 0.3.0 | message/send / tasks/get / tasks/cancel | 兼容旧版 kind、user/agent、小写状态 |
-| MCP Agent | 配置的三个独立工具，默认 atlas_submit_task / atlas_get_task / atlas_cancel_task | 实际发现工具、校验输入 schema，冻结工具结构；不是通用任意工具执行器 |
+| MCP Agent | 配置的三个独立工具，默认 nexus_submit_task / nexus_get_task / nexus_cancel_task | 实际发现工具、校验输入 schema，冻结工具结构；不是通用任意工具执行器 |
 
 A2A 发现卡只能位于同一站点的 `/.well-known/agent-card.json`，必须声明与配置完全一致的协议与端点。省略版本时可识别明确声明的0.3.0旧卡，保存后钉住所选版本；未知版本不会猜测兼容。发送时始终带明确版本头。当前不声明 A2A 流式、推送、OAuth、签名卡片或完整协议一致性认证；需要补充信息时保留 input_required，用户明确补充后建立新任务，不自动重启远端工作。
 
 MCP 使用 Streamable HTTP，支持协商2025-03-26、2025-06-18或2025-11-25，接收有界 JSON/SSE 回执。每次调用重新发现并核对被冻结的工具结构；结构改变则要求重新连接。MCP 连接自己安装的通用工具能力与这里的“具备任务生命周期的远端 Agent”有不同契约。
 
-使用远端颁发的专用服务令牌。例如另一 Atlas 实例的管理员通过 [AGENT-GATEWAY.md](AGENT-GATEWAY.md) 创建受限调用方；不能把本机 APP_TOKEN、管理员口令或模型 API key 填成远端凭据。
+使用远端颁发的专用服务令牌。例如另一 Nexus WorkStudio 实例的管理员通过 [AGENT-GATEWAY.md](AGENT-GATEWAY.md) 创建受限调用方；不能把本机 APP_TOKEN、管理员口令或模型 API key 填成远端凭据。
 
 个人配置接口示例，普通业务鉴权沿用已有接口：
 
@@ -34,7 +34,7 @@ MCP 使用 Streamable HTTP，支持协商2025-03-26、2025-06-18或2025-11-25，
 {
   "name": "经营分析复核方",
   "transport": "a2a",
-  "url": "https://remote-atlas.example.com/a2a",
+  "url": "https://remote-nexus.example.com/a2a",
   "credential": "REMOTE_SCOPED_AGENT_TOKEN",
   "remote_project_id": "p_remote_authorized_project",
   "remote_model_id": "finance",

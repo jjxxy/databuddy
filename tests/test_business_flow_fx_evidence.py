@@ -39,7 +39,7 @@ def test_fx_detail_is_immutable_paged_and_bound_to_the_real_aggregate(tmp_path,m
     rates=upload('rates.csv','编号,法人,原币,目标币,汇率类型,开始,结束,汇率\nr1,A,USD,CNY,closing,2026-01-01,2026-04-01,7.125\nr2,B,USD,CNY,closing,2026-01-01,2026-04-01,7.125\nr3,C,USD,CNY,closing,2026-01-01,2026-04-01,7.125\n')
     turn=request('POST',base+'/messages',json={'text':'核对汇率和收入','request_id':uid(),
                                                'source_ids':[transactions['id'],rates['id']]})
-    plan=copy.deepcopy(_plan(include_atlas_row=True))
+    plan=copy.deepcopy(_plan(include_nexus_row=True))
     plan['stages'].append({'kind':'filter','id':'chosen','description':'排除 C','input':'converted',
                            'conditions':[{'column':'c_2','operator':'neq','value':'C'}]})
     plan['stages'].append({'kind':'aggregate','id':'total','description':'按法人汇总换算金额',

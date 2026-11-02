@@ -10,7 +10,7 @@ if (!source || !output || !path.isAbsolute(source) || !path.isAbsolute(output)) 
 }
 let browser;
 try {
-  browser = await chromium.launch({executablePath:process.env.ATLAS_RENDER_CHROMIUM || '/usr/bin/chromium',
+  browser = await chromium.launch({executablePath:process.env.NEXUS_RENDER_CHROMIUM || '/usr/bin/chromium',
     headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--disable-background-networking'],timeout:30000});
   const context = await browser.newContext({offline:true,serviceWorkers:'block',acceptDownloads:false,
     viewport:{width:1440,height:1000},reducedMotion:'reduce'});

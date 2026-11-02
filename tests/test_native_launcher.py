@@ -20,8 +20,8 @@ def test_native_lifecycle_uses_loopback_credentials_and_preserves_state(tmp_path
     (package / 'cloud.py').write_text('''
 import json,os
 from http.server import BaseHTTPRequestHandler,HTTPServer
-assert os.environ['ATLAS_API_HOST']=='127.0.0.1'
-assert os.environ['APP_TOKEN']!=os.environ['ATLAS_OPERATOR_TOKEN']
+assert os.environ['NEXUS_API_HOST']=='127.0.0.1'
+assert os.environ['APP_TOKEN']!=os.environ['NEXUS_OPERATOR_TOKEN']
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def do_GET(self):
@@ -29,11 +29,11 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path=='/api/status':
             if self.headers.get('Authorization')!='Bearer '+os.environ['APP_TOKEN']:
                 self.send_response(401);self.end_headers();return
-            value={role:{'nodes':[{'instance':os.environ['ATLAS_INSTANCE_ID'],'healthy':True}]}
+            value={role:{'nodes':[{'instance':os.environ['NEXUS_INSTANCE_ID'],'healthy':True}]}
                    for role in ('agent','worker')}
         else:self.send_response(404);self.end_headers();return
         self.send_response(200);self.end_headers();self.wfile.write(json.dumps(value).encode())
-HTTPServer((os.environ['ATLAS_API_HOST'],int(os.environ['PORT'])),Handler).serve_forever()
+HTTPServer((os.environ['NEXUS_API_HOST'],int(os.environ['PORT'])),Handler).serve_forever()
 ''')
     monkeypatch.setattr(native, 'ROOT', tmp_path)
     with socket.socket() as sock:

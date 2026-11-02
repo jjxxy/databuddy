@@ -14,9 +14,9 @@ from .protocol import MAX_ARCHIVE, MAX_LOG, unpack
 
 class DockerBackend:
     def __init__(self, image=None, socket=None):
-        self.image = image or os.environ['ATLAS_SANDBOX_IMAGE']
+        self.image = image or os.environ['NEXUS_SANDBOX_IMAGE']
         if '@sha256:' not in self.image or len(self.image.rsplit('@sha256:', 1)[1]) != 64:
-            raise ValueError('ATLAS_SANDBOX_IMAGE must use an approved immutable image digest')
+            raise ValueError('NEXUS_SANDBOX_IMAGE must use an approved immutable image digest')
         self.socket_path=socket or '/var/run/docker.sock'
         self.client = httpx.Client(transport=httpx.HTTPTransport(uds=self.socket_path),
                                   base_url='http://docker/v1.45', timeout=15, trust_env=False)
@@ -42,10 +42,10 @@ class DockerBackend:
         memory = 1024 * 1024 * 1024
         config = {
             'Image': self.image, 'User': '10001:10001', 'WorkingDir': '/workspace',
-            'Cmd': ['python', '-I', '/opt/atlas-work/transfer.py', 'idle'],
+            'Cmd': ['python', '-I', '/opt/nexus-work/transfer.py', 'idle'],
             'Env': ['PATH=/usr/local/bin:/usr/bin:/bin', 'HOME=/tmp', 'LANG=C.UTF-8',
                     'PYTHONDONTWRITEBYTECODE=1', 'MPLCONFIGDIR=/tmp/matplotlib'],
-            'Labels': {'atlas.work.execution': job['execution_id'], 'atlas.work.workspace': job['workspace_id']},
+            'Labels': {'nexus.work.execution': job['execution_id'], 'nexus.work.workspace': job['workspace_id']},
             'HostConfig': {
                 'Runtime': 'runsc', 'NetworkMode': 'none', 'ReadonlyRootfs': True,
                 'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges:true'],
@@ -56,7 +56,7 @@ class DockerBackend:
                 'RestartPolicy': {'Name': 'no'}, 'Ulimits': [{'Name': 'nofile', 'Soft': 1024, 'Hard': 1024}],
             },
         }
-        return self.request('POST', '/containers/create', params={'name': 'atlas-work-' + job['execution_id']}, json=config)['Id']
+        return self.request('POST', '/containers/create', params={'name': 'nexus-work-' + job['execution_id']}, json=config)['Id']
 
     def start(self, container):
         self.request('POST', '/containers/' + container + '/start')
@@ -75,7 +75,7 @@ class DockerBackend:
     def prepare_exec(self, container, command, timeout):
         return self.request('POST', '/containers/' + container + '/exec', json={
             'User': '10001:10001', 'WorkingDir': '/workspace', 'AttachStdout': False, 'AttachStderr': False,
-            'Cmd': ['python', '-I', '/opt/atlas-work/guest.py', base64.b64encode(command.encode()).decode(), str(timeout)],
+            'Cmd': ['python', '-I', '/opt/nexus-work/guest.py', base64.b64encode(command.encode()).decode(), str(timeout)],
         })['Id']
 
     def start_exec(self, execution):
@@ -96,7 +96,7 @@ class DockerBackend:
         execution=self.request('POST','/containers/'+container+'/exec',json={
             'User':'10001:10001','WorkingDir':'/workspace','AttachStdin':input_bytes is not None,
             'AttachStdout':True,'AttachStderr':True,'Tty':False,
-            'Cmd':['python','-I','/opt/atlas-work/transfer.py',mode],
+            'Cmd':['python','-I','/opt/nexus-work/transfer.py',mode],
         })['Id']
         body=b'{"Detach":false,"Tty":false}'
         header=('POST /v1.45/exec/'+execution+'/start HTTP/1.1\r\nHost: docker\r\n'

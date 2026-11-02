@@ -93,7 +93,7 @@ def test_business_memory_requires_user_quote_and_is_versioned():
 
 def test_unconfigured_runner_cannot_execute_generated_code(monkeypatch):
     from agent_service import isolation
-    monkeypatch.delenv('ATLAS_RUNNER_URL',raising=False)
+    monkeypatch.delenv('NEXUS_RUNNER_URL',raising=False)
     t=task('运行 scripts/check.py 脚本')
     assert not isolation.status()['configured']
     with pytest.raises(ValueError,match='尚未配置'):isolation.run(t,'scripts/check.py',[],20)
@@ -102,9 +102,9 @@ def test_unconfigured_runner_cannot_execute_generated_code(monkeypatch):
 
 def test_remote_runner_protocol_binds_inputs_and_enforces_limits(monkeypatch):
     from agent_service import isolation,connectors
-    monkeypatch.setenv('ATLAS_RUNNER_URL','https://runner.invalid')
-    monkeypatch.setenv('ATLAS_RUNNER_TOKEN','runner-secret')
-    monkeypatch.setenv('ATLAS_RUNNER_ISOLATION','gvisor')
+    monkeypatch.setenv('NEXUS_RUNNER_URL','https://runner.invalid')
+    monkeypatch.setenv('NEXUS_RUNNER_TOKEN','runner-secret')
+    monkeypatch.setenv('NEXUS_RUNNER_ISOLATION','gvisor')
     monkeypatch.setenv('RAILWAY_TOKEN','never-send-host-env')
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':True})
     monkeypatch.setattr(connectors,'safe_api_url',lambda url:'127.0.0.1')

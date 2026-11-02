@@ -12,7 +12,7 @@ import httpx
 
 
 def model_read_timeout():
-    raw=os.getenv('ATLAS_MODEL_READ_TIMEOUT_SECONDS','900')
+    raw=os.getenv('NEXUS_MODEL_READ_TIMEOUT_SECONDS','900')
     try:value=float(raw)
     except (ValueError,TypeError):raise ValueError('模型读取超时配置无效') from None
     if not math.isfinite(value) or not 10<=value<=7200:

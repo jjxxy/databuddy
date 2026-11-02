@@ -25,7 +25,7 @@
     "ui_account_transition": "included in 11 jsdom suites"
   },
   "verified_scope": [
-    "real HTTP through gateway and two independent Atlas API processes",
+    "real HTTP through gateway and two independent Nexus WorkStudio API processes",
     "independent JWT verification with test-only public JWKS retrieval",
     "same-ID different-content and cross-resource denial",
     "gateway authority cancellation/revocation/rotation/expiry/deadline checks",

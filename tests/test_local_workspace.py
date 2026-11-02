@@ -45,9 +45,9 @@ def storage_identity():
 @pytest.fixture
 def local_folder(tmp_path,monkeypatch):
     selected=tmp_path/'个人 业务文件夹';selected.mkdir()
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(selected))
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1')
-    monkeypatch.setenv('ATLAS_LOCAL_LABEL','我的月结')
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(selected))
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1')
+    monkeypatch.setenv('NEXUS_LOCAL_LABEL','我的月结')
     monkeypatch.setattr('agent_service.execution.enqueue',lambda *args,**kwargs:{'id':'fixture-probe'})
     pid='p_'+uid();put('project',{'name':'本地模式验收','created_at':now()},pid)
     uploads=set((DATA/'uploads').glob('*')) if (DATA/'uploads').exists() else set()
@@ -61,7 +61,7 @@ def local_folder(tmp_path,monkeypatch):
 
 
 def test_root_disabled_is_not_a_remote_arbitrary_filesystem(monkeypatch):
-    monkeypatch.delenv('ATLAS_LOCAL_WORKSPACE',raising=False)
+    monkeypatch.delenv('NEXUS_LOCAL_WORKSPACE',raising=False)
     assert local.status()=={'enabled':False,'mode':'server'}
     with pytest.raises(ValueError,match='未启用'):local.files('')
 
@@ -69,18 +69,18 @@ def test_root_disabled_is_not_a_remote_arbitrary_filesystem(monkeypatch):
 def test_local_startup_rejects_incomplete_mode_before_creating_storage(tmp_path,monkeypatch):
     from agent_service import cloud
     selected=tmp_path/'业务';selected.mkdir()
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(selected))
-    monkeypatch.delenv('ATLAS_LOCAL_MODE',raising=False)
-    with pytest.raises(ValueError,match='both ATLAS_LOCAL_MODE'):cloud.prepare()
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(selected))
+    monkeypatch.delenv('NEXUS_LOCAL_MODE',raising=False)
+    with pytest.raises(ValueError,match='both NEXUS_LOCAL_MODE'):cloud.prepare()
     assert list(selected.iterdir())==[]
 
 
 def test_local_startup_rejects_incomplete_remote_backup_before_storage(tmp_path,monkeypatch):
     from agent_service import cloud
     selected=tmp_path/'业务';selected.mkdir()
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(selected))
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1')
-    for key in ('ATLAS_S3_ENDPOINT','ATLAS_S3_BUCKET','ATLAS_S3_ACCESS_KEY_ID','ATLAS_S3_SECRET_ACCESS_KEY','ATLAS_BACKUP_KEY'):
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(selected))
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1')
+    for key in ('NEXUS_S3_ENDPOINT','NEXUS_S3_BUCKET','NEXUS_S3_ACCESS_KEY_ID','NEXUS_S3_SECRET_ACCESS_KEY','NEXUS_BACKUP_KEY'):
         monkeypatch.setenv(key,'fixture-not-used')
     with pytest.raises(ValueError,match='旧格式远程备份'):cloud.prepare()
     assert list(selected.iterdir())==[]
@@ -100,7 +100,7 @@ def test_local_browse_is_paginated_and_omits_credentials_and_managed_outputs(loc
     assert local.status()['label']=='我的月结'
 
 
-@pytest.mark.parametrize('path',['../outside.csv','/etc/passwd','a/../income.csv','.atlas/metadata.sqlite','llm.json','secrets.json','x\\income.csv','Atlas成果/export.csv'])
+@pytest.mark.parametrize('path',['../outside.csv','/etc/passwd','a/../income.csv','.nexus/metadata.sqlite','llm.json','secrets.json','x\\income.csv','Nexus WorkStudio成果/export.csv'])
 def test_input_paths_never_reach_private_or_parent_files(local_folder,path):
     with pytest.raises(ValueError):local._copy_input(path)
 
@@ -313,17 +313,17 @@ def test_local_application_export_is_complete_decimal_and_spreadsheet_literal(lo
 def test_local_storage_is_no_follow_and_never_chowns_originals(tmp_path,monkeypatch):
     root=tmp_path/'work';root.mkdir();original=root/'income.csv';original.write_text('private')
     before=original.stat()
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.atlas'))
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.nexus'))
     path=local_storage.prepare_storage(*storage_identity())
-    assert path==root/'.atlas' and (path/'local-workspace.identity').is_file()
+    assert path==root/'.nexus' and (path/'local-workspace.identity').is_file()
     assert local_storage.prepare_storage(*storage_identity())==path
     after=original.stat();assert (after.st_uid,after.st_gid,after.st_mode)==(before.st_uid,before.st_gid,before.st_mode)
 
 
 def test_local_storage_rejects_metadata_symlink_before_any_target_write(tmp_path,monkeypatch):
     root=tmp_path/'work';root.mkdir();outside=tmp_path/'outside';outside.mkdir()
-    link_directory(root/'.atlas',outside)
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.atlas'))
+    link_directory(root/'.nexus',outside)
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.nexus'))
     with pytest.raises(ValueError):local_storage.prepare_storage(*storage_identity())
     assert list(outside.iterdir())==[]
 
@@ -342,7 +342,7 @@ def test_local_backup_refuses_incomplete_format_before_output_with_real_code(loc
     assert code.read_text()=='SELECT 100.25 AS net_revenue'
     # Reject even a malformed/legacy local configuration rather than silently
     # treating the selected folder's sibling code as part of a DATA-only ZIP.
-    monkeypatch.delenv('ATLAS_LOCAL_MODE')
+    monkeypatch.delenv('NEXUS_LOCAL_MODE')
     with pytest.raises(ValueError,match='format2'):maintenance.backup(output)
     assert not output.parent.exists()
 
@@ -352,8 +352,8 @@ def test_local_restore_refuses_old_layout_before_archive_or_database_access(loca
     root,pid=local_folder;local.write_project_file(pid,'summary.md','现有本地成果')
     code=root/local.CODE_DIR/pid/'files/summary.md';before=code.read_bytes()
     monkeypatch.setattr(maintenance,'guard',lambda **kwargs:pytest.fail('本地旧格式恢复不应进入数据库或文件锁阶段'))
-    with pytest.raises(ValueError,match='format2.*停止Atlas服务'):
+    with pytest.raises(ValueError,match='format2.*停止Nexus WorkStudio服务'):
         maintenance.restore(tmp_path/'archive-does-not-exist.zip')
     assert code.read_bytes()==before
-    monkeypatch.delenv('ATLAS_LOCAL_WORKSPACE')
+    monkeypatch.delenv('NEXUS_LOCAL_WORKSPACE')
     with pytest.raises(ValueError,match='format2'):maintenance.restore(tmp_path/'archive-does-not-exist.zip')

@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>我的业务工作空间 · Atlas</title>
-  <link rel="stylesheet" href="/data-workbench.css?v=21">
+  <title>我的业务工作空间 · Nexus WorkStudio</title>
+  <link rel="stylesheet" href="/data-workbench.css?v=22-business-graph">
   <script src="/workspace-session.js?v=1" defer></script>
-  <script src="/data-workbench.js?v=26-schedule-review" defer></script>
+  <link rel="stylesheet" href="/react-dag/web-dag.css?v=2"><script src="/react-dag/web-dag.js?v=2" defer></script><script src="/workbench-dag.js?v=2-react" defer></script>
+  <script src="/data-workbench.js?v=29-flow-chat" defer></script>
 </head>
 <body>
 <section id="workbench-login" class="login" hidden>
@@ -27,7 +28,7 @@
 </section>
 <div id="workbench-shell" hidden>
   <aside class="sidebar" aria-label="业务任务导航">
-    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>Atlas</span></a>
+    <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span><span>Nexus WorkStudio</span></a>
     <a id="workbench-back" class="back-link" href="/">返回项目对话</a>
     <div class="sidebar-heading">我的可复用任务</div>
     <nav id="workbench-workflows" class="workflow-list" aria-label="选择业务任务"></nav>
@@ -64,6 +65,7 @@
         <div><span class="task-kicker">接下来</span><h2 id="workbench-next-title">选择一项常做的工作</h2><p id="workbench-next-text">任务会保留来源和做法，方便下次继续使用。</p></div>
         <div class="task-actions"><button id="workbench-open-result" type="button" disabled>查看结果</button><a id="workbench-task-chat" class="text-action" href="/">回到对话继续</a></div>
       </section>
+      <section id="workbench-schedule-panel" class="panel" hidden aria-labelledby="workbench-schedule-title"><div class="panel-heading"><div><h2 id="workbench-schedule-title">定时运行</h2><p>按所选时间运行已采用的正式做法；新的结果仍按业务核对规则处理。</p></div></div><div class="panel-body"><p id="workbench-schedule-details"></p><label for="workbench-schedule-time">每天运行时间</label> <input id="workbench-schedule-time" type="time" aria-label="每天运行时间"><div class="task-actions"><button type="button" id="workbench-schedule-save">设置定时</button><button type="button" id="workbench-schedule-pause">暂停定时</button></div><p id="workbench-schedule-message" role="status" aria-live="polite"></p></div></section>
       <section id="workbench-schedule-review" class="panel" hidden aria-labelledby="workbench-schedule-review-title"><div class="panel-heading"><div><h2 id="workbench-schedule-review-title">核对上次自动运行</h2><p>上次自动运行的结果不确定，自动更新已暂停。请先到目标系统核对完整执行状态和外部回执；如果无法确认或只执行了一部分，请勿提交确认。暂停或重新设置计划本身不能代替核对。</p></div></div><div class="panel-body"><p id="workbench-schedule-review-run"></p><label for="workbench-schedule-review-outcome">核对后的完整执行状态</label> <select id="workbench-schedule-review-outcome"><option value="">请选择</option><option value="executed">已完整执行</option><option value="not_executed">确定未执行</option></select><label for="workbench-schedule-review-note">在哪个系统、依据哪些回执核对（至少 4 个字）</label><textarea id="workbench-schedule-review-note" rows="3" maxlength="500"></textarea><div class="task-actions"><button type="button" id="workbench-schedule-review-submit">记录核对</button></div><p id="workbench-schedule-review-message" role="status" aria-live="polite"></p></div></section>
       <section id="workbench-failure" class="run-failure" aria-labelledby="workbench-failure-title" hidden>
         <span class="task-kicker">最近一次运行</span><h2 id="workbench-failure-title">这次任务没有完成</h2><p id="workbench-failure-reason"></p><p id="workbench-failure-next" class="failure-next"></p><p id="workbench-failure-stage" class="muted"></p>
@@ -99,6 +101,7 @@
       <section class="panel"><div class="panel-heading"><h2>字段含义</h2><span>单位、期间和粒度随结果保留</span></div><div id="workbench-fields" class="field-list panel-body"></div></section>
     </section>
     <section id="workbench-panel-rules" class="tab-panel" role="tabpanel" aria-labelledby="workbench-tab-rules" hidden>
+      <section class="panel"><div class="panel-heading"><div><h2>业务处理流程</h2><p>查看当前已保存做法的来源、处理关系与结果。</p></div><a id="workbench-graph-edit" class="text-action" href="/" hidden>在对话中修改此流程</a></div><div id="workbench-graph" class="panel-body"></div></section>
       <section class="panel"><div class="panel-heading"><h2>已保存的任务做法</h2></div><ol id="workbench-steps" class="steps panel-body"></ol><p id="workbench-steps-empty" class="empty" hidden>尚未定义处理步骤。</p></section>
       <section class="panel">
         <div class="panel-heading"><div><h2>调整这项任务</h2><p>可以回到对话说明要改哪里，让 Agent 修改后再运行核对。</p></div><a id="workbench-rules-chat" class="text-action" href="/">在对话中修改</a></div>

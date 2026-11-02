@@ -66,7 +66,7 @@ def main():
     if Model.opencode and args.native:parser.error('V2 decision backend is JSON validated, not V1 native tools')
     model=ThreadingHTTPServer(('127.0.0.1',0),Model);thread=threading.Thread(target=model.serve_forever,daemon=True);thread.start()
     try:
-        with tempfile.TemporaryDirectory(prefix='atlas-agent-protocol-') as temp:
+        with tempfile.TemporaryDirectory(prefix='nexus-agent-protocol-') as temp:
             temp=Path(temp)
             oc_process=None
             oc_config={}
@@ -77,9 +77,9 @@ def main():
                 with socket.socket() as sock:sock.bind(('127.0.0.1',0));oc_port=sock.getsockname()[1]
                 password=secrets.token_urlsafe(32)
                 oc_env={k:v for k,v in os.environ.items() if k not in ('APP_TOKEN','DATABASE_URL','LLM_API_KEY')}
-                oc_env.update(XDG_DATA_HOME=str(oc_dir/'data'),XDG_CONFIG_HOME=str(oc_dir/'config'),OPENCODE_SERVER_PASSWORD=password,ATLAS_MODEL_KEY='simulated-only',OPENCODE_DISABLE_MODELS_FETCH='true')
+                oc_env.update(XDG_DATA_HOME=str(oc_dir/'data'),XDG_CONFIG_HOME=str(oc_dir/'config'),OPENCODE_SERVER_PASSWORD=password,NEXUS_MODEL_KEY='simulated-only',OPENCODE_DISABLE_MODELS_FETCH='true')
                 oc_log=(temp/'opencode.log').open('w');oc_process=subprocess.Popen([str(args.opencode_binary.resolve()),'serve','--hostname','127.0.0.1','--port',str(oc_port)],cwd=oc_dir,env=oc_env,stdout=oc_log,stderr=oc_log)
-                oc_config={'engine':'opencode','base_url':f'http://127.0.0.1:{oc_port}','model':'atlas/deepseek-v4-pro','api_key':password,'upstream_base_url':upstream,'share_data':True,'tool_protocol':'json'}
+                oc_config={'engine':'opencode','base_url':f'http://127.0.0.1:{oc_port}','model':'nexus/deepseek-v4-pro','api_key':password,'upstream_base_url':upstream,'share_data':True,'tool_protocol':'json'}
                 with httpx.Client(timeout=1,trust_env=False,auth=('opencode',password)) as check:
                     for _ in range(80):
                         try:
@@ -89,7 +89,7 @@ def main():
                         time.sleep(.25)
                     else:raise RuntimeError('OpenCode startup failed')
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-            env=dict(os.environ,DATA_DIR=str(temp/'data'),DATABASE_URL='sqlite:///'+str(temp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',ATLAS_CLOUD_VERIFY='0')
+            env=dict(os.environ,DATA_DIR=str(temp/'data'),DATABASE_URL='sqlite:///'+str(temp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
             with (temp/'service.log').open('w') as log:
                 process=None
                 try:
@@ -136,7 +136,7 @@ def main():
                         assert Model.transient_sent
                         if args.check_evaluator:
                             report_file=temp/'evaluator-protocol.json'
-                            evaluation=subprocess.run([sys.executable,str(ROOT/'scripts/evaluate_agent.py'),'--execute','--protocol-test','--limit','3','--output',str(report_file)],env=dict(env,ATLAS_URL=f'http://127.0.0.1:{port}'),capture_output=True,text=True,timeout=120)
+                            evaluation=subprocess.run([sys.executable,str(ROOT/'scripts/evaluate_agent.py'),'--execute','--protocol-test','--limit','3','--output',str(report_file)],env=dict(env,NEXUS_URL=f'http://127.0.0.1:{port}'),capture_output=True,text=True,timeout=120)
                             assert evaluation.returncode==0,evaluation.stdout[-2000:]+evaluation.stderr[-1000:]
                             result=json.loads(report_file.read_text());assert result['passed']==3 and result['real_model_evaluated'] is False and result['success_rate'] is None
                         print(json.dumps({'ok':True,'simulated_model':True,'real_api_worker':True,'real_opencode_binary':bool(args.opencode_binary),'opencode_version':'2.0.32' if args.opencode_binary else None,'model_steps':6 if args.native else 3,'native_tool_calling':bool(args.native and Model.native_calls),'tool_discovery_search_exact_edit':bool(args.native),'evaluation_runner_protocol_test':args.check_evaluator,'transient_model_retry':True,'credentials_survive_restart':True,'cross_session_retrieval':True,'files_versioned_and_restored':True}))

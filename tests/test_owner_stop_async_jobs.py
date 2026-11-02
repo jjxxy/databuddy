@@ -19,7 +19,7 @@ from test_project_reports import connector
 
 @pytest.fixture(autouse=True)
 def isolated_records():
-    assert DATA.resolve().name.startswith('atlas-tests-')
+    assert DATA.resolve().name.startswith('nexus-tests-')
     with engine.connect() as connection:
         before_items=set(connection.execute(select(items.c.id)).scalars())
         before_jobs=set(connection.execute(select(jobs.c.id)).scalars())

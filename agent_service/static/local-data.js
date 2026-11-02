@@ -1,18 +1,18 @@
 'use strict';
 /* Shared local-data view: same-origin web capability, also used by the desktop shell. */
 (()=>{
- const randomId=()=>window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID();
+ const randomId=()=>window.nexusSecureUUID?window.nexusSecureUUID():crypto.randomUUID();
  const markup="<h1>把资料变成可核对的结果</h1><p class=\"lead\">导入、画像、明确处理口径、预览后发布。此页面使用本地确定性规则，不调用云端 AI。</p><p id=\"status\" role=\"status\" aria-live=\"polite\">正在读取本机状态…</p>\n<section><h2>1　选择资料</h2><form id=\"upload\"><label>任务名称<input id=\"name\" maxlength=\"80\" value=\"本地数据核对\" required></label><label>资料文件（可多选）<input id=\"file\" type=\"file\" multiple accept=\".csv,.xlsx,.json,.jsonl,.txt,.pdf,.docx,.pptx\"></label><button id=\"upload-button\" type=\"submit\">导入所选文件</button></form><p class=\"note\">文件窗口中按住 Ctrl（Mac 为 ⌘）或 Shift 可多选；也可重复选择文件，已选文件会保留。最多20个，每个不超过25MB。</p><p id=\"selection-count\" role=\"status\" aria-live=\"polite\"></p><ul id=\"import-files\" class=\"import-files\" hidden></ul><label id=\"source-choice\" hidden>选择要加工的资料<select id=\"source-select\"></select><small>文件分别保留；切换后可单独核对与加工。</small></label><p id=\"profile\"></p></section>\n<section id=\"rules\" hidden><h2>2　明确处理口径</h2><p>选择字段即确定处理方案。留空分组和金额可保留明细；分组汇总须同时选择两项。</p><form id=\"process\"><div class=\"grid\"><label>唯一编号（可选）<select id=\"primary\"></select></label><label>按哪个字段汇总<select id=\"group\"></select></label><label>金额字段<select id=\"amount\"></select></label><label>扣除的退款字段（可选）<select id=\"refund\"></select></label><label>仅保留该字段的指定值<select id=\"filter-field\"></select></label><label>指定值<input id=\"filter-value\" maxlength=\"2000\" placeholder=\"例如：已付款\"></label></div><p class=\"note\">金额按精确十进制处理。此操作产生新候选，不覆盖已有正式结果。</p><button id=\"process-button\" type=\"submit\">执行本地加工</button></form></section>\n<section id=\"result\" hidden><h2>3　核对结果</h2><p id=\"result-info\"></p><p id=\"summary\"></p><div id=\"table\" class=\"table-scroll\"></div><label id=\"source-review-label\" hidden><input id=\"source-review-confirm\" type=\"checkbox\">我已对照原始资料逐项核对来源解释、金额和业务口径，同意采用这次候选结果。</label><div class=\"actions\"><button id=\"publish\" type=\"button\" hidden>已核对，确认发布此候选</button><button id=\"download\" type=\"button\" hidden>导出完整 CSV</button></div><p id=\"receipt\"></p></section>\n<section><h2>已保存的本地任务</h2><p>退出或断网后，已发布成果仍可打开和导出。</p><div id=\"history\"></div></section>\n";
- window.createAtlasLocalData=function(options){
- const root=options.root,prefix=options.prefix||'',token=options.token??sessionStorage.getItem('atlas_token')??'';
+ window.createNexusLocalData=function(options){
+ const root=options.root,prefix=options.prefix||'',token=options.token??sessionStorage.getItem('nexus_token')??'';
  if(!root||!/^[A-Za-z0-9_-]*$/.test(prefix))throw Error('本地工作区挂载参数不正确');
- root.classList.add('atlas-local-view');root.innerHTML=markup.replace(/id="([^"]+)"/g,(_match,id)=>'id="'+prefix+id+'"');
+ root.classList.add('nexus-local-view');root.innerHTML=markup.replace(/id="([^"]+)"/g,(_match,id)=>'id="'+prefix+id+'"');
  const $=selector=>root.querySelector(selector.replace(/^#/,'#'+prefix));
  const fetcher=options.request||((url,requestOptions)=>fetch(url,requestOptions));
  const optionsOnUnauthorized=()=>{if(options.onUnauthorized)options.onUnauthorized();else{reset();message('登录已失效，请返回工作空间重新登录。',true)}};
 let imports=[],source,project,current,previewRun,previewManifest,previewNeedsReview=false,previewNeedsAlignment=false,busy=false,epoch=0,active=false,sealed=false,boundProject='',fileSelectionScope=null;
  const controllers=new Set();
- const authorized=()=>!sealed&&(options.isAuthorized?options.isAuthorized():(token?sessionStorage.getItem('atlas_token')===token:!sessionStorage.getItem('atlas_token')));
+ const authorized=()=>!sealed&&(options.isAuthorized?options.isAuthorized():(token?sessionStorage.getItem('nexus_token')===token:!sessionStorage.getItem('nexus_token')));
  function ensure(generation=epoch){if(!active||generation!==epoch||!authorized()||(options.projectId&&String(options.projectId()||'')!==boundProject))throw Object.assign(Error('工作空间或登录状态已变化，请重新打开本地工作区。'),{stale:true})}
 const message=(text,error=false)=>{$('#status').textContent=text;$('#status').classList.toggle('error',error)};
 async function api(path,requestOptions={}){
@@ -93,23 +93,23 @@ $('#process').addEventListener('submit',event=>{event.preventDefault();guarded(a
  $('#result').hidden=true;message('正在本地加工和执行质量检查，已有正式结果保持不变。');current=await json('/pipelines',{method:'POST',body:{source_id:source.id,name:$('#name').value.trim()+(imports.length>1?' · '+source.name:''),spec,release_mode:'manual'}});await waitFor(async()=>{const p=(await json('/pipelines')).find(p=>p.id===current.id);if(p?.candidate_run){current=p;return p}const runs=await json('/runs?target='+encodeURIComponent(current.id));const failed=runs.find(r=>r.status==='failed');if(failed)throw Error(failed.error||failed.message||'质量检查未通过，请查看任务记录并检查编号、金额或筛选条件。');return null});showResult(await json(`/pipelines/${current.id}/preview`),true);message('加工完成，请核对候选结果后再发布。');await history();
 })});
 $('#publish').onclick=()=>guarded(async()=>{if(!current||!previewRun)throw Error('请先重新读取候选结果。');if(previewNeedsAlignment)throw Error('事实资料尚缺少业务语义和可加性核对，不能发布。');const body={run_id:previewRun};if(previewNeedsReview){if(!$('#source-review-confirm').checked)throw Error('请先对照原始资料核对来源解释、金额和业务口径，并勾选确认。');if(!previewManifest?.commit||!/^[a-f0-9]{64}$/.test(previewManifest?.parquet_hash||''))throw Error('候选结果的版本依据不完整，请重新查看。');Object.assign(body,{confirm_source_review:true,expected_commit:previewManifest.commit,expected_parquet_sha256:previewManifest.parquet_hash})}await json(`/pipelines/${current.id}/publish`,{method:'POST',body});showResult(await json(`/pipelines/${current.id}/result`),false);message('已发布核对后的结果，可离线查看或导出。');await history()});
-$('#download').onclick=()=>guarded(async()=>{if(!current)throw Error('请先打开一个已发布结果。');const response=await api(`/pipelines/${current.id}/export`),blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Atlas-完整结果.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);message('已导出完整 CSV。金额保留精确十进制文本。')});
+$('#download').onclick=()=>guarded(async()=>{if(!current)throw Error('请先打开一个已发布结果。');const response=await api(`/pipelines/${current.id}/export`),blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Nexus WorkStudio-完整结果.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);message('已导出完整 CSV。金额保留精确十进制文本。')});
 
  function close(){epoch++;active=false;busy=false;for(const controller of controllers)controller.abort();controllers.clear();root.querySelectorAll('button').forEach(button=>button.disabled=false);$('#file').disabled=$('#source-select').disabled=false}
  function clear(){imports=[];source=project=current=previewRun=previewManifest=null;renderImports();previewNeedsReview=false;previewNeedsAlignment=false;root.querySelectorAll('form').forEach(form=>form.reset());$('#file').value='';$('#rules').hidden=true;$('#result').hidden=true;for(const id of ['profile','table','summary','receipt','history'])$('#'+id).replaceChildren();for(const id of ['primary','group','amount','refund','filter-field'])$('#'+id).replaceChildren();message('选择工作资料后再导入，不会自动扫描或上传文件。')}
  function reset(){close();sealed=true;clear()}
  function projectChanged(){close();clear();sealed=false}
- function open(){if(sealed||!authorized())return Promise.resolve();active=true;boundProject=String(options.projectId?.()||'');return guarded(async()=>{if(!token&&!options.request)throw Error('请从 Atlas 工作空间打开本地处理页面。');const state=await json('/desktop/runtime');message(state.notice);await history()})}
+ function open(){if(sealed||!authorized())return Promise.resolve();active=true;boundProject=String(options.projectId?.()||'');return guarded(async()=>{if(!token&&!options.request)throw Error('请从 Nexus WorkStudio 工作空间打开本地处理页面。');const state=await json('/desktop/runtime');message(state.notice);await history()})}
  return {open,close,reset,projectChanged,isBusy:()=>busy};
  };
 
- window.installAtlasLocalWorkspace=function(b){
-  const panel=document.getElementById('atlas-local-workspace-panel'),container=document.getElementById('atlas-local-workspace-content'),select=document.getElementById('work-environment'),control=document.getElementById('work-environment-control'),openButton=document.getElementById('open-local-work');
+ window.installNexusLocalWorkspace=function(b){
+  const panel=document.getElementById('nexus-local-workspace-panel'),container=document.getElementById('nexus-local-workspace-content'),select=document.getElementById('work-environment'),control=document.getElementById('work-environment-control'),openButton=document.getElementById('open-local-work');
   if(!panel||!container||!select||!control||!openButton||!b)return null;
-  const projectContext=document.getElementById('atlas-local-project-context'),label=document.getElementById('atlas-local-workspace-scope'),choose=document.getElementById('atlas-local-choose-folder'),note=document.getElementById('atlas-local-folder-note');
+  const projectContext=document.getElementById('nexus-local-project-context'),label=document.getElementById('nexus-local-workspace-scope'),choose=document.getElementById('nexus-local-choose-folder'),note=document.getElementById('nexus-local-folder-note');
   let generation=0,sealed=false,mode='work';
-  const processor=window.createAtlasLocalData({root:container,prefix:'atlas-local-',projectId:()=>b.getState().projectId,request:(url,options)=>b.authFetch(url,options),isAuthorized:()=>!sealed,onUnauthorized:()=>b.expireAuthentication?.()});
-  const preference=()=> 'atlas_work_environment_'+(b.getState().projectId||'home');
+  const processor=window.createNexusLocalData({root:container,prefix:'nexus-local-',projectId:()=>b.getState().projectId,request:(url,options)=>b.authFetch(url,options),isAuthorized:()=>!sealed,onUnauthorized:()=>b.expireAuthentication?.()});
+  const preference=()=> 'nexus_work_environment_'+(b.getState().projectId||'home');
   const contextStatus=document.getElementById('work-environment-status');
   function restore(){select.value=sessionStorage.getItem(preference())==='local'?'local':'';openButton.hidden=select.value!=='local';contextStatus.hidden=true}
   async function syncEnvironment(){
@@ -127,7 +127,7 @@ $('#download').onclick=()=>guarded(async()=>{if(!current)throw Error('请先打�
    select.value='local';openButton.hidden=false;
    if(!panel.open)panel.showModal();
    const current=++generation,pid=state.projectId;const projectName=b.projectItems?.().find(item=>item.id===pid)?.name;projectContext.textContent=projectName?'当前项目：'+projectName:'尚未选择项目';label.textContent='正在核对当前工作空间…';
-   choose.hidden=typeof window.atlasDesktop?.chooseWorkspace!=='function';
+   choose.hidden=typeof window.nexusDesktop?.chooseWorkspace!=='function';
    note.textContent=choose.hidden?'浏览器本身不能执行本机加工。需要连接实际的本机工作文件夹后，才能读取你明确选择的资料。':'选择文件夹会切换整个本地工作空间，原有项目和资料不会自动移动。';
    container.hidden=true;
    try{const value=await b.api('/local-workspace');if(current!==generation||sealed||pid!==b.getState().projectId)return;label.textContent=value.enabled?'当前本地工作空间：'+(value.label||'所选文件夹'):'尚未选择本地工作文件夹。选择后会切换到该文件夹的独立工作空间。';if(value.enabled){note.textContent='资料在已核对的本地工作文件夹内处理；只读取你明确导入的文件。切换文件夹不会移动已有项目。';sessionStorage.setItem(preference(),'local');container.hidden=false;await processor.open();}else{sessionStorage.removeItem(preference());contextStatus.textContent='本地文件夹未选择';contextStatus.hidden=false;}}
@@ -135,9 +135,9 @@ $('#download').onclick=()=>guarded(async()=>{if(!current)throw Error('请先打�
   }
   choose.onclick=async()=>{
    const state=b.getState();if(sealed||processor.isBusy()||state.pending||state.sending||state.activeTurn){b.toast('请先等待或停止正在进行的工作，再切换工作空间。');return;}
-   if(typeof window.atlasDesktop?.chooseWorkspace!=='function')return;
+   if(typeof window.nexusDesktop?.chooseWorkspace!=='function')return;
    const current=++generation;choose.disabled=true;
-   try{const value=await window.atlasDesktop.chooseWorkspace();if(current!==generation||sealed)return;if(value?.cancelled)note.textContent='已取消选择，当前工作空间保持不变。';else note.textContent='正在切换工作空间。请等待工作台重新载入，原有项目不会被自动移动。';}
+   try{const value=await window.nexusDesktop.chooseWorkspace();if(current!==generation||sealed)return;if(value?.cancelled)note.textContent='已取消选择，当前工作空间保持不变。';else note.textContent='正在切换工作空间。请等待工作台重新载入，原有项目不会被自动移动。';}
    catch{if(current===generation&&!sealed)note.textContent='没有切换工作空间。请检查本机连接后重试。';}
    finally{if(current===generation)choose.disabled=false}
   };
@@ -145,9 +145,9 @@ $('#download').onclick=()=>guarded(async()=>{if(!current)throw Error('请先打�
    if(select.value==='local'){void open();return;}
    close();restore();contextStatus.textContent='云端工作空间后续阶段开放，本轮未切换工作位置。';contextStatus.hidden=false;b.toast(contextStatus.textContent);
   };
-  openButton.onclick=()=>void open();document.getElementById('atlas-local-workspace-close').onclick=close;
+  openButton.onclick=()=>void open();document.getElementById('nexus-local-workspace-close').onclick=close;
   panel.addEventListener('cancel',event=>{event.preventDefault();close()});
-  function modeChanged(value){mode=value;control.hidden=mode!=='work';if(mode!=='work')close();else void syncEnvironment()}
+  function modeChanged(value){mode=value;control.hidden=true;if(mode!=='work')close();else void syncEnvironment()}
   function projectChanged(){generation++;projectContext.textContent='';processor.projectChanged();if(panel.open)panel.close();restore();if(mode==='work')void syncEnvironment()}
   function reset(){sealed=true;generation++;processor.reset();if(panel.open)panel.close();select.value='';openButton.hidden=true;projectContext.textContent='';label.textContent='';note.textContent='';}
   restore();modeChanged('work');

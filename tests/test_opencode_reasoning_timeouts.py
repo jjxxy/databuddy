@@ -19,14 +19,14 @@ def _settings(root,entry):
 
 
 def test_real_generated_supervisor_config_gives_reasoning_time(monkeypatch,tmp_path):
-    for name in ('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS','ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS'):
+    for name in ('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS','NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS'):
         monkeypatch.delenv(name,raising=False)
     root,entry,_=_prepare(monkeypatch,tmp_path)
     cfg=_settings(root,entry)
     assert 'timeout' not in cfg  # Active streams have no default total deadline.
     assert cfg['headerTimeout']==cfg['chunkTimeout']==900000
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS','1200')
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS','420')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS','1200')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS','420')
     root,entry,_=_prepare(monkeypatch,tmp_path)
     assert {k:_settings(root,entry)[k] for k in ('timeout','headerTimeout','chunkTimeout')}=={
         'timeout':1200000,'headerTimeout':420000,'chunkTimeout':420000}
@@ -36,8 +36,8 @@ def test_real_generated_supervisor_config_gives_reasoning_time(monkeypatch,tmp_p
 
 @pytest.mark.parametrize('total,idle',[('0','100'),('nope','100'),('100','-1'),('86401','1')])
 def test_invalid_timeout_configuration_fails_closed(monkeypatch,total,idle):
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',total)
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',idle)
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS',total)
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',idle)
     with pytest.raises(ValueError):runtime._upstream_timeouts()
 
 
@@ -45,21 +45,21 @@ def test_old_independent_service_receives_same_timeout_configuration(monkeypatch
     path=Path(__file__).resolve().parents[1]/'deploy/opencode_bootstrap.py'
     spec=importlib.util.spec_from_file_location('fixture_oc_bootstrap',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',raising=False)
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',raising=False)
-    assert 'timeout' not in module.config('https://example.test')['providers']['atlas']['settings']
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS','900')
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS','350')
-    provider_config=module.config('https://example.test')['providers']['atlas']
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',raising=False)
+    assert 'timeout' not in module.config('https://example.test')['providers']['nexus']['settings']
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS','900')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS','350')
+    provider_config=module.config('https://example.test')['providers']['nexus']
     assert {k:provider_config['settings'][k] for k in ('timeout','headerTimeout','chunkTimeout')}=={
         'timeout':900000,'headerTimeout':350000,'chunkTimeout':350000}
     assert provider_config['compatibility']['reasoningField']=='reasoning_content'
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS','0')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS','0')
     with pytest.raises(ValueError):module.config('https://example.test')
 
 
 def test_prompt_admission_slow_but_eventually_arrives_without_retry(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_ADMISSION_TIMEOUT_SECONDS',raising=False)
     clock=[0]; monkeypatch.setattr(runtime,'time',SimpleNamespace(monotonic=lambda:clock[0]))
     def advance(_metadata,number):
         if number==1:clock[0]=60
@@ -72,7 +72,7 @@ def test_prompt_admission_slow_but_eventually_arrives_without_retry(turn,monkeyp
 
 
 def test_prompt_admission_configurable_timeout_and_no_automatic_replay(turn,monkeypatch):
-    monkeypatch.setenv('ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS','75')
+    monkeypatch.setenv('NEXUS_OPENCODE_ADMISSION_TIMEOUT_SECONDS','75')
     clock=[0];monkeypatch.setattr(runtime,'time',SimpleNamespace(monotonic=lambda:clock[0]))
     requests,_=session(monkeypatch,[[{'type':'idle'}]],on_context=lambda *_:clock.__setitem__(0,76))
     with pytest.raises(provider.ModelServiceError,match='会话未开始处理'):
@@ -81,7 +81,7 @@ def test_prompt_admission_configurable_timeout_and_no_automatic_replay(turn,monk
 
 
 def test_compaction_wait_uses_separate_long_timeout(turn,monkeypatch):
-    monkeypatch.setenv('ATLAS_OPENCODE_COMPACTION_TIMEOUT_SECONDS','500')
+    monkeypatch.setenv('NEXUS_OPENCODE_COMPACTION_TIMEOUT_SECONDS','500')
     patch('turn',turn['id'],opencode_session_id='ses_idle',opencode_memory_generation=0)
     monkeypatch.setattr('agent_service.memory_service.generation',lambda *_:0)
     session(monkeypatch,[[]],reused=True)
@@ -96,9 +96,9 @@ def test_compaction_wait_uses_separate_long_timeout(turn,monkeypatch):
 
 
 def test_invalid_admission_configuration_is_rejected_before_prompt(turn,monkeypatch):
-    monkeypatch.setenv('ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS','0')
+    monkeypatch.setenv('NEXUS_OPENCODE_ADMISSION_TIMEOUT_SECONDS','0')
     requests,_=session(monkeypatch,[])
-    with pytest.raises(ValueError,match='ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS'):
+    with pytest.raises(ValueError,match='NEXUS_OPENCODE_ADMISSION_TIMEOUT_SECONDS'):
         runtime.run_session(get('turn',turn['id']),'work',{},lambda *_:pytest.fail('no tool call'))
     assert not any(method=='POST' and path.endswith('/prompt') for method,path,_ in requests)
 

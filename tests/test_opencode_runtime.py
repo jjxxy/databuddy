@@ -11,15 +11,15 @@ def _prepare(monkeypatch, tmp_path, turns=None):
     monkeypatch.setattr(runtime, '_root', lambda: root)
     binary = tmp_path / 'opencode'
     binary.write_bytes(b'test-only-not-executed')
-    monkeypatch.setenv('ATLAS_OPENCODE_BINARY', str(binary))
-    monkeypatch.setenv('ATLAS_OPENCODE_RUNTIME', '1')
+    monkeypatch.setenv('NEXUS_OPENCODE_BINARY', str(binary))
+    monkeypatch.setenv('NEXUS_OPENCODE_RUNTIME', '1')
     monkeypatch.setenv('APP_TOKEN', 'must-not-reach-opencode')
     monkeypatch.setenv('OPENAI_API_KEY', 'must-not-reach-opencode')
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'must-not-reach-opencode')
     monkeypatch.setenv('OPENCODE_CONFIG_CONTENT', '{"plugins":["untrusted"]}')
     monkeypatch.setattr('agent_service.store.all_items', lambda kind: turns or [])
     entry = {'id': 'fast', 'name': '业务模型', 'base_url': 'https://model.example/v1',
-             'model': 'business-model', 'api_key': 'owner-only-model-key', 'engine': 'atlas'}
+             'model': 'business-model', 'api_key': 'owner-only-model-key', 'engine': 'nexus'}
     spec = runtime.prepare({'models': [entry], 'default_model_id': 'fast'}, {'type': 'object'})
     return root, entry, spec
 
@@ -34,7 +34,7 @@ def test_supervisor_uses_private_runtime_and_no_ambient_credentials(monkeypatch,
     config = json.loads((root / 'config/opencode/opencode.json').read_text())
     assert config['plugins'][0] == '-*' and '*' not in config['plugins']
     assert config['permissions'] == [{'action': '*', 'resource': '*', 'effect': 'deny'},
-                                     {'action': 'atlas_step', 'resource': '*', 'effect': 'allow'}]
+                                     {'action': 'nexus_step', 'resource': '*', 'effect': 'allow'}]
     assert config['mcp'] == {'servers': {}}
     if os.name!='nt':
         assert (root / 'connection.json').stat().st_mode & 0o777 == 0o600
@@ -74,7 +74,7 @@ def test_readiness_rejects_effective_configuration_and_plugin_drift(monkeypatch,
     root, entry, spec = _prepare(monkeypatch, tmp_path)
     config = json.loads((root / 'config/opencode/opencode.json').read_text())
     plugins = [{'id': name, 'state': {'status': 'active'}, 'source': {'type': 'builtin'}} for name in runtime.BUILTIN_PLUGINS]
-    plugins.append({'id': 'atlas.business-tools', 'state': {'status': 'active'},
+    plugins.append({'id': 'nexus.business-tools', 'state': {'status': 'active'},
                     'source': {'type': 'local', 'path': str(root / 'plugin/index.js')}})
     loaded = [{'type': 'document', 'path': str(root / 'config/opencode/opencode.json'), 'info': copy.deepcopy(config)}]
     def request(value, method, path, *args, **kwargs):
@@ -159,6 +159,6 @@ def test_compaction_admission_without_completed_receipt_times_out(monkeypatch):
 
 
 def test_local_only_rejects_old_cloud_route_before_runtime_prepare(monkeypatch,tmp_path):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
     with pytest.raises(ValueError,match='仅本地连接模式'):_prepare(monkeypatch,tmp_path)
 

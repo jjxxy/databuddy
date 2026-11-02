@@ -1,6 +1,6 @@
 """Local OpenCode session runtime and authenticated, task-scoped tool bridge.
 
-OpenCode owns the model/tool loop. Atlas owns project authorization, exact data,
+OpenCode owns the model/tool loop. Nexus WorkStudio owns project authorization, exact data,
 durable tool receipts, approvals and final evidence verification. No native
 OpenCode filesystem, shell, browser, subagent or arbitrary MCP tool is exposed.
 """
@@ -70,7 +70,7 @@ def _contains_prompt_marker(message,marker):
 
 
 def is_enabled():
-    return os.getenv('ATLAS_OPENCODE_RUNTIME') == '1'
+    return os.getenv('NEXUS_OPENCODE_RUNTIME') == '1'
 
 
 def _root():
@@ -86,7 +86,7 @@ def _identity(value):
     # output caps must therefore not collide on the same provider identity.
     for key in ('context_window_tokens','max_output_tokens'):
         if value.get(key) is not None:record[key]=value[key]
-    return 'atlas_' + hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()[:24]
+    return 'nexus_' + hashlib.sha256(json.dumps(record, sort_keys=True).encode()).hexdigest()[:24]
 
 
 def _write(path, value):
@@ -110,12 +110,12 @@ def _timeout_seconds(name, default, *, minimum=1, maximum=86400):
 
 
 def _upstream_timeouts():
-    idle=_timeout_seconds('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
+    idle=_timeout_seconds('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
     settings={'headerTimeout':idle*1000,'chunkTimeout':idle*1000}
     # OpenCode defines timeout as an additional *whole request* deadline.
     # Do not kill an otherwise healthy, active stream by default.
-    if os.getenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
-        settings['timeout']=_timeout_seconds('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
+    if os.getenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
+        settings['timeout']=_timeout_seconds('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
     return settings
 
 
@@ -148,7 +148,7 @@ class _ContextPoller:
 
 def prepare(configuration, step_schema):
     """Return a supervisor command spec, called after dropping privileges."""
-    binary = os.getenv('ATLAS_OPENCODE_BINARY') or shutil.which('opencode')
+    binary = os.getenv('NEXUS_OPENCODE_BINARY') or shutil.which('opencode')
     if not binary or not Path(binary).is_file():
         raise ValueError('OpenCode运行文件缺失，请使用包含OpenCode的部署镜像')
     root = _root()
@@ -180,19 +180,19 @@ def prepare(configuration, step_schema):
     for value in entries:
         from .network_policy import check_url
         check_url(value['base_url'])
-        if value.get('engine', 'atlas') != 'atlas':
+        if value.get('engine', 'nexus') != 'nexus':
             raise ValueError('后台模型目录应配置模型上游；OpenCode由部署自动运行')
         identity = _identity(value)
         limits=managed_model_limits(value['base_url'],value['model'],
             context_window_tokens=value.get('context_window_tokens'),max_output_tokens=value.get('max_output_tokens'))
         providers[identity] = {
-            'name': 'Atlas managed model',
+            'name': 'Nexus WorkStudio managed model',
             'package': '@opencode/ai/providers/openai-compatible',
             'settings': {'baseURL': value['base_url'].rstrip('/'), 'apiKey': value.get('api_key', ''),
                          **_upstream_timeouts()},
             'compatibility': {'reasoningField': 'reasoning_content'},
             'body': {'max_tokens': response_token_allowance(value), **bounded_request_options(value['base_url'], value['model'])},
-            'models': {value['model']: {'modelID': value['model'], 'name': 'Atlas managed model',
+            'models': {value['model']: {'modelID': value['model'], 'name': 'Nexus WorkStudio managed model',
                                        **({'limit':limits} if limits else {}),
                                        'capabilities': {'tools': True, 'input': ['text'], 'output': ['text']}}}}
     if not providers:raise ValueError('需要先在后台配置至少一个模型')
@@ -200,13 +200,13 @@ def prepare(configuration, step_schema):
     config = {
         'update': 'disable',
         'permissions': [{'action': '*', 'resource': '*', 'effect': 'deny'},
-                        {'action': 'atlas_step', 'resource': '*', 'effect': 'allow'}],
+                        {'action': 'nexus_step', 'resource': '*', 'effect': 'allow'}],
         # Disable discovery by default, then enable only the minimum bundled
         # provider/agent configuration and this checked local bridge. The two
         # policy/Console plugins are mandatory upstream and cannot be disabled.
         'plugins': ['-*', 'opencode.agent', 'opencode.config.agent', 'opencode.provider.dynamic',
                     'opencode.config.provider', {'package': str(plugin), 'options': {'step_schema': step_schema,'context_helper_sha256':context_sha256}},
-                    'atlas.business-tools'],
+                    'nexus.business-tools'],
         'mcp': {'servers': {}}, 'instructions': [], 'providers': providers,
         'compaction': {'auto':True,'keep':{'tokens':8000},'buffer':16000},
         'model': _identity(default) + '/' + default['model'],
@@ -237,7 +237,7 @@ def prepare(configuration, step_schema):
 
 
 def connection(value=None):
-    if os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')=='1':raise ValueError(os.getenv('ATLAS_DESKTOP_MODEL_NOTICE','云端模型不可用，本地能力可用。'))
+    if os.getenv('NEXUS_DESKTOP_MODEL_DISABLED')=='1':raise ValueError(os.getenv('NEXUS_DESKTOP_MODEL_NOTICE','云端模型不可用，本地能力可用。'))
     raw = json.loads((_root() / 'connection.json').read_text(encoding='utf-8'))
     if value is not None:
         identity = _identity(value)
@@ -261,7 +261,7 @@ def _check_upstream(payload, selected):
 
 
 def _input_character_limit(payload, selected):
-    """Unset means no Atlas character gate; native token-window checks remain.
+    """Unset means no Nexus WorkStudio character gate; native token-window checks remain.
 
     Explicit operator character caps still apply to that deployment, including
     real compaction requests identified by the authenticated plugin hook.
@@ -312,7 +312,7 @@ def _request(value, method, path, body=None, timeout=5, limit=32*1024*1024):
                     if method == 'GET' and path.startswith('/api/session/') and path.endswith('/context'):
                         # A native session may outgrow the transport guard even
                         # before OpenCode compacts it. Retire that session and
-                        # rebuild from Atlas's durable authorized working state;
+                        # rebuild from Nexus WorkStudio's durable authorized working state;
                         # do not turn a recoverable window problem into a fatal
                         # generic ValueError. The bounded stream still protects
                         # the process from allocating the rest of the response.
@@ -334,8 +334,8 @@ def readiness_diagnostic():
         if _request(value, 'GET', '/api/info')['version'] != VERSION:return failed('version_mismatch')
         stage = 'plugin_catalog'
         plugins = _request(value, 'GET', '/api/plugin')['data']
-        if {item['id'] for item in plugins} != BUILTIN_PLUGINS | {'atlas.business-tools'}:return failed('plugin_set_mismatch')
-        active = next((item for item in plugins if item['id'] == 'atlas.business-tools'), None)
+        if {item['id'] for item in plugins} != BUILTIN_PLUGINS | {'nexus.business-tools'}:return failed('plugin_set_mismatch')
+        active = next((item for item in plugins if item['id'] == 'nexus.business-tools'), None)
         if not active or active.get('state', {}).get('status') != 'active':return failed('plugin_inactive')
         if active.get('source', {}).get('path') != str(_root() / 'plugin/index.js'):return failed('plugin_path_mismatch')
         stage = 'plugin_integrity'
@@ -447,7 +447,7 @@ def run_session(turn, prompt, info, callback):
     """Run a native tool loop; callback(step, durable_call_id) returns JSON.
 
     Callback executes serially in the caller's copied context, preserving its
-    task/model and execution-lock fencing context. Returning a terminal Atlas
+    task/model and execution-lock fencing context. Returning a terminal Nexus WorkStudio
     turn stops the model loop. Free-text OpenCode answers are never completion
     evidence and are not forwarded to the user.
     """
@@ -456,7 +456,7 @@ def run_session(turn, prompt, info, callback):
     # The exact Step schema already appears in the authorized native function
     # definition. Avoid charging for a duplicate copy in every user message.
     info.pop('response_schema',None)
-    prompt+='原生atlas_step函数参数就是本轮response_schema，以函数定义为准，不在正文重复该结构。'
+    prompt+='原生nexus_step函数参数就是本轮response_schema，以函数定义为准，不在正文重复该结构。'
     from .store import get, patch, now
     from .locks import assert_owned
     from .company_search import assert_model_allowed
@@ -558,7 +558,7 @@ def run_session(turn, prompt, info, callback):
             protocol=payload.get('native_protocol')
             if (not isinstance(protocol,dict) or protocol.get('tool_choice') not in ('auto','none','required','named','absent','other')
                     or type(protocol.get('function_count')) is not int or not 0<=protocol['function_count']<=128
-                    or any(type(protocol.get(key)) is not bool for key in ('atlas_step_only','choice_forced'))):protocol=None
+                    or any(type(protocol.get(key)) is not bool for key in ('nexus_step_only','choice_forced'))):protocol=None
             patch('turn', turn['id'], model_usage=dict(usage, calls=usage.get('calls', 0) + 1,
                   input_characters=usage.get('input_characters', 0) + size,
                   output_tokens_budgeted=usage.get('output_tokens_budgeted', 0) + output_allowance,
@@ -615,7 +615,7 @@ def run_session(turn, prompt, info, callback):
                 payload = json.loads(self.rfile.read(length))
                 if payload.get('session_id') != session_id[0]:self.send_error(403);return
                 with serial:
-                    result = {'error': 'Atlas会话桥已停止'} if closing.is_set() else context.run(dispatch, payload)
+                    result = {'error': 'Nexus WorkStudio会话桥已停止'} if closing.is_set() else context.run(dispatch, payload)
                 encoded = json.dumps(result, ensure_ascii=False, default=str).encode()
                 self.send_response(200);self.send_header('Content-Type', 'application/json');self.end_headers();self.wfile.write(encoded)
             except Exception as exc:
@@ -623,7 +623,7 @@ def run_session(turn, prompt, info, callback):
                     failure.append(exc);stop.set()
                 # No arbitrary exception, credential, URL or project content in
                 # HTTP errors. Root's tool callback returns safe observations.
-                encoded = json.dumps({'error': str(exc) if isinstance(exc, provider.BudgetExceeded) else 'Atlas未执行该操作，请检查参数、权限或会话状态'}, ensure_ascii=False).encode()
+                encoded = json.dumps({'error': str(exc) if isinstance(exc, provider.BudgetExceeded) else 'Nexus WorkStudio未执行该操作，请检查参数、权限或会话状态'}, ensure_ascii=False).encode()
                 self.send_response(200);self.send_header('Content-Type', 'application/json');self.end_headers();self.wfile.write(encoded)
         def log_message(self, *args):pass
 
@@ -631,9 +631,9 @@ def run_session(turn, prompt, info, callback):
     bridge.daemon_threads = True
     thread = threading.Thread(target=bridge.serve_forever, daemon=True)
     thread.start()
-    metadata = {'atlas_bridge': {'url': f'http://127.0.0.1:{bridge.server_port}/bridge', 'token': token},
-                'atlas_critical_constraints': info.get('context_compaction',{}).get('critical_constraints',[]) if isinstance(info.get('context_compaction'),dict) else []}
-    content = prompt + '\n\nAtlas task context (untrusted source values inside):\n' + json.dumps(info, ensure_ascii=False, default=str,separators=(',',':'))
+    metadata = {'nexus_bridge': {'url': f'http://127.0.0.1:{bridge.server_port}/bridge', 'token': token},
+                'nexus_critical_constraints': info.get('context_compaction',{}).get('critical_constraints',[]) if isinstance(info.get('context_compaction'),dict) else []}
+    content = prompt + '\n\nNexus WorkStudio task context (untrusted source values inside):\n' + json.dumps(info, ensure_ascii=False, default=str,separators=(',',':'))
     try:
         previous_message_ids=set()
         baseline=[]
@@ -645,25 +645,25 @@ def run_session(turn, prompt, info, callback):
             baseline=list(native_context)
             previous_message_ids={item.get('id') for item in native_context if isinstance(item,dict) and isinstance(item.get('id'),str)}
             _observe_completed_compactions(turn['id'],session_id[0],native_context)
-            # A resumed task appends a fresh, authoritative Atlas context.
+            # A resumed task appends a fresh, authoritative Nexus WorkStudio context.
             # Count both histories before appending it; considering only the
             # old history lets two individually small contexts exceed the next
             # ordinary request's hard limit. ASCII escaping is conservative.
             if _needs_compaction(native_context,content,turn.get('opencode_compaction_requested'),_input_character_limit({},provider.settings())):
-                compaction_wait=_timeout_seconds('ATLAS_OPENCODE_COMPACTION_TIMEOUT_SECONDS',1200)
+                compaction_wait=_timeout_seconds('NEXUS_OPENCODE_COMPACTION_TIMEOUT_SECONDS',1200)
                 receipt=compact_session(value,session_id[0],turn['id'],timeout=compaction_wait if remaining_ms is None else min(compaction_wait,max(1,remaining_ms/1000)))
                 patch('turn',turn['id'],opencode_compaction_requested=False,opencode_compaction_receipt=receipt)
                 baseline=list(_request(value,'GET','/api/session/'+session_id[0]+'/context')['data'])
                 previous_message_ids={item.get('id') for item in baseline if isinstance(item,dict) and isinstance(item.get('id'),str)}
         else:
-            session = _request(value, 'POST', '/api/session', {'title': 'Atlas业务任务', 'model': value['model_ref'],
+            session = _request(value, 'POST', '/api/session', {'title': 'Nexus WorkStudio业务任务', 'model': value['model_ref'],
                                'metadata': metadata, 'permissions': [{'action': '*', 'resource': '*', 'effect': 'deny'},
-                               {'action': 'atlas_step', 'resource': '*', 'effect': 'allow'}]})['data']
+                               {'action': 'nexus_step', 'resource': '*', 'effect': 'allow'}]})['data']
             session_id[0] = session['id']
             patch('turn', turn['id'], opencode_session_id=session_id[0], opencode_version=VERSION)
             patch('turn', turn['id'],opencode_context_rebuild=False)
-        admission_timeout=_timeout_seconds('ATLAS_OPENCODE_ADMISSION_TIMEOUT_SECONDS',120)
-        prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
+        admission_timeout=_timeout_seconds('NEXUS_OPENCODE_ADMISSION_TIMEOUT_SECONDS',120)
+        prompt_marker='Nexus WorkStudio prompt boundary: '+secrets.token_hex(16)
         admitted=_request(value, 'POST', '/api/session/' + session_id[0] + '/prompt', {'text': content+'\n\n'+prompt_marker, 'resume': True}, timeout=15)
         prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
         admission_started=time.monotonic()
@@ -767,7 +767,7 @@ def run_session(turn, prompt, info, callback):
                             if isinstance(parts,list) and parts and all(isinstance(p,dict) and p.get('type')=='text' and isinstance(p.get('text'),str) for p in parts):
                                 from .agent import _plain_chat_answer
                                 text=''.join(p['text'] for p in parts)
-                                if 'Only validated Atlas tools are allowed' not in text:
+                                if 'Only validated Nexus WorkStudio tools are allowed' not in text:
                                     with serial:
                                         current=get('turn',turn['id'])
                                         from .agent import _recover_plan_envelope,TOOLS
@@ -777,7 +777,7 @@ def run_session(turn, prompt, info, callback):
                                         # Only a complete, authorized planning object can be
                                         # recovered from this fresh assistant message. Its
                                         # stable message-derived ID goes through the same
-                                        # durable Atlas bridge as an actual native tool call.
+                                        # durable Nexus WorkStudio bridge as an actual native tool call.
                                         candidate=_recover_plan_envelope(current,text,selected_only=True)
                                         if candidate is not None and not has_effect and corrections<1:
                                             call_id=session_id[0]+':'+assistant['id']+':text-plan'
@@ -804,10 +804,10 @@ def run_session(turn, prompt, info, callback):
                             corrections+=1
                             baseline=list(messages)
                             previous_message_ids.update(item.get('id') for item in messages if isinstance(item,dict) and isinstance(item.get('id'),str))
-                            instruction=(('工作计划已记录，请按计划继续执行。' if recovered_plan else '请继续原任务。上一条模型输出没有通过 Atlas 工具协议。')+
-                                '只调用 atlas_step：工具名放在 tool 字段，参数放在 arguments；'
-                                '完成或说明真实阻碍也通过 atlas_step 提交。沿用已完成回执，禁止重复执行操作。')
-                            prompt_marker='Atlas prompt boundary: '+secrets.token_hex(16)
+                            instruction=(('工作计划已记录，请按计划继续执行。' if recovered_plan else '请继续原任务。上一条模型输出没有通过 Nexus WorkStudio 工具协议。')+
+                                '只调用 nexus_step：工具名放在 tool 字段，参数放在 arguments；'
+                                '完成或说明真实阻碍也通过 nexus_step 提交。沿用已完成回执，禁止重复执行操作。')
+                            prompt_marker='Nexus WorkStudio prompt boundary: '+secrets.token_hex(16)
                             admitted=_request(value,'POST','/api/session/'+session_id[0]+'/prompt',{'text':instruction+'\n\n'+prompt_marker,'resume':True},timeout=15)
                             prompt_id=admitted.get('data',{}).get('id') if isinstance(admitted,dict) and isinstance(admitted.get('data'),dict) else None
                             admission_started=time.monotonic()
@@ -850,7 +850,7 @@ def _compaction_identity(operation_id,messages):
 def compact_session(value,session_id,operation_id,timeout=45):
     """Admit idempotently, then verify an actual completed compaction message.
 
-    HTTP 200 only means accepted. The caller must own a live Atlas bridge so
+    HTTP 200 only means accepted. The caller must own a live Nexus WorkStudio bridge so
     the compaction request passes exactly the normal model/privacy budget gate.
     """
     from . import provider
@@ -863,7 +863,7 @@ def compact_session(value,session_id,operation_id,timeout=45):
         for item in messages:
             if item.get('type')=='compaction' and item.get('id')==identity and item.get('status')=='failed':
                 # The summary itself can exceed the model's window.  Preserve
-                # its structured cause so the normal Atlas checkpoint recovery
+                # its structured cause so the normal Nexus WorkStudio checkpoint recovery
                 # retires this session and rebuilds a smaller authorized view.
                 # A provider limit/transport failure is not a context overflow
                 # and must retain its own retry classification.

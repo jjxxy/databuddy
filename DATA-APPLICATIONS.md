@@ -15,7 +15,7 @@
 
 每个应用拥有稳定ID、来源、处理规则、运行记录和发布指针。生成代码包含采集配置、dbt模型/测试、语义以及application目录中的HTML、JS、CSS和application.json。它们进入同一任务Git提交，并镜像到项目统一Git；各会话共享项目版本。
 
-代码ZIP不含来源凭证、模型密钥和原始数据。页面依赖Atlas同源API与鉴权，不能把导出的application目录当成脱离后端即可部署的完整安装包。目前Git保存在持久化卷，尚未连接GitHub/GitLab远端。
+代码ZIP不含来源凭证、模型密钥和原始数据。页面依赖Nexus WorkStudio同源API与鉴权，不能把导出的application目录当成脱离后端即可部署的完整安装包。目前Git保存在持久化卷，尚未连接GitHub/GitLab远端。
 
 ## 版本与运行规则
 

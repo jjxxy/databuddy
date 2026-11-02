@@ -1,4 +1,4 @@
-"""Deterministic lineage for Atlas' constrained generator, never inferred SQL."""
+"""Deterministic lineage for Nexus WorkStudio' constrained generator, never inferred SQL."""
 import copy
 import hashlib
 import json

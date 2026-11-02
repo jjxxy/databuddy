@@ -1,6 +1,6 @@
 """Versioned Agent runtime adapters and durable per-turn selection.
 
-Atlas remains the owner of authorization, tools and execution receipts. An
+Nexus WorkStudio remains the owner of authorization, tools and execution receipts. An
 adapter only drives an existing task; changing the runtime is not a migration
 of a native session, and an unavailable frozen runtime never falls back.
 """
@@ -34,9 +34,9 @@ class OpenCodeRuntime:
         return opencode_runtime.is_enabled()
 
     def capabilities(self):
-        return {'contract_version': '1', 'tool_control': 'atlas_validated',
-                'approval': 'atlas', 'progress': 'persisted_polling',
-                'continuation': 'atlas_state', 'native_session': True}
+        return {'contract_version': '1', 'tool_control': 'nexus_validated',
+                'approval': 'nexus', 'progress': 'persisted_polling',
+                'continuation': 'nexus_state', 'native_session': True}
 
     def run(self, turn_id):
         import json
@@ -50,8 +50,8 @@ class OpenCodeRuntime:
             prompt = messages[0]['content'].replace(
                 '只返回符合response_schema的JSON，不输出思维链。',
                 '按工具协议返回结果，不输出思维链。',
-            ) + ('本轮由OpenCode运行原生工具循环。每一步都调用atlas_step，并把response_schema中的对象作为函数参数；'
-                 '最终答复也通过atlas_step提交，不返回模拟工具JSON或自由文本。')
+            ) + ('本轮由OpenCode运行原生工具循环。每一步都调用nexus_step，并把response_schema中的对象作为函数参数；'
+                 '最终答复也通过nexus_step提交，不返回模拟工具JSON或自由文本。')
             try:
                 receipt = opencode_runtime.run_session(
                     current, prompt, json.loads(messages[1]['content']),
@@ -64,7 +64,7 @@ class OpenCodeRuntime:
                 continue
             patch('turn', turn_id, opencode_receipt=receipt)
             current = get('turn', turn_id)
-            # A finished native loop is not a completed Atlas task. Unless the
+            # A finished native loop is not a completed Nexus WorkStudio task. Unless the
             # bridge explicitly asked the scheduler to rebuild context, an
             # active turn here has no running owner. Without this guard the next
             # tick would launch the same request repeatedly, accumulating model
@@ -78,7 +78,7 @@ class OpenCodeRuntime:
 
 _ADAPTERS: dict[str, RuntimeAdapter] = {
     'opencode': OpenCodeRuntime(),
-    'atlas_legacy': LegacyRuntime(),
+    'nexus_legacy': LegacyRuntime(),
 }
 
 
@@ -93,7 +93,7 @@ def configured_name():
     if selected:
         return selected
     from . import opencode_runtime
-    return 'opencode' if opencode_runtime.is_enabled() else 'atlas_legacy'
+    return 'opencode' if opencode_runtime.is_enabled() else 'nexus_legacy'
 
 
 def catalog():

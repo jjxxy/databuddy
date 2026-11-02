@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import net from 'node:net';
-const dir=await mkdtemp(join(tmpdir(),'atlas-post-stub-'));
+const dir=await mkdtemp(join(tmpdir(),'nexus-post-stub-'));
 await mkdir(join(dir,'node_modules','playwright-core'),{recursive:true});await writeFile(join(dir,'package.json'),'{}');
 await writeFile(join(dir,'node_modules','playwright-core','index.js'),`
 const {EventEmitter}=require('node:events');let routeHandler,sent=0,aborted=0,bodyRead='';const emitter=new EventEmitter();
@@ -25,7 +25,7 @@ exports.chromium={launch:async()=>({newContext:async()=>ctx,close:async()=>{}})}
 `);
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))});s.on('error',reject)});
 const token='t'.repeat(40),sid='b'.repeat(64),wid='c'.repeat(64),base='/v1/sessions/'+sid;
-const server=spawn(process.execPath,['browser_runner/service.mjs'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),ATLAS_BROWSER_PLAYWRIGHT_ROOT:join(dir,'package.json'),ATLAS_BROWSER_TEST_MODE:'1',ATLAS_BROWSER_TOKEN:token,ATLAS_BROWSER_ALLOWED_HOSTS:'127.0.0.1'},stdio:'ignore'});
+const server=spawn(process.execPath,['browser_runner/service.mjs'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),NEXUS_BROWSER_PLAYWRIGHT_ROOT:join(dir,'package.json'),NEXUS_BROWSER_TEST_MODE:'1',NEXUS_BROWSER_TOKEN:token,NEXUS_BROWSER_ALLOWED_HOSTS:'127.0.0.1'},stdio:'ignore'});
 const call=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+port+path,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});return [r.status,await r.json()]};
 try{
  let ready=false;for(let i=0;i<60;i++){try{const r=await fetch('http://127.0.0.1:'+port+'/v1/health',{headers:{Authorization:'Bearer '+token}});if(r.ok){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,50))}assert(ready);
@@ -57,7 +57,7 @@ try{
  // Full FastAPI -> actual runner HTTP -> mocked Playwright, with both approvals.
  const [,human3]=await call(base2+'/mode',{workspace_id:wid,action_id:'b'.repeat(64),mode:'human'});const [,agent3]=await call(base2+'/mode',{workspace_id:wid,action_id:'c'.repeat(64),mode:'agent'});
  const [customStatus]=await call(base2+'/action',{workspace_id:wid,action_id:'d'.repeat(64),agent_authorized:true,action:'capture_post',capture_confirmed:true,revision:agent3.revision,ref:4});assert.equal(customStatus,409);
- const helper=spawn(process.env.ATLAS_TEST_PYTHON||'./.venv/bin/python',['tests/browser_post_capture_helper.py'],{cwd:process.cwd(),env:{...process.env,PYTHONPATH:'.',DATA_DIR:join(dir,'backend-data'),APP_TOKEN:'local-test-token-123456789',ATLAS_BROWSER_URL:'http://127.0.0.1:'+port,ATLAS_BROWSER_TOKEN:token,ATLAS_WEB_ENABLED:'1',ATLAS_WEB_ALLOWED_HOSTS:'127.0.0.1',API_ALLOWED_HOSTS:'127.0.0.1'}});
+ const helper=spawn(process.env.NEXUS_TEST_PYTHON||'./.venv/bin/python',['tests/browser_post_capture_helper.py'],{cwd:process.cwd(),env:{...process.env,PYTHONPATH:'.',DATA_DIR:join(dir,'backend-data'),APP_TOKEN:'local-test-token-123456789',NEXUS_BROWSER_URL:'http://127.0.0.1:'+port,NEXUS_BROWSER_TOKEN:token,NEXUS_WEB_ENABLED:'1',NEXUS_WEB_ALLOWED_HOSTS:'127.0.0.1',API_ALLOWED_HOSTS:'127.0.0.1'}});
  const third='9'.repeat(64),base3='/v1/sessions/'+third;await call(base+'/close',{workspace_id:wid,action_id:'a'.repeat(64)});
  const [thirdStatus,thirdOpened]=await call(base3,{workspace_id:wid,url:'http://127.0.0.1:8080/index'});assert.equal(thirdStatus,200);
  helper.stdin.end(JSON.stringify({session_id:third,workspace_id:wid,origin:'http://127.0.0.1:8080',snapshot:thirdOpened,expected_url:'http://127.0.0.1:8080/submit?period=10',expected_body:text}));

@@ -54,11 +54,11 @@ def _lines(section,index):
     if section.body:
         for line_no,line in enumerate(section.body.split('\n')):
             for part,text in enumerate(_wrapped(line,_BODY_WIDTH)):
-                values.append((f'atlas:text:{index}:body:{line_no}:{part}',text,False))
+                values.append((f'nexus:text:{index}:body:{line_no}:{part}',text,False))
     for bullet_no,bullet in enumerate(section.bullets):
         for line_no,line in enumerate(bullet.split('\n')):
             for part,text in enumerate(_wrapped(line,_BODY_WIDTH-3)):
-                values.append((f'atlas:text:{index}:bullet:{bullet_no}:{line_no}:{part}',text,line_no==0 and part==0))
+                values.append((f'nexus:text:{index}:bullet:{bullet_no}:{line_no}:{part}',text,line_no==0 and part==0))
     return values
 
 
@@ -190,7 +190,7 @@ def build(spec,path):
         elif page['kind']=='table':
             table=section.table;indices=page['indices'];count=len(indices);width=11.9/count
             shape=slide.shapes.add_table(len(page['rows'])+1,count,Inches(.7),Inches(1.9),Inches(11.9),Inches(.60*(len(page['rows'])+1)))
-            shape.name=f"atlas:table:{page['section']}:{page['group']}:{page['row_offset']}"
+            shape.name=f"nexus:table:{page['section']}:{page['group']}:{page['row_offset']}"
             t=shape.table
             for i in range(count):t.columns[i].width=Inches(width)
             for ri in range(len(page['rows'])+1):
@@ -209,11 +209,11 @@ def build(spec,path):
             from pptx.enum.chart import XL_CHART_TYPE
             from pptx.enum.text import PP_ALIGN
             chart_spec=section.chart
-            _text(slide,.75,1.58,7.35,.45,chart_spec.title,17,'17352D',True,name=f"atlas:chart-title:{page['section']}")
+            _text(slide,.75,1.58,7.35,.45,chart_spec.title,17,'17352D',True,name=f"nexus:chart-title:{page['section']}")
             data=ChartData();data.categories=[point.label for point in chart_spec.points]
             data.add_series(chart_spec.title,[float(point.value) for point in chart_spec.points])
             shape=slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED,Inches(.76),Inches(2.15),Inches(7.15),Inches(4.24),data)
-            shape.name=f"atlas:chart:{page['section']}"
+            shape.name=f"nexus:chart:{page['section']}"
             chart=shape.chart;chart.has_legend=False;chart.has_title=False
             # Keep the chart's top-to-bottom order aligned with the adjacent
             # exact-value list; horizontal Office charts otherwise reverse it.
@@ -226,12 +226,12 @@ def build(spec,path):
             series=chart.series[0]
             series.format.fill.solid();series.format.fill.fore_color.rgb=RGBColor.from_string('2A7960')
             _rect(slide,8.15,1.7,4.4,4.68,'F3F8F5')
-            _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,13,'17352D',True,name=f"atlas:chart-unit:{page['section']}")
+            _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,13,'17352D',True,name=f"nexus:chart-unit:{page['section']}")
             for i,point in enumerate(chart_spec.points):
                 y=2.28+i*.46
-                label=_text(slide,8.38,y,1.85,.40,point.label,11,'435B50',name=f"atlas:chart-label:{page['section']}:{i}")
+                label=_text(slide,8.38,y,1.85,.40,point.label,11,'435B50',name=f"nexus:chart-label:{page['section']}:{i}")
                 label.text_frame.word_wrap=True
-                value=_text(slide,10.26,y,2.07,.40,point.value,11,'17352D',True,name=f"atlas:chart-value:{page['section']}:{i}")
+                value=_text(slide,10.26,y,2.07,.40,point.value,11,'17352D',True,name=f"nexus:chart-value:{page['section']}:{i}")
                 value.text_frame.paragraphs[0].alignment=PP_ALIGN.RIGHT
             _text(slide,8.38,6.08,3.95,.25,'图形用于比较；请以原始数值核对',9,'5D756C')
         _rect(slide,.7,6.83,11.93,.012,'D8E5DF')
@@ -248,7 +248,7 @@ def verify(spec,deck):
         section=spec.sections[page['section']]
         if slide.shapes.title is None or slide.shapes.title.text!=(section.heading or spec.title):raise ValueError('演示文稿标题不一致')
         if page['kind']=='text':
-            got=[(s.name,s.text) for s in slide.shapes if s.has_text_frame and s.name.startswith('atlas:text:')]
+            got=[(s.name,s.text) for s in slide.shapes if s.has_text_frame and s.name.startswith('nexus:text:')]
             if got!=[(name,text) for name,text,_ in page['items']]:raise ValueError('演示文稿正文不完整')
         elif page['kind']=='table':
             tables=[s for s in slide.shapes if s.has_table]
@@ -287,10 +287,10 @@ def verify(spec,deck):
                             or Decimal(str(cells[1].value))!=Decimal(point.value)):
                         raise ValueError('图表数据工作簿数值不一致')
             finally:workbook.close()
-            texts={s.name:s.text for s in slide.shapes if s.has_text_frame and s.name.startswith('atlas:chart-')}
-            expected={f"atlas:chart-title:{page['section']}":chart_spec.title,
-                      f"atlas:chart-unit:{page['section']}":'原始数值 · '+chart_spec.unit}
+            texts={s.name:s.text for s in slide.shapes if s.has_text_frame and s.name.startswith('nexus:chart-')}
+            expected={f"nexus:chart-title:{page['section']}":chart_spec.title,
+                      f"nexus:chart-unit:{page['section']}":'原始数值 · '+chart_spec.unit}
             for i,point in enumerate(chart_spec.points):
-                expected[f"atlas:chart-label:{page['section']}:{i}"]=point.label
-                expected[f"atlas:chart-value:{page['section']}:{i}"]=point.value
+                expected[f"nexus:chart-label:{page['section']}:{i}"]=point.label
+                expected[f"nexus:chart-value:{page['section']}:{i}"]=point.value
             if texts!=expected:raise ValueError('演示文稿图表标签或原始数值不一致')

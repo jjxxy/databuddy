@@ -1,9 +1,18 @@
 const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../../agent_service/static');
+{
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'));
+ const d=dom.window.document;
+ assert.equal(d.querySelector('#attach').textContent.trim(),'＋');
+ assert.equal(d.querySelector('#folder-attach').hidden,true);
+ assert.equal(d.querySelector('.attachment-help'),null);
+ assert.equal(d.querySelector('#file').multiple,true);
+ dom.window.close();
+}
 const wait=async f=>{const until=Date.now()+4000;while(!f()){if(Date.now()>until)throw Error('UI condition timed out');await new Promise(r=>setTimeout(r,5))}};
-async function scenario(mode){const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;try{
- w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','fixture-owner');const uploads=[],posts=[];let failFile=true,failMessage=true,releaseRetry;
- w.fetch=async(url,o={})=>{const route=new URL(url,'https://atlas.test').pathname;let v;
+async function scenario(mode){const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;try{
+ w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('nexus_token','fixture-owner');const uploads=[],posts=[];let failFile=true,failMessage=true,releaseRetry;
+ w.fetch=async(url,o={})=>{const route=new URL(url,'https://nexus.test').pathname;let v;
   if(route==='/api/models')v={models:[{id:'business',name:'业务模型'}],default_model_id:'business'};
   else if(route==='/api/runtime-info')v={revision:'2026.10.30.1',nodes:[{role:'agent',healthy:true,planner_mode:'legacy'}]};
   else if(route==='/api/projects')v=[{id:'p',name:'复杂底稿'}];
@@ -24,7 +33,7 @@ async function scenario(mode){const dom=new JSDOM(fs.readFileSync(path.join(root
  const mixed=paste({files:[],items:[{kind:'file',getAsFile:()=>new w.File(['333'],'额外文件.csv')}],types:['Files','text/plain']});assert.equal(mixed.defaultPrevented,false,'mixed text and file paste does not block native text insertion');assert.equal(w.testUi.state().attached.length,3,'item fallback appends to previously pasted files');
  d.querySelector('#message').value='分析粘贴的三份文件';await w.testUi.send();assert.deepEqual(posts.at(-1).source_ids,['s_first','s_second','s_third'],'all pasted files reach the message');assert.equal(posts.at(-1).interaction_mode,mode);assert.equal(w.testUi.state().attached.length,0);
  const drop=new w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:{files:[a,b],types:['Files']}});d.querySelector('#main').dispatchEvent(drop);assert.equal(w.testUi.state().attached.length,2,'drop consumes all files');d.querySelector('[data-remove-attachment="0"]').click();assert.equal(w.testUi.state().attached.length,1);d.querySelector('#add-more-files').click();Object.defineProperty(d.querySelector('#file'),'files',{configurable:true,value:[b]});d.querySelector('#file').dispatchEvent(new w.Event('change'));assert.equal(w.testUi.state().attached.length,2,'additional selection appends instead of replacing the first batch');
- d.querySelector('#runtime-version').click();await wait(()=>d.querySelector('#runtime-version').dataset.mismatch==='true');assert(d.querySelector('#runtime-version').textContent.includes('重启'));assert(d.querySelector('#toast').textContent.includes('兼容模式'));await w.atlasBusiness.api('/models');assert(d.querySelector('#runtime-version').textContent.includes('重启'),'regular polling cannot hide the detected old Agent');
+ d.querySelector('#runtime-version').click();await wait(()=>d.querySelector('#runtime-version').dataset.mismatch==='true');assert(d.querySelector('#runtime-version').textContent.includes('重启'));assert(d.querySelector('#toast').textContent.includes('兼容模式'));await w.nexusBusiness.api('/models');assert(d.querySelector('#runtime-version').textContent.includes('重启'),'regular polling cannot hide the detected old Agent');
  failFile='413';await w.testUi.send();assert(d.querySelector('#connection-error').textContent.includes('文件超过服务或网关允许的大小'),'HTML proxy 413 is shown as a size error');await w.testUi.refresh();assert.equal(d.querySelector('#connection-error').hidden,false,'proxy error survives polling');
  console.log(JSON.stringify({multiple_same_name_files:true,all_dropped_files:true,multi_file_paste_sent:true,paste_items_fallback:true,text_paste_not_blocked:true,partial_upload_never_submits:true,retry_only_failed_file:true,individual_retry_blocks_send:true,pending_freezes_all_sources_and_uuid:true,successful_sources_not_reuploaded:true}));
  }finally{dom.window.close()}}

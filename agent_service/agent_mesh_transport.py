@@ -181,7 +181,7 @@ class MCPAgentSession:
         if not isinstance(result.get('result'),dict):raise RemoteAmbiguous('MCP Agent缺少结构化回执')
         return result['result']
     def __enter__(self):
-        result=self.request('initialize',{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'atlas-agent-mesh','version':'0.20.0'}})
+        result=self.request('initialize',{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'nexus-agent-mesh','version':'0.20.0'}})
         if result.get('protocolVersion') not in ('2025-03-26','2025-06-18','2025-11-25'):raise RemoteRejected('MCP Agent协商了未支持协议版本')
         if 'tools' not in result.get('capabilities',{}):raise RemoteRejected('MCP Agent未提供工具能力')
         self.config['mcp_version']=result['protocolVersion']
@@ -197,12 +197,12 @@ def submit(config,task,bundle):
     if config['transport']=='mcp':return mcp_call(config,config['submit_tool'],payload)
     if config.get('protocol_version','1.0')=='1.0':
         result=rpc(config,'SendMessage',{'message':{'role':'ROLE_USER','messageId':task['id'],
-            'parts':[{'text':task['goal']},{'data':{'atlas':payload}}]},
+            'parts':[{'text':task['goal']},{'data':{'nexus':payload}}]},
             'configuration':{'returnImmediately':True,'acceptedOutputModes':['application/json','text/plain']}})
         if not isinstance(result.get('task'),dict):raise RemoteAmbiguous('A2A 1.0未返回异步任务编号')
         return result['task']
     return rpc(config,'message/send',{'message':{'kind':'message','role':'user','messageId':task['id'],
-        'parts':[{'kind':'text','text':task['goal']},{'kind':'data','data':{'atlas':payload}}]},
+        'parts':[{'kind':'text','text':task['goal']},{'kind':'data','data':{'nexus':payload}}]},
         'configuration':{'blocking':False,'acceptedOutputModes':['application/json','text/plain']}})
 
 

@@ -7,7 +7,7 @@ for line in sys.stdin:
     try:
         request=json.loads(line);method=request.get('method')
         if method=='notifications/initialized':continue
-        if method=='initialize':result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'Atlas local clock','version':'1'}}
+        if method=='initialize':result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'Nexus WorkStudio local clock','version':'1'}}
         elif method=='tools/list':result={'tools':[{'name':'get_local_time','description':'读取本机系统时钟，返回指定时区的当前时间；不访问网络或业务文件。','inputSchema':{'type':'object','properties':{'timezone':{'type':'string','enum':['UTC','Asia/Shanghai']}},'additionalProperties':False}}]}
         elif method=='tools/call' and request.get('params',{}).get('name')=='get_local_time':
             region=request['params'].get('arguments',{}).get('timezone','Asia/Shanghai')

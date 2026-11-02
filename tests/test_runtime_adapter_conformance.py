@@ -1,6 +1,6 @@
 """Runtime selection must preserve durable work and fail closed on drift.
 
-These tests use an isolated Atlas task and controlled runtime boundaries.  They
+These tests use an isolated Nexus WorkStudio task and controlled runtime boundaries.  They
 do not claim that any third-party runtime or real model has been exercised.
 """
 import pytest
@@ -17,7 +17,7 @@ def test_legacy_task_keeps_its_frozen_runtime_when_default_changes(turn, monkeyp
     captured = []
     monkeypatch.setattr(opencode_runtime, 'is_enabled', lambda: False)
     monkeypatch.setattr(LegacyRuntime, 'run', lambda self, turn_id: captured.append(turn_id))
-    selected = agent_runtime.snapshot('atlas_legacy')
+    selected = agent_runtime.snapshot('nexus_legacy')
     patch('turn', turn['id'], agent_runtime=selected)
 
     # A deployment/configuration change must affect new work only.  It must
@@ -33,7 +33,7 @@ def test_legacy_task_keeps_its_frozen_runtime_when_default_changes(turn, monkeyp
 
 @pytest.mark.parametrize('saved', [
     {'name': 'not-installed-runtime', 'version': '1'},
-    {'name': 'atlas_legacy', 'version': 'unexpected-old-version'},
+    {'name': 'nexus_legacy', 'version': 'unexpected-old-version'},
 ])
 def test_unknown_or_drifted_runtime_pauses_without_execution(turn, monkeypatch, saved):
     from agent_service.runtime_legacy import LegacyRuntime
@@ -78,7 +78,7 @@ def test_pre_adapter_opencode_session_cannot_silently_migrate(turn, monkeypatch)
 def test_incompatible_runtime_must_not_execute_an_inflight_write(turn, monkeypatch):
     from agent_service import workspace
 
-    patch('turn', turn['id'], agent_runtime={'name': 'atlas_legacy', 'version': 'unavailable-version'},
+    patch('turn', turn['id'], agent_runtime={'name': 'nexus_legacy', 'version': 'unavailable-version'},
           state='agent_tool', agent_trace=[{'id': 'persisted-call', 'tool': 'write_file',
           'arguments': {'path': 'reports/native.md', 'content': 'must not execute'},
           'status': 'started', 'started_at': now()}])
@@ -93,7 +93,7 @@ def test_submissions_freeze_default_and_resume_inherits_original(monkeypatch):
     from agent_service import conversation, model_catalog, runtime_settings
 
     monkeypatch.setattr(model_catalog, 'select', lambda *a, **kw: {})
-    selected = ['atlas_legacy']
+    selected = ['nexus_legacy']
     monkeypatch.setattr(runtime_settings, 'get_selected', lambda: selected[0])
     project = conversation.create_project(conversation.ProjectInput(name='Runtime selection', request_id='runtime-'+uid()))
     ids = []
@@ -101,7 +101,7 @@ def test_submissions_freeze_default_and_resume_inherits_original(monkeypatch):
         first = conversation.submit(project['id'], conversation.TurnInput(text='Prepare a report', request_id='runtime-first-'+uid()))
         ids.append(first['id'])
         binding = get('turn', first['id'])['agent_runtime']
-        assert binding['name'] == 'atlas_legacy'
+        assert binding['name'] == 'nexus_legacy'
         patch('turn', first['id'], state='done', outcome='paused', resume_available=True)
         selected[0] = 'opencode'
 
@@ -123,7 +123,7 @@ def test_explicit_continue_rejects_unknown_external_effect_and_keeps_old_task(mo
     from agent_service import conversation, model_catalog, runtime_settings
 
     monkeypatch.setattr(model_catalog, 'select', lambda *a, **kw: {})
-    monkeypatch.setattr(runtime_settings, 'get_selected', lambda: 'atlas_legacy')
+    monkeypatch.setattr(runtime_settings, 'get_selected', lambda: 'nexus_legacy')
     project = conversation.create_project(conversation.ProjectInput(name='Effect recovery', request_id='effect-'+uid()))
     ids = []
     try:
@@ -154,7 +154,7 @@ def test_worker_restart_never_reexecutes_unknown_effect(turn, monkeypatch, tool)
 
     monkeypatch.setattr(agent, 'execute', lambda *a, **kw: pytest.fail('uncertain operation was reexecuted'))
     trace = [{'id': 'uncertain-effect', 'tool': tool, 'arguments': {}, 'status': 'started', 'started_at': now()}]
-    patch('turn', turn['id'], agent_runtime=agent_runtime.snapshot('atlas_legacy'), state='agent_tool', agent_trace=trace)
+    patch('turn', turn['id'], agent_runtime=agent_runtime.snapshot('nexus_legacy'), state='agent_tool', agent_trace=trace)
     agent.advance(get('turn', turn['id']))
     saved = get('turn', turn['id'])
     assert saved['state'] in ('done', 'failed')
@@ -181,7 +181,7 @@ def test_worker_restart_may_resume_read_only_call(turn, monkeypatch):
     monkeypatch.setattr(agent, 'execute', lambda _turn, step: called.append(step.tool) or {'state': 'done'})
     trace = [{'id': 'read-call', 'tool': 'read_work_action', 'arguments': {'action_id': 'existing'},
               'status': 'started', 'started_at': now()}]
-    patch('turn', turn['id'], agent_runtime=agent_runtime.snapshot('atlas_legacy'), state='agent_tool', agent_trace=trace)
+    patch('turn', turn['id'], agent_runtime=agent_runtime.snapshot('nexus_legacy'), state='agent_tool', agent_trace=trace)
     agent.advance(get('turn', turn['id']))
     assert called == ['read_work_action']
     assert get('turn', turn['id'])['agent_trace'][0]['status'] == 'done'

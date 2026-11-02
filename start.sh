@@ -6,7 +6,7 @@ bundle_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 cd -- "$bundle_dir"
 action="${1:-up}"
 if (($#)); then shift; fi
-no_open="${ATLAS_NO_OPEN:-0}"
+no_open="${NEXUS_NO_OPEN:-0}"
 
 usage() {
   printf '%s\n' '用法：bash start.sh [up|down|status|logs|open] [--no-open]'
@@ -31,7 +31,7 @@ local_url() {
   if [[ -f .env ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%$'\r'}"
-      if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?ATLAS_HTTP_PORT[[:space:]]*= ]]; then
+      if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?NEXUS_HTTP_PORT[[:space:]]*= ]]; then
         value="${line#*=}"
         value="${value#"${value%%[![:space:]]*}"}"
         value="${value%"${value##*[![:space:]]}"}"
@@ -44,13 +44,13 @@ local_url() {
         if [[ "$value" =~ ^0*([1-9][0-9]{0,4}|0)$ ]]; then
           port="${BASH_REMATCH[1]}"
         else
-          fail '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+          fail '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
         fi
       fi
     done < .env
   fi
   port=$((10#$port))
-  ((port >= 1 && port <= 65535)) || fail '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+  ((port >= 1 && port <= 65535)) || fail '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
   printf 'http://localhost:%s\n' "$port"
 }
 

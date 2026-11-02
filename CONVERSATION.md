@@ -2,7 +2,7 @@
 
 当前已加入聊天/工作模式、多会话、页内模型连接、多步工具循环和项目级Git版本/回退；以 [AGENT-WORKSPACE.md](AGENT-WORKSPACE.md) 为当前行为与限制说明。下面保留0.4交互设计与验证记录，旧版单步规划描述不代表0.5模型Agent。
 
-# Atlas 0.4 · 项目与对话
+# Nexus WorkStudio 0.4 · 项目与对话
 
 正常前台只有项目列表和对话。上传、进度、业务方案、候选预览、发布确认、结果问答和导出均在同一条对话中，技术 API 留给 Agent 和集成使用。
 
@@ -36,4 +36,4 @@
 
 `tests/test_conversation.py` 执行真实文件采集、Git/dlt/dbt、退款与状态筛选、人工发布、调度/暂停、问答/导出、同仓修改、消息/附件去重、生成中断恢复、项目隔离及连接信息保护。
 
-云端 `cloud_accept.py` 增加版本独立的对话验收，通过线上 API 完整执行对话工作流、记录 `ATLAS_CHAT_ACCEPTANCE`；重启后读取已有对话和结果，记录 `ATLAS_CHAT_RESTART_VERIFIED`。此验收不等于浏览器视觉/点击测试。
+云端 `cloud_accept.py` 增加版本独立的对话验收，通过线上 API 完整执行对话工作流、记录 `NEXUS_CHAT_ACCEPTANCE`；重启后读取已有对话和结果，记录 `NEXUS_CHAT_RESTART_VERIFIED`。此验收不等于浏览器视觉/点击测试。

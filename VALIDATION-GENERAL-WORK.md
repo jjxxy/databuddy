@@ -51,7 +51,7 @@ npm test --prefix tests/ui
 真实浏览器检查需要已安装的 Chromium，不自动下载浏览器：
 
 ```bash
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser --prefix tests/ui
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser --prefix tests/ui
 ```
 
 服务部署与实际模型验收命令见 [GENERAL-WORK.md](GENERAL-WORK.md)。它们需要显式执行并保留实际回执，不能用本次协议夹具替代。

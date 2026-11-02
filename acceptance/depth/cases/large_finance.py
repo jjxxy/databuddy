@@ -52,8 +52,8 @@ def fixture(directory):
 def _unpack(value):
     if isinstance(value,list):return [_unpack(v) for v in value]
     if isinstance(value,dict):
-        if value.get('$atlas')=='object':return {k:_unpack(v) for k,v in value['items']}
-        if value.get('$atlas') in ('decimal','integer','date','datetime'):return value['value']
+        if value.get('$nexus')=='object':return {k:_unpack(v) for k,v in value['items']}
+        if value.get('$nexus') in ('decimal','integer','date','datetime'):return value['value']
         return {k:_unpack(v) for k,v in value.items()}
     return value
 

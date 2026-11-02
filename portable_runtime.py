@@ -36,10 +36,10 @@ def credentials(state):
     if path.exists():
         value = json.loads(path.read_text(encoding='utf-8'))
     else:
-        value = {'APP_TOKEN':secrets.token_urlsafe(36), 'ATLAS_OPERATOR_TOKEN':secrets.token_urlsafe(36)}
+        value = {'APP_TOKEN':secrets.token_urlsafe(36), 'NEXUS_OPERATOR_TOKEN':secrets.token_urlsafe(36)}
         write_json(path, value)
-    if (any(not isinstance(value.get(k), str) or len(value[k]) < 24 for k in ('APP_TOKEN','ATLAS_OPERATOR_TOKEN'))
-            or value['APP_TOKEN'] == value['ATLAS_OPERATOR_TOKEN']):
+    if (any(not isinstance(value.get(k), str) or len(value[k]) < 24 for k in ('APP_TOKEN','NEXUS_OPERATOR_TOKEN'))
+            or value['APP_TOKEN'] == value['NEXUS_OPERATOR_TOKEN']):
         raise ValueError('本机访问凭据损坏，请保留数据并从备份恢复凭据文件。')
     return value
 
@@ -73,18 +73,18 @@ def environment(state, port, access, model_config, offline, workspace=None):
     env.update(access)
     env.update(PATH=os.pathsep.join(paths), PYTHONPATH=str(ROOT), PYTHONUTF8='1', PYTHONUNBUFFERED='1',
                DATA_DIR=str(state/'data'), DATABASE_URL='sqlite:///'+str(state/'data/metadata.sqlite'),
-               HOME=str(home), USERPROFILE=str(home), PORT=str(port), ATLAS_API_HOST='127.0.0.1',
-               ATLAS_DESKTOP_MODE='1', ATLAS_SUPERVISOR_STDIN='1', ATLAS_AUTH_MODE='token',
-               ATLAS_INSTANCE_ID='desktop-'+secrets.token_hex(12), ATLAS_DEPLOYMENT_PROFILE='single',
-               ATLAS_OPENCODE_RUNTIME='1', ATLAS_OPENCODE_BINARY=str(opencode), ATLAS_GIT_BINARY=str(git),
-               ATLAS_NETWORK_MODE='local_only' if offline else 'connected', APP_TIMEZONE='Asia/Shanghai',
+               HOME=str(home), USERPROFILE=str(home), PORT=str(port), NEXUS_API_HOST='127.0.0.1',
+               NEXUS_DESKTOP_MODE='1', NEXUS_SUPERVISOR_STDIN='1', NEXUS_AUTH_MODE='token',
+               NEXUS_INSTANCE_ID='desktop-'+secrets.token_hex(12), NEXUS_DEPLOYMENT_PROFILE='single',
+               NEXUS_OPENCODE_RUNTIME='1', NEXUS_OPENCODE_BINARY=str(opencode), NEXUS_GIT_BINARY=str(git),
+               NEXUS_NETWORK_MODE='local_only' if offline else 'connected', APP_TIMEZONE='Asia/Shanghai',
                GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=str(home/'gitconfig'), GIT_TERMINAL_PROMPT='0',
                RUNTIME__DLTHUB_TELEMETRY='false', DBT_SEND_ANONYMOUS_USAGE_STATS='false',
                DO_NOT_TRACK='1', DLT_TELEMETRY='false')
-    if model_config:env['ATLAS_LLM_CONFIG_FILE'] = str(model_config)
+    if model_config:env['NEXUS_LLM_CONFIG_FILE'] = str(model_config)
     if workspace is not None:
-        data = workspace / '.atlas'
-        env.update(ATLAS_LOCAL_MODE='1', ATLAS_LOCAL_WORKSPACE=str(workspace),
+        data = workspace / '.nexus'
+        env.update(NEXUS_LOCAL_MODE='1', NEXUS_LOCAL_WORKSPACE=str(workspace),
                    DATA_DIR=str(data), DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'))
     return env
 
@@ -133,9 +133,9 @@ def serve(args):
                 if line.strip()=='stop':stop_event.set();return
             stop_event.set()
         threading.Thread(target=commands,daemon=True).start()
-        log_path = state/'atlas.log'
+        log_path = state/'nexus.log'
         if log_path.exists() and log_path.stat().st_size>8*1024*1024:
-            log_path.replace(state/'atlas.previous.log')
+            log_path.replace(state/'nexus.previous.log')
         with log_path.open('ab',buffering=0) as logfile:
             process = spawn([sys.executable,'-m','agent_service.cloud'],env=env,cwd=ROOT,
                             stdin=subprocess.PIPE,stdout=logfile,stderr=subprocess.STDOUT)
@@ -146,7 +146,7 @@ def serve(args):
                     try:
                         status=request(url,access['APP_TOKEN'],'/api/status')
                         ready=request(url,access['APP_TOKEN'],'/ready')
-                        if ready.get('ready') and all(any(n.get('instance')==env['ATLAS_INSTANCE_ID'] and n.get('healthy')
+                        if ready.get('ready') and all(any(n.get('instance')==env['NEXUS_INSTANCE_ID'] and n.get('healthy')
                                 for n in status.get(role,{}).get('nodes',[])) for role in ('worker','agent')):
                             break
                     except (OSError,ValueError):pass
@@ -174,7 +174,7 @@ def main(argv=None):
     parser.add_argument('--state-dir',required=True)
     parser.add_argument('--port',type=int,default=0)
     parser.add_argument('--model-config')
-    parser.add_argument('--workspace-dir', help='Business folder; Atlas manages only its own subdirectories.')
+    parser.add_argument('--workspace-dir', help='Business folder; Nexus WorkStudio manages only its own subdirectories.')
     parser.add_argument('--offline',action='store_true')
     parser.add_argument('--wait',type=int,default=120)
     args=parser.parse_args(argv)

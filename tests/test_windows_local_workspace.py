@@ -49,7 +49,7 @@ def test_relative_handles_reject_junctions_streams_device_names_and_case_aliases
     junction(root/'redirect',outside)
     assert {item['name'] for item in local.files()['entries']}=={'资料','safe.csv'}
     for name in ('redirect/secret.csv','safe.csv:hidden.csv','CON.csv','safe.csv ',
-                 'ATLAS工作区/code.txt','atlas成果/result.csv','SECRETS.JSON','../private/secret.csv'):
+                 'ATLAS工作区/code.txt','nexus成果/result.csv','SECRETS.JSON','../private/secret.csv'):
         with pytest.raises((ValueError,OSError)):local._copy_input(name)
     with pytest.raises(ValueError):local.import_files(pid,['safe.csv','SAFE.csv'],'case-review-request')
     assert original.read_bytes()==b'id,n\n1,100\n'
@@ -91,10 +91,10 @@ def test_storage_uses_sid_owner_and_only_protects_managed_metadata(tmp_path,monk
     root=tmp_path/'财务 月结';root.mkdir();original=root/'原始底稿.csv';original.write_bytes(b'id,n\n1,100\n')
     original_hash=hashlib.sha256(original.read_bytes()).hexdigest()
     before=(acl(root),acl(original))
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.atlas'))
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(root/'.nexus'))
     metadata=local_storage.prepare_storage(None,None)
     assert local_storage.prepare_storage(None,None)==metadata
-    assert json.loads((metadata/'local-workspace.identity').read_text())=={'format':'atlas-local-v1'}
+    assert json.loads((metadata/'local-workspace.identity').read_text())=={'format':'nexus-local-v1'}
     handle=windows.open(metadata,windows.O_DIRECTORY|windows.O_RDONLY)
     try:assert owner_sid(handle)==platform_files._user_sid()
     finally:windows.close(handle)
@@ -105,13 +105,13 @@ def test_storage_uses_sid_owner_and_only_protects_managed_metadata(tmp_path,monk
 
 def test_existing_unmarked_or_foreign_metadata_is_not_adopted(tmp_path,monkeypatch):
     from agent_service import windows_dirfd
-    root=tmp_path/'work';root.mkdir();metadata=root/'.atlas';metadata.mkdir()
+    root=tmp_path/'work';root.mkdir();metadata=root/'.nexus';metadata.mkdir()
     original=metadata/'do-not-touch.txt';original.write_bytes(b'private existing folder')
     before=acl(metadata)
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(metadata))
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(root));monkeypatch.setenv('DATA_DIR',str(metadata))
     with pytest.raises(ValueError):local_storage.prepare_storage(None,None)
     assert original.read_bytes()==b'private existing folder' and acl(metadata)==before
-    (metadata/'local-workspace.identity').write_text(json.dumps({'format':'atlas-local-v1'}))
+    (metadata/'local-workspace.identity').write_text(json.dumps({'format':'nexus-local-v1'}))
     monkeypatch.setattr(windows_dirfd,'owner_sid',lambda directory:'S-1-5-21-foreign-test-owner')
     with pytest.raises(ValueError,match='其他系统用户'):local_storage.prepare_storage(None,None)
     assert not (metadata/'home').exists() and acl(metadata)==before
@@ -121,7 +121,7 @@ def test_same_open_stage_handle_is_published_without_overwriting_existing_export
     root,pid=local_folder
     with local._directory(local.OUTPUT_DIR+'/'+pid,managed=True,create=True) as parent:
         local.os.mkdir('.stage',dir_fd=parent)
-        stage=local.os.open('.stage',local.os.O_DIRECTORY|local.os.O_RDONLY|local.os.O_ATLAS_STAGE,dir_fd=parent)
+        stage=local.os.open('.stage',local.os.O_DIRECTORY|local.os.O_RDONLY|local.os.O_NEXUS_STAGE,dir_fd=parent)
         try:
             (local.os.descriptor_path(stage)/'value.txt').write_bytes(b'verified')
             local.os.mkdir('existing',dir_fd=parent)
@@ -137,7 +137,7 @@ def test_failed_stage_cleanup_removes_junction_leaf_without_visiting_target(loca
     root,pid=local_folder;outside=tmp_path/'untouched';outside.mkdir();(outside/'original').write_bytes(b'original')
     with local._directory(local.OUTPUT_DIR+'/'+pid,managed=True,create=True) as parent:
         local.os.mkdir('.partial-stage',dir_fd=parent)
-        stage=local.os.open('.partial-stage',local.os.O_DIRECTORY|local.os.O_RDONLY|local.os.O_ATLAS_STAGE,dir_fd=parent)
+        stage=local.os.open('.partial-stage',local.os.O_DIRECTORY|local.os.O_RDONLY|local.os.O_NEXUS_STAGE,dir_fd=parent)
         junction(local.os.descriptor_path(stage)/'redirect',outside)
         local.os.close(stage)
         local.os.remove_tree('.partial-stage',dir_fd=parent)
@@ -166,13 +166,15 @@ def test_long_report_staging_exports_verified_formats_and_still_refuses_tamperin
     try:
         docx=business_reports.report_file(pid,rid,'docx');pptx=business_reports.report_file(pid,rid,'pptx')
         originals={'report.md':markdown,'manifest.json':manifest,'report.docx':docx.read_bytes(),'report.pptx':pptx.read_bytes()}
-        with tempfile.TemporaryDirectory(prefix='atlas-report-export-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='nexus-report-export-') as temporary:
             # The final visible paths fit MAX_PATH; the immutable publication
             # stage adds its own suffix and crosses 260, as in real quickstart.
-            base=Path(temporary);padding=120-len(str(base))-1
+            # root must stay short enough that the final OUTPUT_DIR path (which
+            # embeds the 18-char "Nexus WorkStudio成果" name) stays under 260.
+            base=Path(temporary);padding=110-len(str(base))-1
             assert padding>0
             root=base/('d'*padding);root.mkdir()
-            monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(root))
+            monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(root))
             original=root/'原件.csv';original.write_bytes(b'id,amount\n1,300.000002\n')
             exported=local.export_project(pid)
             stage=root/local.OUTPUT_DIR/pid/('.'+exported['id']+'.partial')/'reports'/rid/'manifest.json'

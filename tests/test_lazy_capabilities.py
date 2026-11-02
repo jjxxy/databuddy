@@ -14,7 +14,7 @@ def tools(info):return {item['name'] for item in info['tools']}
 
 def test_plain_conversation_loads_only_core_even_when_all_services_are_enabled(turn,monkeypatch):
     monkeypatch.setattr('agent_service.work_runtime.status',lambda:{'configured':True})
-    monkeypatch.setattr('agent_service.work_runtime.vision_status',lambda:{'enabled':True})
+    monkeypatch.setattr('agent_service.work_runtime.vision_status',lambda _turn=None:{'enabled':True})
     monkeypatch.setattr('agent_service.web_research.status',lambda:{'enabled':True,'search_configured':True})
     monkeypatch.setattr('agent_service.browser_tools.status',lambda:{'configured':True})
     monkeypatch.setattr('agent_service.media_tools.status',lambda:{'images':True,'speech':True,'realtime':True})

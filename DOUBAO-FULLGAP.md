@@ -1,4 +1,4 @@
-# DOUBAO-FULLGAP — Atlas DataBuddy 全量能力与缺口矩阵（财经业务用户视角）
+# DOUBAO-FULLGAP — Nexus WorkStudio 全量能力与缺口矩阵（财经业务用户视角）
 
 - 审查者：豆包侧首席架构评审官（主动全量排查，非等点名）
 - 审查对象：项目根 `personal-data-agent`（r17 工作树，已含 AG-7/AG-8 补丁）

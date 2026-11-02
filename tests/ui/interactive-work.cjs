@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const root=path.resolve(__dirname,'../../agent_service/static');
 const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await new Promise(r=>setTimeout(r,5))}throw Error('Interactive UI did not settle')};
 (async()=>{
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test',runScripts:'outside-only'}),w=dom.window,d=w.document;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test',runScripts:'outside-only'}),w=dom.window,d=w.document;
  try{
   w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
   w.HTMLMediaElement.prototype.pause=function(){};
@@ -24,7 +24,7 @@ const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await 
    async setLocalDescription(){} async setRemoteDescription(){}
    close(){rtcClosed++}
   };
-  w.atlasBusiness={getState:()=>({projectId}),toast:()=>{},setDraft:text=>{draft=text;return true},
+  w.nexusBusiness={getState:()=>({projectId}),toast:()=>{},setDraft:text=>{draft=text;return true},
    authFetch:route=>{if(route.endsWith('/end')){if(rejectHangup)throw Error('authentication sealed');return Promise.resolve({ok:true})}return new Promise(resolve=>uploadResolver=resolve)},
    api:async(route,options={})=>{
     calls.push({route,options});
@@ -49,21 +49,21 @@ const wait=async predicate=>{for(let i=0;i<100;i++){if(predicate())return;await 
   assert(d.querySelector('[data-browser-notice]').textContent.includes('发送“继续”'));
   d.querySelector('#voice-input').click();await wait(()=>!d.querySelector('[data-voice-record]').disabled);
   d.querySelector('[data-voice-record]').click();await wait(()=>micResolver);
-  projectId='other';w.atlasInteractive.projectChanged();
+  projectId='other';w.nexusInteractive.projectChanged();
   micResolver({getTracks:()=>[{stop:()=>stopped++}]});await wait(()=>stopped===1);
   assert.equal(d.querySelector('#voice-dialog').open,false,'late microphone permission cannot reopen another project');
   d.querySelector('#voice-input').click();await wait(()=>!d.querySelector('[data-voice-record]').disabled);
   micResolver=null;d.querySelector('[data-voice-record]').click();await wait(()=>micResolver);
   micResolver({getTracks:()=>[{stop:()=>stopped++}]});await wait(()=>recording?.state==='recording');
   d.querySelector('[data-voice-stop]').click();await wait(()=>uploadResolver);
-  w.atlasInteractive.reset();uploadResolver({ok:true,json:async()=>({text:'stale previous project transcript'})});
+  w.nexusInteractive.reset();uploadResolver({ok:true,json:async()=>({text:'stale previous project transcript'})});
   await new Promise(r=>setTimeout(r,10));assert.equal(d.querySelector('[data-voice-text]').value,'');assert.equal(draft,'');
   assert(stopped>=2);
   realtimeEnabled=true;micResolver=null;d.querySelector('#voice-input').click();await wait(()=>!d.querySelector('[data-voice-realtime]').disabled);
   d.querySelector('[data-voice-realtime]').click();await wait(()=>micResolver);
   micResolver({getTracks:()=>[{stop:()=>stopped++}]});await wait(()=>!d.querySelector('[data-voice-stop]').disabled);
   rejectHangup=true;const stoppedBefore=stopped;
-  assert.doesNotThrow(()=>w.atlasInteractive.reset());assert(stopped>stoppedBefore);assert(rtcClosed>0);
+  assert.doesNotThrow(()=>w.nexusInteractive.reset());assert(stopped>stoppedBefore);assert(rtcClosed>0);
   assert.equal(d.querySelector('#voice-dialog').open,false,'synchronous auth rejection cannot leave microphone active');
   console.log(JSON.stringify({human_takeover:true,controls_gated:true,password_masked_and_cleared:true,no_untrusted_html:true,
    microphone_stopped_on_project_change:true,late_permission_stream_disposed:true,stale_transcript_discarded:true,logout_auth_rejection_cannot_prevent_microphone_shutdown:true,no_auto_send:true,real_microphone_or_model_tested:false}));

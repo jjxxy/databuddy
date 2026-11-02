@@ -1,6 +1,6 @@
-# Atlas 云端工作模式
+# Nexus WorkStudio 云端工作模式
 
-本次继续使用现有 OpenCode / Atlas Agent、模型目录、后台编排、项目 Git、Skill / MCP、任务恢复和成果面板，补上可独立部署的执行平面。目标是让用户描述目标后，Agent 能编写代码、真实运行、检查结果、修复并交付文件，而不是只返回代码或计划。
+本次继续使用现有 OpenCode / Nexus WorkStudio Agent、模型目录、后台编排、项目 Git、Skill / MCP、任务恢复和成果面板，补上可独立部署的执行平面。目标是让用户描述目标后，Agent 能编写代码、真实运行、检查结果、修复并交付文件，而不是只返回代码或计划。
 
 这不是 ChatGPT 内部实现的复制，也不代表已经通过商业产品能力对标、真实财经验收或生产高可用验收。
 
@@ -14,7 +14,7 @@
 | 工具与插件 | 原有 Skill / MCP；新增 `work_runtime.py` 工具 | 执行命令、查看文件清单、分页读文本、保存可下载成果；联网工作仍经已批准 MCP |
 | 状态与文件 | 原有数据库和项目 Git；执行器独立持久卷 | 稳定执行编号、不可变文件检查点、输入摘要、日志、成果摘要；运行中断后回读同一执行 |
 
-执行与编排分开部署。Atlas API、数据 Worker 和 OpenCode 均不需要 Docker socket；只有专用执行服务持有自己的执行宿主机 Docker socket。任务容器不接收该 socket、模型密钥、数据库连接、应用访问口令或执行器令牌。
+执行与编排分开部署。Nexus WorkStudio API、数据 Worker 和 OpenCode 均不需要 Docker socket；只有专用执行服务持有自己的执行宿主机 Docker socket。任务容器不接收该 socket、模型密钥、数据库连接、应用访问口令或执行器令牌。
 
 ## 用户怎么使用
 
@@ -37,18 +37,18 @@ Agent 新增工具：
 
 需要 Linux、Docker Engine 和 gVisor，按 [gVisor 官方 Docker 指南](https://gvisor.dev/docs/user_guide/quick_start/docker/) 安装 `runsc`。执行器会检查 Docker 的 runtime 和实际容器配置；缺少 `runsc` 时拒绝执行，不降级为普通宿主机子进程。
 
-宿主机的 Docker socket具有高权限。执行服务应放在专门的执行主机或相应隔离基础设施，管理入口只允许 Atlas 控制平面访问。普通容器并不等于微虚拟机，也不能把单项配置检查当作隔离安全审计。
+宿主机的 Docker socket具有高权限。执行服务应放在专门的执行主机或相应隔离基础设施，管理入口只允许 Nexus WorkStudio 控制平面访问。普通容器并不等于微虚拟机，也不能把单项配置检查当作隔离安全审计。
 
 ### 2. 构建并固定工作镜像
 
 在仓库根目录执行，将镜像推入你自己的镜像仓：
 
 ```bash
-docker build -f deploy/work-runner/Dockerfile.workspace -t YOUR_REGISTRY/atlas-workspace:work-v1 .
-docker push YOUR_REGISTRY/atlas-workspace:work-v1
+docker build -f deploy/work-runner/Dockerfile.workspace -t YOUR_REGISTRY/nexus-workspace:work-v1 .
+docker push YOUR_REGISTRY/nexus-workspace:work-v1
 ```
 
-从镜像仓或 `docker image inspect` 取得真实 RepoDigest，配置 `ATLAS_SANDBOX_IMAGE=YOUR_REGISTRY/atlas-workspace@sha256:<64位摘要>`。执行器只接受固定摘要；不会运行模型指定的镜像、Docker 参数或主机挂载。
+从镜像仓或 `docker image inspect` 取得真实 RepoDigest，配置 `NEXUS_SANDBOX_IMAGE=YOUR_REGISTRY/nexus-workspace@sha256:<64位摘要>`。执行器只接受固定摘要；不会运行模型指定的镜像、Docker 参数或主机挂载。
 
 镜像提供 Python、Node、Chromium、LibreOffice、中文字体与数据/办公库。依赖安装发生在构建阶段；运行时默认没有网络。定制依赖应重新构建和批准镜像，不能让模型在应用主机安装软件。
 
@@ -57,27 +57,27 @@ docker push YOUR_REGISTRY/atlas-workspace:work-v1
 在执行主机准备仅管理员可读的环境文件，包含单独生成的至少 32 字符随机令牌和镜像摘要：
 
 ```dotenv
-ATLAS_WORK_RUNNER_TOKEN=<独立随机令牌>
-ATLAS_SANDBOX_IMAGE=YOUR_REGISTRY/atlas-workspace@sha256:<真实摘要>
-ATLAS_RUNNER_STORAGE_MB=4096
+NEXUS_WORK_RUNNER_TOKEN=<独立随机令牌>
+NEXUS_SANDBOX_IMAGE=YOUR_REGISTRY/nexus-workspace@sha256:<真实摘要>
+NEXUS_RUNNER_STORAGE_MB=4096
 ```
 
 ```bash
 docker compose --env-file /secure/runner.env -f deploy/work-runner/compose.yaml up -d --build
 ```
 
-服务只绑定执行宿主机回环端口 8090。通过你管理的 HTTPS 反向代理或安全隧道提供给 Atlas；禁止直接公开 Docker socket 或未加密执行接口。反向代理需允许不超过 92 MiB 的请求体。工作卷应独立备份并按组织规则加密；Atlas 原有数据卷备份不包含执行主机的检查点。
+服务只绑定执行宿主机回环端口 8090。通过你管理的 HTTPS 反向代理或安全隧道提供给 Nexus WorkStudio；禁止直接公开 Docker socket 或未加密执行接口。反向代理需允许不超过 92 MiB 的请求体。工作卷应独立备份并按组织规则加密；Nexus WorkStudio 原有数据卷备份不包含执行主机的检查点。
 
-### 4. 连接 Atlas
+### 4. 连接 Nexus WorkStudio
 
-在 Atlas 部署 `.env` 中加入以下配置，沿用原有 `llm.json` 模型目录，再重启后台：
+在 Nexus WorkStudio 部署 `.env` 中加入以下配置，沿用原有 `llm.json` 模型目录，再重启后台：
 
 ```dotenv
-ATLAS_WORK_RUNNER_URL=https://executor.example.com
-ATLAS_WORK_RUNNER_TOKEN=<与执行器一致的独立令牌>
+NEXUS_WORK_RUNNER_URL=https://executor.example.com
+NEXUS_WORK_RUNNER_TOKEN=<与执行器一致的独立令牌>
 ```
 
-私网地址还需在现有 `API_ALLOWED_HOSTS` 允许列表中显式批准。仅专用私网调试才设置 `ATLAS_WORK_RUNNER_ALLOW_HTTP=1`；此例外不允许明文公网地址。模型需获准读取项目内容，且原有公司资料授权仍有效，才能发送和读取执行文件。
+私网地址还需在现有 `API_ALLOWED_HOSTS` 允许列表中显式批准。仅专用私网调试才设置 `NEXUS_WORK_RUNNER_ALLOW_HTTP=1`；此例外不允许明文公网地址。模型需获准读取项目内容，且原有公司资料授权仍有效，才能发送和读取执行文件。
 
 本次补上了源码仓库原先缺失的 `Dockerfile.quickstart`，可沿用 `compose.quickstart.yaml` 与原启动脚本。新增执行服务不是启动原应用时自动创建的；需要单独部署，不能仅填写三个环境变量就认为机器已经就绪。
 

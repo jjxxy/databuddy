@@ -25,10 +25,10 @@ for line in sys.stdin:
         for index in range(5):
             print(json.dumps({'jsonrpc':'2.0','method':'notifications/progress','params':{'index':index}}),flush=True)
 ''', encoding='utf-8')
-    monkeypatch.setenv('ATLAS_LOCAL_MODE', '1')
-    monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE', str(tmp_path))
-    monkeypatch.setenv('ATLAS_NETWORK_MODE', 'connected')
-    monkeypatch.setenv('ATLAS_STDIO_TEMPLATES', json.dumps({
+    monkeypatch.setenv('NEXUS_LOCAL_MODE', '1')
+    monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('NEXUS_NETWORK_MODE', 'connected')
+    monkeypatch.setenv('NEXUS_STDIO_TEMPLATES', json.dumps({
         'noisy-review': {'command': sys.executable, 'args': [str(server)]}}))
     before = set(threading.enumerate())
     client = mcp_stdio.Session({'transport':'stdio','command':'noisy-review','args':[], 'env':{}})

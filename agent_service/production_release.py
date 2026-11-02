@@ -132,7 +132,7 @@ def build_fingerprint(root: Path | None = None):
                         for d in importlib.metadata.distributions() if d.metadata["Name"]})
     if not inventory:
         raise ValueError("installed_dependencies_unknown")
-    value = {"algorithm": "atlas-runtime-v1", "files": records,
+    value = {"algorithm": "nexus-runtime-v1", "files": records,
              "python": platform.python_version(), "installed_distributions": inventory}
     return {"algorithm": value["algorithm"], "sha256": _sha(_canonical(value)),
             "source_files": len(records), "installed_distributions": len(inventory),
@@ -148,11 +148,11 @@ def process_build_fingerprint():
 def configuration_fingerprint():
     from .provider import status
     model = status()
-    fields = ("ATLAS_DEPLOYMENT_ID", "ATLAS_PUBLIC_ORIGIN", "ATLAS_DEPLOYMENT_PROFILE",
-              "ATLAS_AUTH_MODE", "OIDC_ISSUER", "OIDC_AUDIENCE", "OIDC_JWKS_URL",
-              "OIDC_ALLOWED_SUBJECTS", "OIDC_ACCEPT_PROXY_HEADER", "ATLAS_STORAGE_MODE",
-              "ATLAS_STORAGE_ID", "AGENT_ORCHESTRATION_MODE", "SCHEDULER_MODE",
-              "ATLAS_RUNNER_URL", "ATLAS_RUNNER_ISOLATION")
+    fields = ("NEXUS_DEPLOYMENT_ID", "NEXUS_PUBLIC_ORIGIN", "NEXUS_DEPLOYMENT_PROFILE",
+              "NEXUS_AUTH_MODE", "OIDC_ISSUER", "OIDC_AUDIENCE", "OIDC_JWKS_URL",
+              "OIDC_ALLOWED_SUBJECTS", "OIDC_ACCEPT_PROXY_HEADER", "NEXUS_STORAGE_MODE",
+              "NEXUS_STORAGE_ID", "AGENT_ORCHESTRATION_MODE", "SCHEDULER_MODE",
+              "NEXUS_RUNNER_URL", "NEXUS_RUNNER_ISOLATION")
     # Only the digest is returned; this snapshot is never emitted or persisted.
     snapshot = {"environment": {k: os.getenv(k, "") for k in fields}, "model": model}
     return {"sha256": _sha(_canonical(snapshot)), "model_configured": model.get("configured") is True,
@@ -240,16 +240,16 @@ def _policy(folder):
         "require_capacity", "require_sso", "capacity_concurrency", "capacity_duration_seconds"), "policy")
     if type(value["schema_version"]) is not int or value["schema_version"] != SCHEMA_VERSION:
         raise ValueError("policy_version")
-    if not _string(value["deployment_id"]) or value["deployment_id"] != os.getenv("ATLAS_DEPLOYMENT_ID"):
+    if not _string(value["deployment_id"]) or value["deployment_id"] != os.getenv("NEXUS_DEPLOYMENT_ID"):
         raise ValueError("deployment_id_mismatch_or_missing")
     origin = urlsplit(value["origin"]) if isinstance(value["origin"], str) else None
     if (not origin or origin.scheme != "https" or not origin.hostname or origin.username
             or origin.password or origin.query or origin.fragment or origin.path not in ("", "/")
-            or value["origin"].rstrip("/") != os.getenv("ATLAS_PUBLIC_ORIGIN", "").rstrip("/")):
+            or value["origin"].rstrip("/") != os.getenv("NEXUS_PUBLIC_ORIGIN", "").rstrip("/")):
         raise ValueError("deployment_origin_mismatch_or_invalid")
     if value["identity_architecture"] != "owner_workspace":
         raise ValueError("only_owner_workspace_supported")
-    if value["profile"] not in ("single", "ha") or value["profile"] != os.getenv("ATLAS_DEPLOYMENT_PROFILE", "single"):
+    if value["profile"] not in ("single", "ha") or value["profile"] != os.getenv("NEXUS_DEPLOYMENT_PROFILE", "single"):
         raise ValueError("deployment_profile_mismatch")
     if any(type(value[k]) is not bool for k in ("require_capacity", "require_sso")):
         raise ValueError("policy_boolean_invalid")
@@ -275,7 +275,7 @@ def runtime_health(build, at):
     state = readiness()
     if state.get("ready") is not True or state.get("checks") != {"database": True, "storage": True}:
         raise ValueError("runtime_readiness_failed")
-    required = 2 if os.getenv("ATLAS_DEPLOYMENT_PROFILE", "single") == "ha" else 1
+    required = 2 if os.getenv("NEXUS_DEPLOYMENT_PROFILE", "single") == "ha" else 1
     counts = {}
     for role in ("api", "agent", "worker"):
         fresh = []
@@ -337,7 +337,7 @@ def _measurements(kind, value, policy, config):
         ok = (_string(value["disruption_id"]) and _string(value["recovered_task_id"])
               and type(value["recovery_seconds"]) in (int, float) and 0 < value["recovery_seconds"] <= 300)
     else:
-        ok = (_string(value["execution_id"]) and value["isolation"] == os.getenv("ATLAS_RUNNER_ISOLATION")
+        ok = (_string(value["execution_id"]) and value["isolation"] == os.getenv("NEXUS_RUNNER_ISOLATION")
               and value["isolation"] in ("microvm", "gvisor") and value["network"] == "none")
     if not ok:
         raise ValueError("measurements_failed_or_unknown")

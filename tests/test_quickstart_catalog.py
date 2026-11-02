@@ -60,8 +60,8 @@ def test_cloud_provisions_all_owner_entries_and_does_not_leak_file_to_children(t
     value=catalog();value['models'][0].update(context_window_tokens=128000,max_output_tokens=4096)
     path=write(tmp_path,value);data=tmp_path/'data'
     env={**os.environ,'DATA_DIR':str(data),'DATABASE_URL':'sqlite:///'+str(data/'metadata.sqlite'),
-         'APP_TOKEN':'fixture-only-workspace-token-123456789','ATLAS_LLM_CONFIG_FILE':str(path),
-         'ATLAS_QUICKSTART_CONTAINER':'1','API_ALLOWED_HOSTS':'existing.test'}
+         'APP_TOKEN':'fixture-only-workspace-token-123456789','NEXUS_LLM_CONFIG_FILE':str(path),
+         'NEXUS_QUICKSTART_CONTAINER':'1','API_ALLOWED_HOSTS':'existing.test'}
     script='''import os
 from agent_service import model_catalog
 from agent_service.cloud import prepare
@@ -76,7 +76,7 @@ model_catalog.provision=provision
 assert prepare()==8000
 assert len(calls)==1
 assert {'existing.test','host.docker.internal','models.example.org'}<=set(os.environ['API_ALLOWED_HOSTS'].split(','))
-assert 'ATLAS_LLM_CONFIG_FILE' not in os.environ and 'ATLAS_INITIAL_MODEL' not in os.environ
+assert 'NEXUS_LLM_CONFIG_FILE' not in os.environ and 'NEXUS_INITIAL_MODEL' not in os.environ
 print('CATALOG_BOOTSTRAP_OK')
 '''
     result=subprocess.run([sys.executable,'-c',script],env=env,capture_output=True,text=True,timeout=20)

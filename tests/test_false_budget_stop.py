@@ -143,7 +143,7 @@ def test_runtime_revision_and_uncached_composer_are_delivered_by_actual_http(mon
         response=client.get(path)
         assert response.status_code==200
         assert response.headers['cache-control']=='no-store'
-        assert response.headers['X-Atlas-Runtime-Revision']==RUNTIME_REVISION
+        assert response.headers['X-Nexus-Runtime-Revision']==RUNTIME_REVISION
     assert client.get('/api/runtime-info').status_code==401
     info=client.get('/api/runtime-info',headers={'Authorization':'Bearer '+TOKEN}).json()
     assert info['revision']==RUNTIME_REVISION and info['interactive_task_totals']=='unlimited'

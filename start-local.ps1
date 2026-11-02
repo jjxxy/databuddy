@@ -14,14 +14,14 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = $utf8
 $bundle = $PSScriptRoot
 
-$folderState = Join-Path $bundle '.atlas-local-folder'
+$folderState = Join-Path $bundle '.nexus-local-folder'
 if (-not $Workspace -and -not $ChooseFolder -and (Test-Path -LiteralPath $folderState)) {
     $Workspace = [System.IO.File]::ReadAllText($folderState, $utf8).TrimEnd([char]13, [char]10)
 }
 if ($Action -eq 'up' -and (-not $Workspace -or $ChooseFolder)) {
     Add-Type -AssemblyName System.Windows.Forms
     $picker = New-Object System.Windows.Forms.FolderBrowserDialog
-    $picker.Description = '选择 Atlas 业务工作文件夹：原文件不会被覆盖，生成内容保存在独立子目录'
+    $picker.Description = '选择 Nexus WorkStudio 业务工作文件夹：原文件不会被覆盖，生成内容保存在独立子目录'
     $picker.ShowNewFolderButton = $true
     if ($picker.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }
     $Workspace = $picker.SelectedPath
@@ -35,13 +35,13 @@ if ($Workspace) {
     }
     $Workspace = $folder.FullName
     [System.IO.File]::WriteAllText($folderState, $Workspace + "`n", $utf8)
-    $env:ATLAS_LOCAL_WORKSPACE_HOST = $Workspace
-    $env:ATLAS_LOCAL_LABEL = $folder.Name
-    $env:ATLAS_LOCAL_UID = '10001'
-    $env:ATLAS_LOCAL_GID = '10001'
+    $env:NEXUS_LOCAL_WORKSPACE_HOST = $Workspace
+    $env:NEXUS_LOCAL_LABEL = $folder.Name
+    $env:NEXUS_LOCAL_UID = '10001'
+    $env:NEXUS_LOCAL_GID = '10001'
 } elseif ($Action -ne 'open') { throw '尚未选择本地工作文件夹，请先运行 start-local.cmd。' }
-if ($Offline) { $env:ATLAS_NETWORK_MODE = 'local_only' }
-elseif (-not $env:ATLAS_NETWORK_MODE) { $env:ATLAS_NETWORK_MODE = 'connected' }
+if ($Offline) { $env:NEXUS_NETWORK_MODE = 'local_only' }
+elseif (-not $env:NEXUS_NETWORK_MODE) { $env:NEXUS_NETWORK_MODE = 'connected' }
 
 function Get-LocalUrl {
     $port = 8000
@@ -49,7 +49,7 @@ function Get-LocalUrl {
     if (Test-Path -LiteralPath $envPath) {
         # Read one numeric setting only; never execute or display .env.
         foreach ($line in [System.IO.File]::ReadAllLines($envPath, $utf8)) {
-            if ($line -match '^\s*(?:export\s+)?ATLAS_HTTP_PORT\s*=(.*)$') {
+            if ($line -match '^\s*(?:export\s+)?NEXUS_HTTP_PORT\s*=(.*)$') {
                 $value = $Matches[1].Trim()
                 if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
                     ($value.StartsWith("'") -and $value.EndsWith("'"))) {
@@ -60,13 +60,13 @@ function Get-LocalUrl {
                 if ($value -match '^0*([1-9][0-9]{0,4}|0)$') {
                     $port = [int]$Matches[1]
                 } else {
-                    throw '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+                    throw '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
                 }
             }
         }
     }
     if ($port -lt 1 -or $port -gt 65535) {
-        throw '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+        throw '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
     }
     return "http://localhost:$port"
 }
@@ -74,7 +74,7 @@ function Get-LocalUrl {
 function Open-LocalWorkspace {
     $url = Get-LocalUrl
     Write-Host "工作空间：$url"
-    if (-not $NoOpen -and $env:ATLAS_NO_OPEN -ne '1') {
+    if (-not $NoOpen -and $env:NEXUS_NO_OPEN -ne '1') {
         try { Start-Process $url }
         catch { Write-Host '浏览器未能自动打开，请手动打开上方地址。' }
     }

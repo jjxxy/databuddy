@@ -1,6 +1,6 @@
 # 云浏览器、图片与语音
 
-Atlas 已提供这些功能的服务代码、Agent 工具和应用界面。管理员部署浏览器并连接媒体模型后，用户直接在项目对话中描述工作；不需要填写 API 参数或运行命令。配置状态不代表服务或模型质量已经验收。本轮测试与截图见 [验证记录](VALIDATION-INTERACTIVE-WORK.md)。
+Nexus WorkStudio 已提供这些功能的服务代码、Agent 工具和应用界面。管理员部署浏览器并连接媒体模型后，用户直接在项目对话中描述工作；不需要填写 API 参数或运行命令。配置状态不代表服务或模型质量已经验收。本轮测试与截图见 [验证记录](VALIDATION-INTERACTIVE-WORK.md)。
 
 ## 用户怎么使用
 
@@ -16,7 +16,7 @@ Atlas 已提供这些功能的服务代码、Agent 工具和应用界面。管�
 
 Agent 的一般自动网络请求只放行 GET / HEAD。对于受支持的同源 POST，用户先确认点击目标，再核对浏览器实际捕获的请求目标和原始内容并逐次确认，才会发送原请求。用户在浏览器面板明确授权当前站点后，Agent 可点击受限查询类控件、按索引选择非敏感下拉项，管理员启用下载后可从标明下载或导出的控件获取小文件并保存为项目资料。Agent 可提出非密码控件的具体填写操作；用户须先查看目标与内容，再逐次确认执行。登录和验证码需用户接管；不受支持的提交格式也必须由用户接管。网页自身可能通过 GET 或选择事件产生副作用，控件标签无法证明只读；仅在信任目标系统并理解授权范围时开启。接管期间 Agent 不能读取页面；结果未知时需用户接管核对，未自动重放。
 
-浏览器是独立的云会话，不继承本机 Chrome、ChatGPT、密码管理器或已有账号登录。每次会话启动独立 Chromium；Cookie 只在本会话中使用，不导出到 Atlas 或模型。生产容器的临时目录是 tmpfs，会话关闭或 30 分钟到期后清除。原始输入不写入动作日志；网页显示内容、正文证据和明确保存的截图仍属于项目资料。
+浏览器是独立的云会话，不继承本机 Chrome、ChatGPT、密码管理器或已有账号登录。每次会话启动独立 Chromium；Cookie 只在本会话中使用，不导出到 Nexus WorkStudio 或模型。生产容器的临时目录是 tmpfs，会话关闭或 30 分钟到期后清除。原始输入不写入动作日志；网页显示内容、正文证据和明确保存的截图仍属于项目资料。
 
 ## 管理员部署浏览器
 
@@ -25,28 +25,28 @@ Agent 的一般自动网络请求只放行 GET / HEAD。对于受支持的同源
 先按工作模式文档构建并推送工作镜像，取得真实不可变 digest。下面占位值须替换为自己的镜像地址：
 
 ```bash
-docker build --build-arg ATLAS_WORKSPACE_IMAGE=registry.example.com/atlas-work@sha256:YOUR_REAL_WORKSPACE_DIGEST \
-  -f deploy/browser-runner/Dockerfile.browser -t registry.example.com/atlas-browser:release .
-docker push registry.example.com/atlas-browser:release
+docker build --build-arg NEXUS_WORKSPACE_IMAGE=registry.example.com/nexus-work@sha256:YOUR_REAL_WORKSPACE_DIGEST \
+  -f deploy/browser-runner/Dockerfile.browser -t registry.example.com/nexus-browser:release .
+docker push registry.example.com/nexus-browser:release
 ```
 
 从镜像仓库取得浏览器镜像的真实 digest。在执行主机准备环境变量：
 
 ```dotenv
-ATLAS_BROWSER_IMAGE=registry.example.com/atlas-browser@sha256:YOUR_REAL_BROWSER_DIGEST
-ATLAS_BROWSER_TOKEN=REPLACE_WITH_A_DEDICATED_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
-ATLAS_BROWSER_WORKSPACE_ID=YOUR_ACTOR_PROJECT_WORKSPACE_HASH
-ATLAS_BROWSER_PORT=8091
-ATLAS_BROWSER_ALLOWED_HOSTS=example.org,login.example.org,static.example.org
+NEXUS_BROWSER_IMAGE=registry.example.com/nexus-browser@sha256:YOUR_REAL_BROWSER_DIGEST
+NEXUS_BROWSER_TOKEN=REPLACE_WITH_A_DEDICATED_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
+NEXUS_BROWSER_WORKSPACE_ID=YOUR_ACTOR_PROJECT_WORKSPACE_HASH
+NEXUS_BROWSER_PORT=8091
+NEXUS_BROWSER_ALLOWED_HOSTS=example.org,login.example.org,static.example.org
 ```
 
 然后启动：
 
 ```bash
-docker compose -p atlas-browser-project1 --env-file /secure/browser.env -f deploy/browser-runner/compose.yaml up -d --build
+docker compose -p nexus-browser-project1 --env-file /secure/browser.env -f deploy/browser-runner/compose.yaml up -d --build
 ```
 
-每个账号与项目组合使用独立容器栈，不跨账号或项目共享浏览器容器。`ATLAS_BROWSER_WORKSPACE_ID` 是该组合的 SHA-256；已登录用户请求 `GET /api/projects/<project_id>/browsers` 可取得自己的 `workspace_id`。服务启动时必须绑定此值，应用也核对服务返回的绑定。不同项目分别使用不同 Compose 项目名、端口、入口与随机密钥。
+每个账号与项目组合使用独立容器栈，不跨账号或项目共享浏览器容器。`NEXUS_BROWSER_WORKSPACE_ID` 是该组合的 SHA-256；已登录用户请求 `GET /api/projects/<project_id>/browsers` 可取得自己的 `workspace_id`。服务启动时必须绑定此值，应用也核对服务返回的绑定。不同项目分别使用不同 Compose 项目名、端口、入口与随机密钥。
 
 部署配置强制 `runsc`、非 root、只读根目录、去除 capabilities、CPU / 内存 / PID 限制。Chromium 内层使用 `--no-sandbox`，外层 gVisor 是必需条件；不能删掉 `runtime: runsc` 当作普通容器运行。单个绑定内的两个浏览器会话不是两个独立安全容器，不能将该栈改为跨租户共享服务。
 
@@ -55,16 +55,16 @@ docker compose -p atlas-browser-project1 --env-file /secure/browser.env -f deplo
 在应用 `.env` 中设置并重启应用服务：
 
 ```dotenv
-ATLAS_WEB_ENABLED=1
-ATLAS_WEB_ALLOWED_HOSTS=example.org,login.example.org,static.example.org
-ATLAS_BROWSER_URL=https://your-protected-browser.example.com
-ATLAS_BROWSER_TOKEN=THE_SAME_DEDICATED_BROWSER_SECRET
+NEXUS_WEB_ENABLED=1
+NEXUS_WEB_ALLOWED_HOSTS=example.org,login.example.org,static.example.org
+NEXUS_BROWSER_URL=https://your-protected-browser.example.com
+NEXUS_BROWSER_TOKEN=THE_SAME_DEDICATED_BROWSER_SECRET
 ```
 
 上述默认地址适合一个项目。多项目时，在应用管理员环境变量中注册每个已部署服务；每项必须同时填写自己的 URL 和密钥，缺项不会借用其他服务的密钥：
 
 ```dotenv
-ATLAS_BROWSER_ENDPOINTS_JSON='{"<workspace_hash>":{"url":"https://project1-browser.example.com","token":"PROJECT1_DEDICATED_SECRET_AT_LEAST_32_CHARACTERS"}}'
+NEXUS_BROWSER_ENDPOINTS_JSON='{"<workspace_hash>":{"url":"https://project1-browser.example.com","token":"PROJECT1_DEDICATED_SECRET_AT_LEAST_32_CHARACTERS"}}'
 ```
 
 应用与执行服务都要批准目标、登录与资源域名。公网配置的 `*` 会扩大公开站点范围；私网不能使用通配符。私密项目不进入公开网页研究路径。这些规则不是完整的数据防泄漏系统。
@@ -72,31 +72,31 @@ ATLAS_BROWSER_ENDPOINTS_JSON='{"<workspace_hash>":{"url":"https://project1-brows
 需要访问内网时，管理员必须先核实部署网络、公司授权及模型数据许可；仅 `company_private` 或 `work_private` 项目支持该路径。普通项目的对话记录不具备同等私密存储，不能直接用于内部页面。应用和代理都要配置精确域名，代理还必须绑定该域名可解析到的私网网段：
 
 ```dotenv
-ATLAS_BROWSER_PRIVATE_ENABLED=1
-ATLAS_BROWSER_PRIVATE_HOSTS=erp.example.internal
-ATLAS_BROWSER_PRIVATE_HOSTS_JSON={"erp.example.internal":["10.20.30.0/24"]}
-ATLAS_BROWSER_ALLOWED_HOSTS=erp.example.internal
-ATLAS_BROWSER_ALLOW_DOWNLOADS=1
+NEXUS_BROWSER_PRIVATE_ENABLED=1
+NEXUS_BROWSER_PRIVATE_HOSTS=erp.example.internal
+NEXUS_BROWSER_PRIVATE_HOSTS_JSON={"erp.example.internal":["10.20.30.0/24"]}
+NEXUS_BROWSER_ALLOWED_HOSTS=erp.example.internal
+NEXUS_BROWSER_ALLOW_DOWNLOADS=1
 ```
 
-`ATLAS_BROWSER_PRIVATE_ENABLED` 和 `ATLAS_BROWSER_PRIVATE_HOSTS` 需同时配置在应用和浏览器代理；JSON CIDR 只配置在代理。该示例只说明格式，必须由企业管理员替换成实际且最小的域名与网段。代理校验每次 DNS 全部返回地址，只要出现范围外地址就拒绝；回环、链路本地和云元数据仍禁止。授权域名的 SSO 和静态资源域名也需要逐个核对配置。当前仅支持 80/443，浏览器实例不自动具备 VPN 或内网连通性，真实企业网络、身份和页面尚须部署验收。
+`NEXUS_BROWSER_PRIVATE_ENABLED` 和 `NEXUS_BROWSER_PRIVATE_HOSTS` 需同时配置在应用和浏览器代理；JSON CIDR 只配置在代理。该示例只说明格式，必须由企业管理员替换成实际且最小的域名与网段。代理校验每次 DNS 全部返回地址，只要出现范围外地址就拒绝；回环、链路本地和云元数据仍禁止。授权域名的 SSO 和静态资源域名也需要逐个核对配置。当前仅支持 80/443，浏览器实例不自动具备 VPN 或内网连通性，真实企业网络、身份和页面尚须部署验收。
 
-单个浏览器服务最多同时运行 2 个会话，每个会话最多 64 个控制请求，30 分钟到期。动作有唯一编号：重复提交不会再次执行，参数冲突会拒绝；断线后先刷新核对，不盲目重放。页面版本变化时拒绝旧控件操作。服务重启会清除会话，不自动重新登录或重放操作。下载支持启用后分块传输 CSV、Excel 等资料，默认上限为浏览器 `ATLAS_BROWSER_MAX_DOWNLOAD_MB` 和应用 `MAX_UPLOAD_MB` 的较小值（默认均为 25 MiB）；浏览器单文件上限最多 256 MiB。最终导入前会验证大小和 SHA-256，并需等待来源解析和核对。浏览器临时下载先落盘，部署时需限制临时盘；网页上传、保留弹窗、多标签和未确认的自动正式提交尚未实现。
+单个浏览器服务最多同时运行 2 个会话，每个会话最多 64 个控制请求，30 分钟到期。动作有唯一编号：重复提交不会再次执行，参数冲突会拒绝；断线后先刷新核对，不盲目重放。页面版本变化时拒绝旧控件操作。服务重启会清除会话，不自动重新登录或重放操作。下载支持启用后分块传输 CSV、Excel 等资料，默认上限为浏览器 `NEXUS_BROWSER_MAX_DOWNLOAD_MB` 和应用 `MAX_UPLOAD_MB` 的较小值（默认均为 25 MiB）；浏览器单文件上限最多 256 MiB。最终导入前会验证大小和 SHA-256，并需等待来源解析和核对。浏览器临时下载先落盘，部署时需限制临时盘；网页上传、保留弹窗、多标签和未确认的自动正式提交尚未实现。
 
 ## 管理员连接媒体模型
 
 媒体服务使用独立的管理员配置，不把密钥放进前端、提示词或 Git。只填写确实支持对应接口的模型；未填写的功能不会提供给 Agent：
 
 ```dotenv
-ATLAS_MEDIA_BASE_URL=https://your-compatible-provider.example.com/v1
-ATLAS_MEDIA_API_KEY=YOUR_PROVIDER_SECRET
-ATLAS_IMAGE_MODEL=YOUR_IMAGE_MODEL
-ATLAS_TRANSCRIBE_MODEL=YOUR_TRANSCRIPTION_MODEL
-ATLAS_SPEECH_MODEL=YOUR_SPEECH_MODEL
-ATLAS_REALTIME_MODEL=YOUR_REALTIME_MODEL
-ATLAS_SPEECH_VOICE=alloy
-ATLAS_MEDIA_DAILY_REQUESTS=40
-ATLAS_MEDIA_STORAGE_MB=256
+NEXUS_MEDIA_BASE_URL=https://your-compatible-provider.example.com/v1
+NEXUS_MEDIA_API_KEY=YOUR_PROVIDER_SECRET
+NEXUS_IMAGE_MODEL=YOUR_IMAGE_MODEL
+NEXUS_TRANSCRIBE_MODEL=YOUR_TRANSCRIPTION_MODEL
+NEXUS_SPEECH_MODEL=YOUR_SPEECH_MODEL
+NEXUS_REALTIME_MODEL=YOUR_REALTIME_MODEL
+NEXUS_SPEECH_VOICE=alloy
+NEXUS_MEDIA_DAILY_REQUESTS=40
+NEXUS_MEDIA_STORAGE_MB=256
 ```
 
 需要管理员允许当前模型读取项目内容，且通过现有公司资料与协作模型权限检查。媒体端点是另一目的地，不继承文本模型的内部资料许可；公司、工作系统及带协作目的地限制的项目当前拒绝此路径，请在独立公开项目使用。其他上传资料的分类仍由部署者管理。
@@ -131,8 +131,8 @@ npm test --prefix tests/ui
 使用已安装的 Chromium 运行真实浏览器服务与真实本地网站验证，不调用付费模型：
 
 ```bash
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser-service --prefix tests/ui
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser --prefix tests/ui
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser-service --prefix tests/ui
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser --prefix tests/ui
 ```
 
 服务测试显式设置测试模式，只允许本地受控网站，生产应用拒绝连接该模式。第一项运行真实 Chromium 和真实 HTTP 登录流程；第二项运行真实前端与受控 API，检查桌面 / 手机页面、交还控制与未配置语音状态。DOM 中的麦克风测试使用明确的模拟接口，不代表真实声学效果。
@@ -143,8 +143,8 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:browser --prefix tests/u
 
 当前浏览器默认需要用户在云浏览器面板明确授权当前网站，授权最多 15 分钟、仅对所选会话和当时的 origin 有效，可随时撤销。Agent 可选择非敏感下拉项、点击有限的查询/导航类控件；普通文本输入须向用户展示具体内容并逐次确认，密码和验证码由用户接管。一般网络请求仍仅允许 GET/HEAD。用户确认点击目标后，可捕获一个同源、最多 64 KiB 的 UTF-8 JSON、表单编码或纯文本 POST；再由用户核对完整 URL、内容类型和原始正文，逐次确认是否发送。含敏感认证字段、未知自定义业务请求头、二进制、跨域、压缩和多个 POST 等情况会拒绝并要求用户接管。**页面的控件标签和 GET 请求不能保证无副作用**：任何站点脚本都可能改变业务状态，操作前仅为可信站点授权；不支持的正式提交、付款、删除和敏感输入应由用户接管。本保护不是业务系统的服务端只读权限。
 
-下载需 runner 额外设置 `ATLAS_BROWSER_ALLOW_DOWNLOADS=1`，且仅支持标记为下载/导出的可见控件，按浏览器与应用上传配置中较小的上限分块传输，限制支持的后缀、验证哈希，并作为新项目资料导入。下载也可能触发页面副作用。网络中断或返回结果无法确认时，系统阻止继续，用户需接管并核对上次操作，再使用“已核对上次操作”交还。系统不根据此操作假定提交成功。
+下载需 runner 额外设置 `NEXUS_BROWSER_ALLOW_DOWNLOADS=1`，且仅支持标记为下载/导出的可见控件，按浏览器与应用上传配置中较小的上限分块传输，限制支持的后缀、验证哈希，并作为新项目资料导入。下载也可能触发页面副作用。网络中断或返回结果无法确认时，系统阻止继续，用户需接管并核对上次操作，再使用“已核对上次操作”交还。系统不根据此操作假定提交成功。
 
-企业内网默认关闭。仅在项目已启用 `company_private` 或 `work_private` 加密并获得模型内容授权时，管理员可显式配置 `ATLAS_BROWSER_PRIVATE_ENABLED=1`、`ATLAS_BROWSER_PRIVATE_HOSTS` 精确主机名单，并在独立代理中配置同样主机到私有 CIDR 的 `ATLAS_BROWSER_PRIVATE_HOSTS_JSON`，同时把目标主机加入 `ATLAS_BROWSER_ALLOWED_HOSTS`。不得使用通配符绕过私网检查；当前端口限定 80/443。内部资料不会走公网网页研究路径。普通项目的任务记录不具备同等私密存储，不能使用该内网模式。以上配置必须由实际部署安全策略和网络隔离共同保证；未通过真实业务系统测试前不得宣称生产可用。
+企业内网默认关闭。仅在项目已启用 `company_private` 或 `work_private` 加密并获得模型内容授权时，管理员可显式配置 `NEXUS_BROWSER_PRIVATE_ENABLED=1`、`NEXUS_BROWSER_PRIVATE_HOSTS` 精确主机名单，并在独立代理中配置同样主机到私有 CIDR 的 `NEXUS_BROWSER_PRIVATE_HOSTS_JSON`，同时把目标主机加入 `NEXUS_BROWSER_ALLOWED_HOSTS`。不得使用通配符绕过私网检查；当前端口限定 80/443。内部资料不会走公网网页研究路径。普通项目的任务记录不具备同等私密存储，不能使用该内网模式。以上配置必须由实际部署安全策略和网络隔离共同保证；未通过真实业务系统测试前不得宣称生产可用。
 
-具体填写内容在 Atlas 待审批记录中密封并只供当前授权用户核对；模型和所选 Agent 运行时也可能保留其输出，不能视作所有持久化副本都已加密。页面在输入时仍可能触发 GET 请求；只有在授权目标和数据使用范围内才应批准。发送或拒绝捕获的 POST 后，其他页面网络请求仍被冻结；必须接管页面核对业务回执，再交还浏览器。HTTP 成功不代表业务处理成功。真实 Chromium 和企业网站尚未在本环境验收。
+具体填写内容在 Nexus WorkStudio 待审批记录中密封并只供当前授权用户核对；模型和所选 Agent 运行时也可能保留其输出，不能视作所有持久化副本都已加密。页面在输入时仍可能触发 GET 请求；只有在授权目标和数据使用范围内才应批准。发送或拒绝捕获的 POST 后，其他页面网络请求仍被冻结；必须接管页面核对业务回执，再交还浏览器。HTTP 成功不代表业务处理成功。真实 Chromium 和企业网站尚未在本环境验收。

@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "project": "atlas-isolated",
-  "public_origin": "https://atlas.example.com",
+  "project": "nexus-isolated",
+  "public_origin": "https://nexus.example.com",
   "gateway_port": 8080,
   "oidc": {
     "issuer": "https://identity.example.com",
-    "audience": "atlas-browser",
+    "audience": "nexus-browser",
     "jwks_url": "https://identity.example.com/.well-known/jwks.json",
     "jwks_file": "./secrets/idp-public-jwks.json"
   },

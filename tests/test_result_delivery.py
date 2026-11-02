@@ -38,7 +38,7 @@ def test_exact_nested_types_markers_and_large_integer_roundtrip(tmp_path):
     value={'decimal':Decimal('9999999999999999999999999.123456789012'),
            'integer':98765432109876543210987654321,'date':date(2026,10,21),
            'datetime':datetime(2026,10,21,9,30,tzinfo=timezone.utc),
-           'user_marker':{'$atlas':'decimal','value':'user text, not an actual decimal'}}
+           'user_marker':{'$nexus':'decimal','value':'user text, not an actual decimal'}}
     path=tmp_path/'handoff';write_handoff(path,[{'value':value}],schema)
     assert read_handoff(path,native_types=True)['rows'][0]['value']==value
     safe=read_handoff(path)['rows'][0]['value']

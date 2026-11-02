@@ -1,4 +1,4 @@
-// Chromium + actual Atlas API/database over non-secure HTTP on IPv4-mapped loopback.
+// Chromium + actual Nexus WorkStudio API/database over non-secure HTTP on IPv4-mapped loopback.
 // A local proxy simulates a two-slot gateway and a lost upload response;
 // no real business data or model connection is used.
 import assert from 'node:assert/strict';
@@ -13,12 +13,12 @@ import {chromium} from 'playwright-core';
 
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const python=path.join(root,'.venv','bin','python');
-const executable=process.env.ATLAS_BROWSER_EXECUTABLE;
-if(!executable)throw Error('Set ATLAS_BROWSER_EXECUTABLE to an installed Chromium binary');
-const state=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-live-upload-'));
+const executable=process.env.NEXUS_BROWSER_EXECUTABLE;
+if(!executable)throw Error('Set NEXUS_BROWSER_EXECUTABLE to an installed Chromium binary');
+const state=fs.mkdtempSync(path.join(os.tmpdir(),'nexus-live-upload-'));
 const token='fixture-owner-local-test-token-not-secret';
 const env={...process.env,DATA_DIR:path.join(state,'data'),DATABASE_URL:'sqlite:///'+path.join(state,'data','metadata.sqlite'),
- APP_TOKEN:token,ATLAS_AUTH_MODE:'token',ATLAS_DESKTOP_MODE:'0',ATLAS_OPENCODE_RUNTIME:'0',
+ APP_TOKEN:token,NEXUS_AUTH_MODE:'token',NEXUS_DESKTOP_MODE:'0',NEXUS_OPENCODE_RUNTIME:'0',
  LLM_BASE_URL:'',LLM_MODEL:'',DLT_TELEMETRY:'false',DO_NOT_TRACK:'1'};
 const setup=spawnSync(python,['-c',`from agent_service import model_catalog\nmodel_catalog.provision({'default_model_id':'fixture','models':[{'id':'fixture','name':'fixture','base_url':'http://127.0.0.1:9/v1','model':'fixture','api_key':'test-only','share_data':True}]},verify=False)`],{cwd:root,env,encoding:'utf8'});
 if(setup.status!==0)throw Error('Could not initialize isolated fixture: '+setup.stderr);
@@ -32,8 +32,8 @@ let proxy,browser;
 const messages=[],uploadAttempts=[];let active=0,peak=0,overloaded=0,droppedSuccess=false,gateRejected=false,uploadActive=0,uploadPeak=0,serveOldClient=false;
 const priorClient=spawnSync('git',['show','7bbec0b:agent_service/static/app.js'],{cwd:root,encoding:'utf8'});
 try{
- let healthy=false;for(let i=0;i<100&&!healthy;i++){if(backend.exitCode!==null)throw Error('Atlas API exited: '+backendError);try{healthy=(await fetch(backendOrigin+'/health')).ok}catch{}if(!healthy)await pause(100)}
- assert(healthy,'actual Atlas API did not start');
+ let healthy=false;for(let i=0;i<100&&!healthy;i++){if(backend.exitCode!==null)throw Error('Nexus WorkStudio API exited: '+backendError);try{healthy=(await fetch(backendOrigin+'/health')).ok}catch{}if(!healthy)await pause(100)}
+ assert(healthy,'actual Nexus WorkStudio API did not start');
  const project=await jsonRequest(backendOrigin+'/api/projects',{method:'POST',body:JSON.stringify({name:'Browser upload integration',request_id:'live-browser-project'})});
  proxy=http.createServer(async(req,res)=>{
   if(serveOldClient&&req.url.startsWith('/app.js')){res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'});res.end(priorClient.stdout);return}
@@ -61,7 +61,7 @@ try{
  await new Promise(resolve=>proxy.listen(0,'127.0.0.1',resolve));const proxyPort=proxy.address().port;
  browser=await chromium.launch({executablePath:executable,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--no-proxy-server']});
  const context=await browser.newContext({viewport:{width:1380,height:900},serviceWorkers:'block'});
- await context.addInitScript(value=>sessionStorage.setItem('atlas_token',value),token);
+ await context.addInitScript(value=>sessionStorage.setItem('nexus_token',value),token);
  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
  await page.goto('http://[::ffff:127.0.0.1]:'+proxyPort+'/?project='+project.id,{waitUntil:'domcontentloaded'});
  await page.waitForSelector('#shell:not([hidden])',{timeout:30000});
@@ -95,7 +95,7 @@ try{
  }
  // Directory checkbox fallback uses a real temporary directory. Playwright
  // provides the folder to Chromium; the OS selection window is not automated.
- const folder=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-directory-input-'));
+ const folder=fs.mkdtempSync(path.join(os.tmpdir(),'nexus-directory-input-'));
  try{
   fs.mkdirSync(path.join(folder,'nested'));
   fs.writeFileSync(path.join(folder,'one.csv'),'id,amount\n1,10\n');
@@ -140,10 +140,10 @@ try{
   await page.locator('#folder-attach-list label').filter({hasText:'three.json'}).locator('input').check();
   const other=await jsonRequest(backendOrigin+'/api/projects',{method:'POST',body:JSON.stringify({name:'Other project',request_id:'other-'+Date.now()})});
   await page.evaluate(()=>{window.testOldFolderScope={...folderScope}});
-  await page.evaluate(id=>window.atlasBusiness.openProject(id),other.id);
+  await page.evaluate(id=>window.nexusBusiness.openProject(id),other.id);
   await page.evaluate(()=>{const data=new DataTransfer();data.items.add(new File(['old'],'old.csv'));folderPending=window.testOldFolderScope;folderInput.files=data.files;folderInput.dispatchEvent(new Event('change'))});
   assert.equal(await page.locator('.attachment-chip').count(),0);assert.equal(await page.locator('#folder-attach-list label').count(),0);
-  await page.evaluate(id=>window.atlasBusiness.openProject(id),project.id);
+  await page.evaluate(id=>window.nexusBusiness.openProject(id),project.id);
   await page.waitForFunction(id=>projectId===id&&!!sessionId&&!navigating,project.id);
   // Bounded listing and hard 20-file limit, including XSS-safe file names.
   await page.click('#folder-attach');
@@ -177,7 +177,7 @@ try{
  let oldClientSaturatedGateway=false;
  if(priorClient.status===0){
   serveOldClient=true;const oldContext=await browser.newContext({serviceWorkers:'block'});
-  await oldContext.addInitScript(value=>sessionStorage.setItem('atlas_token',value),token);
+  await oldContext.addInitScript(value=>sessionStorage.setItem('nexus_token',value),token);
   const oldPage=await oldContext.newPage();
   await oldPage.goto('http://127.0.0.1:'+proxyPort+'/?project='+project.id,{waitUntil:'domcontentloaded'});
   await oldPage.waitForSelector('#shell:not([hidden])',{timeout:30000});

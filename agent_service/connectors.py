@@ -305,7 +305,7 @@ def _file_rows(source, limit, path, content):
         if not t['complete']:raise SourceError('网页明细合并区域含义不明确，请使用授权导出或明确布局')
         labels=[f['label'] for f in t['fields']]
         rows=[{f['label']:r[f['name']] for f in t['fields']} for r in t['rows'][:limit+1]]
-        return rows,dict(parser='atlas_html',schema_labels=labels,source_sha256=t['source_sha256'],semantic_review_required=True)
+        return rows,dict(parser='nexus_html',schema_labels=labels,source_sha256=t['source_sha256'],semantic_review_required=True)
     if suffix in ('.txt','.md'):
         lines=content.decode('utf-8').splitlines()
         return [{'内容':line,'行号':i+1} for i,line in enumerate(lines) if line.strip()][:limit+1], {'parser':'text','note':'文字及行号；数值提取与语义需保留证据并核对'}

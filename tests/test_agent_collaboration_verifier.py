@@ -21,10 +21,10 @@ def _sha(raw):return hashlib.sha256(raw).hexdigest()
 def _bundle(*,rows=40,last='7.500000000002'):
     records=[]
     for index in range(rows):
-        records.append({'values':{'$atlas':'object','items':[
+        records.append({'values':{'$nexus':'object','items':[
             ['office','Office'+str(index+1).zfill(2)],
-            ['actual',{'$atlas':'decimal','value':last if index==rows-1 else '7.500000000000'}],
-            ['budget',{'$atlas':'decimal','value':'8.000000000000'}]]}})
+            ['actual',{'$nexus':'decimal','value':last if index==rows-1 else '7.500000000000'}],
+            ['budget',{'$nexus':'decimal','value':'8.000000000000'}]]}})
     files={'rows.jsonl':('\n'.join(json.dumps(row) for row in records)+'\n').encode(),
            'schema.json':b'{}','context.json':b'{}','provenance.jsonl':b'', 'stages.json':b'[]'}
     manifest=json.dumps({'row_count':rows,'files':{name:{'bytes':len(raw),'sha256':_sha(raw)} for name,raw in files.items()}},sort_keys=True).encode()
@@ -36,7 +36,7 @@ def _bundle(*,rows=40,last='7.500000000002'):
     item={'id':'result-real-bytes','kind':'result','name':'complete.zip','media_type':'application/zip',
           'bytes':len(raw),'sha256':_sha(raw),'encoding':'base64','content_base64':base64.b64encode(raw).decode(),
           'result_metadata':{'records':rows,'handoff_manifest_sha256':_sha(manifest)}}
-    bundle={'format':'atlas-agent-handoff','version':1,'complete':True,'items':[item]}
+    bundle={'format':'nexus-agent-handoff','version':1,'complete':True,'items':[item]}
     _seal(bundle)
     return bundle
 
@@ -70,7 +70,7 @@ def test_valid_hashes_do_not_hide_preview_truncation_or_lost_decimal(rows,last):
 def test_manifest_change_and_missing_result_are_rejected():
     bundle=_bundle();bundle['items'][0]['result_metadata']['records']=25
     with pytest.raises(AssertionError,match='manifest'):verifier.verify_output(bundle)
-    bundle={'format':'atlas-agent-handoff','version':1,'complete':True,'items':[]};_seal(bundle)
+    bundle={'format':'nexus-agent-handoff','version':1,'complete':True,'items':[]};_seal(bundle)
     with pytest.raises(AssertionError,match='No actual complete'):verifier.verify_output(bundle)
 
 
@@ -86,9 +86,9 @@ def test_native_fixture_resolves_actual_tool_receipt_ids_after_immutable_prompt(
 
 def test_native_fixture_step_count_uses_fresh_prompt_after_real_compaction():
     context={'request':'fixture-finance','mode':'work','completed_steps':[{}]*4}
-    body={'messages':[{'role':'assistant','tool_calls':[{'function':{'name':'atlas_step'}}]},
+    body={'messages':[{'role':'assistant','tool_calls':[{'function':{'name':'nexus_step'}}]},
         {'role':'user','content':json.dumps(context)},
-        {'role':'assistant','tool_calls':[{'function':{'name':'atlas_step'}}]}]}
+        {'role':'assistant','tool_calls':[{'function':{'name':'nexus_step'}}]}]}
     assert verifier.CollaborationFixture._step(context,body)==5
 
 

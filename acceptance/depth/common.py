@@ -14,7 +14,7 @@ import zipfile
 from urllib.error import HTTPError
 from urllib.request import Request, ProxyHandler, build_opener
 
-SECRET_KEYS={'api_key','authorization','app_token','atlas_operator_token','secret_config'}
+SECRET_KEYS={'api_key','authorization','app_token','nexus_operator_token','secret_config'}
 
 def public(value):
     if isinstance(value,dict):return {k:('[redacted]' if k.lower() in SECRET_KEYS else public(v)) for k,v in value.items()}
@@ -74,7 +74,7 @@ class CaseContext:
 
     def upload(self,path,name=None):
         path=Path(path);name=name or path.name;raw=path.read_bytes()
-        boundary='atlas-depth-'+uuid.uuid4().hex
+        boundary='nexus-depth-'+uuid.uuid4().hex
         body=[]
         for key,value in (('request_id',uuid.uuid4().hex),('local_processing','true')):
             body.append((f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n').encode())

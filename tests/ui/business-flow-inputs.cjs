@@ -2,10 +2,10 @@ const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),a
 const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Promise(r=>setImmediate(r));
 async function until(test){for(let i=0;i<100;i++){await tick();if(test())return}throw Error('page did not settle')}
 const reply=(v,status=200)=>({ok:status>=200&&status<300,status,json:async()=>structuredClone(v)});
-(async()=>{const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://atlas.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document;const digest='a'.repeat(64),hash='b'.repeat(64),commit='c'.repeat(40),posts=[];let attempts=0,scheduleBody;
+(async()=>{const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://nexus.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document;const digest='a'.repeat(64),hash='b'.repeat(64),commit='c'.repeat(40),posts=[];let attempts=0,scheduleBody;
  const doc={name:'收入分析',inputs:['file'],nodes:[{id:'read',kind:'source_table',title:'读取收入资料',inputs:{source:{source:'input',name:'file'}},config:{}}]};
  const detail={candidate_digest:digest,candidate_commit:commit,candidate_document:doc,published_digest:digest,published_commit:commit,published_document:doc,timezone:'Asia/Shanghai',cron:null};
- w.sessionStorage.setItem('atlas_token','fixture');w.atlasSecureUUID=()=> 'same-id';w.confirm=()=>true;
+ w.sessionStorage.setItem('nexus_token','fixture');w.nexusSecureUUID=()=> 'same-id';w.confirm=()=>true;
  w.fetch=async(url,opts={})=>{const u=new URL(url,w.location.href),r=u.pathname;
  if(r.endsWith('/business-flows'))return reply({items:[{id:'one',name:'分析'}]});
  if(r.endsWith('/business-flows/one'))return reply(detail);

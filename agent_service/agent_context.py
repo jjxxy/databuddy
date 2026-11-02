@@ -89,7 +89,7 @@ def allowed(turn):
     if not work_status()['configured']:
         names -= set(WORK_RUNTIME_TOOLS) - {'work_environment_status','inspect_visual_artifact','list_project_artifacts'}
     from .work_runtime import vision_status
-    if not vision_status()['enabled']:names.discard('inspect_visual_artifact')
+    if not vision_status(turn)['enabled']:names.discard('inspect_visual_artifact')
     from .web_research import status as web_status
     if not web_status()['enabled']:names -= {'search_web','read_web_page'}
     elif not web_status()['search_configured']:names.discard('search_web')
@@ -130,11 +130,18 @@ def selected(turn):
         # Start with document/source tools; data-workflow/report capabilities are
         # still in the catalog and are loaded in full when the agent needs them.
         names=sorted(OFFICE_WORKING_SET)
-    elif data_task:
+    elif data_task or re.search(r'工作流|业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I):
         # A data task needs a small executable workflow frontier. Keywords such
         # as "口径、核对、报告、文件" must not union every unrelated subsystem.
         # The complete authorized catalog remains available through discovery.
         names=list(DATA_WORKING_SET)
+        if re.search(r'工作流|业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I):
+            # Make the actual flow lifecycle discoverable without eagerly
+            # loading the much larger creation schema into every request.
+            # Data-workflow core tools (register/run/read) must keep their
+            # inline budget before the flow-lifecycle extras are considered.
+            names=names+['list_business_flows','business_flow_guide','inspect_business_flow',
+                         'run_business_flow','inspect_business_flow_run']
     else:
         names=[]
         for pattern,group in GROUPS:
@@ -503,6 +510,13 @@ def inspection_progress(turn,tool,arguments,value,epoch,source_before=None):
         source_version=inspection_source_version(turn,tool,arguments)
         if source_version is None or source_before!=source_version:return None
     def signature(name,args,observation,version):
+        if name=='read_file':
+            # 分页读同一文件时，不同 offset/limit 返回的是文件的不同部分（新证据），
+            # 不应判为“重复观察”。指纹纳入 offset/limit：只有“同一位置反复读同一内容”
+            # 才算重复（死循环）；文件被修改后 sha256 变化同样会改变指纹。
+            if isinstance(args,dict):
+                args={'path':args.get('path'),'offset':args.get('offset'),'limit':args.get('limit')}
+            observation=observation.get('sha256') if isinstance(observation,dict) else observation
         try:
             raw=json.dumps([name,args,observation,version],sort_keys=True,ensure_ascii=False,default=str,separators=(',',':'))
         except (ValueError,TypeError,RecursionError):return None

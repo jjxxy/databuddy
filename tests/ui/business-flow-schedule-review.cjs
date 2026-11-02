@@ -3,8 +3,8 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(fn){for(let i=0;i<200;i++){await tick();if(fn())return}throw Error('page did not settle')}
 function reply(v,status=200){return {ok:status>=200&&status<300,status,json:async()=>structuredClone(v)}}
 async function boot({count=1,mode='ok'}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://atlas.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','x');const detail={published_digest:sha,published_commit:commit,published_run:'r_one',published_document:{name:'业务流程',inputs:[],nodes:[]},timezone:'Asia/Shanghai',cron:'0 9 * * *',schedule_uncertain_run:'job_1'};
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://nexus.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','x');const detail={published_digest:sha,published_commit:commit,published_run:'r_one',published_document:{name:'业务流程',inputs:[],nodes:[]},timezone:'Asia/Shanghai',cron:'0 9 * * *',schedule_uncertain_run:'job_1'};
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href),p=u.pathname;calls.push({path:p,method:options.method||'GET',body:options.body});
   if(p==='/api/projects/p_one/business-flows')return reply({items:[{id:'bf_one',name:'业务流程'}]});
   if(p.endsWith('/business-flows/bf_one'))return reply(detail);

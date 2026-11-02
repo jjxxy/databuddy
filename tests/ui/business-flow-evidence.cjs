@@ -8,7 +8,7 @@ function page(stage,offset=0,overrides={}){
  return {run_id:'r_one',node_id:'convert',stage_id:stage,columns:[{name:'id',label:'编号'},{name:'amount',label:'金额',unit:'CNY'}],rows,total,offset,next_offset:offset+rows.length<total?offset+rows.length:null,output_sha256:detailHash,final_output_sha256:finalHash,financial_verified:false,...overrides};
 }
 async function boot(options={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://atlas.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];w.sessionStorage.setItem('atlas_token','x');
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://nexus.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];w.sessionStorage.setItem('nexus_token','x');
  w.fetch=async(url)=>{const u=new URL(url,w.location.href),p=u.pathname;calls.push(u.pathname+u.search);
   if(p.endsWith('/business-flows'))return reply({items:[{id:'bf_one',name:'本次流程'},{id:'bf_two',name:'另一流程'}]});
   if(p.endsWith('/business-flows/bf_one'))return reply({candidate_digest:digest,candidate_commit:commit,candidate_run:'r_one',candidate_document:{name:'汇率核对',inputs:[],nodes:[{id:'convert',kind:'table_workflow',title:'集团数据',config:{plan:{stages:[{id:'fx',kind:'fx_convert',description:'月度汇率'},{id:'fx_empty',kind:'fx_convert',description:'空明细'}]}}}]}});

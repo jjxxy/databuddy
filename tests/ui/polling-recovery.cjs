@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const root=path.resolve(__dirname,'../../agent_service/static');
 const drain=async()=>{for(let i=0;i<25;i++)await Promise.resolve()};
 function setup(){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test',runScripts:'outside-only'}),w=dom.window;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test',runScripts:'outside-only'}),w=dom.window;
  let now=1000000,next=0;const timers=new Map();
  w.Date.now=()=>now;w.setTimeout=(fn,delay=0)=>{const id=++next;timers.set(id,{fn,at:now+Number(delay)});return id};w.clearTimeout=id=>timers.delete(id);
  w.matchMedia=()=>({matches:false,addEventListener(){}});
@@ -16,8 +16,8 @@ async function lifecycleRecovery(){
   let requests=[],mode='rate',registrationRate=false,permissionCalls=0,refreshes=0,pendingFeed=null;
   const pending={request_id:'keep-original-request',text:'不要自动重发'};
   w.Notification={permission:'default',requestPermission:()=>{permissionCalls++;return Promise.resolve('denied')}};
-  w.eval(fs.readFileSync(path.join(root,'lifecycle.js'),'utf8')+';window.createAtlasLifecycle=createAtlasLifecycle;');
-  const life=w.createAtlasLifecycle({state:()=>({projectId:'p',sessionId:'c',sourceIds:['s_original'],pending}),projects:()=>[],atLatest:()=>false,
+  w.eval(fs.readFileSync(path.join(root,'lifecycle.js'),'utf8')+';window.createNexusLifecycle=createNexusLifecycle;');
+  const life=w.createNexusLifecycle({state:()=>({projectId:'p',sessionId:'c',sourceIds:['s_original'],pending}),projects:()=>[],atLatest:()=>false,
    refresh:async()=>{refreshes++},toast:()=>{},api:async(route,options={})=>{
     requests.push({route,options});
     if(route==='/browser/register'){
@@ -59,7 +59,7 @@ async function lifecycleRecovery(){
 async function bootRecovery(stopBeforeRetry=false){
  const {dom,w,advance}=setup(),d=w.document;
  try{
-  const ids=[],requests=[];w.sessionStorage.setItem('atlas_token','fixture-token');w.localStorage.setItem('preserve-project-preference','keep');
+  const ids=[],requests=[];w.sessionStorage.setItem('nexus_token','fixture-token');w.localStorage.setItem('preserve-project-preference','keep');
   w.fetch=async(url,options={})=>{
    const route=new URL(url,w.location.href).pathname;requests.push(route);
    let status=200,value={};
@@ -73,7 +73,7 @@ async function bootRecovery(stopBeforeRetry=false){
    else throw Error('Unexpected boot request '+route);
    return {status,ok:status===200,headers:{get:name=>status===429&&name==='Retry-After'?'60':null},json:async()=>value};
   };
-  w.eval(fs.readFileSync(path.join(root,'lifecycle.js'),'utf8')+';window.createAtlasLifecycle=createAtlasLifecycle;');
+  w.eval(fs.readFileSync(path.join(root,'lifecycle.js'),'utf8')+';window.createNexusLifecycle=createNexusLifecycle;');
   w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.pollRecoveryTest={sealAuthentication,api};');
   await drain();assert.equal(ids.length,1);assert(d.querySelector('#login-error').textContent.includes('无需清空数据'));
   await assert.rejects(w.pollRecoveryTest.api('/missing-device-probe'),e=>e.status===404&&e.code==='browser_device_missing');

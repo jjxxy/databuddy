@@ -18,7 +18,7 @@ H = {'Authorization': 'Bearer ' + TOKEN}
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setenv('ATLAS_AUTH_MODE', 'token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE', 'token')
     monkeypatch.setattr(api, '_requests', {})
     return TestClient(api.app)
 
@@ -28,13 +28,13 @@ def owner_identity(monkeypatch):
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
     jwk.update(kid='catalog-key', alg='RS256', use='sig', key_ops=['verify'])
-    values = {'ATLAS_AUTH_MODE': 'oidc', 'OIDC_ISSUER': 'https://catalog-identity.test',
-              'OIDC_AUDIENCE': 'atlas', 'OIDC_JWKS_URL': 'https://catalog-identity.test/jwks',
+    values = {'NEXUS_AUTH_MODE': 'oidc', 'OIDC_ISSUER': 'https://catalog-identity.test',
+              'OIDC_AUDIENCE': 'nexus', 'OIDC_JWKS_URL': 'https://catalog-identity.test/jwks',
               'OIDC_ALLOWED_SUBJECTS': 'catalog-owner'}
     for name, value in values.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(identity, 'keys', lambda refresh=False: [jwk])
-    token = jwt.encode({'sub': 'catalog-owner', 'iss': values['OIDC_ISSUER'], 'aud': 'atlas',
+    token = jwt.encode({'sub': 'catalog-owner', 'iss': values['OIDC_ISSUER'], 'aud': 'nexus',
                         'exp': datetime.now(timezone.utc) + timedelta(minutes=2)},
                        private, algorithm='RS256', headers={'kid': 'catalog-key'})
     return {'Authorization': 'Bearer ' + token}

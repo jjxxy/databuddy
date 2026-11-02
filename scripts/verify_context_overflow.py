@@ -3,17 +3,17 @@
 Use --lazy-office for late Office loading; --false-budget-stop verifies that
 a model-authored budget excuse is corrected through the actual native bridge.
 No external LLM, real account, billing or business files. Requires the pinned
-ATLAS_OPENCODE_BINARY. Creates an isolated temporary state directory.
+NEXUS_OPENCODE_BINARY. Creates an isolated temporary state directory.
 """
 import json,os,sys,tempfile,subprocess,time,threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 
 repo=Path(__file__).resolve().parents[1];sys.path.insert(0,str(repo))
-root=Path(tempfile.mkdtemp(prefix='atlas-context-overflow-'))
+root=Path(tempfile.mkdtemp(prefix='nexus-context-overflow-'))
 os.environ.update(DATA_DIR=str(root/'data'),DATABASE_URL='sqlite:///'+str(root/'data/metadata.sqlite'),
-    APP_TOKEN='context-overflow-fixture-only-token',ATLAS_OPENCODE_RUNTIME='1',API_ALLOWED_HOSTS='127.0.0.1',
-    ATLAS_DESKTOP_MODE='0',ATLAS_AUTH_MODE='token')
+    APP_TOKEN='context-overflow-fixture-only-token',NEXUS_OPENCODE_RUNTIME='1',API_ALLOWED_HOSTS='127.0.0.1',
+    NEXUS_DESKTOP_MODE='0',NEXUS_AUTH_MODE='token')
 from agent_service import agent,provider,opencode_runtime as runtime,model_catalog,conversation,workspace
 from agent_service.store import get,put,now
 calls=[];turn_id='';process=None;lazy_office='--lazy-office' in sys.argv;false_budget_stop='--false-budget-stop' in sys.argv
@@ -49,7 +49,7 @@ class Handler(BaseHTTPRequestHandler):
             calls[-1]['office_spec_loaded']=actual_schema
             step=lazy_steps[min(position,len(lazy_steps)-1)]
         message={'role':'assistant','tool_calls':[{'id':'fixture_call_'+str(len(calls)),'type':'function',
-            'function':{'name':'atlas_step','arguments':json.dumps(step,ensure_ascii=False)}}]}
+            'function':{'name':'nexus_step','arguments':json.dumps(step,ensure_ascii=False)}}]}
         payload={'id':'fixture','object':'chat.completion','model':'context-fixture','choices':[{'index':0,'message':message,'finish_reason':'tool_calls'}],
             'usage':{'prompt_tokens':10,'completion_tokens':10,'total_tokens':20}}
         if body.get('stream'):
@@ -65,7 +65,7 @@ server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(targ
 log=(root/'native.log').open('w')
 try:
     selected={'id':'fixture','name':'Local fixture','base_url':f'http://127.0.0.1:{server.server_port}/v1',
-        'model':'context-fixture','api_key':'local-fixture','share_data':True,'engine':'atlas','tool_protocol':'json'}
+        'model':'context-fixture','api_key':'local-fixture','share_data':True,'engine':'nexus','tool_protocol':'json'}
     model_catalog.provision({'models':[selected],'default_model_id':'fixture'},verify=False)
     spec=runtime.prepare({'models':[selected],'default_model_id':'fixture'},agent.Step.model_json_schema())
     process=subprocess.Popen(spec['command'],env=spec['env'],cwd=spec['cwd'],stdout=log,stderr=log);runtime.wait_ready(30)

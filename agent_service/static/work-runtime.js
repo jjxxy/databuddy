@@ -1,7 +1,7 @@
 /* Background work visibility. Commands and credentials stay out of the UI. */
 (() => {
   'use strict';
-  const b = window.atlasBusiness, dialog = document.querySelector('#work-progress-dialog');
+  const b = window.nexusBusiness, dialog = document.querySelector('#work-progress-dialog');
   if (!b || !dialog) return;
   const list = dialog.querySelector('[data-work-list]'), notice = dialog.querySelector('[data-work-notice]');
   let generation = 0, timer = null, loading = false;
@@ -57,6 +57,6 @@
   };
   dialog.querySelector('[data-work-close]').onclick = () => reset();
   dialog.addEventListener('close', () => { generation++; clearTimeout(timer); timer = null; loading = false; });
-  dialog.querySelector('[data-work-artifacts]').onclick = () => { reset(); window.atlasShell?.openArtifacts('work').catch(error => b.toast(error.message)); };
-  window.atlasWorkRuntime = {reset, projectChanged:reset};
+  dialog.querySelector('[data-work-artifacts]').onclick = () => { reset(); window.nexusShell?.openArtifacts('work').catch(error => b.toast(error.message)); };
+  window.nexusWorkRuntime = {reset, projectChanged:reset};
 })();

@@ -184,7 +184,7 @@ def main(argv=None):
             status = host.json('GET', '/api/local-workspace')
             assert status['enabled'] and status['mode'] == 'local_folder' and status['imports_are_snapshots']
             assert status['network_mode'] == 'local_only'
-            assert (selected / '.atlas/metadata.sqlite').is_file()
+            assert (selected / '.nexus/metadata.sqlite').is_file()
             assert not (state / 'data').exists()
             entries = host.json('GET', '/api/local-workspace/files')['entries']
             assert {entry['path'] for entry in entries} == {'收入订单.csv', '成本.csv'}
@@ -200,7 +200,7 @@ def main(argv=None):
             result['cases']['folder_import'] = {'files': 2, 'original_bytes_hashed': True,
                 'same_request_idempotent': True, 'metadata_under_selected_folder': True}
             step = 'unsafe_and_missing_paths'
-            for path in ('../outside.csv', '.atlas/metadata.sqlite', 'llm.json', '收入订单.csv:secret', 'NUL.csv', 'missing.csv'):
+            for path in ('../outside.csv', '.nexus/metadata.sqlite', 'llm.json', '收入订单.csv:secret', 'NUL.csv', 'missing.csv'):
                 rejected = host.json('POST', f'/api/projects/{project}/local-import',
                     {'paths': [path], 'request_id': backend.identity()})
                 assert not rejected['sources'] and len(rejected['failures']) == 1
@@ -239,7 +239,7 @@ def main(argv=None):
                 {'paths': ['收入订单.csv'], 'request_id': backend.identity()})
             assert not newer['failures'] and newer['sources'][0]['id'] != source['id']
             backend.wait(host, lambda: ready_sources(host, [newer['sources'][0]['id']]))
-            original_snapshots = list((selected / '.atlas/uploads').glob('*.csv'))
+            original_snapshots = list((selected / '.nexus/uploads').glob('*.csv'))
             assert any(digest(path) == untouched[orders.name] for path in original_snapshots)
             assert Decimal(host.json('GET', f'/api/pipelines/{pipeline_id}/result')['manifest']['summary'][0]['amount_total']) == Decimal('118.15')
             expected_originals = {orders.name: digest(orders), costs.name: untouched[costs.name]}
@@ -262,7 +262,7 @@ def main(argv=None):
             other.start()
             assert other.url != host.url and other.token != host.token
             assert other.json('GET', '/api/projects') == []
-            assert (other_selected / '.atlas/metadata.sqlite').is_file()
+            assert (other_selected / '.nexus/metadata.sqlite').is_file()
             assert host.json('GET', f'/api/pipelines/{pipeline_id}/result')['total'] == 2
             assert not (state / 'data').exists()
             other.stop()

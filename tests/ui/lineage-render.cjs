@@ -4,9 +4,9 @@ const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),a
 const dir=path.resolve(__dirname,'../../ui/dist'),html=fs.readFileSync(path.join(dir,'index.html'),'utf8'),asset=html.match(/src="\.\/([^\"]+\.js)"/)[1],bundle=fs.readFileSync(path.join(dir,asset),'utf8');
 async function until(check){for(let i=0;i<100;i++){await new Promise(resolve=>setTimeout(resolve,5));if(check())return}throw Error('lineage render did not settle')}
 async function boot({failed=false,empty=false}={}){
- const dom=new JSDOM(html,{url:'https://atlas.test/lineage/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,d=w.document;
+ const dom=new JSDOM(html,{url:'https://nexus.test/lineage/',runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window,d=w.document;
  w.ResizeObserver=class{observe(){}unobserve(){}disconnect(){}};w.DOMMatrixReadOnly=class{constructor(){this.m22=1}};
- const calls=[];w.atlasLineage={list:async()=>{calls.push('list');return empty?[]:[{id:'pipe_1',name:'收入核对',published_run:'run_1'}]},get:async id=>{calls.push(id);if(failed)throw Error('fixture unavailable');return {source_ids:['source_1'],run_id:'run_1',active_commit:'frozen'}}};
+ const calls=[];w.nexusLineage={list:async()=>{calls.push('list');return empty?[]:[{id:'pipe_1',name:'收入核对',published_run:'run_1'}]},get:async id=>{calls.push(id);if(failed)throw Error('fixture unavailable');return {source_ids:['source_1'],run_id:'run_1',active_commit:'frozen'}}};
  w.eval(bundle);await until(()=>!d.body.textContent.includes('正在读取本机记录'));
  return {dom,d,calls};
 }

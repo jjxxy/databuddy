@@ -1,6 +1,6 @@
 """Exercise an actual deployed runner; no mock backend or model is used.
 
-Set ATLAS_WORK_RUNNER_URL and ATLAS_WORK_RUNNER_TOKEN. This creates a fresh
+Set NEXUS_WORK_RUNNER_URL and NEXUS_WORK_RUNNER_TOKEN. This creates a fresh
 verification workspace, runs commands, and retains its checkpoints for review.
 """
 import argparse
@@ -23,9 +23,9 @@ from work_runner.protocol import Command, InputFile, digest
 
 
 def verify():
-    url = os.environ['ATLAS_WORK_RUNNER_URL'].rstrip('/')
-    token = os.environ['ATLAS_WORK_RUNNER_TOKEN']
-    wid = digest(('atlas-work-verification-' + secrets.token_hex(16)).encode())
+    url = os.environ['NEXUS_WORK_RUNNER_URL'].rstrip('/')
+    token = os.environ['NEXUS_WORK_RUNNER_TOKEN']
+    wid = digest(('nexus-work-verification-' + secrets.token_hex(16)).encode())
     with httpx.Client(base_url=url, headers={'Authorization':'Bearer ' + token}, timeout=20,
                       trust_env=False, follow_redirects=False) as client:
         def call(method, path, **kwargs):
@@ -58,10 +58,10 @@ def verify():
 from pathlib import Path
 from openpyxl import Workbook
 assert os.getuid() == 10001
-assert not any(k in os.environ for k in ('APP_TOKEN','LLM_API_KEY','DATABASE_URL','ATLAS_WORK_RUNNER_TOKEN'))
+assert not any(k in os.environ for k in ('APP_TOKEN','LLM_API_KEY','DATABASE_URL','NEXUS_WORK_RUNNER_TOKEN'))
 assert not Path('/var/run/docker.sock').exists()
 try:
-    Path('/etc/atlas-write-probe').write_text('must be blocked')
+    Path('/etc/nexus-write-probe').write_text('must be blocked')
 except OSError:
     pass
 else:
@@ -90,14 +90,14 @@ print('nonroot, rootfs, network, no-secrets and editable workbook probes passed'
 from pathlib import Path
 from docx import Document
 from pptx import Presentation
-Path('outputs/sample.html').write_text('<!doctype html><html><meta charset="utf-8"><h1>Atlas rendition probe</h1><p>精确金额需单独核对</p></html>')
-document=Document();document.add_heading('Atlas rendition probe',0);document.add_paragraph('中文内容与版式预览');document.save('outputs/sample.docx')
-slides=Presentation();slide=slides.slides.add_slide(slides.slide_layouts[0]);slide.shapes.title.text='Atlas rendition probe';slides.save('outputs/sample.pptx')
+Path('outputs/sample.html').write_text('<!doctype html><html><meta charset="utf-8"><h1>Nexus WorkStudio rendition probe</h1><p>精确金额需单独核对</p></html>')
+document=Document();document.add_heading('Nexus WorkStudio rendition probe',0);document.add_paragraph('中文内容与版式预览');document.save('outputs/sample.docx')
+slides=Presentation();slide=slides.slides.add_slide(slides.slide_layouts[0]);slide.shapes.title.text='Nexus WorkStudio rendition probe';slides.save('outputs/sample.pptx')
 checks=[]
 for extension,name in [('html','sample'),('docx','sample'),('pptx','sample'),('xlsx','exact')]:
     source='outputs/'+name+'.'+extension
     output='previews/probe-'+extension
-    subprocess.run(['python','/opt/atlas-work/render.py',source,'--output',output,'--max-pages','1'],check=True,timeout=120)
+    subprocess.run(['python','/opt/nexus-work/render.py',source,'--output',output,'--max-pages','1'],check=True,timeout=120)
     manifest=json.loads(Path(output+'/manifest.json').read_text())
     assert manifest['input_sha256']==hashlib.sha256(Path(source).read_bytes()).hexdigest()
     assert manifest['rendered_pages']==1 and manifest['total_pages']>=1

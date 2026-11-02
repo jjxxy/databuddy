@@ -1,6 +1,6 @@
-"""Compare an Atlas full-result CSV or XLSX with an independent finance oracle.
+"""Compare an Nexus WorkStudio full-result CSV or XLSX with an independent finance oracle.
 
-Python 3 standard library only. Does not call Atlas, LLMs, execute Excel formulas,
+Python 3 standard library only. Does not call Nexus WorkStudio, LLMs, execute Excel formulas,
 or modify the export. CSV must be UTF-8; XLSX formulas require numeric caches.
 """
 import argparse

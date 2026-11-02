@@ -1,6 +1,6 @@
-# Atlas v0.14：资产、字段血缘与指标确认
+# Nexus WorkStudio v0.14：资产、字段血缘与指标确认
 
-本版是完整源码工程，已经合入上传的 DataBuddy 数据契约补丁。原补丁不包含完整工程；本版以找回的 v0.13 源码为基线继续实现。当前交付的验证结论见 `VALIDATION-v0.14.json`。旧 `VERIFICATION.md`、`VALIDATION-WEB-v0.12.json` 等文件是历史记录，不代表本版已部署或本次重新执行了其中所有外部验收。
+本版是完整源码工程，已经合入上传的 WorkStudio 数据契约补丁。原补丁不包含完整工程；本版以找回的 v0.13 源码为基线继续实现。当前交付的验证结论见 `VALIDATION-v0.14.json`。旧 `VERIFICATION.md`、`VALIDATION-WEB-v0.12.json` 等文件是历史记录，不代表本版已部署或本次重新执行了其中所有外部验收。
 
 ## 继续实现的能力
 

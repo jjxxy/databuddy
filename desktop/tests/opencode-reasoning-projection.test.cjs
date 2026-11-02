@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-test('Atlas request projection preserves assistant reasoning and native tool pairing without exposing text in metrics', async () => {
+test('Nexus WorkStudio request projection preserves assistant reasoning and native tool pairing without exposing text in metrics', async () => {
   const {projectRequest} = await import('../../agent_service/opencode_context.mjs');
   const reasoning = 'fixture-sensitive-reasoning-测试';
   const longReceipt = (id, extra = {}) => ({
@@ -10,9 +10,9 @@ test('Atlas request projection preserves assistant reasoning and native tool pai
       observation: {path: 'work/report.json', data: 'x'.repeat(12000), ...extra}}}),
   });
   const assistant = {role: 'assistant', content: null, reasoning_content: reasoning,
-    tool_calls: [{id: 'call_first', type: 'function', function: {name: 'atlas_step', arguments: '{"kind":"tool"}'}}]};
+    tool_calls: [{id: 'call_first', type: 'function', function: {name: 'nexus_step', arguments: '{"kind":"tool"}'}}]};
   const secondAssistant = {role: 'assistant', content: null, reasoning_content: '',
-    tool_calls: [{id: 'call_second', type: 'function', function: {name: 'atlas_step', arguments: '{}'}}]};
+    tool_calls: [{id: 'call_second', type: 'function', function: {name: 'nexus_step', arguments: '{}'}}]};
   const body = {model: 'fixture', messages: [assistant, longReceipt('first'),
     secondAssistant, longReceipt('second'), longReceipt('latest')]};
   const original = structuredClone(body);

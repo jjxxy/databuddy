@@ -1,5 +1,5 @@
 {
-  "project": "Atlas DataBuddy",
+  "project": "Nexus WorkStudio",
   "version": "0.20.0",
   "export_date": "2026-10-28",
   "kind": "source_with_tests_and_dependency_locks",
@@ -39,7 +39,7 @@
   "real_financial_ocr_accuracy_verified": false,
   "pdf_worker_is_os_sandbox": false,
   "source_inventory_scope": "168 allowlisted application, runtime metadata, offline verification, UI build and lock files; does not assert whole repository equality",
-  "historical_pdf_ocr_portable": "Atlas-DataBuddy-win32-x64-r24-pdf-ocr",
+  "historical_pdf_ocr_portable": "Nexus WorkStudio-WorkStudio-win32-x64-r24-pdf-ocr",
   "financial_production_approved": false,
   "r24_financial_production_approved": false,
   "r24_status": "historical_pre_fix_package_do_not_use_for_financial_production",

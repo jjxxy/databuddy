@@ -31,7 +31,7 @@ def main():
     report={'ok':False,'case':args.case,'app_root':str(app),'synthetic_data_only':True,
         'real_model_evaluated':False,'default_budgets_used':True,'model_configuration_contents_logged':False}
     started=time.monotonic();host=None;ctx=None
-    with tempfile.TemporaryDirectory(prefix='atlas-depth-',ignore_cleanup_errors=True) as temporary:
+    with tempfile.TemporaryDirectory(prefix='nexus-depth-',ignore_cleanup_errors=True) as temporary:
         try:
             host=helper.Host(app,Path(temporary)/'state',args.model_config.resolve(),offline=False).start()
             ctx=CaseContext(host,evidence,args.case,args.timeout)

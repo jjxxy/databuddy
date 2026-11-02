@@ -77,7 +77,7 @@
             "recovered": false
           }
         ],
-        "evidence_dir": "/tmp/atlas-context-overflow-6gykln3p"
+        "evidence_dir": "/tmp/nexus-context-overflow-6gykln3p"
       }
     },
     "actual_native_context_overflow": {
@@ -115,7 +115,7 @@
             "recovered": true
           }
         ],
-        "evidence_dir": "/tmp/atlas-context-overflow-bqrc7g1y"
+        "evidence_dir": "/tmp/nexus-context-overflow-bqrc7g1y"
       }
     },
     "actual_browser_pickers_and_posted_ids": {
@@ -133,7 +133,7 @@
         "processing_uses_third_file": true,
         "mobile_no_horizontal_overflow": true,
         "no_live_model_or_windows_shell_test": true,
-        "evidence_directory": "/tmp/atlas-picker-m7qRF5"
+        "evidence_directory": "/tmp/nexus-picker-m7qRF5"
       }
     },
     "actual_browser_layout_cjk_fonts": {
@@ -155,7 +155,7 @@
         "return_control_gates_inputs": true,
         "unconfigured_voice_disabled": true,
         "no_real_microphone_or_voice_service": true,
-        "evidence_directory": "/tmp/atlas-browser-check-Cmv8cD"
+        "evidence_directory": "/tmp/nexus-browser-check-Cmv8cD"
       }
     },
     "syntax_and_crlf_aware_diff_check": true

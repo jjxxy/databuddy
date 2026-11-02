@@ -16,7 +16,7 @@ MAX_ENTRIES=4000
 
 def relative(name):
     if (not name or len(name)>240 or name.startswith('/') or '\\' in name
-            or len(name.split('/'))>16 or any(part in ('','.','..') or part.startswith('.atlas') for part in name.split('/'))
+            or len(name.split('/'))>16 or any(part in ('','.','..') or part.startswith('.nexus') for part in name.split('/'))
             or any(ord(char)<32 for char in name)):
         raise ValueError('Invalid transfer path')
     return name
@@ -108,7 +108,7 @@ def main():
         result={}
         for name in ('stdout','stderr'):
             try:
-                with os.fdopen(os.open('/tmp/atlas-'+name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as stream:
+                with os.fdopen(os.open('/tmp/nexus-'+name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb') as stream:
                     if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):raise ValueError('Invalid log file')
                     result[name]=stream.read(64000).decode('utf-8',errors='replace')
             except FileNotFoundError:result[name]=''

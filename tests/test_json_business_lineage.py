@@ -36,8 +36,8 @@ def test_json_record_path_survives_to_report_and_legacy_is_not_claimed_complete(
     assert selection=={'kind':'json_records','records_path':'records','selection_method':'inferred',
                        'wrapper_context_fields':['period','currency']}
     assert read['requires_source_review'] and read['requires_semantic_review']
-    plan={'version':1,'name':'收入汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
-        'columns':[{'name':'atlas_row','data_type':'text','meaning':'资料行号'},
+    plan={'version':1,'name':'收入汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
+        'columns':[{'name':'nexus_row','data_type':'text','meaning':'资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
         'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table','by':['c_1'],

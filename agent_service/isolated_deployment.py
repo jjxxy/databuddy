@@ -63,8 +63,8 @@ def render(manifest):
     if type(manifest['schema_version']) is not int or manifest['schema_version'] != 1:
         raise ManifestError('Unsupported schema version')
     project = _text(manifest['project'])
-    if not re.fullmatch(r'atlas-[a-z][a-z0-9-]{0,30}', project):
-        raise ManifestError('Project must be atlas-<lowercase-name>')
+    if not re.fullmatch(r'nexus-[a-z][a-z0-9-]{0,30}', project):
+        raise ManifestError('Project must be nexus-<lowercase-name>')
     origin = _https(manifest['public_origin'], origin=True)
     oidc = manifest['oidc']
     _object(oidc, ('issuer', 'audience', 'jwks_url', 'jwks_file'))
@@ -109,22 +109,22 @@ def render(manifest):
     gateway_workspaces = []
     for workspace in sorted(checked, key=lambda w: w['id']):
         wid = workspace['id']
-        backend, volume, network = 'atlas-' + wid, 'data-' + wid, 'workspace-' + wid
-        env_name = 'ATLAS_' + wid.upper().replace('-', '_') + '_APP_TOKEN'
+        backend, volume, network = 'nexus-' + wid, 'data-' + wid, 'workspace-' + wid
+        env_name = 'NEXUS_' + wid.upper().replace('-', '_') + '_APP_TOKEN'
         # Hyphens and underscores cannot collide: workspace IDs never admit underscores.
         environment = {
             'DATA_DIR': '/data', 'DATABASE_URL': 'sqlite:////data/metadata.sqlite',
-            'HOME': '/data/home', 'ATLAS_AUTH_MODE': 'oidc',
+            'HOME': '/data/home', 'NEXUS_AUTH_MODE': 'oidc',
             'OIDC_ISSUER': issuer, 'OIDC_AUDIENCE': audience, 'OIDC_JWKS_URL': jwks_url,
             'OIDC_ALLOWED_SUBJECTS': ','.join(sorted(workspace['subjects'])),
-            'OIDC_ACCEPT_PROXY_HEADER': '0', 'ATLAS_DROP_PRIVILEGES': '0',
-            'ATLAS_OPENCODE_RUNTIME': '1', 'ATLAS_NETWORK_MODE': 'connected',
+            'OIDC_ACCEPT_PROXY_HEADER': '0', 'NEXUS_DROP_PRIVILEGES': '0',
+            'NEXUS_OPENCODE_RUNTIME': '1', 'NEXUS_NETWORK_MODE': 'connected',
             'APP_TOKEN': '${' + env_name + ':?Set a distinct random token of at least 16 characters}',
         }
         if workspace.get('sharing','shared')=='personal':
             # The backend independently enforces the same boundary even if
             # its environment is later accidentally widened after rendering.
-            environment['ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT']='1'
+            environment['NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT']='1'
         service = {
             'build': {'context': '../..', 'dockerfile': 'Dockerfile.quickstart'},
             'command': ['python', '-m', 'agent_service.isolated_runtime'],
@@ -140,7 +140,7 @@ def render(manifest):
             secret = 'model-' + wid
             secrets[secret] = {'file': workspace['model_config_file']}
             service['secrets'] = [{'source': secret, 'target': 'model.json'}]
-            environment['ATLAS_LLM_CONFIG_FILE'] = '/run/secrets/model.json'
+            environment['NEXUS_LLM_CONFIG_FILE'] = '/run/secrets/model.json'
         services[backend] = service
         volumes[volume] = {}
         networks[network] = {'driver': 'bridge'}
@@ -149,8 +149,8 @@ def render(manifest):
         'build': {'context': '../..', 'dockerfile': 'Dockerfile.quickstart'},
         'command': ['python', '-m', 'uvicorn', 'agent_service.workspace_gateway:app', '--host', '0.0.0.0', '--port', '8080', '--no-proxy-headers', '--no-access-log'],
         'user': '10001:10001', 'init': True, 'read_only': True,
-        'environment': {'ATLAS_WORKSPACE_GATEWAY_CONFIG': '/run/atlas/gateway.json'},
-        'volumes': [{'type': 'bind', 'source': './gateway.json', 'target': '/run/atlas/gateway.json', 'read_only': True, 'bind': {'create_host_path': False}}],
+        'environment': {'NEXUS_WORKSPACE_GATEWAY_CONFIG': '/run/nexus/gateway.json'},
+        'volumes': [{'type': 'bind', 'source': './gateway.json', 'target': '/run/nexus/gateway.json', 'read_only': True, 'bind': {'create_host_path': False}}],
         'secrets': [{'source': 'gateway_jwks', 'target': 'jwks.json'}],
         'networks': sorted(networks), 'ports': ['127.0.0.1:' + str(port) + ':8080'],
         'tmpfs': ['/tmp:rw,noexec,nosuid,size=67108864,mode=1777'],

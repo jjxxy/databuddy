@@ -4,29 +4,29 @@ from agent_service import opencode_runtime as runtime
 
 
 def test_no_default_character_cap_on_generation_or_compaction(monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
-    monkeypatch.delenv('ATLAS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS',raising=False)
     for kind in (None,'generation','summary','COMPACTION'):
         assert runtime._input_character_limit({'kind':kind},{'model':'finance'}) is None
     assert runtime._input_character_limit({'kind':'compaction'},{'model':'finance'}) is None
 
 
 def test_compaction_respects_explicit_operator_caps_without_a_hidden_hard_cap(monkeypatch):
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{"finance":120000,"small":40000}')
-    monkeypatch.setenv('ATLAS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','200000')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{"finance":120000,"small":40000}')
+    monkeypatch.setenv('NEXUS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','200000')
     assert runtime._input_character_limit({'kind':'compaction'},{'model':'finance'})==120000
     assert runtime._input_character_limit({'kind':'generation'},{'model':'small'})==40000
-    monkeypatch.setenv('ATLAS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','320001')
+    monkeypatch.setenv('NEXUS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','320001')
     assert runtime._input_character_limit({'kind':'compaction'},{'model':'finance'})==120000
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{}')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{}')
     assert runtime._input_character_limit({'kind':'compaction'},{'model':'finance'})==320001
-    monkeypatch.setenv('ATLAS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','0')
+    monkeypatch.setenv('NEXUS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS','0')
     with pytest.raises(ValueError):runtime._input_character_limit({'kind':'compaction'},{'model':'finance'})
 
 
 @pytest.mark.parametrize('value',['[]','{"finance":true}','{"finance":-1}','{"finance":"120000"}'])
 def test_invalid_trusted_limit_configuration_fails_closed(monkeypatch,value):
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',value)
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',value)
     with pytest.raises(ValueError):runtime._input_character_limit({'kind':'compaction'},{'model':'finance'})
 
 

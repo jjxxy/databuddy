@@ -1,4 +1,4 @@
-"""Bounded, read-only specialist sessions using the real Atlas Agent runtime.
+"""Bounded, read-only specialist sessions using the real Nexus WorkStudio Agent runtime.
 
 The coordinator owns mutations and final delivery. Specialists get a distinct
 session and a narrower resource scope; their opinions never approve financial
@@ -39,7 +39,7 @@ RESULT_READ_TOOLS={'view_result','query_sql','ask_data_application','read_data_w
 
 def builtin_peers(turn_or_pid=None):
     return [{'id':identity,'name':name,'description':description,'transport':'local','enabled':True,
-             'revision':'atlas-specialists-v1','readonly':True,'capabilities':['read','analyze','review'],
+             'revision':'nexus-specialists-v1','readonly':True,'capabilities':['read','analyze','review'],
              'requires_configuration':False,'financial_approval':False} for identity,(name,description) in ROLES.items()]
 
 

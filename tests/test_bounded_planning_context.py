@@ -18,7 +18,7 @@ def turn(text=GOAL,mode='work'):
 
 
 def test_actual_planner_payload_for_three_office_goal_is_bounded(monkeypatch):
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn();captured=[]
     def respond(messages,**kwargs):
         captured.append(messages)
@@ -80,7 +80,7 @@ def test_office_file_name_schema_and_safe_spec_error_match_the_renderer():
 
 
 def test_actual_data_workflow_planner_payload_has_a_bounded_generic_frontier(monkeypatch):
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('请用全部附件按办事处和月份做经营汇总对账，处理文本金额、退款和多表关联。'
                '保存可复用数据工作流、完整结果和口径说明，供我核对，不要发布。')
     captured=[]
@@ -116,7 +116,7 @@ def test_requested_canonical_guide_is_not_split_into_repeated_string_pages():
 
 
 def test_source_total_is_distinct_from_profile_and_survives_row_truncation(monkeypatch):
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('先核对全部人员资料；统计范围尚未确认，请不要计算。')
     source='s_'+uid()
     put('source',{'project_id':value['project_id'],'name':'人员资料.csv','status':'ready'},source)
@@ -151,7 +151,7 @@ def test_failed_header_boundary_source_is_not_presented_as_empty_data(code):
 
 
 def test_financial_excel_export_starts_with_workflow_not_office_dto(monkeypatch):
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('按月份和办事处汇总收入、成本、预算，请生成完整结果并提供CSV和Excel下载，保留加工规则供核对。')
     messages,_=agent.planning_context(value,native=False)
     info=json.loads(messages[1]['content']);names={tool['name'] for tool in info['tools']}

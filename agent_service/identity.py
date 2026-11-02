@@ -9,9 +9,9 @@ import jwt,httpx
 from fastapi import HTTPException
 _cache={};_lock=threading.Lock()
 
-def mode():return os.getenv('ATLAS_AUTH_MODE','token')
+def mode():return os.getenv('NEXUS_AUTH_MODE','token')
 def validate_config():
-    single=os.getenv('ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT','0')
+    single=os.getenv('NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT','0')
     if single not in ('0','1'):raise ValueError('单用户身份策略配置无效')
     if mode() not in ('token','oidc'):raise ValueError('未知认证模式')
     if single=='1' and mode()!='oidc':raise ValueError('单用户隔离工作空间必须启用 OIDC')

@@ -14,10 +14,10 @@ def test_prepare_without_any_network_probe(tmp_path,configuration):
     source=Path(__file__).resolve().parents[1]
     model=tmp_path/'model.json'
     if configuration is not None:model.write_text(configuration,encoding='utf-8')
-    env={k:v for k,v in os.environ.items() if not k.startswith(('ATLAS_','LLM_','RAILWAY_','OPENCODE_'))
+    env={k:v for k,v in os.environ.items() if not k.startswith(('NEXUS_','LLM_','RAILWAY_','OPENCODE_'))
          and k not in ('DATA_DIR','DATABASE_URL','APP_TOKEN','PORT')}
     env.update(APP_TOKEN='test-desktop-token-long-enough',DATA_DIR=str(tmp_path/'data'),PORT='8000',
-               ATLAS_DESKTOP_MODE='1',ATLAS_OPENCODE_RUNTIME='1',ATLAS_LLM_CONFIG_FILE=str(model),PYTHONUTF8='1')
+               NEXUS_DESKTOP_MODE='1',NEXUS_OPENCODE_RUNTIME='1',NEXUS_LLM_CONFIG_FILE=str(model),PYTHONUTF8='1')
     script='''
 import socket,json
 def forbidden(*args,**kwargs):raise AssertionError('Startup attempted networking')

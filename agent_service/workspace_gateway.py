@@ -1,8 +1,8 @@
 """OIDC router for separately deployed owner workspaces; never a tenant database.
 
 Only verified issuer/subject selects a configured backend. This module deliberately
-has no dependency on Atlas config/store: the gateway owns no business data/key.
-Run with ATLAS_WORKSPACE_GATEWAY_CONFIG and uvicorn ...workspace_gateway:app.
+has no dependency on Nexus WorkStudio config/store: the gateway owns no business data/key.
+Run with NEXUS_WORKSPACE_GATEWAY_CONFIG and uvicorn ...workspace_gateway:app.
 """
 from __future__ import annotations
 
@@ -236,10 +236,13 @@ _STATIC = frozenset(('index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.
     'secure-id.js', 'lifecycle.js', 'safe-markdown.js', 'workspace-features.js', 'workspace-shell.js', 'agent-collaboration.js',
     'local-data.html', 'local-data.js', 'local-data.css', 'work-runtime.js', 'interactive-work.js',
     'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css',
-    'business-flows.html', 'business-flows.js', 'business-flows.css', 'business-flow-view.js', 'business-flow-view.css'))
+    'business-flows.html', 'business-flows.js', 'business-flows.css', 'business-flow-view.js', 'business-flow-view.css',
+    'flow-edit-handoff.js', 'workbench-dag.js', 'react-dag/web-dag.css', 'react-dag/web-dag.js',
+    'chat-workflows.css', 'chat-workflows.js', 'chat-workflow-results.js', 'chat-workflow-schedule.js',
+    'chat-business-run.js', 'chat-data-workflow-run.js'))
 _DENIED_API = frozenset(('operator', 'agent', 'mcp', 'a2a'))
 _REQUEST_HEADERS = frozenset(('accept', 'accept-language', 'content-type', 'if-match', 'if-none-match', 'range', 'if-range'))
-_RESPONSE_HEADERS = frozenset(('content-type', 'content-disposition', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'retry-after', 'x-atlas-runtime-revision'))
+_RESPONSE_HEADERS = frozenset(('content-type', 'content-disposition', 'content-range', 'accept-ranges', 'etag', 'last-modified', 'retry-after', 'x-nexus-runtime-revision'))
 
 
 def _validate_target(request):
@@ -266,7 +269,7 @@ def _validate_target(request):
 
 def _matches_login_generation(request,login):
     import hmac
-    values=request.headers.getlist('x-atlas-session')
+    values=request.headers.getlist('x-nexus-session')
     expected=login.generation(request)
     return bool(len(values)==1 and re.fullmatch(r'[A-Za-z0-9_-]{43}',values[0])
                 and expected is not None and hmac.compare_digest(values[0],expected))
@@ -314,7 +317,7 @@ class _NoCookies(DefaultCookiePolicy):
 def create_app(config=None, *, transport=None):
     @asynccontextmanager
     async def lifespan(application):
-        active = config or GatewayConfig.load(os.environ.get('ATLAS_WORKSPACE_GATEWAY_CONFIG', ''))
+        active = config or GatewayConfig.load(os.environ.get('NEXUS_WORKSPACE_GATEWAY_CONFIG', ''))
         application.state.config = active
         application.state.semaphore = asyncio.Semaphore(active.limits.max_concurrent_requests)
         async with httpx.AsyncClient(transport=transport, trust_env=False, follow_redirects=False,
@@ -322,14 +325,14 @@ def create_app(config=None, *, transport=None):
                 timeout=httpx.Timeout(active.limits.upstream_timeout_seconds, connect=10),
                 limits=httpx.Limits(max_connections=active.limits.max_concurrent_requests, max_keepalive_connections=20)) as client:
             application.state.client = client
-            login_config=os.getenv('ATLAS_WORKSPACE_OIDC_LOGIN_CONFIG','')
+            login_config=os.getenv('NEXUS_WORKSPACE_OIDC_LOGIN_CONFIG','')
             if login_config:
                 from .gateway_oidc_login import Login
                 application.state.login=Login(active,_read_json(login_config,16384),client)
             else:application.state.login=None
             yield
 
-    application = FastAPI(title='Atlas isolated-workspace gateway', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    application = FastAPI(title='Nexus WorkStudio isolated-workspace gateway', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     application.add_middleware(_SecurityHeaders)
 
@@ -424,7 +427,7 @@ def create_app(config=None, *, transport=None):
                         spool.write(chunk)
                 if lengths and int(lengths[0]) != size:
                     raise HTTPException(400, 'Request body length mismatch')
-                if login and not login.still_current(request,request.headers.get('x-atlas-session'),token):
+                if login and not login.still_current(request,request.headers.get('x-nexus-session'),token):
                     raise HTTPException(401,'登录账号或会话已变化，请重新进入')
                 spool.seek(0)
                 async def body():

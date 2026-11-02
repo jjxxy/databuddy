@@ -42,8 +42,8 @@ def test_real_mapping_and_secret_free_status_encrypted_cache(fixture,monkeypatch
     assert s['returned']==1 and s['results'][0]['number']=='财务〔2026〕1号'
     eid=s['results'][0]['evidence_id'];doc=kb.read(pid,eid)
     assert '必须提交审批单' in doc['content'] and doc['scope']=='full_text'
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN','operator-only-company-config-test')
-    response=client.get(f'/api/projects/{pid}/company-search',headers={**H,'X-Atlas-Operator-Token':'operator-only-company-config-test'})
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN','operator-only-company-config-test')
+    response=client.get(f'/api/projects/{pid}/company-search',headers={**H,'X-Nexus-Operator-Token':'operator-only-company-config-test'})
     assert response.status_code==200
     public=response.json()
     assert 'company-secret' not in json.dumps(public) and 'model-secret' not in json.dumps(public)

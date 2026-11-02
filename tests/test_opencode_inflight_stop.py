@@ -23,7 +23,7 @@ def native_session(monkeypatch, during_context):
 
     def bridge(payload):
         assert state['in_context'], 'The bridge callback must occur inside the context request'
-        metadata = state['metadata']['atlas_bridge']
+        metadata = state['metadata']['nexus_bridge']
         request = Request(metadata['url'], data=json.dumps({'session_id': 'ses_race', **payload}).encode(),
             headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + metadata['token']}, method='POST')
         with build_opener(ProxyHandler({})).open(request, timeout=10) as response:
@@ -55,7 +55,7 @@ def native_session(monkeypatch, during_context):
 
 
 def test_model_budget_rejection_during_context_poll_preserves_original_budget_error(turn, monkeypatch):
-    monkeypatch.setenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{"fixture":80000}')
+    monkeypatch.setenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{"fixture":80000}')
     callbacks = []
     def during_context(bridge, state):
         reply = bridge({'op': 'model_request', 'kind': 'generation',

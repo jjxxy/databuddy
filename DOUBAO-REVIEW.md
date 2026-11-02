@@ -1,4 +1,4 @@
-# DOUBAO 只读审查报告 · Atlas DataBuddy v0.20.0
+# DOUBAO 只读审查报告 · Nexus WorkStudio v0.20.0
 
 - 审查角色：检查者（只读，未修改任何代码/配置，未读取 .env、密钥或私人业务数据）
 - 审查对象：`C:\Users\001\Documents\ChatGPT\New project\personal-data-agent`
@@ -20,15 +20,15 @@
 
 ## 二、已证实/高价值发现
 
-### 1. [中] `run-local.sh`（无 Docker 的本机开发入口）未设置 `ATLAS_OPENCODE_RUNTIME`，本机默认走旧工具循环，与容器行为及 README 不一致
+### 1. [中] `run-local.sh`（无 Docker 的本机开发入口）未设置 `NEXUS_OPENCODE_RUNTIME`，本机默认走旧工具循环，与容器行为及 README 不一致
 
-- **位置**：`run-local.sh:11-15`（仅 `export DATA_DIR`、`SCHEDULER_MODE=worker`）；判定逻辑 `agent_service/opencode_runtime.py:33` → `return os.getenv('ATLAS_OPENCODE_RUNTIME') == '1'`（未设置即 False）。
-- **对比**：`compose.quickstart.yaml:15` 与 `compose.local.yaml:21` 均显式 `ATLAS_OPENCODE_RUNTIME: "1"`；`cloud.py:86` 也按 `=='1'` 分支。README:8/133 与 OPENCODE.md:11 明确"v0.19/v0.20 默认使用 OpenCode 原生 Agent"，且旧路径需**显式** `=0`。
+- **位置**：`run-local.sh:11-15`（仅 `export DATA_DIR`、`SCHEDULER_MODE=worker`）；判定逻辑 `agent_service/opencode_runtime.py:33` → `return os.getenv('NEXUS_OPENCODE_RUNTIME') == '1'`（未设置即 False）。
+- **对比**：`compose.quickstart.yaml:15` 与 `compose.local.yaml:21` 均显式 `NEXUS_OPENCODE_RUNTIME: "1"`；`cloud.py:86` 也按 `=='1'` 分支。README:8/133 与 OPENCODE.md:11 明确"v0.19/v0.20 默认使用 OpenCode 原生 Agent"，且旧路径需**显式** `=0`。
 - **复现**：在无 Docker 环境执行 `bash run-local.sh`；启动后查看 `/api/health` 的 `agent`/`planner_mode`，或检查 OpenCode 原生服务是否被拉起——本机不会拉起。
-- **影响**：你正在做本机（WSL + Python3.12，无 Docker）部署，`run-local.sh` 是唯一不依赖 Docker 的入口；但按当前脚本它会落在旧工具循环（`ATLAS_OPENCODE_RUNTIME=0` 语义），而非 v0.20 README 宣称的 OpenCode 原生运行时。README「开发与 CI」一节（README:204-213）也未提示本机需手动设置，存在文档缺口。
+- **影响**：你正在做本机（WSL + Python3.12，无 Docker）部署，`run-local.sh` 是唯一不依赖 Docker 的入口；但按当前脚本它会落在旧工具循环（`NEXUS_OPENCODE_RUNTIME=0` 语义），而非 v0.20 README 宣称的 OpenCode 原生运行时。README「开发与 CI」一节（README:204-213）也未提示本机需手动设置，存在文档缺口。
 - **最小修复**（二选一）：
-  1. `run-local.sh` 增加 `export ATLAS_OPENCODE_RUNTIME=1` 和 `export AGENT_ORCHESTRATION_MODE=separate`（与容器一致）；或
-  2. 在 README「开发与 CI」一节明确：无 Docker 的本机开发默认走旧 Atlas 工具循环，如需 OpenCode 原生 Agent 请手动 export 上述两变量或使用容器入口。
+  1. `run-local.sh` 增加 `export NEXUS_OPENCODE_RUNTIME=1` 和 `export AGENT_ORCHESTRATION_MODE=separate`（与容器一致）；或
+  2. 在 README「开发与 CI」一节明确：无 Docker 的本机开发默认走旧 Nexus WorkStudio 工具循环，如需 OpenCode 原生 Agent 请手动 export 上述两变量或使用容器入口。
 - **分类**：`[证实]`（代码路径确定），功能影响为 `[推断]`（取决于你是否期望本机也启用 OpenCode 原生）。
 
 ### 2. [中] 所有容器启动入口要求 `llm.json` 先填真实模型，占位值会直接中断启动
@@ -89,7 +89,7 @@
 
 ## 六、后续待你确认/处理
 
-1. 本机部署入口：`run-local.sh` 是否按发现 1 增加 `ATLAS_OPENCODE_RUNTIME=1`？还是接受旧工具循环并在文档注明？
+1. 本机部署入口：`run-local.sh` 是否按发现 1 增加 `NEXUS_OPENCODE_RUNTIME=1`？还是接受旧工具循环并在文档注明？
 2. `llm.json` 占位是否先填真实/本地模型，以便容器入口可 `up`？
 3. 发现 3、4 是否纳入下一轮（均为低危，可择机修）。
 

@@ -87,22 +87,22 @@
     },
     {
       "module": "tests.test_quickstart_launchers",
-      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ATLAS_HTTP_PORT=9234]",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[NEXUS_HTTP_PORT=9234]",
       "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
     },
     {
       "module": "tests.test_quickstart_launchers",
-      "test": "test_open_reads_only_numeric_port_and_never_sources_env[export ATLAS_HTTP_PORT=\"09234\"]",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[export NEXUS_HTTP_PORT=\"09234\"]",
       "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
     },
     {
       "module": "tests.test_quickstart_launchers",
-      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ATLAS_HTTP_PORT='9234']",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[NEXUS_HTTP_PORT='9234']",
       "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
     },
     {
       "module": "tests.test_quickstart_launchers",
-      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ ATLAS_HTTP_PORT=9234 # local port]",
+      "test": "test_open_reads_only_numeric_port_and_never_sources_env[ NEXUS_HTTP_PORT=9234 # local port]",
       "reason": "POSIX launcher runtime requires POSIX filesystem names and /bin/bash"
     },
     {

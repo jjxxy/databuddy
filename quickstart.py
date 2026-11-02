@@ -55,7 +55,7 @@ def read_env(path: Path) -> dict[str, str]:
 def _atomic(path: Path, content: str):
     if path.is_symlink():
         raise ValueError('配置不能使用符号链接')
-    fd, name = tempfile.mkstemp(prefix='.atlas-setup-', dir=path.parent)
+    fd, name = tempfile.mkstemp(prefix='.nexus-setup-', dir=path.parent)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
             stream.write(content);stream.flush();os.fsync(stream.fileno())
@@ -69,15 +69,15 @@ def _validate_runtime(values):
     token = values.get('APP_TOKEN', '')
     if len(token) < 16:
         raise ValueError('已有 APP_TOKEN 太短；请使用至少16字符的访问口令，系统不会擅自覆盖')
-    if values.get('ATLAS_OPERATOR_TOKEN') and len(values['ATLAS_OPERATOR_TOKEN'])<16:
-        raise ValueError('已有 ATLAS_OPERATOR_TOKEN 太短；请使用至少16字符的独立后台管理口令')
-    if values.get('ATLAS_OPERATOR_TOKEN')==token:
+    if values.get('NEXUS_OPERATOR_TOKEN') and len(values['NEXUS_OPERATOR_TOKEN'])<16:
+        raise ValueError('已有 NEXUS_OPERATOR_TOKEN 太短；请使用至少16字符的独立后台管理口令')
+    if values.get('NEXUS_OPERATOR_TOKEN')==token:
         raise ValueError('后台管理口令必须与工作空间访问口令不同')
-    port = values.get('ATLAS_HTTP_PORT', '8000')
+    port = values.get('NEXUS_HTTP_PORT', '8000')
     if not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
-        raise ValueError('ATLAS_HTTP_PORT 必须是1至65535的端口')
-    if values.get('ATLAS_BIND_ADDRESS', '127.0.0.1') not in ('127.0.0.1', '0.0.0.0'):
-        raise ValueError('ATLAS_BIND_ADDRESS 仅支持127.0.0.1或0.0.0.0')
+        raise ValueError('NEXUS_HTTP_PORT 必须是1至65535的端口')
+    if values.get('NEXUS_BIND_ADDRESS', '127.0.0.1') not in ('127.0.0.1', '0.0.0.0'):
+        raise ValueError('NEXUS_BIND_ADDRESS 仅支持127.0.0.1或0.0.0.0')
     return values
 
 
@@ -110,8 +110,8 @@ def setup(directory: Path):
             _atomic(model_path, (ROOT / 'llm.example.json').read_text(encoding='utf-8'))
             raise ValueError('已生成 llm.json。请只填写接口地址、模型名和 API Key，再次启动')
     model = configuration(directory)
-    defaults = {'APP_TOKEN': secrets.token_urlsafe(32), 'ATLAS_OPERATOR_TOKEN':secrets.token_urlsafe(32), 'APP_TIMEZONE': 'Asia/Shanghai',
-                'ATLAS_HTTP_PORT': '8000', 'ATLAS_BIND_ADDRESS': '127.0.0.1'}
+    defaults = {'APP_TOKEN': secrets.token_urlsafe(32), 'NEXUS_OPERATOR_TOKEN':secrets.token_urlsafe(32), 'APP_TIMEZONE': 'Asia/Shanghai',
+                'NEXUS_HTTP_PORT': '8000', 'NEXUS_BIND_ADDRESS': '127.0.0.1'}
     missing = {key: value for key, value in defaults.items() if not values.get(key)}
     _validate_runtime({**values, **missing})
     if missing:
@@ -132,7 +132,7 @@ def setup(directory: Path):
 
 def info(directory: Path):
     values = _validate_runtime(read_env(directory / '.env'))
-    print('工作空间：http://localhost:' + values.get('ATLAS_HTTP_PORT', '8000'))
+    print('工作空间：http://localhost:' + values.get('NEXUS_HTTP_PORT', '8000'))
     print('访问口令：' + values['APP_TOKEN'])
     print('请保留整个部署目录与 Docker 数据卷。停止不会删除数据。')
 
@@ -163,7 +163,7 @@ def main(argv=None):
             info(directory);return 0
         if args.command == 'open':
             values = _validate_runtime(read_env(directory / '.env'))
-            webbrowser.open('http://localhost:' + values.get('ATLAS_HTTP_PORT', '8000'));return 0
+            webbrowser.open('http://localhost:' + values.get('NEXUS_HTTP_PORT', '8000'));return 0
         if args.command == 'up':
             setup(directory)
             result = compose(directory, ['up', '-d', '--build', '--wait', '--wait-timeout', '180'])
@@ -173,7 +173,7 @@ def main(argv=None):
                 print('启动未就绪，请运行 start.sh logs 或 start.cmd logs 查看日志。', file=sys.stderr)
             return result
         return compose(directory, {'down': ['down'], 'status': ['ps'],
-                                   'logs': ['logs', '--tail', '150', 'atlas']}[args.command])
+                                   'logs': ['logs', '--tail', '150', 'nexus']}[args.command])
     except (ValueError, OSError, json.JSONDecodeError):
         # Never include JSON/URL/key values in setup error diagnostics.
         error = sys.exception()

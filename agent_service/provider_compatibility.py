@@ -1,6 +1,6 @@
-"""Endpoint-specific options for Atlas's bounded model requests.
+"""Endpoint-specific options for Nexus WorkStudio's bounded model requests.
 
-DeepSeek's default thinking mode rejects the required tool choice used by Atlas.
+DeepSeek's default thinking mode rejects the required tool choice used by Nexus WorkStudio.
 Disable it for the official DeepSeek endpoint, including short connection probes
 whose output budget is reserved for the answer or tool arguments. Other model
 services retain their existing request body.
@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 
 def managed_model_limits(base_url: str, model: str, *, context_window_tokens=None, max_output_tokens=None) -> dict:
-    """Known upstream capacities, not an Atlas task budget or startup probe.
+    """Known upstream capacities, not an Nexus WorkStudio task budget or startup probe.
 
     DeepSeek /models and its official API reference were checked 2026-10-24.
     Unknown endpoints/models retain the native runtime's metadata discovery.
@@ -48,11 +48,11 @@ def response_token_allowance(value):
 
 def configured_input_character_limit(model, *, compaction=False):
     """Only an explicit operator cap limits transport characters; unset=None."""
-    limits=json.loads(os.getenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{}'))
+    limits=json.loads(os.getenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS','{}'))
     if not isinstance(limits,dict) or any(not isinstance(k,str) or type(v) is not int or v<=0 for k,v in limits.items()):
         raise ValueError('模型上下文字符上限配置无效')
     cap=limits.get(model,limits.get('*'))
-    explicit=os.getenv('ATLAS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS')
+    explicit=os.getenv('NEXUS_OPENCODE_COMPACTION_MAX_INPUT_CHARACTERS')
     if compaction and explicit is not None:
         try:requested=int(explicit)
         except ValueError:raise ValueError('压缩上下文字符上限配置无效') from None

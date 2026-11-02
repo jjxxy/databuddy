@@ -16,7 +16,7 @@ from .locks import LockLost, Timeout
 
 def concurrency():
     try:
-        value = int(os.getenv('ATLAS_CONVERSATION_CONCURRENCY', '2'))
+        value = int(os.getenv('NEXUS_CONVERSATION_CONCURRENCY', '2'))
     except ValueError:
         raise ValueError('项目对话并发数须为 1 至 8 的整数') from None
     if not 1 <= value <= 8:
@@ -55,7 +55,7 @@ class ConversationWorkers:
 
     def start(self):
         for index in range(concurrency()):
-            thread = threading.Thread(target=self._run, name=f'atlas-project-{index + 1}', daemon=True)
+            thread = threading.Thread(target=self._run, name=f'nexus-project-{index + 1}', daemon=True)
             thread.start()
             self.threads.append(thread)
         return self

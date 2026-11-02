@@ -73,11 +73,11 @@ def test_up_propagates_failed_health_and_stop_never_deletes_volume(tmp_path, mon
 def test_model_secrets_excluded_from_image_and_health_covers_every_role():
     root = quickstart.ROOT
     compose = yaml.safe_load((root / 'compose.quickstart.yaml').read_text())
-    atlas = compose['services']['atlas']
-    assert set(compose['services']) == {'atlas'}
-    assert atlas['environment']['DATABASE_URL'] == 'sqlite:////data/metadata.sqlite'
-    assert atlas['cap_drop'] == ['ALL'] and set(atlas['cap_add']) == {'CHOWN','SETUID','SETGID','DAC_OVERRIDE'}
-    assert 'python' in atlas['healthcheck']['test']
+    nexus = compose['services']['nexus']
+    assert set(compose['services']) == {'nexus'}
+    assert nexus['environment']['DATABASE_URL'] == 'sqlite:////data/metadata.sqlite'
+    assert nexus['cap_drop'] == ['ALL'] and set(nexus['cap_add']) == {'CHOWN','SETUID','SETGID','DAC_OVERRIDE'}
+    assert 'python' in nexus['healthcheck']['test']
     assert 'llm.json' in (root / '.dockerignore').read_text().splitlines()
     assert 'llm.json' in (root / '.gitignore').read_text().splitlines()
     healthy = {'planner_mode': 'llm', 'worker': {'healthy': True}, 'agent': {'healthy': True}}

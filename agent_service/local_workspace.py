@@ -24,8 +24,8 @@ from .config import DATA, MAX_UPLOAD
 from .locks import FileLock
 from .store import all_items, get, now, put, seal, uid
 
-CODE_DIR = 'Atlas工作区'
-OUTPUT_DIR = 'Atlas成果'
+CODE_DIR = 'Nexus WorkStudio工作区'
+OUTPUT_DIR = 'Nexus WorkStudio成果'
 EXTENSIONS = {'.csv', '.xlsx', '.json', '.jsonl', '.pdf', '.docx', '.pptx',
               '.png', '.jpg', '.jpeg', '.tiff', '.webp', '.html', '.htm', '.txt', '.md'}
 PRIVATE_NAMES = {'llm.json', 'llm.example.json', 'llm.multi.example.json', 'connector.key',
@@ -42,11 +42,11 @@ def _csv_literal(value):
 
 
 def enabled():
-    return os.getenv('ATLAS_LOCAL_MODE')=='1' and bool(os.getenv('ATLAS_LOCAL_WORKSPACE'))
+    return os.getenv('NEXUS_LOCAL_MODE')=='1' and bool(os.getenv('NEXUS_LOCAL_WORKSPACE'))
 
 
 def root():
-    value = os.getenv('ATLAS_LOCAL_WORKSPACE', '')
+    value = os.getenv('NEXUS_LOCAL_WORKSPACE', '')
     if not enabled():
         raise ValueError('本实例未启用本地文件夹工作空间')
     path = Path(value)
@@ -66,10 +66,10 @@ def status():
         return {'enabled': False, 'mode': 'server'}
     folder = root()
     return {'enabled': True, 'mode': 'local_folder',
-            'label': os.getenv('ATLAS_LOCAL_LABEL') or folder.name,
+            'label': os.getenv('NEXUS_LOCAL_LABEL') or folder.name,
             'code_directory': CODE_DIR, 'output_directory': OUTPUT_DIR,
             'imports_are_snapshots': True, 'originals_overwritten': False,
-            'network_mode': os.getenv('ATLAS_NETWORK_MODE', 'connected')}
+            'network_mode': os.getenv('NEXUS_NETWORK_MODE', 'connected')}
 
 
 def _parts(relative, *, managed=False, allow_empty=False):
@@ -155,7 +155,7 @@ def write_project_file(pid, name, content):
             existing=os.stat(parts[-1],dir_fd=parent,follow_symlinks=False)
             if not stat.S_ISREG(existing.st_mode) or existing.st_nlink>1:raise ValueError('不能修改链接或特殊文件')
         except FileNotFoundError:pass
-        temporary='.atlas-write-'+uid()
+        temporary='.nexus-write-'+uid()
         try:
             descriptor=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=parent)
             with os.fdopen(descriptor,'wb') as output:
@@ -323,7 +323,7 @@ def _continue_import(pid,paths,request_id,key,batch):
                         'content_hash': info['content_hash'], 'bytes': info['bytes'], 'goal': '',
                         'created_at': now(), 'status': 'queued', 'project_id': pid,
                         'local_origin': info['local_origin'],
-                        **({'skip_model_planning':True} if os.getenv('ATLAS_DESKTOP_MODE')=='1' else {})}, sid)
+                        **({'skip_model_planning':True} if os.getenv('NEXUS_DESKTOP_MODE')=='1' else {})}, sid)
                     source = revision(source)
                 if source['status'] != 'ready':enqueue('probe', sid)
             sources.append({key: source.get(key) for key in ('id', 'name', 'kind', 'revision', 'revision_id', 'content_hash', 'bytes', 'local_origin')})
@@ -348,7 +348,7 @@ def export_project(pid):
     failures = [];records = [];total = 0
     with FileLock(str(DATA / ('local-export-' + pid + '.lock')), timeout=30), workspace.lock(pid), _directory(relative, managed=True, create=True) as parent_fd:
         os.mkdir(stage_name,mode=0o700,dir_fd=parent_fd)
-        stage_fd=os.open(stage_name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|getattr(os,'O_ATLAS_STAGE',0),dir_fd=parent_fd)
+        stage_fd=os.open(stage_name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|getattr(os,'O_NEXUS_STAGE',0),dir_fd=parent_fd)
         # Linux libraries use /proc/self/fd; native Windows holds every parent
         # without SHARE_DELETE, so this visible staging path cannot be swapped.
         # Publication renames the same open staging handle on that filesystem.
@@ -396,7 +396,7 @@ def export_project(pid):
                         copy(file, 'reports/' + item['id'] + '/' + file.name, expected)
                     except (ValueError, OSError, KeyError):failures.append({'kind': 'report', 'id': item['id'], 'format': format, 'error': '该报告未通过完整性核验，未导出'})
             # Export current adopted/candidate references, not an arbitrary
-            # first page of historical jobs. Older versions remain in Atlas.
+            # first page of historical jobs. Older versions remain in Nexus WorkStudio.
             workflow_runs = set()
             for item in all_items('data_workflow'):
                 if item.get('project_id') == pid:
@@ -439,7 +439,7 @@ def export_project(pid):
             manifest = {'id': export_id, 'project_id': pid, 'created_at': now(), 'files': records,
                         'failures': failures, 'complete': not failures, 'originals_overwritten': False,
                         'code_is_live_at': CODE_DIR + '/' + pid + '/files',
-                        'data_scope':'current adopted and candidate versions; historical versions remain in Atlas',
+                        'data_scope':'current adopted and candidate versions; historical versions remain in Nexus WorkStudio',
                         'csv_text_policy':'Spreadsheet formula-like strings and labels are apostrophe-prefixed; numeric values retain their exact decimal representation'}
             (stage / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
             from .platform_files import fsync_file

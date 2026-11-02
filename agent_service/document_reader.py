@@ -320,7 +320,7 @@ def _docx(package, blocks):
                 raise DocumentReadError('DOCX 引用的脚注或尾注缺失')
             _word_container(notes[ident], ref['target'], blocks, ref['target'] + '/note:' + str(ident), role=name, note_id=ident)
     blocks.warnings.add('OFFICE_XML_ORDER_NOT_RENDERED_PAGE_LAYOUT')
-    return {'parser': 'atlas_docx_xml', 'representation': 'docx_xml_text_and_cells; physical_pages_and_graphics_not_verified'}
+    return {'parser': 'nexus_docx_xml', 'representation': 'docx_xml_text_and_cells; physical_pages_and_graphics_not_verified'}
 
 
 def _drawing_paragraphs(container, blocks, prefix, **metadata):
@@ -422,7 +422,7 @@ def _pptx(package, blocks, max_pages):
         if any(item['type'].endswith('/notesSlide') for item in srels.values()):
             blocks.warnings.add('SPEAKER_NOTES_NOT_EXTRACTED')
     blocks.warnings.update(['OFFICE_XML_ORDER_NOT_RENDERED_READING_ORDER', 'SLIDE_MASTER_AND_LAYOUT_TEXT_NOT_EXTRACTED'])
-    return {'parser': 'atlas_pptx_xml', 'representation': 'pptx_slide_xml_text_and_cells; layout_and_graphics_not_verified', 'slide_count': len(slide_ids)}
+    return {'parser': 'nexus_pptx_xml', 'representation': 'pptx_slide_xml_text_and_cells; layout_and_graphics_not_verified', 'slide_count': len(slide_ids)}
 
 
 def _pdf(raw, blocks, max_pages):

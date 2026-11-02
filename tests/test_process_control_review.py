@@ -13,9 +13,9 @@ from agent_service.process_control import spawn
 
 
 def test_explicit_empty_environment_does_not_inherit_parent_credentials(monkeypatch):
-    monkeypatch.setenv('ATLAS_REVIEW_PRIVATE_SENTINEL', 'synthetic-only-private-value')
+    monkeypatch.setenv('NEXUS_REVIEW_PRIVATE_SENTINEL', 'synthetic-only-private-value')
     script = ('import os,json;print(json.dumps({"inherited":'
-              'os.getenv("ATLAS_REVIEW_PRIVATE_SENTINEL") is not None}))')
+              'os.getenv("NEXUS_REVIEW_PRIVATE_SENTINEL") is not None}))')
     process = spawn([sys.executable, '-c', script], env={},
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output, error = process.process.communicate(timeout=10)
@@ -93,7 +93,7 @@ def test_workspace_junction_is_rejected_before_creating_private_state(tmp_path,m
     monkeypatch.setattr(platform_files,'private_directory',forbidden_acl_change)
     args=SimpleNamespace(state_dir=str(state),workspace_dir=str(alias),port=0,model_config=None,offline=True,wait=1)
     with pytest.raises(OSError):portable_runtime.serve(args)
-    assert not state.exists() and not (outside/'.atlas').exists()
+    assert not state.exists() and not (outside/'.nexus').exists()
     assert (outside/'original.csv').read_bytes()==b'original'
 
 
@@ -111,5 +111,5 @@ def test_scoped_state_junction_is_rejected_before_target_acl_or_credentials(tmp_
     args=SimpleNamespace(state_dir=str(state),workspace_dir=str(selected),port=0,model_config=None,offline=True,wait=1)
     with pytest.raises(OSError):portable_runtime.serve(args)
     assert calls==[state]
-    assert not (outside/'credentials.json').exists() and not (selected/'.atlas').exists()
+    assert not (outside/'credentials.json').exists() and not (selected/'.nexus').exists()
     assert (outside/'original.txt').read_bytes()==b'original'

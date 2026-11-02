@@ -1,4 +1,4 @@
-# 验收标准与用户故事清单 · v0（Atlas DataBuddy）
+# 验收标准与用户故事清单 · v0（Nexus WorkStudio）
 
 > 评审角色：最终验收人 / 严苛 QA（豆包侧）
 > 基线版本：v0 · 2026-10-24
@@ -16,7 +16,7 @@
 - R1 业务用户入口：不得要求装 Node/Python/Git/CLI。双击 `start.cmd` / `bash start.sh` 或一条命令起。
 - R2 前端：纯静态资源，无构建步骤；**禁止 Next.js/SSR/需 Node 构建的前端框架**。
 - R3 依赖：不得新增需要原生编译的 Python 包（当前依赖须保持纯 wheel 可用）。
-- R4 离线：`ATLAS_NETWORK_MODE=local_only` 下核心功能可用；首启/运行不依赖外网拉包或在线鉴权。
+- R4 离线：`NEXUS_NETWORK_MODE=local_only` 下核心功能可用；首启/运行不依赖外网拉包或在线鉴权。
 - R5 视觉交付：架构图/示意图必须白底、黑线条、方框箭头、无卡通元素。
 - R6 以用户为中心：任何功能必须能回答"解决用户什么痛点"，否则不进验收清单。
 
@@ -27,7 +27,7 @@
 | # | 硬约束 | 验收判定（可测） |
 |---|---|---|
 | H1 | 业务用户零环境配置 | 在**干净的 Windows（无 Python/Node/Git）**上：双击 start.cmd → 填 llm.json → 服务起 → 浏览器可用；全程无需装任何 CLI。验收人将在一台干净机验证。 |
-| H2 | 可离线运行 | `ATLAS_NETWORK_MODE=local_only` 启动后，本地上传→加工→发布→导出全链路可用；断网不断崩；模型/MCP/外部 API 不可达时服务不崩溃、有明确错误。 |
+| H2 | 可离线运行 | `NEXUS_NETWORK_MODE=local_only` 启动后，本地上传→加工→发布→导出全链路可用；断网不断崩；模型/MCP/外部 API 不可达时服务不崩溃、有明确错误。 |
 | H3 | 技术栈红线 | 见上 R1–R6，逐一对照；引入违规依赖/框架即打回。 |
 | H4 | 视觉规范 | 交付的架构图/示意图：白底黑线方框箭头无卡通。 |
 | H5 | 以用户为中心 | 每条用户故事（下节）都必须带"解决的痛点"，无痛点故事直接砍。 |
@@ -58,7 +58,7 @@
 
 ### E. 本地文件夹模式（离线/零配置强化）
 - **US-E1 本地工作空间**：痛点=文件留在自己电脑，不想传云端。Given 选择本地文件夹，When 启动，Then 原件不被覆盖、产物在独立子目录、默认仅监听本机；**离线模式核心链路可用**。
-- **US-E2 本机扩展/时钟**：痛点=需要本机时间/工具。Given 启用内置 `atlas-local-clock` stdio，When 调用，Then 返回真实本机时间；**无网络**、不访问业务文件；自定义 stdio 模板在离线模式被拒绝。
+- **US-E2 本机扩展/时钟**：痛点=需要本机时间/工具。Given 启用内置 `nexus-local-clock` stdio，When 调用，Then 返回真实本机时间；**无网络**、不访问业务文件；自定义 stdio 模板在离线模式被拒绝。
 
 ### F. 机器 Agent 接入（v0.20 重点）
 - **US-F1 A2A/MCP 任务**：痛点=另一系统要调用本产品能力。Given 机器 client 持令牌提交任务，When 提交/查询/取消，Then 项目/模型授权逐项校验、幂等、budget 封顶、取消覆盖入队窗口；**未授权项目/模型/越权调用一律拒绝**。
@@ -78,7 +78,7 @@
 
 | 编号 | 级别 | 内容 | 验收判定 |
 |---|---|---|---|
-| DV-1 | 中 | `run-local.sh` 未设 `ATLAS_OPENCODE_RUNTIME` → 本机默认旧工具循环 | 本机 `run-local.sh` 启动后，`ATLAS_OPENCODE_RUNTIME=1` 生效；或 README 明确本机默认旧循环 |
+| DV-1 | 中 | `run-local.sh` 未设 `NEXUS_OPENCODE_RUNTIME` → 本机默认旧工具循环 | 本机 `run-local.sh` 启动后，`NEXUS_OPENCODE_RUNTIME=1` 生效；或 README 明确本机默认旧循环 |
 | DV-2 | 中 | 容器入口因 llm.json 占位中断启动 | 填真实/本地模型后 `start.ps1` 可 up；或文档给出占位→rules 回退路径 |
 | DV-3 | 低 | `admit_model_request` input/output 预算无上限 | 超预算时 429，`task_status` 不回显无限增长大数 |
 | DV-4 | 低 | `workspace_gateway` semaphore 检查非原子 | 并发超限请求在限定时间内 503，不无限排队 |

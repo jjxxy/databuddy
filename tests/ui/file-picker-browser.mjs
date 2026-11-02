@@ -6,18 +6,18 @@ import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright-core';
 const root=fileURLToPath(new URL('../../agent_service/static/',import.meta.url));
-if(!process.env.ATLAS_BROWSER_EXECUTABLE)throw Error('Set ATLAS_BROWSER_EXECUTABLE to an installed Chromium binary.');
-const browser=await chromium.launch({executablePath:process.env.ATLAS_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote']});
+if(!process.env.NEXUS_BROWSER_EXECUTABLE)throw Error('Set NEXUS_BROWSER_EXECUTABLE to an installed Chromium binary.');
+const browser=await chromium.launch({executablePath:process.env.NEXUS_BROWSER_EXECUTABLE,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote']});
 const sources=[],uploads=[],pipelines=[],errors=[],composerUploads=[],messages=[];let failSecond=true,processed;
 const fields=n=>[{name:'field_'+n,label:'字段'+n,numeric:true}];
 const files=[{name:'same-name.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n1,12.34\n')},{name:'same-name.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n2,56.78\n')},{name:'third.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n3,90.12\n')}];
 try{
  const context=await browser.newContext({viewport:{width:1380,height:960},serviceWorkers:'block'});
- await context.addInitScript(()=>sessionStorage.setItem('atlas_token','controlled-picker-fixture'));
+ await context.addInitScript(()=>sessionStorage.setItem('nexus_token','controlled-picker-fixture'));
  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
   const request=route.request(),url=new URL(request.url()),p=url.pathname;
-  if(url.origin!=='https://atlas.fixture')return route.abort();
+  if(url.origin!=='https://nexus.fixture')return route.abort();
   if(p.startsWith('/api/')){
    let value={};
    if(p==='/api/models')value={models:[{id:'fixture',name:'Fixture model'}],default_model_id:'fixture'};
@@ -27,7 +27,7 @@ try{
    else if(p==='/api/desktop/runtime')value={notice:'本地处理'};
    else if(p==='/api/projects/p/attachments'){
     const body=request.postDataBuffer().toString('utf8'),n=body.includes('3,90.12')?3:body.includes('2,56.78')?2:1;
-    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.11.01.20'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
+    const local=body.includes('name="local_processing"\r\n\r\ntrue');if(!local){const value={id:'composer_'+messages.length+'_'+n,name:files[n-1].name};composerUploads.push(value);return route.fulfill({status:200,headers:{'X-Nexus-Runtime-Revision':'2026.11.01.20'},contentType:'application/json',body:JSON.stringify(value)})}const rid=body.match(/name="request_id"\r\n\r\n([^\r]+)/)?.[1];assert(rid);uploads.push({n,rid});
     if(n===2&&failSecond)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'暂时无法导入第二份'})});
     value={id:'s_'+n,name:files[n-1].name};if(!sources.some(s=>s.id===value.id))sources.push({...value,status:'ready',profile:{fields:fields(n),sample_rows:1}});
    }
@@ -36,14 +36,14 @@ try{
    else if(p==='/api/pipelines'&&request.method()==='POST'){processed=request.postDataJSON();value={id:'pipe',project_id:'p'};pipelines.push({...value,candidate_run:'run'});}
    else if(p==='/api/pipelines')value=pipelines;
    else if(p==='/api/pipelines/pipe/preview')value={run_id:'run',manifest:{fields:fields(3),records:1,summary:[]},rows:[{field_3:'90.12'}]};
-   return route.fulfill({status:200,headers:{'X-Atlas-Runtime-Revision':'2026.11.01.20'},contentType:'application/json',body:JSON.stringify(value)});
+   return route.fulfill({status:200,headers:{'X-Nexus-Runtime-Revision':'2026.11.01.20'},contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=path.join(root,p==='/'?'index.html':p.slice(1));
   if(!file.startsWith(root)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
   const contentType=file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.html')?'text/html':'application/octet-stream';
   return route.fulfill({status:200,contentType,body:fs.readFileSync(file)});
  });
- await page.goto('https://atlas.fixture/?project=p');await page.waitForSelector('#shell:not([hidden])');
+ await page.goto('https://nexus.fixture/?project=p');await page.waitForSelector('#shell:not([hidden])');
  for(const mode of ['chat','work']){
   await page.click('[data-mode='+mode+']');
   assert((await page.locator('.attachment-help').innerText()).includes('Ctrl'));
@@ -81,28 +81,28 @@ try{
   assert.equal(messages.length,count+1);assert.equal(messages.at(-1).interaction_mode,mode);assert.deepEqual(messages.at(-1).source_ids,[1,2,3].map(n=>'composer_'+count+'_'+n));
  }
  assert.equal(composerUploads.length,18);assert((await page.locator('#runtime-version').textContent()).includes('2026.11.01.20'));
- await page.click('#open-local-work');await page.waitForSelector('#atlas-local-workspace-content:not([hidden])');
- await page.waitForFunction(()=>!document.querySelector('#atlas-local-file').disabled);
- const localChooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const localPicker=await localChooser;assert.equal(localPicker.isMultiple(),true);await localPicker.setFiles(files);
- assert((await page.locator('#atlas-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
+ await page.click('#open-local-work');await page.waitForSelector('#nexus-local-workspace-content:not([hidden])');
+ await page.waitForFunction(()=>!document.querySelector('#nexus-local-file').disabled);
+ const localChooser=page.waitForEvent('filechooser');await page.click('#nexus-local-file');const localPicker=await localChooser;assert.equal(localPicker.isMultiple(),true);await localPicker.setFiles(files);
+ assert((await page.locator('#nexus-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
  // Clear the batch and reopen the picker three times without modifier keys.
- for(let i=0;i<3;i++)await page.locator('#atlas-local-import-files button').first().click();
- assert.equal(await page.locator('#atlas-local-import-files li').count(),0);
+ for(let i=0;i<3;i++)await page.locator('#nexus-local-import-files button').first().click();
+ assert.equal(await page.locator('#nexus-local-import-files li').count(),0);
  for(let i=0;i<files.length;i++){
-  const chooser=page.waitForEvent('filechooser');await page.click('#atlas-local-file');const picker=await chooser;
+  const chooser=page.waitForEvent('filechooser');await page.click('#nexus-local-file');const picker=await chooser;
   assert.equal(picker.isMultiple(),true);await picker.setFiles([files[i]]);
-  assert.equal(await page.locator('#atlas-local-import-files li').count(),i+1,'separate local selections accumulate');
+  assert.equal(await page.locator('#nexus-local-import-files li').count(),i+1,'separate local selections accumulate');
  }
- assert((await page.locator('#atlas-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
- await page.click('#atlas-local-upload-button');await page.waitForFunction(()=>document.querySelector('#atlas-local-status').textContent.includes('已导入2个文件，1个未完成'));
- assert.deepEqual(uploads.map(row=>row.n),[1,2,2,2,3]);assert(uploads.slice(1,4).every(row=>row.rid===uploads[1].rid));assert.equal(await page.locator('#atlas-local-source-select option').count(),2);
- failSecond=false;await page.click('#atlas-local-upload-button');await page.waitForFunction(()=>document.querySelector('#atlas-local-status').textContent.includes('3个文件已保存在本机'));
- assert.deepEqual(uploads.map(row=>row.n),[1,2,2,2,3,2]);assert.equal(uploads[1].rid,uploads[5].rid);assert.equal(await page.locator('#atlas-local-source-select option').count(),3);
- await page.selectOption('#atlas-local-source-select','s_3');assert.equal(await page.locator('#atlas-local-amount option[value="field_3"]').count(),1);
- await page.click('#atlas-local-process-button');await page.waitForSelector('#atlas-local-result:not([hidden])');assert.equal(processed.source_id,'s_3');
+ assert((await page.locator('#nexus-local-selection-count').textContent()).includes('已选3个'));assert.equal(uploads.length,0);
+ await page.click('#nexus-local-upload-button');await page.waitForFunction(()=>document.querySelector('#nexus-local-status').textContent.includes('已导入2个文件，1个未完成'));
+ assert.deepEqual(uploads.map(row=>row.n),[1,2,2,2,3]);assert(uploads.slice(1,4).every(row=>row.rid===uploads[1].rid));assert.equal(await page.locator('#nexus-local-source-select option').count(),2);
+ failSecond=false;await page.click('#nexus-local-upload-button');await page.waitForFunction(()=>document.querySelector('#nexus-local-status').textContent.includes('3个文件已保存在本机'));
+ assert.deepEqual(uploads.map(row=>row.n),[1,2,2,2,3,2]);assert.equal(uploads[1].rid,uploads[5].rid);assert.equal(await page.locator('#nexus-local-source-select option').count(),3);
+ await page.selectOption('#nexus-local-source-select','s_3');assert.equal(await page.locator('#nexus-local-amount option[value="field_3"]').count(),1);
+ await page.click('#nexus-local-process-button');await page.waitForSelector('#nexus-local-result:not([hidden])');assert.equal(processed.source_id,'s_3');
  await page.setViewportSize({width:390,height:844});
  assert.equal(await page.locator('#composer').evaluate(node=>node.scrollWidth>node.clientWidth+1),false,'mobile composer does not overflow');
- assert.equal(await page.locator('#atlas-local-workspace-panel').evaluate(node=>node.scrollWidth>node.clientWidth+1),false,'mobile panel does not overflow horizontally');
- const output=process.env.ATLAS_BROWSER_EVIDENCE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'atlas-picker-'));fs.mkdirSync(output,{recursive:true});await page.screenshot({path:path.join(output,'multiple-file-picker.png')});
+ assert.equal(await page.locator('#nexus-local-workspace-panel').evaluate(node=>node.scrollWidth>node.clientWidth+1),false,'mobile panel does not overflow horizontally');
+ const output=process.env.NEXUS_BROWSER_EVIDENCE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'nexus-picker-'));fs.mkdirSync(output,{recursive:true});await page.screenshot({path:path.join(output,'multiple-file-picker.png')});
  assert.deepEqual(errors,[]);console.log(JSON.stringify({real_chromium:browser.version(),api_fixture:true,chat_and_work_picker_multiple:true,both_modes_post_all_three_files:true,append_preserves_first_batch:true,both_modes_three_separate_single_file_choices:true,local_picker_multiple:true,local_three_separate_single_file_choices:true,three_files_from_one_selection:true,partial_failure_keeps_and_continues_files:true,temporary_retry_and_manual_retry_preserve_same_id:true,processing_uses_third_file:true,mobile_no_horizontal_overflow:true,no_live_model_or_windows_shell_test:true,evidence_directory:output}));
 }finally{await browser.close()}

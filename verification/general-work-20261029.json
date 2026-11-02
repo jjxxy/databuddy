@@ -47,7 +47,7 @@
   },
   "real_local_rendition": {
     "html": {
-      "schema": "atlas-rendition-v1",
+      "schema": "nexus-rendition-v1",
       "input_sha256": "cfcf6e15e6a3b3d5e4c1955096f9a08eaf6900316355000a4c1eb845c65920ca",
       "input_format": "html",
       "total_pages": 1,
@@ -70,7 +70,7 @@
     },
     "office": [
       {
-        "schema": "atlas-rendition-v1",
+        "schema": "nexus-rendition-v1",
         "input_sha256": "20db5777d7c74a7d849cd1addc0a770589de9587ba1b4d79325d983efc222984",
         "input_format": "docx",
         "total_pages": 1,
@@ -92,7 +92,7 @@
         "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
       },
       {
-        "schema": "atlas-rendition-v1",
+        "schema": "nexus-rendition-v1",
         "input_sha256": "c99365ff0388f9b2192f973099dd54b68847588d0fbf5165a0cfe08926e263f6",
         "input_format": "pptx",
         "total_pages": 1,
@@ -114,7 +114,7 @@
         "scope": "offline_rendition; visual_inspection_and_business_review_are_separate"
       },
       {
-        "schema": "atlas-rendition-v1",
+        "schema": "nexus-rendition-v1",
         "input_sha256": "d8dcc05624841cbb17c20ac3747332d956ebd2b2a1c37ef4c3c566db6cf51632",
         "input_format": "xlsx",
         "total_pages": 1,

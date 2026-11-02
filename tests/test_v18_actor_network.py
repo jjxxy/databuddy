@@ -66,7 +66,7 @@ def test_async_actor_scope_is_isolated_and_restored_after_failure():
 
 
 def test_real_auth_dependency_propagates_actor_into_sync_routes_without_request_leak(monkeypatch):
-    monkeypatch.setenv('ATLAS_AUTH_MODE','oidc')
+    monkeypatch.setenv('NEXUS_AUTH_MODE','oidc')
     monkeypatch.setattr(identity,'principal',lambda request:{'authenticated':True,'mode':'oidc',
         'subject':request.headers['x-fixture-subject'],'issuer':'https://identity.example.test'})
     app=FastAPI()
@@ -85,7 +85,7 @@ def test_real_auth_dependency_propagates_actor_into_sync_routes_without_request_
 
 
 def test_shared_token_is_explicitly_one_personal_owner(monkeypatch):
-    monkeypatch.setenv('ATLAS_AUTH_MODE','token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE','token')
     app=FastAPI()
     @app.get('/actor',dependencies=[Depends(api.auth)])
     def route():return {'actor':current_actor()}
@@ -111,14 +111,14 @@ def test_worker_task_scope_uses_frozen_actor_and_restores_outer_scope():
 
 
 def test_local_policy_requires_explicit_private_host_and_rejects_mixed_dns(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
-    monkeypatch.delenv('ATLAS_LOCAL_ONLY_HOSTS',raising=False)
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
+    monkeypatch.delenv('NEXUS_LOCAL_ONLY_HOSTS',raising=False)
     monkeypatch.setattr(network_policy.socket,'getaddrinfo',forbidden)
     for host in ('example.com','10.0.0.5','169.254.169.254'):
         with pytest.raises(ValueError):network_policy.check_host(host,addresses=['10.0.0.5'])
     network_policy.check_host('127.0.0.1',addresses=['127.0.0.1'])
     network_policy.check_host('::1',addresses=['::1'])
-    monkeypatch.setenv('ATLAS_LOCAL_ONLY_HOSTS','db.internal,10.0.0.5')
+    monkeypatch.setenv('NEXUS_LOCAL_ONLY_HOSTS','db.internal,10.0.0.5')
     network_policy.check_host('DB.INTERNAL.',addresses=['10.0.0.5'])
     network_policy.check_host('10.0.0.5',addresses=['10.0.0.5'])
     for addresses in ([], ['10.0.0.5','8.8.8.8'], ['169.254.169.254'], ['0.0.0.0'], ['224.0.0.1']):
@@ -130,14 +130,14 @@ def test_local_policy_requires_explicit_private_host_and_rejects_mixed_dns(monke
 @pytest.mark.parametrize('url',['https://public.example.test','file:///tmp/input',
     'https://user:secret@localhost','https://169.254.169.254/latest/meta-data'])
 def test_local_policy_rejects_remote_or_credential_bearing_urls_before_dns(monkeypatch,url):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
-    monkeypatch.delenv('ATLAS_LOCAL_ONLY_HOSTS',raising=False)
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
+    monkeypatch.delenv('NEXUS_LOCAL_ONLY_HOSTS',raising=False)
     monkeypatch.setattr(network_policy.socket,'getaddrinfo',forbidden)
     with pytest.raises(ValueError):network_policy.check_url(url)
 
 
 def test_local_policy_blocks_model_before_request_budget_or_transport(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
     monkeypatch.setattr(provider.httpx,'Client',forbidden)
     monkeypatch.setattr('agent_service.quotas.reserve',forbidden)
     with pytest.raises(ValueError,match='仅本地'):
@@ -146,7 +146,7 @@ def test_local_policy_blocks_model_before_request_budget_or_transport(monkeypatc
 
 
 def test_local_policy_checks_legacy_opencode_upstream_before_forwarding_business_prompt(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
     monkeypatch.setattr(network_policy.socket,'getaddrinfo',lambda *args,**kwargs:[(2,1,6,'',('127.0.0.1',80))])
     monkeypatch.setattr('agent_service.opencode.request',forbidden)
     monkeypatch.setattr('agent_service.quotas.reserve',forbidden)
@@ -157,7 +157,7 @@ def test_local_policy_checks_legacy_opencode_upstream_before_forwarding_business
 
 
 def test_local_policy_blocks_browser_even_with_owner_verified_flag_before_page_or_file_access(monkeypatch,tmp_path):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
     destination=tmp_path/'not-created'/'report.csv'
     recipe={'url':'http://localhost/report','export_selector':'#export','required_context_text':['2026']}
     with pytest.raises(browser_reports.BrowserUnavailable) as error:
@@ -167,8 +167,8 @@ def test_local_policy_blocks_browser_even_with_owner_verified_flag_before_page_o
 
 
 def test_local_policy_blocks_webpush_before_dns_crypto_and_http(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
-    monkeypatch.delenv('ATLAS_LOCAL_ONLY_HOSTS',raising=False)
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
+    monkeypatch.delenv('NEXUS_LOCAL_ONLY_HOSTS',raising=False)
     monkeypatch.setattr(activity.socket,'getaddrinfo',forbidden)
     monkeypatch.setattr(activity.httpx,'Client',forbidden)
     encode=lambda value:base64.urlsafe_b64encode(value).rstrip(b'=').decode()
@@ -181,10 +181,10 @@ def test_local_policy_blocks_webpush_before_dns_crypto_and_http(monkeypatch):
 
 
 def test_local_policy_blocks_remote_backup_before_plaintext_snapshot_or_child_process(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
-    monkeypatch.setenv('ATLAS_LOCAL_ONLY_HOSTS','s3.internal')
-    for key,value in {'ATLAS_S3_ENDPOINT':'https://s3.internal','ATLAS_S3_BUCKET':'private',
-        'ATLAS_S3_ACCESS_KEY_ID':'fixture','ATLAS_S3_SECRET_ACCESS_KEY':'fixture','ATLAS_BACKUP_KEY':'x'*40}.items():
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
+    monkeypatch.setenv('NEXUS_LOCAL_ONLY_HOSTS','s3.internal')
+    for key,value in {'NEXUS_S3_ENDPOINT':'https://s3.internal','NEXUS_S3_BUCKET':'private',
+        'NEXUS_S3_ACCESS_KEY_ID':'fixture','NEXUS_S3_SECRET_ACCESS_KEY':'fixture','NEXUS_BACKUP_KEY':'x'*40}.items():
         monkeypatch.setenv(key,value)
     monkeypatch.setattr(backup_cloud.subprocess,'run',forbidden)
     monkeypatch.setattr('agent_service.maintenance.backup',forbidden)
@@ -194,9 +194,9 @@ def test_local_policy_blocks_remote_backup_before_plaintext_snapshot_or_child_pr
 
 
 def test_connected_mode_preserves_network_option_and_does_not_claim_firewall(monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','connected')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','connected')
     monkeypatch.setattr(network_policy.socket,'getaddrinfo',forbidden)
     network_policy.check_url('https://example.test')
     assert network_policy.status()=={'mode':'connected','application_connections_restricted':False,'os_network_isolation':False}
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','misspelled')
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','misspelled')
     with pytest.raises(ValueError):network_policy.check_url('http://localhost')

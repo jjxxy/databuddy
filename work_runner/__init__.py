@@ -1,1 +1,1 @@
-"""Independent execution plane. Never import this service into the Atlas API."""
+"""Independent execution plane. Never import this service into the Nexus WorkStudio API."""

@@ -47,9 +47,9 @@ def test_live_browser_import_helper_over_http(tmp_path):
         input_value={'session_id':sid,'workspace_id':wid,'origin':origin,'snapshot':snapshot,
                      'export_ref':1,'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
         env={**os.environ,'DATA_DIR':str(tmp_path/'data'),'APP_TOKEN':'fixture-only-access-token-1234',
-             'PYTHONPATH':str(root),'ATLAS_BROWSER_URL':'http://127.0.0.1:'+str(server.server_port),
-             'ATLAS_BROWSER_TOKEN':token,'ATLAS_WEB_ENABLED':'1','API_ALLOWED_HOSTS':'127.0.0.1',
-             'ATLAS_NETWORK_MODE':'connected'}
+             'PYTHONPATH':str(root),'NEXUS_BROWSER_URL':'http://127.0.0.1:'+str(server.server_port),
+             'NEXUS_BROWSER_TOKEN':token,'NEXUS_WEB_ENABLED':'1','API_ALLOWED_HOSTS':'127.0.0.1',
+             'NEXUS_NETWORK_MODE':'connected'}
         process=subprocess.run([sys.executable,str(root/'tests/browser_business_import_helper.py')],
             cwd=root,input=json.dumps(input_value),text=True,capture_output=True,timeout=30,env=env)
         assert process.returncode==0,process.stderr

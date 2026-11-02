@@ -14,7 +14,7 @@ from test_offline_ocr import make_image
 
 @pytest.fixture
 def worker(monkeypatch):
-    executable=os.environ.get('ATLAS_TEST_PDF_OCR_PYTHON')
+    executable=os.environ.get('NEXUS_TEST_PDF_OCR_PYTHON')
     if not executable or not Path(executable).is_file():pytest.skip('Optional pinned PDF OCR test runtime unavailable')
     monkeypatch.setattr(visual,'_ocr_worker_python',lambda:executable)
     # No parent-process PDF parser may be invoked on the OCR path.

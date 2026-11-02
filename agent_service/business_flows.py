@@ -128,10 +128,10 @@ def _entry(pid,fid,sha):
     # This project entry submits to the authenticated service; it never loads
     # user-supplied Python or bypasses the server's authorization/receipts.
     return ("#!/usr/bin/env python3\n"
-            "# 使用已授权 Atlas 服务执行固定的业务流程版本。数据和凭证不保存在代码中。\n"
+            "# 使用已授权 Nexus WorkStudio 服务执行固定的业务流程版本。数据和凭证不保存在代码中。\n"
             "import json, os, sys, urllib.request\n"
-            "base=os.environ['ATLAS_URL'].rstrip('/')\n"
-            "token=os.environ['ATLAS_TOKEN']\n"
+            "base=os.environ['NEXUS_URL'].rstrip('/')\n"
+            "token=os.environ['NEXUS_TOKEN']\n"
             "inputs=json.load(open(sys.argv[1],encoding='utf-8')) if len(sys.argv)>1 else {}\n"
             "body=json.dumps({'request_id':os.urandom(16).hex(),'expected_digest':"+repr(sha)+",'inputs':inputs}).encode()\n"
             "request=urllib.request.Request(base+"+repr('/api/projects/'+pid+'/business-flows/'+fid+'/runs')+",data=body,headers={'Content-Type':'application/json'},method='POST')\n"

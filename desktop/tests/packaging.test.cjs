@@ -9,7 +9,7 @@ const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
 
 test('real runtime copy retains dbt executable macros under tests and excludes only caches',async()=>{
  const {shouldCopyPayload,verifyRuntimeInventory}=await import('../../packaging/payload-policy.mjs');
- const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-package-contract-'));
+ const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'nexus-package-contract-'));
  const source=path.join(temporary,'source'),output=path.join(temporary,'output');
  const macro='python/Lib/site-packages/dbt/include/global_project/macros/materializations/tests/test.sql';
  const fixture='python/Lib/site-packages/runtime_module/tests/required.json';
@@ -30,7 +30,7 @@ test('real runtime copy retains dbt executable macros under tests and excludes o
   assert.equal(shouldCopyPayload('desktop','node_modules/dev/index.js'),false);
  }finally{
   const resolved=path.resolve(temporary);
-  if(path.dirname(resolved)!==path.resolve(os.tmpdir())||!path.basename(resolved).startsWith('atlas-package-contract-'))
+  if(path.dirname(resolved)!==path.resolve(os.tmpdir())||!path.basename(resolved).startsWith('nexus-package-contract-'))
    throw new Error('Refusing cleanup outside the test temporary directory.');
   await fs.rm(resolved,{recursive:true,force:true});
  }

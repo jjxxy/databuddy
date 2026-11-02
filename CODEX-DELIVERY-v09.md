@@ -2,7 +2,7 @@
 
 ## 【本轮改动摘要】
 
-版本 **v0.9**，产品 Atlas DataBuddy v0.20.0；最终候选 **r16**。用户本轮要求先检查项目、稍后连接豆包；以下为源码、自测和内部交叉复审结论，尚非豆包复审结论。
+版本 **v0.9**，产品 Nexus WorkStudio v0.20.0；最终候选 **r16**。用户本轮要求先检查项目、稍后连接豆包；以下为源码、自测和内部交叉复审结论，尚非豆包复审结论。
 
 本轮围绕用户指出的“处理流程重复很多遍”。上一轮验收的 G1 完整财经月结仍未通过，不以技术回归替代财经能力证明。新问题编号均为本轮自查编号，不冒充豆包问题编号。
 
@@ -69,12 +69,12 @@ def _unresolved_failures(trace):
 | 随本机构建 Node 执行 `node --test desktop/tests/*.test.cjs` | **40 pass，0 fail**；`verification/desktop-recovery-v09.log`。 |
 | `tests/ui/` 20 个 UI 脚本逐个实跑 | 全部通过，21 条 JSON（lifecycle 输出两条）；`verification/agent-recovery-ui-v09.log`。它们覆盖 DOM 与交互状态，未声称完整实机页面视觉验收。 |
 | `verification/verify-native-compaction-recovery-v09.py` | 实际随包 OpenCode 2.1.2，20 次生成、4 次真实自动压缩；历史页在 epoch 0 与 4 均恢复，最终文件 verified_complete。模型是本地替身、付费调用 0；不是财经 LLM 证据。最终 r16 的相关原生压缩与恢复源码与该测试一致。 |
-| r16 随包 `runtime/python/python.exe -X utf8 verification/verify-real-history-recovery-v09.py --app-root dist/Atlas-DataBuddy-win32-x64-r16/resources/app --model-config <现有私密配置> --artifact r16 --evidence-stem real-history-recovery-r16-v09` | **真实选定模型、5 次调用、verified_complete**；1 次历史页读取、2 次明确所属轮次的原结果读取、1 次实际文件写入。实际文件含原始合成 case_code 和 13% 税率，非空文件合同经验收，未加工/发布；`verification/real-history-recovery-r16-v09.json`。与原用户 145 次调用不是相同输入，不作性能倍率比较。 |
-| `acceptance/offline/verify_backend.py --app-root dist/Atlas-DataBuddy-win32-x64-r16/resources/app --evidence-dir verification/backend-r16-delivery` | **ok=true**：包内运行时、空 PATH、新目录、local_only 导入→加工→人工采用→导出→审计，金额 **118.150000000000**；重启、错误密钥不阻断本地、缺运行文件人话提示均通过。 |
+| r16 随包 `runtime/python/python.exe -X utf8 verification/verify-real-history-recovery-v09.py --app-root dist/Nexus WorkStudio-WorkStudio-win32-x64-r16/resources/app --model-config <现有私密配置> --artifact r16 --evidence-stem real-history-recovery-r16-v09` | **真实选定模型、5 次调用、verified_complete**；1 次历史页读取、2 次明确所属轮次的原结果读取、1 次实际文件写入。实际文件含原始合成 case_code 和 13% 税率，非空文件合同经验收，未加工/发布；`verification/real-history-recovery-r16-v09.json`。与原用户 145 次调用不是相同输入，不作性能倍率比较。 |
+| `acceptance/offline/verify_backend.py --app-root dist/Nexus WorkStudio-WorkStudio-win32-x64-r16/resources/app --evidence-dir verification/backend-r16-delivery` | **ok=true**：包内运行时、空 PATH、新目录、local_only 导入→加工→人工采用→导出→审计，金额 **118.150000000000**；重启、错误密钥不阻断本地、缺运行文件人话提示均通过。 |
 | `verification/audit_delivery_sources.py --artifact r16 --baseline r14` | **15,240/15,240** 清单文件哈希一致，**154** 个一方文件与源码一致，**15,006** 个随包运行时文件一致；无禁入私密配置/用户数据路径。相对 r14 为新增 1、修改 10 个生产文件，依赖未变；`verification/r16-source-inventory.json`。 |
 | 打开最终 r16 原工作空间；执行 `verification/trial-r16-state-check.py before/after`；查看真实应用截图 | **ok=true**；原 **8 轮记录、2 个源文件、浏览器草稿与待发送状态**哈希一致，原生服务 ready，未提交/续跑用户任务。工作台实际显示原项目与“继续这项工作”按钮。两个“打开财经月结亲测”快捷方式均指向 r16，保留原 profile。 |
 
-最终产物为 `dist/Atlas-DataBuddy-win32-x64-r16/Atlas DataBuddy.exe`。运行生成的 `__pycache__` 不属于交付清单；打包下载应只用清单文件，不把运行缓存或原工作空间装入包。
+最终产物为 `dist/Nexus WorkStudio-WorkStudio-win32-x64-r16/Nexus WorkStudio.exe`。运行生成的 `__pycache__` 不属于交付清单；打包下载应只用清单文件，不把运行缓存或原工作空间装入包。
 
 真实模型首次隔离恢复测试 `verification/real-history-recovery-v09.json` 整体 **ok=false、partial**。它确实找回旧回执、保存正确合成编号和税率且没有加工发布，但最初误读已不存在的当前文件；脚本还把文本任务误当成文件合同，空要求的 `task_verified=true` 不足作为交付证据。原记录保留。后续脚本显式指定文件目标、核验非空文件合同，并说明原件仅存历史，不靠修改预期把失败写成通过。
 

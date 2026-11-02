@@ -6,7 +6,7 @@ test('actual retry IPC accepts only the startup recovery document, never the wor
  const context=vm.createContext({__dirname:desktop,URL,AbortSignal,Buffer,setTimeout,clearTimeout,process,require(name){if(name==='electron')return electron;if(name==='node:fs')return {existsSync:()=>false};if(name.startsWith('./'))return require(path.join(desktop,name));return require(name)}});
  vm.runInContext(source+';globalThis.setFixture=(window,ready)=>{mainWindow=window;connection=ready};',context);
  const frame={url:'http://127.0.0.1:8123/'},contents={mainFrame:frame,send(){}},window={webContents:contents,isDestroyed:()=>false,loadFile:async file=>loads.push(file)};
- context.setFixture(window,{origin:'http://127.0.0.1:8123',token:'fixture-owner-token'});const retry=handlers.get('atlas:retry'),event={sender:contents,senderFrame:frame};
+ context.setFixture(window,{origin:'http://127.0.0.1:8123',token:'fixture-owner-token'});const retry=handlers.get('nexus:retry'),event={sender:contents,senderFrame:frame};
  await assert.rejects(retry(event),/请求来源/);assert.equal(loads.length,0);
  frame.url=pathToFileURL(path.join(desktop,'start-screen.html')).href;
  await assert.rejects(retry({...event,senderFrame:{url:frame.url}}),/请求来源/);await assert.rejects(retry({...event,sender:{mainFrame:frame}}),/请求来源/);

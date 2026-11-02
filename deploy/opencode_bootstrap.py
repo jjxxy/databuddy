@@ -1,4 +1,4 @@
-"""Private, volume-free OpenCode 2 service. No Atlas files or connector keys."""
+"""Private, volume-free OpenCode 2 service. No Nexus WorkStudio files or connector keys."""
 import hashlib,json,os,pwd,shutil,subprocess,tarfile,tempfile,urllib.request
 from pathlib import Path
 
@@ -14,28 +14,28 @@ def _timeout_seconds(name, default):
 
 
 def _upstream_timeouts():
-    idle=_timeout_seconds('ATLAS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
+    idle=_timeout_seconds('NEXUS_OPENCODE_MODEL_IDLE_TIMEOUT_SECONDS',900)
     settings={'headerTimeout':idle*1000,'chunkTimeout':idle*1000}
     # OpenCode defines timeout as an additional *whole request* deadline.
     # Do not kill an otherwise healthy, active stream by default.
-    if os.getenv('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
-        settings['timeout']=_timeout_seconds('ATLAS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
+    if os.getenv('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS') is not None:
+        settings['timeout']=_timeout_seconds('NEXUS_OPENCODE_MODEL_TIMEOUT_SECONDS',1800)*1000
     return settings
 
 
 def config(base):
     return {'update':'disable','permissions':[{'action':'*','resource':'*','effect':'deny'}],
             'plugins':[],'mcp':{'servers':{}},'instructions':[],
-            'providers':{'atlas':{'name':'Atlas model','env':['ATLAS_MODEL_KEY'],
+            'providers':{'nexus':{'name':'Nexus WorkStudio model','env':['NEXUS_MODEL_KEY'],
                 'package':'@opencode/ai/providers/openai-compatible',
                 'settings':{'baseURL':base,**_upstream_timeouts(),'encoding':'none'},
                 'compatibility':{'reasoningField':'reasoning_content'},
                 'body':{'max_tokens':8192,'thinking':{'type':'enabled'},'reasoning_effort':'high'},
                 'models':{'deepseek-v4-pro':{'modelID':'deepseek-v4-pro','name':'DeepSeek V4 Pro'}}}},
-            'model':'atlas/deepseek-v4-pro'}
+            'model':'nexus/deepseek-v4-pro'}
 
 def main():
-    if len(os.environ.get('OPENCODE_SERVER_PASSWORD',''))<24 or not os.getenv('ATLAS_MODEL_KEY'):raise ValueError('Missing service/model credentials')
+    if len(os.environ.get('OPENCODE_SERVER_PASSWORD',''))<24 or not os.getenv('NEXUS_MODEL_KEY'):raise ValueError('Missing service/model credentials')
     # Installer only; the API and binary run without root, on an empty workdir.
     subprocess.run(['apt-get','update','-qq'],check=True)
     subprocess.run(['apt-get','install','-y','--no-install-recommends','ca-certificates','libstdc++6','passwd'],check=True,stdout=subprocess.DEVNULL)
@@ -59,9 +59,9 @@ def main():
     for path in [root,work,*work.rglob('*')]:os.chown(path,10001,10001)
     runtime_env={'PATH':'/usr/bin:/bin','XDG_DATA_HOME':str(work/'data'),'XDG_CONFIG_HOME':str(work/'config'),
                  'XDG_STATE_HOME':str(work/'state'),'XDG_CACHE_HOME':str(work/'cache'),'OPENCODE_DISABLE_MODELS_FETCH':'true',
-                 'OPENCODE_SERVER_PASSWORD':os.environ['OPENCODE_SERVER_PASSWORD'],'ATLAS_MODEL_KEY':os.environ['ATLAS_MODEL_KEY']}
+                 'OPENCODE_SERVER_PASSWORD':os.environ['OPENCODE_SERVER_PASSWORD'],'NEXUS_MODEL_KEY':os.environ['NEXUS_MODEL_KEY']}
     os.chdir(work);os.setgroups([]);os.setgid(10001);os.setuid(10001)
-    print('ATLAS_OPENCODE_READY version='+VERSION+' binary_sha256='+BINARY_SHA256,flush=True)
+    print('NEXUS_OPENCODE_READY version='+VERSION+' binary_sha256='+BINARY_SHA256,flush=True)
     os.execve(binary,[str(binary),'serve','--hostname','::','--port',os.environ.get('PORT','8080')],runtime_env)
 
 if __name__=='__main__':main()

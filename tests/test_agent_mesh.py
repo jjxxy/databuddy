@@ -23,7 +23,7 @@ def project(tmp_path,monkeypatch):
     from agent_service.jobs import jobs,engine
     from sqlalchemy import select
     with engine.connect() as connection:previous_jobs=set(connection.execute(select(jobs.c.id)).scalars())
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1');monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(tmp_path))
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1');monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(tmp_path))
     monkeypatch.setenv('API_ALLOWED_HOSTS','127.0.0.1')
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://fixture-llm.test/v1','model':'fixture','api_key':'fixture-model-secret','share_data':True})
     monkeypatch.setattr(company_search,'capture_model_approvals',lambda ids:{})
@@ -75,11 +75,11 @@ def service(version='1.0',*,drop_submit=False,terminal_outcome='answered',output
             elif method=='initialize':result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}}}
             elif method=='notifications/initialized':self.send_response(204);self.end_headers();return
             elif method=='tools/list':
-                result={'tools':[{'name':name,'description':'Scoped Atlas agent','inputSchema':{'type':'object','additionalProperties':True}} for name in ('atlas_submit_task','atlas_get_task','atlas_cancel_task')]}
+                result={'tools':[{'name':name,'description':'Scoped Nexus WorkStudio agent','inputSchema':{'type':'object','additionalProperties':True}} for name in ('nexus_submit_task','nexus_get_task','nexus_cancel_task')]}
             elif method=='tools/call':
                 tool=params['name']
-                if tool=='atlas_submit_task':state['submitted']+=1;v={'id':'remote-task','status':'working'}
-                elif tool=='atlas_get_task':state['polled']+=1;v={'id':'remote-task','status':'completed','outcome':terminal_outcome,'answer':'Reviewed actual source scope.','output_bundle':output_bundle}
+                if tool=='nexus_submit_task':state['submitted']+=1;v={'id':'remote-task','status':'working'}
+                elif tool=='nexus_get_task':state['polled']+=1;v={'id':'remote-task','status':'completed','outcome':terminal_outcome,'answer':'Reviewed actual source scope.','output_bundle':output_bundle}
                 else:state['cancelled']+=1;v={'id':'remote-task','status':'cancelled'}
                 result={'content':[],'structuredContent':v,'isError':False}
             else:raise AssertionError(method)
@@ -87,7 +87,7 @@ def service(version='1.0',*,drop_submit=False,terminal_outcome='answered',output
         def task(self,done,cancelled=False):
             kind='CANCELED' if cancelled else 'COMPLETED' if done else 'WORKING'
             status='TASK_STATE_'+kind if version=='1.0' else {'CANCELED':'canceled','COMPLETED':'completed','WORKING':'working'}[kind]
-            part={'data':{'atlas':{'outcome':terminal_outcome,'output_bundle':output_bundle}}}
+            part={'data':{'nexus':{'outcome':terminal_outcome,'output_bundle':output_bundle}}}
             if version!='1.0':part['kind']='data'
             return {'id':'remote-task','status':{'state':status,'message':{'parts':[{'text':'Reviewed actual source scope.'}]}},'artifacts':[{'parts':[part]}]}
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler);url='http://127.0.0.1:'+str(server.server_port)+'/a2a'

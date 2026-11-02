@@ -23,7 +23,7 @@ def test_long_text_is_complete_and_paginated(tmp_path):
     deck=render(spec,tmp_path/'report.pptx')
     assert len(deck.slides)==4
     texts=[s.text for slide in list(deck.slides)[1:] for s in slide.shapes
-           if s.has_text_frame and s.name.startswith('atlas:text:')]
+           if s.has_text_frame and s.name.startswith('nexus:text:')]
     assert texts==body.split('\n')
 
 
@@ -61,10 +61,10 @@ def test_editable_chart_keeps_original_numeric_text_and_units(tmp_path):
     assert chart_shape.chart.category_axis.reverse_order is True
     assert list(chart_shape.chart.series[0].values)==[1234.5,50.25,0.0]
     labels={s.name:s.text for s in deck.slides[-1].shapes if s.has_text_frame}
-    assert labels['atlas:chart-value:0:0']=='1234.50'
-    assert labels['atlas:chart-value:0:2']=='0.00'
-    assert labels['atlas:chart-unit:0']=='原始数值 · 万元'
-    next(s for s in deck.slides[-1].shapes if s.name=='atlas:chart-value:0:0').text='1'
+    assert labels['nexus:chart-value:0:0']=='1234.50'
+    assert labels['nexus:chart-value:0:2']=='0.00'
+    assert labels['nexus:chart-unit:0']=='原始数值 · 万元'
+    next(s for s in deck.slides[-1].shapes if s.name=='nexus:chart-value:0:0').text='1'
     deck.save(path)
     with pytest.raises(ValueError,match='完整性验证失败'):office._verify_structure(path,'pptx',spec)
 

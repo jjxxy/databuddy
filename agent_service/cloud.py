@@ -3,7 +3,7 @@ import logging,os,signal,subprocess,sys,time
 from pathlib import Path
 from .process_control import spawn,stop as stop_process
 
-log=logging.getLogger('atlas.cloud')
+log=logging.getLogger('nexus.cloud')
 
 def prepare():
     if len(os.getenv('APP_TOKEN',''))<16:raise ValueError('APP_TOKEN must have at least 16 characters')
@@ -11,19 +11,19 @@ def prepare():
     if not 1<=port<=65535:raise ValueError('PORT must be between 1 and 65535')
     # Host-mounted 0600 files may only be readable before the one-time UID
     # switch. Neither provisioning mechanism is inherited by child processes.
-    initial_model=os.environ.pop('ATLAS_INITIAL_MODEL','')
-    model_path=os.environ.pop('ATLAS_LLM_CONFIG_FILE','')
-    preset_path=os.environ.pop('ATLAS_EXTENSION_PRESETS_FILE','')
+    initial_model=os.environ.pop('NEXUS_INITIAL_MODEL','')
+    model_path=os.environ.pop('NEXUS_LLM_CONFIG_FILE','')
+    preset_path=os.environ.pop('NEXUS_EXTENSION_PRESETS_FILE','')
     if initial_model and model_path:raise ValueError('Use one model provisioning method')
     from .network_policy import mode
     mode()
-    local=bool(os.getenv('ATLAS_LOCAL_WORKSPACE'))
-    if local!=(os.getenv('ATLAS_LOCAL_MODE')=='1'):raise ValueError('Local workspace requires both ATLAS_LOCAL_MODE=1 and ATLAS_LOCAL_WORKSPACE')
-    if local and all(os.getenv(key) for key in ('ATLAS_S3_ENDPOINT','ATLAS_S3_BUCKET','ATLAS_S3_ACCESS_KEY_ID','ATLAS_S3_SECRET_ACCESS_KEY','ATLAS_BACKUP_KEY')):
+    local=bool(os.getenv('NEXUS_LOCAL_WORKSPACE'))
+    if local!=(os.getenv('NEXUS_LOCAL_MODE')=='1'):raise ValueError('Local workspace requires both NEXUS_LOCAL_MODE=1 and NEXUS_LOCAL_WORKSPACE')
+    if local and all(os.getenv(key) for key in ('NEXUS_S3_ENDPOINT','NEXUS_S3_BUCKET','NEXUS_S3_ACCESS_KEY_ID','NEXUS_S3_SECRET_ACCESS_KEY','NEXUS_BACKUP_KEY')):
         raise ValueError('本地文件夹模式不支持旧格式远程备份；请停止服务后备份完整工作文件夹和部署配置')
-    dropping=os.getenv('ATLAS_DROP_PRIVILEGES')=='1'
-    uid=int(os.getenv('ATLAS_RUN_UID','10001')) if local else 10001
-    gid=int(os.getenv('ATLAS_RUN_GID','10001')) if local else 10001
+    dropping=os.getenv('NEXUS_DROP_PRIVILEGES')=='1'
+    uid=int(os.getenv('NEXUS_RUN_UID','10001')) if local else 10001
+    gid=int(os.getenv('NEXUS_RUN_GID','10001')) if local else 10001
     if not 1<=uid<=2147483647 or not 1<=gid<=2147483647:raise ValueError('Local workspace UID/GID must be non-root positive IDs')
     if local:
         from .local_storage import prepare_storage
@@ -34,9 +34,9 @@ def prepare():
     from .preset_configuration import load_presets_file
     preset_configuration=load_presets_file(preset_path) if preset_path else None
     from .quickstart_model import load_configuration
-    desktop=os.getenv('ATLAS_DESKTOP_MODE')=='1'
+    desktop=os.getenv('NEXUS_DESKTOP_MODE')=='1'
     try:
-        model_configuration=load_configuration(model_path,container=os.getenv('ATLAS_QUICKSTART_CONTAINER')=='1') if model_path else None
+        model_configuration=load_configuration(model_path,container=os.getenv('NEXUS_QUICKSTART_CONTAINER')=='1') if model_path else None
         if desktop and model_configuration:
             entries=model_configuration.get('models',[model_configuration])
             if any('YOUR_' in e.get('model','') or 'YOUR_' in e.get('api_key','') or 'your-llm.example.com' in e.get('base_url','') for e in entries):
@@ -44,8 +44,8 @@ def prepare():
     except (ValueError,OSError):
         if not desktop:raise
         model_configuration=None
-        os.environ['ATLAS_DESKTOP_MODEL_DISABLED']='1'
-        os.environ['ATLAS_DESKTOP_MODEL_NOTICE']='云端模型不可用，本地能力可用。请由管理员检查模型配置。'
+        os.environ['NEXUS_DESKTOP_MODEL_DISABLED']='1'
+        os.environ['NEXUS_DESKTOP_MODEL_NOTICE']='云端模型不可用，本地能力可用。请由管理员检查模型配置。'
         log.warning('Desktop model configuration unavailable; local service remains available')
     if os.getenv('RAILWAY_ENVIRONMENT_ID'):
         mount=os.getenv('RAILWAY_VOLUME_MOUNT_PATH')
@@ -57,10 +57,10 @@ def prepare():
     os.environ['AGENT_ORCHESTRATION_MODE']='separate'
     os.environ.setdefault('APP_TIMEZONE','Asia/Shanghai')
     os.environ.setdefault('DATABASE_URL','sqlite:///'+str(data/'metadata.sqlite'))
-    if os.getenv('ATLAS_DROP_PRIVILEGES')=='1':
+    if os.getenv('NEXUS_DROP_PRIVILEGES')=='1':
         if not hasattr(os,'geteuid'):raise ValueError('Cloud privilege dropping requires Linux')
         if os.geteuid()==0:
-            # Only Atlas's own mounted directory is modified; unchanged volumes avoid a recursive walk.
+            # Only Nexus WorkStudio's own mounted directory is modified; unchanged volumes avoid a recursive walk.
             if not local and (data.stat().st_uid!=uid or data.stat().st_gid!=gid):
                 os.chown(data,uid,gid)
                 for root,dirs,files in os.walk(data,followlinks=False):
@@ -97,8 +97,8 @@ def prepare():
             from .provider import ProviderInput,configure
             from .quickstart_model import allow_model_host,normalize_base_url
             value=ProviderInput.model_validate(model_configuration if model_configuration is not None else json.loads(initial_model),strict=True)
-            if os.getenv('ATLAS_OPENCODE_RUNTIME')=='1' and value.engine=='atlas':value.tool_protocol='native'
-            value.base_url=normalize_base_url(value.base_url,container=os.getenv('ATLAS_QUICKSTART_CONTAINER')=='1')
+            if os.getenv('NEXUS_OPENCODE_RUNTIME')=='1' and value.engine=='nexus':value.tool_protocol='native'
+            value.base_url=normalize_base_url(value.base_url,container=os.getenv('NEXUS_QUICKSTART_CONTAINER')=='1')
             allow_model_host(value.base_url)
             if desktop:
                 from .model_catalog import provision
@@ -127,7 +127,7 @@ def main():
         nonlocal stopping
         stopping=True
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
-    if os.getenv('ATLAS_SUPERVISOR_STDIN')=='1':
+    if os.getenv('NEXUS_SUPERVISOR_STDIN')=='1':
         import threading
         def commands():
             for line in sys.stdin:
@@ -137,30 +137,30 @@ def main():
     services=[];result=0;verifier=None
     try:
         from . import opencode_runtime
-        if opencode_runtime.is_enabled() and os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')!='1':
+        if opencode_runtime.is_enabled() and os.getenv('NEXUS_DESKTOP_MODEL_DISABLED')!='1':
             from .model_catalog import owner_configuration
             from .agent import Step
             configuration=owner_configuration()
-            if configuration.get('models') or os.getenv('ATLAS_DESKTOP_MODE')!='1':
+            if configuration.get('models') or os.getenv('NEXUS_DESKTOP_MODE')!='1':
                 try:
                     spec=opencode_runtime.prepare(configuration,Step.model_json_schema())
                     process=spawn(spec['command'],env=spec['env'],cwd=spec['cwd'])
                     services.append(('opencode',process));log.info('started opencode pid=%d',process.pid)
                     opencode_runtime.wait_ready(timeout=30)
                 except Exception:
-                    if os.getenv('ATLAS_DESKTOP_MODE')!='1':raise
+                    if os.getenv('NEXUS_DESKTOP_MODE')!='1':raise
                     for name,process in list(services):
                         if name=='opencode':stop_process(process);services.remove((name,process))
-                    os.environ['ATLAS_DESKTOP_MODEL_DISABLED']='1'
-                    os.environ['ATLAS_DESKTOP_MODEL_NOTICE']='云端模型不可用，本地能力可用。模型运行服务未就绪，请检查日志。'
+                    os.environ['NEXUS_DESKTOP_MODEL_DISABLED']='1'
+                    os.environ['NEXUS_DESKTOP_MODEL_NOTICE']='云端模型不可用，本地能力可用。模型运行服务未就绪，请检查日志。'
                     log.warning('Desktop model runtime unavailable; local service remains available')
-        commands=[('api',[sys.executable,'-m','uvicorn','agent_service.api:app','--host',os.getenv('ATLAS_API_HOST','0.0.0.0'),'--port',str(port)]),('worker',[sys.executable,'-m','agent_service.worker']),('agent',[sys.executable,'-m','agent_service.orchestrator'])]
+        commands=[('api',[sys.executable,'-m','uvicorn','agent_service.api:app','--host',os.getenv('NEXUS_API_HOST','0.0.0.0'),'--port',str(port)]),('worker',[sys.executable,'-m','agent_service.worker']),('agent',[sys.executable,'-m','agent_service.orchestrator'])]
         from .backup_cloud import configured
         if configured():commands.append(('backup',[sys.executable,'-m','agent_service.backup_service']))
         for name,args in commands:
             process=spawn(args)
             services.append((name,process));log.info('started %s pid=%d',name,process.pid)
-        if os.getenv('ATLAS_CLOUD_VERIFY')=='1':
+        if os.getenv('NEXUS_CLOUD_VERIFY')=='1':
             verifier=spawn([sys.executable,'-m','agent_service.cloud_accept'])
         while not stopping:
             if verifier and verifier.poll() is not None:
@@ -169,7 +169,7 @@ def main():
                 verifier=None
             for name,process in list(services):
                 if process.poll() is not None:
-                    if name=='opencode' and os.getenv('ATLAS_DESKTOP_MODE')=='1':
+                    if name=='opencode' and os.getenv('NEXUS_DESKTOP_MODE')=='1':
                         process.wait();services.remove((name,process))
                         log.error('Model runtime exited; local API remains available and model requests will fail explicitly')
                         continue

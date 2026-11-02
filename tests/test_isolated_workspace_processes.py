@@ -21,8 +21,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 ROOT = Path(__file__).parents[1]
 ISSUER = 'https://isolated-idp.example.test'
-AUDIENCE = 'atlas-process-test'
-HOST = 'atlas-process.example.test'
+AUDIENCE = 'nexus-process-test'
+HOST = 'nexus-process.example.test'
 
 
 def free_port():
@@ -86,9 +86,9 @@ def test_two_real_backends_keep_projects_sources_artifacts_and_jobs_separate(tmp
             data.mkdir()
             env = dict(base_env, DATA_DIR=str(data), DATABASE_URL='sqlite:///' + str(data / 'metadata.sqlite'),
                        HOME=str(data), APP_TOKEN='fixture-only-distinct-' + subject + '-token',
-                       ATLAS_AUTH_MODE='oidc', OIDC_ISSUER=ISSUER, OIDC_AUDIENCE=AUDIENCE,
+                       NEXUS_AUTH_MODE='oidc', OIDC_ISSUER=ISSUER, OIDC_AUDIENCE=AUDIENCE,
                        OIDC_ALLOWED_SUBJECTS=subject, OIDC_JWKS_URL=ISSUER + '/jwks',
-                       OIDC_ACCEPT_PROXY_HEADER='0', ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT='1',
+                       OIDC_ACCEPT_PROXY_HEADER='0', NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT='1',
                        TEST_JWKS=str(jwks), TEST_PORT=str(ports[subject]))
             bootstrap = """
 import json, os
@@ -104,7 +104,7 @@ uvicorn.run('agent_service.api:app', host='127.0.0.1', port=int(os.environ['TEST
         config_path = tmp_path / 'gateway.json'
         config_path.write_text(json.dumps(config))
         gateway = start(stack, tmp_path, 'gateway', ports['gateway'],
-                        dict(base_env, ATLAS_WORKSPACE_GATEWAY_CONFIG=str(config_path), TEST_PORT=str(ports['gateway'])),
+                        dict(base_env, NEXUS_WORKSPACE_GATEWAY_CONFIG=str(config_path), TEST_PORT=str(ports['gateway'])),
                         "import os,uvicorn; uvicorn.run('agent_service.workspace_gateway:app',host='127.0.0.1',port=int(os.environ['TEST_PORT']),log_level='warning')")
         clients = {subject: stack.enter_context(httpx.Client(base_url=gateway, trust_env=False, timeout=30,
                    headers={'Host': HOST, 'Authorization': 'Bearer ' + tokens[subject], 'Origin': 'https://' + HOST})) for subject in ('alice', 'bob')}
@@ -144,7 +144,7 @@ uvicorn.run('agent_service.api:app', host='127.0.0.1', port=int(os.environ['TEST
                 assert foreign['content'].decode() not in response.text
             # Independently reject the other identity even if the gateway is bypassed.
             assert httpx.get(backends[subject] + '/api/projects', headers={'Authorization': 'Bearer ' + tokens[other]}, trust_env=False).status_code == 403
-            assert client.get('/api/projects', headers={'X-Atlas-Workspace': other, 'X-Forwarded-User': other}).json() == projects
+            assert client.get('/api/projects', headers={'X-Nexus-Workspace': other, 'X-Forwarded-User': other}).json() == projects
         # IDs may intentionally collide across separate databases; content must not.
         colliding = {}
         for subject in ('alice', 'bob'):

@@ -36,12 +36,12 @@ operator-evidence/
 
 以下仅说明格式；`<...>` 必须由实际运行测量替换，不是可通过的证据。
 
-环境必须明确 `ATLAS_DEPLOYMENT_ID`、`ATLAS_PUBLIC_ORIGIN`（无凭证的 HTTPS origin）、部署 profile 与认证配置。`policy.json` 只能声明要求，不能声明验收完成：
+环境必须明确 `NEXUS_DEPLOYMENT_ID`、`NEXUS_PUBLIC_ORIGIN`（无凭证的 HTTPS origin）、部署 profile 与认证配置。`policy.json` 只能声明要求，不能声明验收完成：
 
 ```json
 {
   "schema_version": 1,
-  "deployment_id": "<与ATLAS_DEPLOYMENT_ID一致>",
+  "deployment_id": "<与NEXUS_DEPLOYMENT_ID一致>",
   "origin": "https://<正式部署域名>",
   "identity_architecture": "owner_workspace",
   "profile": "single",

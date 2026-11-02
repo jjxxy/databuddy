@@ -5,7 +5,7 @@ from sqlalchemy import text
 from .config import DATA,DATABASE_URL
 from .store import get,put,all_items,now,engine
 from .release_info import RUNTIME_REVISION
-INSTANCE=os.getenv('ATLAS_INSTANCE_ID') or os.getenv('RAILWAY_REPLICA_ID') or socket.gethostname()
+INSTANCE=os.getenv('NEXUS_INSTANCE_ID') or os.getenv('RAILWAY_REPLICA_ID') or socket.gethostname()
 
 def heartbeat(role,**extra):
     from .production_release import process_build_fingerprint
@@ -16,12 +16,12 @@ def heartbeat(role,**extra):
     if role=='agent' or role=='worker' and os.getenv('AGENT_ORCHESTRATION_MODE')!='separate':
         # The persisted operator choice governs new tasks; this node's
         # OpenCode enablement is a separate fact, not a readiness guarantee.
-        value['opencode_enabled_locally']=os.getenv('ATLAS_OPENCODE_RUNTIME')=='1'
+        value['opencode_enabled_locally']=os.getenv('NEXUS_OPENCODE_RUNTIME')=='1'
         try:
             from .agent_runtime import configured_name,runtime_names
             selected=configured_name()
             value['agent_runtime_default']=selected
-            value['planner_mode']={'opencode':'opencode','atlas_legacy':'legacy'}.get(selected,'unknown')
+            value['planner_mode']={'opencode':'opencode','nexus_legacy':'legacy'}.get(selected,'unknown')
             value['agent_runtime_config_valid']=selected in runtime_names()
         except Exception:
             # Do not invent a default when configuration cannot be read. The
@@ -43,12 +43,12 @@ def healthy(role):
     except KeyError:return False
 
 def preflight():
-    profile=os.getenv('ATLAS_DEPLOYMENT_PROFILE','single')
+    profile=os.getenv('NEXUS_DEPLOYMENT_PROFILE','single')
     if profile not in ('single','ha'):raise ValueError('未知部署类型')
     if profile=='ha':
         if engine.dialect.name!='postgresql':raise ValueError('HA部署必须使用共享PostgreSQL，不支持SQLite')
-        if os.getenv('ATLAS_STORAGE_MODE')!='rwx':raise ValueError('HA部署必须配置支持POSIX锁的共享RWX文件系统')
-        expected=os.getenv('ATLAS_STORAGE_ID','')
+        if os.getenv('NEXUS_STORAGE_MODE')!='rwx':raise ValueError('HA部署必须配置支持POSIX锁的共享RWX文件系统')
+        expected=os.getenv('NEXUS_STORAGE_ID','')
         marker=DATA/'storage.identity'
         if not expected or not marker.is_file() or marker.read_text().strip()!=expected:raise ValueError('共享存储身份校验失败，请先运行存储初始化作业')
         if not (DATA/'connector.key').is_file():raise ValueError('HA部署必须先初始化共享加密密钥；禁止每节点各自生成')
@@ -67,4 +67,4 @@ def readiness():
         # An actual read/write roundtrip, unique per instance; no user content.
         path=DATA/('.ready-'+hashlib.sha256(INSTANCE.encode()).hexdigest()[:16]);path.write_text('ready');checks['storage']=path.read_text()=='ready';path.unlink()
     except Exception:pass
-    return {'ready':all(checks.values()),'checks':checks,'profile':os.getenv('ATLAS_DEPLOYMENT_PROFILE','single'),'high_availability_verified':False}
+    return {'ready':all(checks.values()),'checks':checks,'profile':os.getenv('NEXUS_DEPLOYMENT_PROFILE','single'),'high_availability_verified':False}

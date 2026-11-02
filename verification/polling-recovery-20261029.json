@@ -22,7 +22,7 @@
   },
   "real_source_debug_smoke": {
     "real_debug_host_started_twice": true,
-    "git_detected_without_ATLAS_GIT_BINARY": true,
+    "git_detected_without_NEXUS_GIT_BINARY": true,
     "real_git_project_creation": true,
     "activity_registration_recovery": true,
     "credentials_preserved_after_restart": true,

@@ -5,7 +5,7 @@ const wait=async f=>{const end=Date.now()+4000;while(!f()){if(Date.now()>end)thr
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
 
 async function run(){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;
  const requests=[],downloads=[],toasts=[],delays=new Map(),blobs=[];let projectId='p',sending=false,pending=null;
  try{
   w.matchMedia=()=>({matches:false,addEventListener(){}});w.HTMLElement.prototype.scrollIntoView=function(){};
@@ -22,10 +22,10 @@ async function run(){
     total:51,next_offset:query.get('sheet')==='预算'||query.get('offset')==='50'?null:50,
     sheet_names:['明细','预算'],current_sheet:query.get('sheet')||'明细',fidelity_note:'原始网格；合并值保留锚点，公式未重算'}:
     {render:'text',text:id==='wa_s_text'?'<script>window.MALICIOUS=true</script>\n财务口径：保留负数。':id+' 原文',total:50,next_offset:null,fidelity_note:'原始文件文本摘录'};
-  w.atlasBusiness={getState:()=>({projectId,sending,pending}),projectItems:()=>[{id:'p',name:'财务项目'},{id:'p2',name:'新项目'}],sessionItems:()=>[],
+  w.nexusBusiness={getState:()=>({projectId,sending,pending}),projectItems:()=>[{id:'p',name:'财务项目'},{id:'p2',name:'新项目'}],sessionItems:()=>[],
     esc,toast:message=>toasts.push(message),closeSidebar(){},setDraft(){throw Error('Opening an input must never replace the conversation draft')},
     async api(raw){
-     const url=new URL('/api'+raw,'https://atlas.test');requests.push({method:'GET',path:url.pathname,query:url.search});
+     const url=new URL('/api'+raw,'https://nexus.test');requests.push({method:'GET',path:url.pathname,query:url.search});
      if(delays.has(raw))return delays.get(raw).promise;
      if(url.pathname.endsWith('/artifacts'))return {items:[],total:0,next_offset:null};
      const parts=url.pathname.split('/');
@@ -40,7 +40,7 @@ async function run(){
     async authFetch(url){requests.push({method:'GET',path:url,authenticated:true});return {ok:true,blob:async()=>new w.Blob(['unchanged original bytes'])}}
   };
   w.eval(fs.readFileSync(path.join(root,'workspace-shell.js'),'utf8'));
-  const shell=w.atlasShell,body=()=>d.querySelector('#artifact-preview-body'),title=()=>d.querySelector('#artifact-preview-title').textContent;
+  const shell=w.nexusShell,body=()=>d.querySelector('#artifact-preview-body'),title=()=>d.querySelector('#artifact-preview-title').textContent;
 
   sending=true;pending={request_id:'already-submitted'};
   await shell.openSource('s_excel',2);

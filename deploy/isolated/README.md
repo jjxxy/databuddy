@@ -1,6 +1,6 @@
-# Atlas v0.20: isolated owner-workspace deployment
+# Nexus WorkStudio v0.20: isolated owner-workspace deployment
 
-This is **one independent Atlas backend container per owner workspace**, not a
+This is **one independent Nexus WorkStudio backend container per owner workspace**, not a
 shared-process multi-tenant SaaS implementation. Each backend has its own named
 `/data` volume containing metadata SQLite, `connector.key`, uploads, runs, Git
 projects, `/data/home`, and `opencode-runtime`. One exact OIDC subject per workspace
@@ -11,7 +11,7 @@ trusted collaborators, not isolated tenants.
 To prevent a personal workspace being accidentally configured for multiple
 users, set `"sharing": "personal"` on that workspace in the manifest. Rendering
 then requires exactly one explicit OIDC subject and enables
-`ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT=1` on its backend. The backend independently
+`NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT=1` on its backend. The backend independently
 validates this policy at startup and each authentication request: it requires
 OIDC, exactly one subject, and direct token verification without the forwarded
 access-token header. Invalid or widened configuration is rejected. Existing
@@ -30,7 +30,7 @@ browser gateway. Header-selected workspaces are not supported.
 ## What has and has not been verified
 
 The renderer has offline rejection/topology tests. A separate integration test
-starts two real Atlas API processes and a real gateway process, exercising HTTP
+starts two real Nexus WorkStudio API processes and a real gateway process, exercising HTTP
 routing, projects, upload/download, artifact catalogs, persisted jobs and foreign
 ID denial with independent real JWT verification. Its test-only JWKS retrieval
 uses a local public key fixture; it does not contact an IdP, run workers, call a
@@ -84,11 +84,11 @@ requires valid owner credentials.
    `iss`, `aud`, `sub`, `iat`, `exp`, and a supported RS256/ES256 signing key with a
    unique `kid`. Export only its public JWKS to
    `deploy/isolated/secrets/idp-public-jwks.json`. The backend HTTPS `jwks_url`
-   must publish the matching public keys and be reachable under Atlas's URL
+   must publish the matching public keys and be reachable under Nexus WorkStudio's URL
    safety policy. By default users obtain and paste an access token via an approved IdP client.
    An optional gateway authorization-code/PKCE login is described below; it is
    process-local and does not provide IdP-wide logout or distributed sessions.
-   Never paste an IdP client secret or signing private key into Atlas.
+   Never paste an IdP client secret or signing private key into Nexus WorkStudio.
 2. Supply a distinct model provisioning JSON per workspace when using the
    example's `model_config_file` fields; use the existing model configuration
    format. The manifest requires that field: a fresh OpenCode-enabled instance
@@ -99,16 +99,16 @@ requires valid owner credentials.
    secret service. Do not commit them. Only the relevant backend receives each
    model file. Model secret updates do not overwrite existing provisioned model
    state on restart; follow the existing operator model-management procedure.
-3. Set **different random** `ATLAS_ALICE_APP_TOKEN` and `ATLAS_BOB_APP_TOKEN`
+3. Set **different random** `NEXUS_ALICE_APP_TOKEN` and `NEXUS_BOB_APP_TOKEN`
    variables (or corresponding generated names) in the operator's protected
    deployment environment. Each must be at least 16 characters because cloud
    startup still requires APP_TOKEN even in OIDC mode. The renderer writes only
-   `${ATLAS_<ID>_APP_TOKEN:?...}` placeholders and never generates credentials.
+   `${NEXUS_<ID>_APP_TOKEN:?...}` placeholders and never generates credentials.
    Never reuse them, distribute them to browser users, print resolved Compose
    configuration into logs, or use token auth as a fallback. Docker administrators
    can inspect container environment values. Compose ensures presence, not
    entropy/uniqueness; operator secret management must enforce these properties.
-   Do not turn on `ATLAS_CLOUD_VERIFY`, whose legacy checker assumes token auth.
+   Do not turn on `NEXUS_CLOUD_VERIFY`, whose legacy checker assumes token auth.
 4. Backups must include each complete DATA volume and its unique encryption key;
    keep workspace backup destinations and retention/access controls independent.
    Test restoration without pointing two live backends at one volume. Deleting a
@@ -190,7 +190,7 @@ run; it uses no production credentials and must not substitute for these gates:
 - **Sign-off:** record exact code/image digest, manifest hash, IdP config,
   deployment host, timestamps, test users, redacted results and remaining risks.
   Do not mark deployment production-ready until these gates and the existing
-  Atlas release checks are independently satisfied.
+  Nexus WorkStudio release checks are independently satisfied.
 
 ## Optional enterprise sign-in (OIDC authorization code with PKCE)
 
@@ -226,9 +226,9 @@ token. Add this private Compose override to the generated deployment:
 services:
   gateway:
     environment:
-      ATLAS_WORKSPACE_OIDC_LOGIN_CONFIG: /run/atlas/login.json
+      NEXUS_WORKSPACE_OIDC_LOGIN_CONFIG: /run/nexus/login.json
     volumes:
-      - ./login.json:/run/atlas/login.json:ro
+      - ./login.json:/run/nexus/login.json:ro
     secrets:
       - source: oidc_client_secret
         target: oidc-client-secret
@@ -245,7 +245,7 @@ secure shared session store and distributed refresh fencing are implemented.
 When this SSO mode is enabled, API requests require the live HttpOnly gateway
 cookie and a per-tab session generation; a standalone bearer token is not an
 alternative. State-changing requests must be same-origin. Switching accounts or
-signing out seals other tabs, clears their local Atlas state and aborts their
+signing out seals other tabs, clears their local Nexus WorkStudio state and aborts their
 pending browser fetches; requests already forwarded to an external service
 cannot be assumed cancelled. Sign-out revokes the gateway session but leaves the
 now-invalid cookie in place so a delayed logout response cannot erase a newer

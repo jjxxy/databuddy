@@ -11,12 +11,12 @@ import shutil
 
 
 def executable(name):
-    selected = os.getenv('ATLAS_' + name.upper() + '_BINARY')
+    selected = os.getenv('NEXUS_' + name.upper() + '_BINARY')
     if selected:
         path = Path(selected)
         if not path.is_absolute() or not path.is_file():raise ValueError('随包运行文件缺失：' + name)
         return str(path)
-    if os.getenv('ATLAS_DESKTOP_MODE')=='1':raise ValueError('桌面包未提供运行文件：' + name)
+    if os.getenv('NEXUS_DESKTOP_MODE')=='1':raise ValueError('桌面包未提供运行文件：' + name)
     return shutil.which(name) or name
 
 
@@ -100,7 +100,7 @@ def spawn(args, **kwargs):
     supplied_env=kwargs.pop('env',None)
     env = dict(os.environ if supplied_env is None else supplied_env)
     env.setdefault('PYTHONUTF8','1')
-    env['ATLAS_PARENT_PID'] = str(os.getpid())
+    env['NEXUS_PARENT_PID'] = str(os.getpid())
     job = event = None
     if os.name == 'nt':
         job = kernel.CreateJobObjectW(None, None)
@@ -110,12 +110,12 @@ def spawn(args, **kwargs):
         if not kernel.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
             kernel.CloseHandle(job)
             raise ctypes.WinError(ctypes.get_last_error())
-        name = 'Local\\AtlasStart-' + uuid.uuid4().hex
+        name = 'Local\\NexusStart-' + uuid.uuid4().hex
         event = kernel.CreateEventW(None, True, False, name)
         if not event:
             kernel.CloseHandle(job)
             raise ctypes.WinError(ctypes.get_last_error())
-        env['ATLAS_PROCESS_START_EVENT'] = name
+        env['NEXUS_PROCESS_START_EVENT'] = name
         kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
     else:
         kwargs['start_new_session'] = True

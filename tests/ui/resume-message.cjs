@@ -5,9 +5,9 @@ const until=async predicate=>{const end=Date.now()+4000;while(!predicate()){if(D
 const response=(value,status=200)=>({ok:status>=200&&status<300,status,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(value))});
 const turnId='t_25300e8519874c4ebf0dbad07be20b1365030869';
 async function boot({failureStatus=0,statusResult=false,statusFailure=false,message='资源不存在',includeResumed=false,originalMode='work',historicalPlanError=false}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,posts=[],statusQueries=[];
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,posts=[],statusQueries=[];
  let fail=failureStatus;
- w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','fixture-owner');
+ w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('nexus_token','fixture-owner');
  w.fetch=async(url,options={})=>{
   const u=new URL(url,w.location.href),route=u.pathname;
   if(route==='/api/models')return response({models:[{id:'careful',name:'业务模型'}],default_model_id:'careful'});
@@ -22,7 +22,7 @@ async function boot({failureStatus=0,statusResult=false,statusFailure=false,mess
  };
  w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.resumeTest={state:()=>({pending,sending,selectedModelId,attached}),attach};');
  await until(()=>d.querySelector('[data-continue]'));
- w.atlasBusiness.attachSources([{id:'s_1',name:'业务源表.xlsx'},{id:'s_2',name:'口径.txt'}]);
+ w.nexusBusiness.attachSources([{id:'s_1',name:'业务源表.xlsx'},{id:'s_2',name:'口径.txt'}]);
  return {dom,w,d,posts,statusQueries,accept:()=>{fail=0},async click(){d.querySelector('[data-continue]').click();await until(()=>posts.length>0&&!w.resumeTest.state().sending)}};
 }
 (async()=>{

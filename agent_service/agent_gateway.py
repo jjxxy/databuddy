@@ -1,4 +1,4 @@
-"""Project-scoped machine access to Atlas's real durable Agent execution.
+"""Project-scoped machine access to Nexus WorkStudio's real durable Agent execution.
 
 This is an explicit A2A 1.0 async / 0.3 JSON-RPC polling profile and a stateless
 MCP tools profile. Accepted HTTP requests and model prose are not execution proof.
@@ -83,7 +83,7 @@ class TaskInput(StrictModel):
         return self
 
 def _hash(value):return hashlib.sha256(value.encode()).hexdigest()
-def _actor(identity):return 'u_'+_hash('atlas-agent-client:'+identity)
+def _actor(identity):return 'u_'+_hash('nexus-agent-client:'+identity)
 def _lock(identity):return FileLock(str(DATA/('gateway-client-'+identity+'.lock')),timeout=10)
 def _public(c):return {k:v for k,v in c.items() if k not in ('token_hash','key')}
 def _project_live(pid):
@@ -104,7 +104,7 @@ def _validate_grants(value):
 
 def issue_client(value):
     value=ClientInput.model_validate(value);_validate_grants(value)
-    identity='agc_'+uid();token='atlas_ag_'+secrets.token_urlsafe(40)
+    identity='agc_'+uid();token='nexus_ag_'+secrets.token_urlsafe(40)
     expires=(datetime.now(timezone.utc)+timedelta(seconds=value.ttl_seconds)).isoformat()
     record=put('agent_client',dict(value.model_dump(exclude={'ttl_seconds'}),token_hash=_hash(token),enabled=True,
         revision=uid(),actor_id=_actor(identity),owner_id=current_actor(),created_at=now(),updated_at=now(),
@@ -126,7 +126,7 @@ def rotate_client(identity,expected_revision):
     with _lock(identity):
         old=_fresh(identity)
         if old['revision']!=expected_revision:raise GatewayError(409,'revision_conflict','调用方已变化，请重新读取后轮换')
-        token='atlas_ag_'+secrets.token_urlsafe(40)
+        token='nexus_ag_'+secrets.token_urlsafe(40)
         result=patch('agent_client',identity,token_hash=_hash(token),revision=uid(),updated_at=now())
     _cancel_client_tasks(identity,revision=old['revision'])
     return {'client':_public(result),'token':token,'token_returned_once':True}
@@ -143,7 +143,7 @@ def authenticate(token):
     digest=_hash(token);matched=None
     for c in all_items('agent_client'):
         if hmac.compare_digest(c.get('token_hash') or '0'*64,digest):matched=c
-    if not token.startswith('atlas_ag_') or not matched:raise GatewayError(401,'invalid_client','需要有效的 Agent 调用凭据')
+    if not token.startswith('nexus_ag_') or not matched:raise GatewayError(401,'invalid_client','需要有效的 Agent 调用凭据')
     return _fresh(matched['id'])
 
 def assert_turn_allowed(turn):
@@ -334,7 +334,7 @@ def read_task_artifact(client,identity,artifact_id,offset=0,limit=65536):
     except (ValueError,OSError):raise GatewayError(409,'artifact_unavailable','产物页参数无效或文件未通过完整性校验') from None
 
 def _base_url():
-    value=os.getenv('ATLAS_AGENT_PUBLIC_URL') or 'http://127.0.0.1:'+os.getenv('PORT','8000')
+    value=os.getenv('NEXUS_AGENT_PUBLIC_URL') or 'http://127.0.0.1:'+os.getenv('PORT','8000')
     p=urlsplit(value)
     if p.scheme not in ('https','http') or not p.hostname or p.username or p.password or p.query or p.fragment or p.path not in ('','/'):
         raise GatewayError(503,'public_url','管理员需配置有效的 Agent 对外站点地址')
@@ -343,12 +343,12 @@ def _base_url():
     return value.rstrip('/')
 
 def agent_card(version='1.0'):
-    legacy={'protocolVersion':'0.3.0','name':'Atlas DataBuddy','description':'Project-scoped financial data work with durable task status and verified artifacts. Async polling profile only.',
+    legacy={'protocolVersion':'0.3.0','name':'Nexus WorkStudio','description':'Project-scoped financial data work with durable task status and verified artifacts. Async polling profile only.',
         'url':_base_url()+'/a2a','preferredTransport':'JSONRPC','version':'0.20.0',
         'capabilities':{'streaming':False,'pushNotifications':False,'stateTransitionHistory':False},
         'defaultInputModes':['text/plain','application/json'],'defaultOutputModes':['text/plain','application/json'],
-        'securitySchemes':{'atlasBearer':{'type':'http','scheme':'bearer'}},'security':[{'atlasBearer':[]}],
-        'skills':[{'id':'financial-data-work','name':'财经数据处理与核对','description':'明确项目授权内的分析、受控加工和可核对成果；使用 Atlas 数据交接包传递完整输入。',
+        'securitySchemes':{'nexusBearer':{'type':'http','scheme':'bearer'}},'security':[{'nexusBearer':[]}],
+        'skills':[{'id':'financial-data-work','name':'财经数据处理与核对','description':'明确项目授权内的分析、受控加工和可核对成果；使用 Nexus WorkStudio 数据交接包传递完整输入。',
                    'tags':['finance','data','verified-results'],'inputModes':['text/plain','application/json'],'outputModes':['text/plain','application/json']}],
         'supportsAuthenticatedExtendedCard':False}
     if version in ('0.3','0.3.0'):return legacy
@@ -356,8 +356,8 @@ def agent_card(version='1.0'):
     card['supportedInterfaces']=[{'url':_base_url()+'/a2a','protocolBinding':'JSONRPC','protocolVersion':'1.0'},
                                  {'url':_base_url()+'/a2a','protocolBinding':'JSONRPC','protocolVersion':'0.3'}]
     card['capabilities']={'streaming':False,'pushNotifications':False,'extendedAgentCard':False}
-    card['securitySchemes']={'atlasBearer':{'httpAuthSecurityScheme':{'scheme':'Bearer'}}}
-    card['securityRequirements']=[{'schemes':{'atlasBearer':{'list':[]}}}]
+    card['securitySchemes']={'nexusBearer':{'httpAuthSecurityScheme':{'scheme':'Bearer'}}}
+    card['securityRequirements']=[{'schemes':{'nexusBearer':{'list':[]}}}]
     card['description']+=' A2A 1.0 SendMessage requires configuration.returnImmediately=true; no streaming, push or task continuation.'
     return card
 
@@ -369,15 +369,15 @@ def _a2a_task(value,version='0.3'):
     data={k:v for k,v in value.items() if k not in ('answer','progress')}
     task={'kind':'task','id':value['id'],'contextId':value.get('context_id') or value['id'],
             'status':{'state':state,'message':message,'timestamp':now()},
-            'artifacts':[{'artifactId':'atlas-task-receipt','name':'Atlas task receipt','parts':[{'kind':'data','data':{'atlas':data}}]}],
-            'metadata':{'atlasProtocolProfile':'0.3.0-jsonrpc-polling','businessOutcome':value.get('outcome')}}
+            'artifacts':[{'artifactId':'nexus-task-receipt','name':'Nexus WorkStudio task receipt','parts':[{'kind':'data','data':{'nexus':data}}]}],
+            'metadata':{'nexusProtocolProfile':'0.3.0-jsonrpc-polling','businessOutcome':value.get('outcome')}}
     if version=='1.0':
         task.pop('kind');message.pop('kind');message['role']='ROLE_AGENT'
         message['parts']=[{'text':text}]
         task['status']['state']={'submitted':'TASK_STATE_SUBMITTED','working':'TASK_STATE_WORKING','completed':'TASK_STATE_COMPLETED',
             'failed':'TASK_STATE_FAILED','cancelled':'TASK_STATE_CANCELED','input-required':'TASK_STATE_INPUT_REQUIRED','auth-required':'TASK_STATE_AUTH_REQUIRED'}[state]
-        task['artifacts'][0]['parts']=[{'data':{'atlas':data}}]
-        task['metadata']['atlasProtocolProfile']='1.0-jsonrpc-async-polling'
+        task['artifacts'][0]['parts']=[{'data':{'nexus':data}}]
+        task['metadata']['nexusProtocolProfile']='1.0-jsonrpc-async-polling'
     return task
 
 def _a2a_send(params,version='0.3'):
@@ -401,17 +401,17 @@ def _a2a_send(params,version='0.3'):
             kind='text' if 'text' in part else 'data' if 'data' in part else None
         else:kind=part.get('kind')
         if kind=='text' and isinstance(part.get('text'),str):texts.append(part['text'])
-        elif kind=='data' and isinstance(part.get('data'),dict) and set(part['data'])=={'atlas'} and data is None:data=part['data']['atlas']
-        else:raise GatewayError(400,'unsupported_part','仅接收文本和明确的 Atlas 交接数据，不下载外部文件 URL')
-    if not isinstance(data,dict):raise GatewayError(400,'project_required','A2A 数据片段需明确 Atlas 项目及任务参数')
+        elif kind=='data' and isinstance(part.get('data'),dict) and set(part['data'])=={'nexus'} and data is None:data=part['data']['nexus']
+        else:raise GatewayError(400,'unsupported_part','仅接收文本和明确的 Nexus WorkStudio 交接数据，不下载外部文件 URL')
+    if not isinstance(data,dict):raise GatewayError(400,'project_required','A2A 数据片段需明确 Nexus WorkStudio 项目及任务参数')
     data=dict(data);data.setdefault('request_id',message['messageId']);data.setdefault('goal','\n'.join(texts))
     return TaskInput.model_validate(data)
 
 TOOL_SCHEMAS=[
- {'name':'atlas_submit_task','description':'Submit a project-scoped durable analysis or controlled work task; returns accepted state, not completion.','inputSchema':TaskInput.model_json_schema(),'annotations':{'readOnlyHint':False,'destructiveHint':False,'idempotentHint':True}},
- {'name':'atlas_get_task','description':'Read task status and verified artifact metadata for this machine client.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False},'annotations':{'readOnlyHint':True}},
- {'name':'atlas_cancel_task','description':'Cancel this client task and request cancellation of its active data run.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False},'annotations':{'readOnlyHint':False,'idempotentHint':True}},
- {'name':'atlas_read_artifact','description':'Read a hash-bound binary artifact page; does not fetch arbitrary URLs.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'artifact_id':{'type':'string'},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':65536}},'required':['task_id','artifact_id'],'additionalProperties':False},'annotations':{'readOnlyHint':True}},
+ {'name':'nexus_submit_task','description':'Submit a project-scoped durable analysis or controlled work task; returns accepted state, not completion.','inputSchema':TaskInput.model_json_schema(),'annotations':{'readOnlyHint':False,'destructiveHint':False,'idempotentHint':True}},
+ {'name':'nexus_get_task','description':'Read task status and verified artifact metadata for this machine client.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False},'annotations':{'readOnlyHint':True}},
+ {'name':'nexus_cancel_task','description':'Cancel this client task and request cancellation of its active data run.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False},'annotations':{'readOnlyHint':False,'idempotentHint':True}},
+ {'name':'nexus_read_artifact','description':'Read a hash-bound binary artifact page; does not fetch arbitrary URLs.','inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'artifact_id':{'type':'string'},'offset':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':65536}},'required':['task_id','artifact_id'],'additionalProperties':False},'annotations':{'readOnlyHint':True}},
 ]
 
 async def _body(request):
@@ -437,8 +437,8 @@ async def _body(request):
 def _check_origin(request):
     origin=request.headers.get('origin')
     if not origin:return
-    allowed={v.strip().rstrip('/') for v in os.getenv('ATLAS_AGENT_ALLOWED_ORIGINS','').split(',') if v.strip()}
-    public=os.getenv('ATLAS_AGENT_PUBLIC_URL')
+    allowed={v.strip().rstrip('/') for v in os.getenv('NEXUS_AGENT_ALLOWED_ORIGINS','').split(',') if v.strip()}
+    public=os.getenv('NEXUS_AGENT_PUBLIC_URL')
     if public:allowed.add(public.rstrip('/'))
     p=urlsplit(origin)
     local=p.scheme in ('http','https') and p.hostname in ('localhost','127.0.0.1','::1') and p.netloc==request.headers.get('host') and p.path in ('','/') and not p.query and not p.fragment
@@ -509,7 +509,7 @@ def install(app,auth,operator_auth):
             code=-32001 if isinstance(exc,KeyError) else -32602 if isinstance(exc,ValidationError) else -32000
             return {'jsonrpc':'2.0','id':identity,'error':{'code':code,'message':str(exc) if isinstance(exc,GatewayError) else 'Task or parameters unavailable'}}
 
-    @app.post('/mcp/atlas')
+    @app.post('/mcp/nexus')
     async def mcp(request:Request,client=Depends(machine)):
         header=request.headers.get('MCP-Protocol-Version')
         if header and header not in MCP_VERSIONS:raise GatewayError(400,'protocol_version','MCP 协议版本不受支持')
@@ -526,7 +526,7 @@ def install(app,auth,operator_auth):
                 if not isinstance(params,dict):raise GatewayError(400,'invalid_params','初始化参数无效')
                 requested=params.get('protocolVersion')
                 version=requested if requested in MCP_VERSIONS else MCP_VERSIONS[0]
-                result={'protocolVersion':version,'capabilities':{'tools':{'listChanged':False}},'serverInfo':{'name':'atlas-agent-gateway','version':'0.20.0'}}
+                result={'protocolVersion':version,'capabilities':{'tools':{'listChanged':False}},'serverInfo':{'name':'nexus-agent-gateway','version':'0.20.0'}}
             elif method=='ping':result={}
             elif method=='tools/list':
                 if params.get('cursor'):raise GatewayError(400,'cursor','此目录无下一页')
@@ -539,9 +539,9 @@ def install(app,auth,operator_auth):
                 import jsonschema
                 try:jsonschema.validate(args,schema)
                 except jsonschema.ValidationError:raise GatewayError(400,'invalid_params','工具参数未通过结构校验') from None
-                if name=='atlas_submit_task':value=await run_in_threadpool(submit_task,client,TaskInput.model_validate(args),protocol='mcp')
-                elif name=='atlas_get_task':value=await run_in_threadpool(task_status,client,args['task_id'])
-                elif name=='atlas_cancel_task':value=await run_in_threadpool(cancel_task,client,args['task_id'])
+                if name=='nexus_submit_task':value=await run_in_threadpool(submit_task,client,TaskInput.model_validate(args),protocol='mcp')
+                elif name=='nexus_get_task':value=await run_in_threadpool(task_status,client,args['task_id'])
+                elif name=='nexus_cancel_task':value=await run_in_threadpool(cancel_task,client,args['task_id'])
                 else:value=await run_in_threadpool(read_task_artifact,client,args['task_id'],args['artifact_id'],args.get('offset',0),args.get('limit',65536))
                 summary={k:value[k] for k in ('id','status','accepted','artifact_id','offset','next_offset') if k in value}
                 result={'content':[{'type':'text','text':json.dumps(summary or {'receipt_in_structured_content':True},ensure_ascii=False)}], 'structuredContent':value,'isError':False}

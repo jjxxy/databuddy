@@ -1,7 +1,7 @@
 """Local-only MCP subprocess transport using operator-approved exact templates.
 
 This is not an OS sandbox. Only trusted, preinstalled commands may be added to
-ATLAS_STDIO_TEMPLATES by the local machine's operator. Models cannot add them.
+NEXUS_STDIO_TEMPLATES by the local machine's operator. Models cannot add them.
 """
 import hashlib,json,os,re,selectors,signal,subprocess,threading,time,sys
 import queue
@@ -10,25 +10,25 @@ from .process_control import spawn,stop
 
 MAX_MESSAGE=1024*1024
 VERSIONS=('2025-06-18','2025-03-26')
-RESERVED={'PATH','HOME','PYTHONPATH','PYTHONHOME','NODE_OPTIONS','LD_PRELOAD','LD_LIBRARY_PATH','APP_TOKEN','ATLAS_OPERATOR_TOKEN','DATABASE_URL'}
+RESERVED={'PATH','HOME','PYTHONPATH','PYTHONHOME','NODE_OPTIONS','LD_PRELOAD','LD_LIBRARY_PATH','APP_TOKEN','NEXUS_OPERATOR_TOKEN','DATABASE_URL'}
 
 
 def templates():
-    try:value=json.loads(os.getenv('ATLAS_STDIO_TEMPLATES','{}'))
+    try:value=json.loads(os.getenv('NEXUS_STDIO_TEMPLATES','{}'))
     except (ValueError,TypeError):raise ValueError('本地MCP命令模板配置不是有效JSON对象') from None
     if not isinstance(value,dict) or len(value)>40:raise ValueError('本地MCP命令模板配置无效')
-    builtin={'atlas-local-clock':{'command':sys.executable,'args':[str(Path(__file__).with_name('mcp_local_clock.py').resolve())]}} if local_mode() else {}
-    if os.getenv('ATLAS_NETWORK_MODE','connected')=='local_only':return builtin
+    builtin={'nexus-local-clock':{'command':sys.executable,'args':[str(Path(__file__).with_name('mcp_local_clock.py').resolve())]}} if local_mode() else {}
+    if os.getenv('NEXUS_NETWORK_MODE','connected')=='local_only':return builtin
     return {**builtin,**value}
 
 
 def local_mode():
-    return os.getenv('ATLAS_LOCAL_MODE')=='1' and bool(os.getenv('ATLAS_LOCAL_WORKSPACE'))
+    return os.getenv('NEXUS_LOCAL_MODE')=='1' and bool(os.getenv('NEXUS_LOCAL_WORKSPACE'))
 
 
 def validate(config):
     if not local_mode():raise ValueError('标准输入输出MCP只允许在本地电脑模式使用')
-    root=Path(os.environ['ATLAS_LOCAL_WORKSPACE']).resolve()
+    root=Path(os.environ['NEXUS_LOCAL_WORKSPACE']).resolve()
     if not root.is_dir():raise ValueError('本地工作文件夹不可用')
     alias=config.get('command','');template=templates().get(alias)
     if not isinstance(template,dict):raise ValueError('此MCP命令未由本机管理员预置，不能启动任意程序')
@@ -40,7 +40,7 @@ def validate(config):
     variables=config.get('env',{})
     if not isinstance(variables,dict) or len(variables)>40:raise ValueError('MCP环境配置无效')
     for key,value in variables.items():
-        if not isinstance(key,str) or not re.fullmatch('[A-Za-z_][A-Za-z0-9_]{0,79}',key) or key.upper() in RESERVED or key.upper().startswith(('ATLAS_','OPENCODE_','LLM_')):raise ValueError('MCP不能覆盖系统或模型环境配置')
+        if not isinstance(key,str) or not re.fullmatch('[A-Za-z_][A-Za-z0-9_]{0,79}',key) or key.upper() in RESERVED or key.upper().startswith(('NEXUS_','OPENCODE_','LLM_')):raise ValueError('MCP不能覆盖系统或模型环境配置')
         if not isinstance(value,str) or len(value)>8000 or '\x00' in value:raise ValueError('MCP环境值无效')
     installed_files={}
     for candidate in [command,*fixed]:
@@ -75,7 +75,7 @@ class Session:
             os.set_blocking(self.process.stdout.fileno(),False)
             os.set_blocking(self.process.stdin.fileno(),False)
         try:
-            result=self.request('initialize',{'protocolVersion':self.version,'capabilities':{},'clientInfo':{'name':'atlas-local','version':'0.20.0'}})
+            result=self.request('initialize',{'protocolVersion':self.version,'capabilities':{},'clientInfo':{'name':'nexus-local','version':'0.20.0'}})
             if result.get('protocolVersion') not in VERSIONS or 'tools' not in result.get('capabilities',{}):raise ValueError('本地MCP协议或工具能力尚不兼容')
             self.version=result['protocolVersion'];self.request('notifications/initialized',notification=True)
             return self
@@ -91,7 +91,7 @@ class Session:
         if len(raw)>MAX_MESSAGE:raise ValueError('本地MCP请求超过限制')
         with self.serial:
             try:
-                deadline=time.monotonic()+max(.05,min(120,float(os.getenv('ATLAS_STDIO_TIMEOUT_SECONDS','30'))))
+                deadline=time.monotonic()+max(.05,min(120,float(os.getenv('NEXUS_STDIO_TIMEOUT_SECONDS','30'))))
                 if os.name=='nt':return self._windows_request(raw,identity,notification,deadline)
                 offset=0
                 with selectors.DefaultSelector() as writer:

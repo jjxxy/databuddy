@@ -20,7 +20,7 @@ record("fixture.migration","test");print(json.dumps({"id":p["id"]}))'''
     with engine.begin() as c:c.execute(text('CREATE SCHEMA '+schema))
     try:
         url=make_url(str(engine.url.render_as_string(hide_password=False)));query=dict(url.query);query['options']='-c search_path='+schema;url=url.set(query=query)
-        env.update(DATABASE_URL=url.render_as_string(hide_password=False),ATLAS_MIGRATE_SQLITE='1')
+        env.update(DATABASE_URL=url.render_as_string(hide_password=False),NEXUS_MIGRATE_SQLITE='1')
         script='''import json,sys
 from agent_service.migration import maybe_migrate
 r=maybe_migrate();assert r["ok"]

@@ -21,8 +21,8 @@ import jwt
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-SESSION_COOKIE='__Host-atlas_gateway_session'
-STATE_COOKIE='__Host-atlas_gateway_state'
+SESSION_COOKIE='__Host-nexus_gateway_session'
+STATE_COOKIE='__Host-nexus_gateway_state'
 
 
 def _endpoint(value, issuer):

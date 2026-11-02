@@ -36,6 +36,18 @@ class SessionInput(StrictModel):
     name:str=Field(default='新对话',min_length=1,max_length=80)
     request_id:str=Field(min_length=8,max_length=100,pattern=r'^[A-Za-z0-9_-]+$')
 
+class SelectedWorkflow(StrictModel):
+    kind: Literal['data','business']
+    id: str = Field(pattern=r'^(?:wf_|bf_)[a-f0-9]{40}$')
+    digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+    @model_validator(mode='after')
+    def matching_kind(self):
+        if not self.id.startswith('wf_' if self.kind=='data' else 'bf_'):
+            raise ValueError('流程类型与标识不一致')
+        return self
+
+
 class TurnInput(StrictModel):
     text: str = Field(default='', max_length=12000)
     session_id: str | None = None
@@ -47,6 +59,7 @@ class TurnInput(StrictModel):
     clear_application:bool=False
     resume_turn_id:str|None=Field(default=None,max_length=64)
     candidate_run: str | None = Field(default=None, max_length=64)
+    workflow_context: SelectedWorkflow | None = None
     request_id: str = Field(min_length=8, max_length=100, pattern=r'^[A-Za-z0-9_-]+$')
 
     @model_validator(mode='after')
@@ -190,6 +203,23 @@ def attachment_ids(turn):
 
 def snapshot_attachment(source):
     return {key:source[key] for key in ('id','name','kind','revision','revision_id','content_hash','bytes') if key in source}
+
+
+_IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp', '.tif', '.tiff', '.bmp', '.gif')
+_VISION_REQUEST_RE = re.compile(
+    r'截图|屏幕截图|图片|图像|照片|渲染效果|报错弹窗|弹窗|界面截图|UI截图|页面截图|效果图|像素|配色|布局|看图|视觉')
+
+
+def _task_needs_vision(attachments, text):
+    """Whether a task requires a vision-capable model.
+
+    An image attachment is the strongest signal (the agent's image tools send
+    real pixels to the routed model). A text request that names screenshots,
+    error dialogs or rendering also routes to the multimodal model.
+    """
+    if any(((a.get('name') or '').lower().endswith(_IMAGE_SUFFIXES)) for a in attachments):
+        return True
+    return bool(_VISION_REQUEST_RE.search(text or ''))
 
 
 def attachment_details(turn):
@@ -338,6 +368,25 @@ def _can_resume_turn(turn, *, explicit=False):
     return bool(turn.get('resume_available')) or bool(explicit and not turn.get('protocol_recovery_consumed') and _legacy_plan_protocol_error(turn))
 
 
+class WorkflowContextConflict(ValueError):
+    pass
+
+
+def _validate_selected_workflow(project_id,actor_id,value):
+    if value is None:return None
+    ref=value.model_dump()
+    if ref['kind']=='data':
+        from .project_data import inspect_workflow
+        result=inspect_workflow(project_id,ref['id'])
+        actual=result['draft_sha256']
+    else:
+        from .business_flows import get_view
+        result=get_view(project_id,ref['id'],actor_id)
+        actual=result.get('candidate_digest')
+    if actual!=ref['digest']:raise WorkflowContextConflict('所选流程已变化，请等待流程更新后重新发送；输入已保留')
+    return dict(ref,name=str(result.get('name') or '业务流程')[:100])
+
+
 def submit(project_id, value, *, trusted_fields=None):
     # Server-only callers attach grants and frozen child policy before the row
     # is runnable. TurnInput deliberately has no corresponding public field.
@@ -349,7 +398,15 @@ def submit(project_id, value, *, trusted_fields=None):
     submission_visibility=project.get('context_visibility_revision',0)
     tid = turn_identity(project_id,value.request_id,actor_id)
     session_id=check_session(project_id,value.session_id or default_session(project_id))
-    try:return public_turn(get('turn',tid))
+    try:
+        previous=get('turn',tid)
+        previous_ref=previous.get('selected_workflow')
+        requested_ref=value.workflow_context.model_dump() if value.workflow_context else None
+        if previous.get('session_id',default_session(project_id))!=session_id:
+            raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
+        if ( {k:previous_ref[k] for k in ('kind','id','digest')} if previous_ref else None)!=requested_ref:
+            raise WorkflowContextConflict('同一消息编号不能更换所选流程，请重新发送')
+        return public_turn(previous)
     except KeyError:pass
     resume_target=None
     if value.resume_turn_id:
@@ -394,7 +451,14 @@ def submit(project_id, value, *, trusted_fields=None):
         if project.get('context_visibility_revision',0)!=submission_visibility:
             raise LifecycleConflict('工作空间已被删除或恢复，请刷新后重新确认这项需求')
         check_session(project_id,session_id)
-        try: return public_turn(get('turn', tid))
+        try:
+            previous=get('turn',tid);previous_ref=previous.get('selected_workflow')
+            requested_ref=value.workflow_context.model_dump() if value.workflow_context else None
+            if previous.get('session_id',default_session(project_id))!=session_id:
+                raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
+            if ({k:previous_ref[k] for k in ('kind','id','digest')} if previous_ref else None)!=requested_ref:
+                raise WorkflowContextConflict('同一消息编号不能更换所选流程，请重新发送')
+            return public_turn(previous)
         except KeyError: pass
         if resume_target:
             # Check again while holding the submission lock: two clicks must
@@ -425,13 +489,27 @@ def submit(project_id, value, *, trusted_fields=None):
             bound_app=owned('pipeline',resume_target['application_id'],project_id) if resume_target.get('application_id') else None
         else:bound_app=owned('pipeline',value.application_id,project_id) if value.application_id else (None if value.clear_application else session_application(project_id,session_id,value.text,primary_id))
         if not value.text.strip() and not identifiers: raise ValueError('请说说你想做什么，或添加资料')
+        selected_workflow=_validate_selected_workflow(project_id,actor_id,value.workflow_context)
+        if resume_target:
+            prior=resume_target.get('selected_workflow')
+            if selected_workflow and selected_workflow!=prior:raise ValueError('继续任务时不能更换流程，请发起新任务')
+            selected_workflow=prior
         waiting = [t for t in all_items('turn') if t['project_id'] == project_id and t['state'] not in TERMINAL]
         if len(waiting) >= 8: raise ValueError('还有几项需求正在处理，请等当前结果完成')
         if sum(t['state'] not in TERMINAL for t in all_items('turn'))>=int(__import__('os').getenv('MAX_ACTIVE_TURNS','500')):raise ValueError('工作空间正在处理的需求已达上限，请稍后提交；已有任务继续执行')
-        from .model_catalog import select as select_model
+        from .model_catalog import select as select_model, select_for_task
         try:conversation=get('conversation',session_id)
         except KeyError:conversation={}
-        selection=select_model(value.model_id,session=conversation,resume_turn=resume_target)
+        if value.model_id or resume_target:
+            # Explicit model choice and continuation always win; routing never
+            # silently redirects an in-flight task to a different model.
+            selection=select_model(value.model_id,session=conversation,resume_turn=resume_target)
+        elif conversation.get('model_id'):
+            # A model the user already chose in this session stays pinned;
+            # routing only applies before the first explicit choice.
+            selection=select_model(None,session=conversation)
+        else:
+            selection=select_for_task(_task_needs_vision(attachments, value.text))
         from .agent_runtime import snapshot, snapshot_for_turn, binding_origin
         parent_id=trusted_fields.get('collaboration_parent_turn_id')
         inherited_runtime = resume_target or (get('turn',parent_id) if parent_id else None)
@@ -442,7 +520,7 @@ def submit(project_id, value, *, trusted_fields=None):
         if bound_app:remember_application({'project_id':project_id,'session_id':session_id},bound_app['id'])
         turn = put('turn', {'project_id': project_id, 'session_id':session_id,'actor_id':actor_id,'interaction_mode':value.interaction_mode,'interactive_unlimited':not bool(trusted_fields.get('gateway_client_id') or trusted_fields.get('collaboration_parent_turn_id')), 'text': redact(text), 'secret_text': seal(text), 'source_id': primary_id,'source_ids':identifiers,
                             'attached_sources':resume_target.get('attached_sources',[snapshot_attachment(source) for source in attachments]) if resume_target else [snapshot_attachment(source) for source in attachments],
-                            'application_id':bound_app['id'] if bound_app else None,
+                            'application_id':bound_app['id'] if bound_app else None,'selected_workflow':selected_workflow,
                             'candidate_run': value.candidate_run or (bound_app.get('candidate_run') if bound_app else owned('pipeline', project['pipeline_id'], project_id).get('candidate_run') if project.get('pipeline_id') else None),
                             'state': 'queued', 'progress': '已收到，正在准备处理', 'created_at': now(),'resume_turn_id':value.resume_turn_id,'requested_model_id':value.model_id,'agent_runtime':runtime_binding,'agent_runtime_origin':runtime_origin,**selection,**trusted_fields}, tid)
         patch('project', project_id, updated_at=now())

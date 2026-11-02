@@ -2,7 +2,7 @@
 
 ## 【本轮改动摘要】
 
-版本 **v0.8**；产品仍为 Atlas DataBuddy v0.20.0，最终便携构建 **r14**。本轮没有联系豆包。当前交付形态沿用已经对齐的便携本地工作空间；云端 web 迁移仍是后续阶段。
+版本 **v0.8**；产品仍为 Nexus WorkStudio v0.20.0，最终便携构建 **r14**。本轮没有联系豆包。当前交付形态沿用已经对齐的便携本地工作空间；云端 web 迁移仍是后续阶段。
 
 对 PRD 的理解保持为：服务财经及经营分析用户；原件与口径可追溯；本地导入、加工、人工核对采用和导出可用；云端模型不能阻断本地服务；财务口径不能通过模糊匹配或隐式单位转换猜出来。
 
@@ -79,7 +79,7 @@ return {key:None if raw.get(key) is None else _positive(raw[key])
 - 授权与循环：官方原请求不改写即可排队加工，禁止发布仍生效；原 v09 快照误判及重复发现循环只读重放定位。`separate-aggregation-real-turn-replay.json`、`no-progress-discovery-real-v10.json`。真实执行节点验证 70 步有进展后仍能写文件，重复查阅未变化工具说明不能掩盖相同失败。
 - 共享额度、委派及撤销专项已跑；两进程本机 HTTP 协作验收通过，`collaboration-verifier-unlimited-regression.xml` / `.log`（13 项）。模型使用替身，独立于财经验收。企业配置专项 `enterprise-optional-quota-example-v08.xml` 为 **20 passed, 2 skipped**，跳过项缺 PostgreSQL 环境，未冒称通过。
 - 最终 r14 构建：**15,239 个文件**；运行库 **15,006 文件 / 743,300,599 字节**与 vendor 清单一致；未携带模型私有配置。`desktop-build-v14.log`。包内 **133 个首方文件**与当前源码及哈希一致，`r14-source-inventory.json`。`FILES.sha256` 摘要：`859176f137d4251495aeae9ac3adfe663b8251596cfd24ea6558581ce775d9fc`。
-- 最终包本体：`acceptance/offline/verify_backend.py --app-root dist/Atlas-DataBuddy-win32-x64-r14/resources/app --evidence-dir verification/backend-r14-delivery`，使用随包 Python、空继承 PATH、新目录、local_only；导入→加工→人工发布→导出精确 **118.15**，重启恢复、鉴权、空输入、超长输入、空文件、错误模型配置及缺运行文件的启动校验通过。`backend-r14-delivery/backend-verification.json`。这是启动/本地闭环验收，不替代完整 G1。
+- 最终包本体：`acceptance/offline/verify_backend.py --app-root dist/Nexus WorkStudio-WorkStudio-win32-x64-r14/resources/app --evidence-dir verification/backend-r14-delivery`，使用随包 Python、空继承 PATH、新目录、local_only；导入→加工→人工发布→导出精确 **118.15**，重启恢复、鉴权、空输入、超长输入、空文件、错误模型配置及缺运行文件的启动校验通过。`backend-r14-delivery/backend-verification.json`。这是启动/本地闭环验收，不替代完整 G1。
 - r14 已打开原亲测工作空间。更新前活跃任务为 0；更新前后项目、全部历史任务、两份附件、草稿、完整 pending 摘要相同，`saved_state_preserved=true`。`trial-r14-before.json`、`trial-r14-after.json`。运行中的六份主会话合同有效额度均为无限，原合同保留；真实原生模型窗口和自动压缩启用状态已核对，`live-budget-policy-v08.json`。此核对触发模型生成 **0 次**。
 - `r14-window-verification.json` 记录最终程序窗口；`打开财经月结亲测.lnk` 指向 r14。没有声称通过自动鼠标点击或截图视觉验收，也未自动提交用户的继续请求。
 

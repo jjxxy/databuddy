@@ -4,16 +4,16 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='atlas-chat-service-') as folder:
+    with tempfile.TemporaryDirectory(prefix='nexus-chat-service-') as folder:
         folder=Path(folder)
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-        env=dict(os.environ,DATA_DIR=str(folder/'data'),DATABASE_URL='sqlite:///'+str(folder/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',ATLAS_CLOUD_VERIFY='1',SCHEDULER_MODE='worker')
+        env=dict(os.environ,DATA_DIR=str(folder/'data'),DATABASE_URL='sqlite:///'+str(folder/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',NEXUS_CLOUD_VERIFY='1',SCHEDULER_MODE='worker')
         with (folder/'service.log').open('w') as log:
             for restart in (False,True):
                 process=subprocess.Popen([sys.executable,'-m','agent_service.cloud'],cwd=ROOT,env=env,stdout=log,stderr=log)
                 try:
                     deadline=time.monotonic()+240
-                    expected='ATLAS_AGENT_CONTRACTS_RESTART_VERIFIED' if restart else 'ATLAS_AGENT_CONTRACTS_ACCEPTANCE'
+                    expected='NEXUS_AGENT_CONTRACTS_RESTART_VERIFIED' if restart else 'NEXUS_AGENT_CONTRACTS_ACCEPTANCE'
                     while time.monotonic()<deadline:
                         output=(folder/'service.log').read_text()
                         if expected in output:

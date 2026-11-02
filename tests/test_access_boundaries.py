@@ -17,7 +17,7 @@ from agent_service.store import all_items, delete, engine, get, now, put, seal, 
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setenv('ATLAS_AUTH_MODE', 'token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE', 'token')
     monkeypatch.setattr(api, '_requests', {})
     return TestClient(api.app)
 
@@ -44,8 +44,8 @@ H = {'Authorization': 'Bearer ' + TOKEN}
                              'FIXTURE-KEY-SECRET': 'ignored'}),
 ])
 def test_invalid_requests_never_return_raw_credentials(client, method, path, payload, monkeypatch):
-    monkeypatch.setenv('ATLAS_OPERATOR_TOKEN', 'fixture-operator-token-123456789')
-    headers = dict(H, **{'X-Atlas-Operator-Token': 'fixture-operator-token-123456789'})
+    monkeypatch.setenv('NEXUS_OPERATOR_TOKEN', 'fixture-operator-token-123456789')
+    headers = dict(H, **{'X-Nexus-Operator-Token': 'fixture-operator-token-123456789'})
     project = None
     if '/api/projects/nonexistent/' in path:
         project = put('project', {'name': 'Validation boundary', 'created_at': now()}, 'p_' + uid())
@@ -83,7 +83,7 @@ def test_initial_model_validation_failure_does_not_log_secret(tmp_path):
         'PATH': os.environ.get('PATH', ''), 'DATA_DIR': str(data),
         'DATABASE_URL': 'sqlite:///' + str(data / 'metadata.sqlite'),
         'APP_TOKEN': 'fixture-only-access-token-123456',
-        'ATLAS_INITIAL_MODEL': json.dumps({'api_key': 'FIXTURE-CLOUD-SECRET'}),
+        'NEXUS_INITIAL_MODEL': json.dumps({'api_key': 'FIXTURE-CLOUD-SECRET'}),
     }
     # Winsock initialization needs Windows' own installation path. Keep only
     # these OS variables; no deployed model/connector configuration is inherited.
@@ -173,8 +173,8 @@ def test_scoped_share_identity_never_grants_owner_routes(client, monkeypatch):
     private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
     jwk.update(kid='boundary-key', alg='RS256', use='sig', key_ops=['verify'])
-    configuration = {'ATLAS_AUTH_MODE': 'oidc', 'OIDC_ISSUER': 'https://identity.test',
-                     'OIDC_AUDIENCE': 'atlas', 'OIDC_JWKS_URL': 'https://identity.test/jwks',
+    configuration = {'NEXUS_AUTH_MODE': 'oidc', 'OIDC_ISSUER': 'https://identity.test',
+                     'OIDC_AUDIENCE': 'nexus', 'OIDC_JWKS_URL': 'https://identity.test/jwks',
                      'OIDC_ALLOWED_SUBJECTS': 'owner-a,owner-b'}
     for name, value in configuration.items():
         monkeypatch.setenv(name, value)
@@ -182,7 +182,7 @@ def test_scoped_share_identity_never_grants_owner_routes(client, monkeypatch):
 
     def authorization(subject):
         token = jwt.encode({'sub': subject, 'iss': configuration['OIDC_ISSUER'],
-                            'aud': 'atlas', 'exp': datetime.now(timezone.utc) + timedelta(minutes=2)},
+                            'aud': 'nexus', 'exp': datetime.now(timezone.utc) + timedelta(minutes=2)},
                            private, algorithm='RS256', headers={'kid': 'boundary-key'})
         return {'Authorization': 'Bearer ' + token}
 

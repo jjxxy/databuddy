@@ -3,7 +3,7 @@ set -euo pipefail
 # Explicit target and prepared inputs only. Never selects a guessed cluster.
 config_file=${1:?Pass enterprise config JSON}
 target_context=${2:?Pass the intended kubectl context}
-manifest_path=${3:-/tmp/atlas-enterprise.yaml}
+manifest_path=${3:-/tmp/nexus-enterprise.yaml}
 python scripts/render_enterprise.py "$config_file" "$manifest_path"
 namespace=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["namespace"])' "$config_file")
 secret_name=$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["secretName"])' "$config_file")
@@ -22,9 +22,9 @@ for suffix,kinds in [('bootstrap',{'Namespace','ServiceAccount','Cluster'}),('in
  Path(sys.argv[1]+'.'+suffix).write_text(yaml.safe_dump_all([v for v in values if v['kind'] in kinds],sort_keys=False))
 PY
 kubectl --context "$target_context" apply -f "$manifest_path.bootstrap"
-if kubectl --context "$target_context" -n "$namespace" get cluster atlas-db >/dev/null 2>&1; then kubectl --context "$target_context" -n "$namespace" wait --for=condition=Ready cluster/atlas-db --timeout=15m; fi
+if kubectl --context "$target_context" -n "$namespace" get cluster nexus-db >/dev/null 2>&1; then kubectl --context "$target_context" -n "$namespace" wait --for=condition=Ready cluster/nexus-db --timeout=15m; fi
 kubectl --context "$target_context" apply -f "$manifest_path.init"
-kubectl --context "$target_context" -n "$namespace" wait --for=condition=complete job/atlas-init --timeout=10m
+kubectl --context "$target_context" -n "$namespace" wait --for=condition=complete job/nexus-init --timeout=10m
 kubectl --context "$target_context" apply -f "$manifest_path.runtime"
-for role in api agent worker gateway; do kubectl --context "$target_context" -n "$namespace" rollout status "deployment/atlas-$role" --timeout=10m; done
+for role in api agent worker gateway; do kubectl --context "$target_context" -n "$namespace" rollout status "deployment/nexus-$role" --timeout=10m; done
 printf '%s\n' 'Rollout complete. Run fault acceptance before asserting an availability SLO.'

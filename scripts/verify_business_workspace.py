@@ -12,7 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='atlas-business-check-') as name:
+    with tempfile.TemporaryDirectory(prefix='nexus-business-check-') as name:
         folder=Path(name);data=folder/'data'
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         env=dict(os.environ,DATA_DIR=str(data),DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'),

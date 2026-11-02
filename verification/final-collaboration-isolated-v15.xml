@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="4.036" timestamp="2026-10-27T21:12:01.990981+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_agent_collaboration_verifier" name="test_real_two_process_bidirectional_http_collaboration_with_explicit_model_fixture" time="3.765"><failure message="AssertionError: Agent collaboration integration failed: RuntimeError&#10;  httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions &quot;HTTP/1.0 200 OK&quot;&#10;  httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions &quot;HTTP/1.0 200 OK&quot;&#10;  atlas.cloud: Owner model catalog encrypted; connection validation passed&#10;  atlas.cloud: started api pid=43032&#10;  atlas.cloud: started worker pid=41132&#10;  atlas.cloud: started agent pid=34052&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...rocess_bidirect0\\evidence'], returncode=1, stdout='', stderr='Agent collaboration integration failed: RuntimeError\n').returncode">tmp_path = WindowsPath('C:/Users/001/AppData/Local/Temp/atlas-collab-triage-z9rq_uxk/pytest/test_real_two_process_bidirect0')
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="4.036" timestamp="2026-10-27T21:12:01.990981+08:00" hostname="DESKTOP-SIO6IM0"><testcase classname="tests.test_agent_collaboration_verifier" name="test_real_two_process_bidirectional_http_collaboration_with_explicit_model_fixture" time="3.765"><failure message="AssertionError: Agent collaboration integration failed: RuntimeError&#10;  httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions &quot;HTTP/1.0 200 OK&quot;&#10;  httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions &quot;HTTP/1.0 200 OK&quot;&#10;  nexus.cloud: Owner model catalog encrypted; connection validation passed&#10;  nexus.cloud: started api pid=43032&#10;  nexus.cloud: started worker pid=41132&#10;  nexus.cloud: started agent pid=34052&#10;  &#10;assert 1 == 0&#10; +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...rocess_bidirect0\\evidence'], returncode=1, stdout='', stderr='Agent collaboration integration failed: RuntimeError\n').returncode">tmp_path = WindowsPath('C:/Users/001/AppData/Local/Temp/nexus-collab-triage-z9rq_uxk/pytest/test_real_two_process_bidirect0')
 
     def test_real_two_process_bidirectional_http_collaboration_with_explicit_model_fixture(tmp_path):
         target=tmp_path/'evidence'
@@ -9,10 +9,10 @@
 E       AssertionError: Agent collaboration integration failed: RuntimeError
 E         httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions "HTTP/1.0 200 OK"
 E         httpx: HTTP Request: POST http://127.0.0.1:56945/v1/chat/completions "HTTP/1.0 200 OK"
-E         atlas.cloud: Owner model catalog encrypted; connection validation passed
-E         atlas.cloud: started api pid=43032
-E         atlas.cloud: started worker pid=41132
-E         atlas.cloud: started agent pid=34052
+E         nexus.cloud: Owner model catalog encrypted; connection validation passed
+E         nexus.cloud: started api pid=43032
+E         nexus.cloud: started worker pid=41132
+E         nexus.cloud: started agent pid=34052
 E         
 E       assert 1 == 0
 E        +  where 1 = CompletedProcess(args=['C:\\Users\\001\\Documents\\ChatGPT\\New project\\personal-data-agent\\.venv\\Scripts\\python.e...rocess_bidirect0\\evidence'], returncode=1, stdout='', stderr='Agent collaboration integration failed: RuntimeError\n').returncode

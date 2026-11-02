@@ -10,12 +10,12 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: atlas
+          POSTGRES_USER: nexus
           POSTGRES_PASSWORD: ci_only_disposable_password
-          POSTGRES_DB: atlas
+          POSTGRES_DB: nexus
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-cmd "pg_isready -U nexus -d nexus"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +55,7 @@ jobs:
       - name: Tests against PostgreSQL
         if: matrix.metadata == 'postgres'
         env:
-          DATABASE_URL: postgresql+psycopg2://atlas:ci_only_disposable_password@localhost:5432/atlas
+          DATABASE_URL: postgresql+psycopg2://nexus:ci_only_disposable_password@localhost:5432/nexus
         run: python -m pytest tests -q
   image:
     runs-on: ubuntu-latest

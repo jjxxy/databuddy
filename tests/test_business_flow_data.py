@@ -27,8 +27,8 @@ def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts():
     assert process_once(); source=get('source',source['id'])
     turn=request('POST',root+'/messages',json={'text':'按办事处汇总','request_id':uid(),'source_id':source['id']})
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
-    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
-        'columns':[{'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
+        'columns':[{'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
         'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table','by':['c_1'],
@@ -137,7 +137,7 @@ def test_same_workbook_distinct_selections_and_mapping_survive_processing():
         reads.append(source_table(context,{**pin,'options':{'sheet':sheet,'header_rows':[1]},
                                            'column_map':{'c_1':'branch'}},{}))
     schema={'meaning':'收入','grain':['branch'],'columns':[
-        {'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+        {'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
         {'name':'branch','data_type':'text','meaning':'办事处'},
         {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}
     plan={'version':1,'name':'合并两页','inputs':{'first':schema,'second':schema},

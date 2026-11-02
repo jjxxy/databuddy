@@ -72,12 +72,12 @@ def render(source, output, max_pages, *, first_page=1, root=None):
     manifest = output / 'manifest.json'
     if manifest.is_symlink():raise ValueError('Links are not allowed')
     manifest.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix='atlas-render-', dir='/tmp') as scratch:
+    with tempfile.TemporaryDirectory(prefix='nexus-render-', dir='/tmp') as scratch:
         scratch = Path(scratch)
         if suffix == '.pdf':pdf = source
         elif suffix in ('.html', '.htm'):
             pdf = scratch / 'page.pdf'
-            run(['node', '/opt/atlas-work/render_html.mjs', str(source), str(pdf)])
+            run(['node', '/opt/nexus-work/render_html.mjs', str(source), str(pdf)])
         else:
             profile = scratch / 'office-profile'
             run(['libreoffice', '-env:UserInstallation=' + profile.as_uri(), '--headless', '--nologo',
@@ -107,7 +107,7 @@ def render(source, output, max_pages, *, first_page=1, root=None):
             images.append({'page': page, 'path': str(png.relative_to(root)), 'sha256': digest(raw),
                            'bytes': len(raw), 'width': width, 'height': height})
         if digest(source.read_bytes()) != checksum:raise ValueError('Input changed while rendering')
-        result = {'schema': 'atlas-rendition-v1', 'input_sha256': checksum, 'input_format': suffix[1:],
+        result = {'schema': 'nexus-rendition-v1', 'input_sha256': checksum, 'input_format': suffix[1:],
                   'total_pages': total, 'first_page': first_page, 'rendered_pages': count, 'complete': count == total,
                   'images': images, 'network': 'none', 'financial_approval': False,
                   'cjk_font_probe': cjk_font_probe(suffix),

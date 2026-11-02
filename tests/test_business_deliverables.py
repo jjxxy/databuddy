@@ -132,8 +132,8 @@ def test_real_uploaded_income_is_processed_and_rendered_to_html_and_ppt():
     assert source['status']=='ready'
     turn=req('POST',root+'/messages',json={'text':'按办事处计算并生成 HTML 和 PPT 报告','request_id':uid(),'source_id':source['id']})
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
-    plan={'version':1,'name':'收入汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
-        'columns':[{'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+    plan={'version':1,'name':'收入汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
+        'columns':[{'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
         'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table','by':['c_1'],

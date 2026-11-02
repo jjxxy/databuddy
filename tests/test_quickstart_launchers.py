@@ -50,7 +50,7 @@ if args[0] == 'run':
             sys.exit(code)
         env = folder / '.env'
         if not env.exists():
-            env.write_text('APP_TOKEN=fixture-owner-token-keep-private\nATLAS_HTTP_PORT=8123\n')
+            env.write_text('APP_TOKEN=fixture-owner-token-keep-private\nNEXUS_HTTP_PORT=8123\n')
         print('配置通过；未输出模型密钥')
     elif args[-1] == 'info':
         print('访问口令：fixture-owner-token-keep-private')
@@ -63,7 +63,7 @@ raise AssertionError('Unexpected command')
 ''')
     fake.chmod(0o755)
     env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ.get('PATH', ''),
-               LAUNCHER_FAKE_LOG=str(calls), ATLAS_NO_OPEN='1', PYTHONUTF8='1')
+               LAUNCHER_FAKE_LOG=str(calls), NEXUS_NO_OPEN='1', PYTHONUTF8='1')
     return bundle, calls, env
 
 
@@ -125,7 +125,7 @@ def test_compose_failure_does_not_claim_ready_or_print_access_token(tmp_path):
                                            ('logs', ['logs', '--tail', '100', '--follow'])])
 @requires_posix_shell
 def test_management_never_bootstraps_or_deletes_volumes(tmp_path, action, command):
-    content = 'APP_TOKEN=unchanged-existing-token\nATLAS_HTTP_PORT=9234\n'
+    content = 'APP_TOKEN=unchanged-existing-token\nNEXUS_HTTP_PORT=9234\n'
     bundle, calls, env = launcher(tmp_path, content)
     result = run(bundle, env, action)
     assert result.returncode == 0, result.stderr
@@ -148,8 +148,8 @@ def test_docker_checks_fail_before_bootstrap(tmp_path):
     assert len(recorded(calls)) == 1
 
 
-@pytest.mark.parametrize('port_line', ['ATLAS_HTTP_PORT=9234', 'export ATLAS_HTTP_PORT="09234"',
-                                      "ATLAS_HTTP_PORT='9234'", ' ATLAS_HTTP_PORT=9234 # local port'])
+@pytest.mark.parametrize('port_line', ['NEXUS_HTTP_PORT=9234', 'export NEXUS_HTTP_PORT="09234"',
+                                      "NEXUS_HTTP_PORT='9234'", ' NEXUS_HTTP_PORT=9234 # local port'])
 @requires_posix_shell
 def test_open_reads_only_numeric_port_and_never_sources_env(tmp_path, port_line):
     marker = tmp_path / 'must-not-execute'
@@ -165,7 +165,7 @@ def test_open_reads_only_numeric_port_and_never_sources_env(tmp_path, port_line)
 @requires_posix_shell
 def test_invalid_port_and_unknown_action_do_not_run_commands(tmp_path):
     marker = tmp_path / 'must-not-execute'
-    bundle, calls, env = launcher(tmp_path, f'ATLAS_HTTP_PORT=$(touch "{marker}")\n')
+    bundle, calls, env = launcher(tmp_path, f'NEXUS_HTTP_PORT=$(touch "{marker}")\n')
     result = run(bundle, env, 'open')
     assert result.returncode == 1 and not marker.exists()
     assert '数字端口' in result.stderr and recorded(calls) == []
@@ -187,4 +187,4 @@ def test_windows_entry_contract_is_docker_only_and_powershell_51_utf8():
     assert 'Get-LocalUrl' in script and 'ReadAllLines' in script
     command = (ROOT / 'start.cmd').read_text()
     assert '-NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*' in command
-    assert 'exit /b %atlas_exit%' in command
+    assert 'exit /b %nexus_exit%' in command

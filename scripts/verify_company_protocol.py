@@ -39,10 +39,10 @@ class Upstream(BaseHTTPRequestHandler):
 def main():
     server=ThreadingHTTPServer(('127.0.0.1',0),Upstream);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
-        with tempfile.TemporaryDirectory(prefix='atlas-company-protocol-') as tmp:
+        with tempfile.TemporaryDirectory(prefix='nexus-company-protocol-') as tmp:
             tmp=Path(tmp)
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-            env=dict(os.environ,DATA_DIR=str(tmp/'data'),DATABASE_URL='sqlite:///'+str(tmp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',ATLAS_CLOUD_VERIFY='0')
+            env=dict(os.environ,DATA_DIR=str(tmp/'data'),DATABASE_URL='sqlite:///'+str(tmp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
             process=None
             with (tmp/'service.log').open('w') as log:
                 try:

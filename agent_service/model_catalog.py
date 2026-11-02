@@ -31,7 +31,7 @@ class CatalogInput(StrictModel):
             raise ValueError('模型ID必须唯一，默认模型必须在列表中')
         if any(not entry.name.strip() or any(ord(char) < 32 or ord(char) == 127 for char in entry.name) for entry in self.models):
             raise ValueError('模型显示名称不能为空')
-        if any(entry.engine != 'atlas' for entry in self.models):
+        if any(entry.engine != 'nexus' for entry in self.models):
             raise ValueError('模型目录需填写实际模型服务地址，不接受旧版Agent传输配置')
         return self
 
@@ -61,7 +61,7 @@ def owner_configuration():
 
 def public_catalog():
     import os
-    if os.getenv('ATLAS_DESKTOP_MODEL_DISABLED')=='1':
+    if os.getenv('NEXUS_DESKTOP_MODEL_DISABLED')=='1':
         return {'configured':False,'default_model_id':None,'models':[]}
     raw = owner_configuration()
     return {'configured': bool(raw['models']), 'default_model_id': raw['default_model_id'],
@@ -87,7 +87,7 @@ def provision(value, *, verify=True):
     for record, entry in zip(canonical['models'], parsed.models):
         record['api_key'] = entry.api_key.get_secret_value()
         record['name'] = entry.name.strip()
-        if entry.engine == 'atlas' and not entry.vision:record['tool_protocol'] = 'native'
+        if entry.engine == 'nexus' and not entry.vision:record['tool_protocol'] = 'native'
     digest = hashlib.sha256(json.dumps(canonical, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     try:
         if _active().get('configuration_sha256') == digest:
@@ -99,7 +99,7 @@ def provision(value, *, verify=True):
         provider_input = ProviderInput.model_validate(entry.model_dump(exclude={'id', 'name'}))
         # OpenCode's native agent loop requires real function/tool calling.
         # A successful plain-text connectivity probe is insufficient.
-        if provider_input.engine == 'atlas' and not provider_input.vision:provider_input.tool_protocol = 'native'
+        if provider_input.engine == 'nexus' and not provider_input.vision:provider_input.tool_protocol = 'native'
         if verify:
             raw = validate_configuration(provider_input, old={})
         else:
@@ -193,6 +193,54 @@ def select(model_id=None, *, session=None, resume_turn=None):
         raise ValueError('所选模型当前不可用，请从提供的模型列表中重新选择')
     revision = raw['revision'] or _legacy_snapshot(raw)
     return {'model_id': entry['id'], 'model_name': entry['name'], 'model_catalog_revision': revision}
+
+
+def select_for_task(needs_vision=False):
+    """Route a fresh task by type, never overriding an explicit model choice.
+
+    Vision tasks (image attachments or an explicit visual request) prefer a
+    vision-capable model so the agent's image tools can actually see pixels;
+    other tasks prefer the default text model. When only one model is
+    configured it serves every task regardless of its capability flags.
+    """
+    raw = owner_configuration()
+    models = raw['models']
+    if not models:
+        return {}
+    if needs_vision:
+        vision = next((entry for entry in models if entry.get('vision')), None)
+        chosen = vision['id'] if vision else raw['default_model_id']
+    else:
+        chosen = raw['default_model_id']
+        default = next((entry for entry in models if entry['id'] == chosen), None)
+        if default and default.get('vision'):
+            # The default is itself multimodal; keep text engineering on the
+            # first text-capable entry when one exists.
+            text = next((entry for entry in models if not entry.get('vision')), None)
+            if text:
+                chosen = text['id']
+    entry = next(entry for entry in models if entry['id'] == chosen)
+    revision = raw['revision'] or _legacy_snapshot(raw)
+    return {'model_id': entry['id'], 'model_name': entry['name'], 'model_catalog_revision': revision}
+
+
+def turn_is_vision(turn):
+    """Whether the model bound to a turn is vision-capable.
+
+    A turn routed to a multimodal model may use image tools even when the
+    operator-wide ``NEXUS_VISION_ENABLED`` flag is unset; a text-model turn
+    stays restricted. Reads the current catalog's capability flag, which is
+    stable across revisions.
+    """
+    model_id = (turn or {}).get('model_id')
+    if not model_id:
+        return False
+    try:
+        configuration = owner_configuration()
+    except (KeyError, ValueError):
+        return False
+    entry = next((e for e in configuration['models'] if e['id'] == model_id), None)
+    return bool(entry and entry.get('vision'))
 
 
 def settings_for_turn(turn):

@@ -9,7 +9,7 @@ import hashlib
 import os
 import re
 
-_actor=ContextVar('atlas_personal_actor',default='owner')
+_actor=ContextVar('nexus_personal_actor',default='owner')
 
 
 def current_actor():

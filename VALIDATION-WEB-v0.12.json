@@ -2,7 +2,7 @@
   "version": "0.12.0",
   "deployment_id": "a6396ff7-5590-4a83-b1f6-9c149530a759",
   "deployment_status": "SUCCESS",
-  "service_url": "https://atlas-trial.up.railway.app",
+  "service_url": "https://nexus-trial.up.railway.app",
   "bundle_sha256": "fe142e37b8909890db1f077c424beaf39504bbb2890f35bb919edad604bbd027",
   "tests": {
     "full_regression_passed_before_final_small_changes": 138,

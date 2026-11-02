@@ -15,7 +15,7 @@ from agent_service import office,store,workspace
 
 @pytest.fixture
 def isolated_office(monkeypatch,tmp_path):
-    monkeypatch.delenv('ATLAS_LOCAL_WORKSPACE',raising=False)
+    monkeypatch.delenv('NEXUS_LOCAL_WORKSPACE',raising=False)
     data=tmp_path/'isolated-office';data.mkdir()
     engine=create_engine('sqlite:///'+str(data/'metadata.sqlite'))
     store.metadata.create_all(engine)
@@ -227,7 +227,7 @@ print(json.dumps({'utf8_mode':sys.flags.utf8_mode,'chinese_message_preserved':me
     env={key:os.environ[key] for key in ('SystemRoot','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','PATHEXT') if key in os.environ}
     env.update(DATA_DIR=str(data),DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'),
         APP_TOKEN='isolated-office-test-only-token',LLM_BASE_URL='',LLM_MODEL='',
-        ATLAS_GIT_BINARY=executable('git'),PYTHONIOENCODING='utf-8',
+        NEXUS_GIT_BINARY=executable('git'),PYTHONIOENCODING='utf-8',
         GIT_CONFIG_NOSYSTEM='1',GIT_CONFIG_GLOBAL=str(data/'empty-global.gitconfig'))
     result=subprocess.run([sys.executable,'-X','utf8=0','-c',script,str(repository)],env=env,
         capture_output=True,text=True,encoding='utf-8',timeout=30)

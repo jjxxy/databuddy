@@ -1,6 +1,6 @@
 """Opt-in real-model acceptance; dry-run never reports an intelligence score.
 
-Use ATLAS_URL and APP_TOKEN environment variables. Each case creates a separate
+Use NEXUS_URL and APP_TOKEN environment variables. Each case creates a separate
 project and retains it for review. No synthetic model or LLM judge is used.
 """
 import argparse,hashlib,io,json,math,os,time,uuid
@@ -17,7 +17,7 @@ def interval(passed,total):
     return [max(0,center-half),min(1,center+half)]
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--execute',action='store_true');parser.add_argument('--cases-file',type=Path,default=ROOT/'evals/tasks.json');parser.add_argument('--protocol-test',action='store_true',help='Simulated integration only; never produces an intelligence score');parser.add_argument('--limit',type=int);parser.add_argument('--repeat',type=int,default=1);parser.add_argument('--case',action='append',default=[]);parser.add_argument('--label',default='Atlas');parser.add_argument('--baseline',type=Path);parser.add_argument('--output',type=Path,default=Path('eval-results.json'));args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--execute',action='store_true');parser.add_argument('--cases-file',type=Path,default=ROOT/'evals/tasks.json');parser.add_argument('--protocol-test',action='store_true',help='Simulated integration only; never produces an intelligence score');parser.add_argument('--limit',type=int);parser.add_argument('--repeat',type=int,default=1);parser.add_argument('--case',action='append',default=[]);parser.add_argument('--label',default='Nexus WorkStudio');parser.add_argument('--baseline',type=Path);parser.add_argument('--output',type=Path,default=Path('eval-results.json'));args=parser.parse_args()
     cases=json.loads(args.cases_file.read_text())
     assert len({c['id'] for c in cases})==len(cases)
     assert all(c['check'] in {'file','unchanged','rule','scalar','needs_input','run','build','research','workbook','rendition','vision'} and c['mode'] in ('chat','work') and c['prompt'] for c in cases)
@@ -31,7 +31,7 @@ def main():
     if not args.execute:
         print(json.dumps({'status':'not_executed','cases':len(cases),'case_manifest_sha256':manifest_hash,'checks_valid':True,'real_model_evaluated':False,'score':None}));return
     if not 1<=args.limit<=len(cases):raise ValueError('limit must be within case count')
-    url=os.environ['ATLAS_URL'].rstrip('/');token=os.environ['APP_TOKEN']
+    url=os.environ['NEXUS_URL'].rstrip('/');token=os.environ['APP_TOKEN']
     if not url.startswith('https://') and not url.startswith('http://127.0.0.1:'):raise ValueError('Use HTTPS or localhost')
     report={'status':'simulated_protocol' if args.protocol_test else 'real_run','real_model_evaluated':not args.protocol_test,'simulated_model':args.protocol_test,'label':args.label,'case_manifest_sha256':manifest_hash,'model':None,'cases':[],'pricing':'not estimated; provider-reported tokens only; setup calls listed separately'}
     with httpx.Client(base_url=url,headers={'Authorization':'Bearer '+token},timeout=15,trust_env=False,follow_redirects=False) as client:

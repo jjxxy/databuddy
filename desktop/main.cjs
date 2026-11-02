@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const { configureDesktopWindow } = require('./window-controls.cjs');
 const { sameOrigin, sameFile, validPipelineId, parseReady, trustedMainFrame, createTransitionGate } = require('./security.cjs');
 
-app.setName('Atlas DataBuddy');
+app.setName('Nexus WorkStudio');
 const root = path.resolve(__dirname, '..');
 const startFile = path.join(__dirname, 'start-screen.html');
 const lineageFile = path.join(root, 'ui', 'dist', 'index.html');
@@ -37,7 +37,7 @@ function log(message) {
 }
 function notify(message, failed = false) {
   status = {message,failed,logPath:logFile};
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('atlas:status',status);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('nexus:status',status);
 }
 function isMain(event, allowStart = false) {
   return mainWindow && !mainWindow.isDestroyed() &&
@@ -77,7 +77,7 @@ async function openLineage() {
   if (!connection) return;
   if (lineageWindow && !lineageWindow.isDestroyed()) {lineageWindow.focus();return;}
   lineageWindow = new BrowserWindow({width:1200,height:800,minWidth:760,minHeight:600,
-    title:'数据来源与处理链 · Atlas DataBuddy',backgroundColor:'#ffffff',
+    title:'数据来源与处理链 · Nexus WorkStudio',backgroundColor:'#ffffff',
     webPreferences:{preload:path.join(__dirname,'lineage-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false}});
   secureWindow(lineageWindow,lineageFile);
   lineageWindow.on('closed',()=>{lineageWindow=null;});
@@ -109,7 +109,7 @@ async function startRuntime() {
     const python = path.join(root,'runtime','python','python.exe');
     const host = path.join(root,'portable_runtime.py');
     if (!fs.existsSync(python) || !fs.existsSync(host)) {
-      notify('安装包缺少运行文件。请重新解压完整的 Atlas DataBuddy 交付包；无需自行安装 Python。',true);return false;
+      notify('安装包缺少运行文件。请重新解压完整的 Nexus WorkStudio 交付包；无需自行安装 Python。',true);return false;
     }
     return new Promise(resolve => {
       let ready = false, complete = false;
@@ -160,24 +160,24 @@ function configureHeaders() {
   });
 }
 
-ipcMain.on('atlas:bootstrap',event=>{
+ipcMain.on('nexus:bootstrap',event=>{
   event.returnValue = isMain(event) && connection ? {...connection} : null;
 });
-ipcMain.handle('atlas:startup-status',event=>{
+ipcMain.handle('nexus:startup-status',event=>{
   if(!isMain(event,true))throw new Error('请求来源不受支持');return status;
 });
-ipcMain.handle('atlas:retry',async event=>{
+ipcMain.handle('nexus:retry',async event=>{
   if(!mainWindow||mainWindow.isDestroyed()||!trustedMainFrame(event,mainWindow.webContents,null,startFile,true))throw new Error('请求来源不受支持');await transitions.run(()=>startRuntime());return true;
 });
-ipcMain.handle('atlas:open-lineage',async event=>{
+ipcMain.handle('nexus:open-lineage',async event=>{
   if(!isMain(event))throw new Error('请求来源不受支持');await openLineage();return true;
 });
-ipcMain.handle('atlas:runtime-status',async event=>{
+ipcMain.handle('nexus:runtime-status',async event=>{
   if(!isMain(event))throw new Error('请求来源不受支持');
   const value=await readApi('/api/desktop/runtime');
   return {notice:String(value.notice||'本地能力可用；云端 AI 需要网络。')};
 });
-ipcMain.handle('atlas:choose-workspace',async event=>{
+ipcMain.handle('nexus:choose-workspace',async event=>{
   if(!isMain(event,true))throw new Error('请求来源不受支持');
   return transitions.run(async()=>{
   if(choosingWorkspace||starting)throw new Error('正在处理工作空间切换，请稍候。');
@@ -200,12 +200,12 @@ ipcMain.handle('atlas:choose-workspace',async event=>{
   }finally{choosingWorkspace=false;}
   });
 });
-ipcMain.handle('atlas:lineage-list',async event=>{
+ipcMain.handle('nexus:lineage-list',async event=>{
   if(!isLineage(event))throw new Error('请求来源不受支持');
   const values = await readApi('/api/pipelines');
   return (Array.isArray(values)?values:[]).map(value=>({id:value.id,name:value.name,project_id:value.project_id,published_run:value.published_run,candidate_run:value.candidate_run}));
 });
-ipcMain.handle('atlas:lineage-get',async(event,id)=>{
+ipcMain.handle('nexus:lineage-get',async(event,id)=>{
   if(!isLineage(event)||!validPipelineId(id))throw new Error('请选择有效的数据任务');
   return readApi('/api/pipelines/'+encodeURIComponent(id)+'/lineage');
 });
@@ -219,7 +219,7 @@ else {
     logFile=path.join(app.getPath('userData'),'desktop.log');
     if(fs.existsSync(logFile)&&fs.statSync(logFile).size>4*1024*1024)fs.renameSync(logFile,logFile+'.previous');
     session.defaultSession.setPermissionRequestHandler((_contents,_permission,callback)=>callback(false));
-    mainWindow=new BrowserWindow({width:1380,height:900,minWidth:900,minHeight:650,title:'Atlas DataBuddy',backgroundColor:'#ffffff',
+    mainWindow=new BrowserWindow({width:1380,height:900,minWidth:900,minHeight:650,title:'Nexus WorkStudio',backgroundColor:'#ffffff',
       webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,spellcheck:false}});
     secureWindow(mainWindow,startFile);
     mainWindow.on('closed',()=>{mainWindow=null;});

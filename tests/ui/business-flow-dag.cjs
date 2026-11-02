@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {JSDOM}=require('jsdom');
+const dom=new JSDOM('<!doctype html><div id="root"></div>',{runScripts:'outside-only'});
+dom.window.eval(fs.readFileSync(path.join(__dirname,'../../agent_service/static/business-flow-view.js'),'utf8'));
+const root=dom.window.document.querySelector('#root'),render=dom.window.NexusBusinessFlowView.render;
+const plan={name:'月结流程',nodes:[{id:'a',title:'读取订单',kind:'source',description:'取数并核对'}, {id:'b',title:'读取退款',kind:'source'}, {id:'c',title:'对账',kind:'transform',description:'匹配订单与退款',depends_on:['a','b']}]};
+render(root,{plan,version:{role:'draft',digest:'new'},run:{plan_digest:'old',status:'succeeded',receipts:[{node_id:'c',status:'succeeded'}]}});
+assert.equal(root.querySelectorAll('.flow-graph rect').length,3);assert.equal(root.querySelectorAll('.flow-graph path[marker-end]').length,2);
+assert.match(root.textContent,/版本不一致/);assert.doesNotMatch(root.querySelector('.flow-graph').textContent,/执行完成/);
+const g=[...root.querySelectorAll('.flow-graph g[role=button]')][2];g.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert.match(root.querySelector('.flow-graph-detail').textContent,/匹配订单与退款/);
+render(root,{plan:{nodes:[{id:'a',depends_on:['b']},{id:'b',depends_on:['a']}]},version:{role:'draft'}});assert.match(root.textContent,/依赖存在循环/);assert.equal(root.querySelectorAll('.flow-graph svg').length,0);
+render(root,{plan:{nodes:[{id:'x',title:'<img src=x>',depends_on:['missing']}]},version:{role:'draft'}});assert.equal(root.querySelectorAll('img').length,0);assert.match(root.textContent,/依赖步骤未找到/);
+dom.window.close();console.log('business flow DAG shows actual edges, version-matched status and accessible details');

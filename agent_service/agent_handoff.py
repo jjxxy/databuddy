@@ -25,7 +25,7 @@ from .locks import FileLock
 from .store import get, put, seal, uid, now
 from .platform_files import open_regular_read,create_regular_exclusive,fsync_directory,assert_plain_path,atomic_replace,fsync_file
 
-FORMAT = 'atlas-agent-handoff'
+FORMAT = 'nexus-agent-handoff'
 SOURCE_SUFFIXES = {'.csv','.xlsx','.json','.jsonl','.pdf','.docx','.pptx','.png','.jpg','.jpeg','.tiff','.webp','.html','.htm','.txt','.md'}
 PRIVATE_NAMES = {'llm.json','llm.example.json','llm.multi.example.json','credentials.json','secrets.json','token.json','auth.json','opencode.json','connector.key'}
 RESULT_FILES = {'manifest.json','rows.jsonl','schema.json','context.json','provenance.jsonl','stages.json'}
@@ -38,7 +38,7 @@ class HandoffError(ValueError):
 
 
 def _limit():
-    value=int(os.getenv('ATLAS_AGENT_HANDOFF_MAX_BYTES',str(2*1024*1024)))
+    value=int(os.getenv('NEXUS_AGENT_HANDOFF_MAX_BYTES',str(2*1024*1024)))
     if not 1024<=value<=32*1024*1024:raise HandoffError('Agent交接体积限制配置无效')
     return value
 
@@ -134,7 +134,7 @@ def _result_zip(raw,metadata):
     from .result_delivery import verify_handoff,read_all_handoff
     from .data_workflows import TableSchema,Column
     maximum=_limit()*8
-    temporary=tempfile.TemporaryDirectory(prefix='atlas-agent-result-')
+    temporary=tempfile.TemporaryDirectory(prefix='nexus-agent-result-')
     try:
         folder=Path(temporary.name)
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
@@ -402,7 +402,7 @@ def _record_artifact(turn,kind,identity,name,raw,**metadata):
         record={'id':aid,'project_id':turn['project_id'],'turn_id':turn['id'],'name':_name(name,'artifact'),'kind':kind,'sha256':_digest(raw),'bytes':len(raw),
                 'media_type':mimetypes.guess_type(name)[0] or 'application/octet-stream','relative_path':str(target.relative_to(DATA)),**metadata}
         put('agent_task_artifact',record,aid)
-    return {k:v for k,v in record.items() if k not in ('relative_path','project_id','turn_id')}|{'uri':'atlas-artifact:'+aid,'financial_verified':False}
+    return {k:v for k,v in record.items() if k not in ('relative_path','project_id','turn_id')}|{'uri':'nexus-artifact:'+aid,'financial_verified':False}
 
 
 def build_output(turn):

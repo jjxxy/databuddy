@@ -7,6 +7,6 @@ nonce=$(cat /proc/sys/kernel/random/uuid)
 case "$nonce" in
   ''|*[!0123456789abcdef-]*) echo 'Cannot initialize the Python cache namespace' >&2; exit 1 ;;
 esac
-export PYTHONPYCACHEPREFIX="${TMPDIR:-/tmp}/atlas-python-cache-$nonce"
+export PYTHONPYCACHEPREFIX="${TMPDIR:-/tmp}/nexus-python-cache-$nonce"
 export PYTHONDONTWRITEBYTECODE=1
 exec "$@"

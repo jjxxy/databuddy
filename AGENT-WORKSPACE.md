@@ -1,6 +1,6 @@
 0.7补充：会话分别保留应用目标，停止仅影响本会话；模型暂时故障有限重试，预算/连接中断后可继续指定任务，保留已完成步骤；差异、来源和时效进入对话结果。新增调度周期及完整复审见DATA-APPLICATIONS.md和PRODUCT-REVIEW.md，最终验收见VERIFICATION.md。以下保留0.5工作区基本约定。
 
-# Atlas 0.5 · Agent、模式与项目版本
+# Nexus WorkStudio 0.5 · Agent、模式与项目版本
 
 ## 用户入口
 

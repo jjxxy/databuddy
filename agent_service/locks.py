@@ -8,7 +8,7 @@ from pathlib import Path
 from filelock import FileLock as LocalLock,Timeout
 from sqlalchemy import create_engine,text
 from .config import DATA,DATABASE_URL
-_owned=contextvars.ContextVar('atlas_owned_locks',default=())
+_owned=contextvars.ContextVar('nexus_owned_locks',default=())
 _engine=None
 class LockLost(RuntimeError):pass
 

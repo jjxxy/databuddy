@@ -1,12 +1,12 @@
 /* Real browser handoff and microphone transport; no credentials in local storage. */
 (()=>{
  'use strict';
- const b=window.atlasBusiness,browserDialog=document.querySelector('#cloud-browser-dialog'),voiceDialog=document.querySelector('#voice-dialog');
+ const b=window.nexusBusiness,browserDialog=document.querySelector('#cloud-browser-dialog'),voiceDialog=document.querySelector('#voice-dialog');
  if(!b||!browserDialog||!voiceDialog)return;
  const $=s=>browserDialog.querySelector(s),v=s=>voiceDialog.querySelector(s);
  let generation=0,voiceEpoch=0,pid='',sid='',snapshot=null,busy=false,recorder=null,stream=null,peer=null,channel=null,voiceTimer=null,voiceCall=null,browserPollTimer=null,pendingSignature='';
  function node(tag,text){const el=document.createElement(tag);el.textContent=text;return el}
- function id(){return window.atlasSecureUUID?window.atlasSecureUUID():crypto.randomUUID()}
+ function id(){return window.nexusSecureUUID?window.nexusSecureUUID():crypto.randomUUID()}
  function hangup(call){try{Promise.resolve(b.authFetch('/api/projects/'+encodeURIComponent(call.project)+'/voice/calls/'+encodeURIComponent(call.id)+'/end',{method:'POST',keepalive:true})).catch(()=>{})}catch{}}
  function stopVoice(){
   voiceEpoch++;
@@ -311,7 +311,7 @@
    peer=new RTCPeerConnection();const active=peer;
    for(const track of source.getTracks())active.addTrack(track,source);
    active.ontrack=e=>{if(current(mark,project)){v('audio').srcObject=e.streams[0];v('audio').play().catch(()=>{})}};
-   channel=active.createDataChannel('atlas-voice');
+   channel=active.createDataChannel('nexus-voice');
    channel.onmessage=e=>{
     if(!current(mark,project))return;
     try{
@@ -346,5 +346,5 @@
  }
  document.addEventListener('visibilitychange',()=>{if(document.hidden)stopVoice()});
  window.addEventListener('pagehide',stopVoice);
- window.atlasInteractive={reset,projectChanged:reset};
+ window.nexusInteractive={reset,projectChanged:reset};
 })();

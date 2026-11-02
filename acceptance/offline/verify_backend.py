@@ -128,7 +128,7 @@ class Host:
         return body
 
     def upload(self, project, payload=CSV):
-        boundary = 'atlas-boundary-' + uuid.uuid4().hex
+        boundary = 'nexus-boundary-' + uuid.uuid4().hex
         parts = []
         for name, value in [('request_id', identity()), ('local_processing', 'true')]:
             parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"'
@@ -154,7 +154,7 @@ class Host:
 
     def diagnostic(self):
         text = '\n'.join(self.lines)
-        log = self.state / 'atlas.log'
+        log = self.state / 'nexus.log'
         if log.exists():
             text += '\n' + log.read_text(encoding='utf-8', errors='replace')[-8000:]
         run_logs = sorted((self.state / 'data/runs').glob('*/attempt-*/execution.log'),
@@ -258,7 +258,7 @@ def missing_runtime(app, temporary):
 def test_workspace(hosts):
     # Stop live Windows processes before tempfile tries to remove SQLite files.
     # Preserve synthetic diagnostics in memory before the temporary tree is gone.
-    with tempfile.TemporaryDirectory(prefix='atlas-offline-acceptance-', ignore_cleanup_errors=True) as temp:
+    with tempfile.TemporaryDirectory(prefix='nexus-offline-acceptance-', ignore_cleanup_errors=True) as temp:
         try:
             yield temp
         finally:

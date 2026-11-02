@@ -3,11 +3,11 @@ const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),a
 const root=path.resolve(__dirname,'../../agent_service/static');
 const waitFor=async predicate=>{const end=Date.now()+3000;while(!predicate()){if(Date.now()>end)throw Error('app did not reach expected state');await new Promise(r=>setTimeout(r,5))}};
 async function run(){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,requests=[],posts=[];
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,requests=[],posts=[];
  try{
-  w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('atlas_token','test-session-only');
+  w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.sessionStorage.setItem('nexus_token','test-session-only');
   let catalog={models:[{id:'fast',name:'日常分析'},{id:'careful',name:'复杂核算 <img src=x>'}],default_model_id:'fast',configured:true},releaseFailure,rejectModel=false;
-  w.fetch=async(url,options={})=>{const p=new URL(url,'https://atlas.test/'),route=p.pathname;requests.push(route);let result;
+  w.fetch=async(url,options={})=>{const p=new URL(url,'https://nexus.test/'),route=p.pathname;requests.push(route);let result;
    if(route==='/api/models')result=catalog;
    else if(route==='/api/projects')result=[{id:'p',name:'经营月报'}];
    else if(route.endsWith('/conversation'))result={project:{id:'p',name:'经营月报'},session_id:p.searchParams.get('session_id')||'c1',selected_model_id:'careful',sessions:[{id:'c1',name:'本月核算'},{id:'c2',name:'专项分析'}],sources:[],applications:[],turns:[],mode:'llm',has_more:false};

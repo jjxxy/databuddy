@@ -14,3 +14,4 @@
 .flow-step-receipt summary{cursor:pointer;color:#3c7350}
 .flow-step-receipt p{overflow-wrap:anywhere;margin:5px 0}
 .flow-empty{font-size:13px;color:#738478}
+.flow-graph{padding:16px 0}.flow-graph h3{font-size:15px;margin:0 0 12px}.flow-graph-scroll{overflow:auto;max-width:100%;border:1px solid #e1e7e3;border-radius:8px;background:#fff}.flow-graph-scroll svg{display:block;max-width:none}.flow-graph-scroll svg g[role=button]{cursor:pointer}.flow-graph-scroll svg g[role=button]:focus{outline:none}.flow-graph-scroll svg g[role=button]:focus rect,.flow-graph-scroll svg g[role=button]:hover rect{stroke:#197461;stroke-width:2}.flow-graph-detail{margin-top:12px;padding:12px;border:1px solid #e1e7e3;border-radius:8px;font-size:13px;line-height:1.65;overflow-wrap:anywhere}.flow-graph-detail p{margin:6px 0 0}.flow-graph-warning{color:#9a5726}

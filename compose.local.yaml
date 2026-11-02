@@ -1,41 +1,41 @@
-name: atlas-databuddy-local
+name: nexus-databuddy-local
 services:
-  atlas:
+  nexus:
     build:
       context: .
       dockerfile: Dockerfile.quickstart
     env_file: .env
     environment:
-      DATA_DIR: /local-workspace/.atlas
+      DATA_DIR: /local-workspace/.nexus
       PORT: "8000"
-      DATABASE_URL: sqlite:////local-workspace/.atlas/metadata.sqlite
-      ATLAS_DROP_PRIVILEGES: "1"
-      ATLAS_LLM_CONFIG_FILE: /run/atlas/llm.json
-      ATLAS_QUICKSTART_CONTAINER: "1"
-      ATLAS_LOCAL_MODE: "1"
-      ATLAS_LOCAL_WORKSPACE: /local-workspace
-      ATLAS_LOCAL_LABEL: "${ATLAS_LOCAL_LABEL:-本地文件夹}"
-      ATLAS_RUN_UID: "${ATLAS_LOCAL_UID:-10001}"
-      ATLAS_RUN_GID: "${ATLAS_LOCAL_GID:-10001}"
-      ATLAS_NETWORK_MODE: "${ATLAS_NETWORK_MODE:-connected}"
-      ATLAS_OPENCODE_RUNTIME: "1"
-      ATLAS_DEPLOYMENT_PROFILE: single
-      ATLAS_AUTH_MODE: token
+      DATABASE_URL: sqlite:////local-workspace/.nexus/metadata.sqlite
+      NEXUS_DROP_PRIVILEGES: "1"
+      NEXUS_LLM_CONFIG_FILE: /run/nexus/llm.json
+      NEXUS_QUICKSTART_CONTAINER: "1"
+      NEXUS_LOCAL_MODE: "1"
+      NEXUS_LOCAL_WORKSPACE: /local-workspace
+      NEXUS_LOCAL_LABEL: "${NEXUS_LOCAL_LABEL:-本地文件夹}"
+      NEXUS_RUN_UID: "${NEXUS_LOCAL_UID:-10001}"
+      NEXUS_RUN_GID: "${NEXUS_LOCAL_GID:-10001}"
+      NEXUS_NETWORK_MODE: "${NEXUS_NETWORK_MODE:-connected}"
+      NEXUS_OPENCODE_RUNTIME: "1"
+      NEXUS_DEPLOYMENT_PROFILE: single
+      NEXUS_AUTH_MODE: token
       SCHEDULER_MODE: worker
       AGENT_ORCHESTRATION_MODE: separate
       RUNTIME__DLTHUB_TELEMETRY: "false"
       DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
     ports:
-      - "${ATLAS_BIND_ADDRESS:-127.0.0.1}:${ATLAS_HTTP_PORT:-8000}:8000"
+      - "${NEXUS_BIND_ADDRESS:-127.0.0.1}:${NEXUS_HTTP_PORT:-8000}:8000"
     volumes:
       - type: bind
-        source: "${ATLAS_LOCAL_WORKSPACE_HOST:?Choose a local folder with start-local}"
+        source: "${NEXUS_LOCAL_WORKSPACE_HOST:?Choose a local folder with start-local}"
         target: /local-workspace
         bind:
           create_host_path: false
       - type: bind
         source: ./llm.json
-        target: /run/atlas/llm.json
+        target: /run/nexus/llm.json
         read_only: true
         bind:
           create_host_path: false

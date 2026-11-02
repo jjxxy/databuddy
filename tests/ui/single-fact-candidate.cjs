@@ -5,8 +5,8 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function until(fn){for(let i=0;i<150;i++){if(fn())return;await tick()}throw Error('candidate UI did not settle')}
 const reply=(value,status=200)=>({ok:status<400,status,json:async()=>value});
 async function boot(options={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'data-workbench.html'),'utf8'),{url:'https://atlas.test/data-workbench.html?project=p_1&tab=semantics',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture-token');w.setTimeout=()=>1;w.clearTimeout=()=>{};let releaseCreate;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'data-workbench.html'),'utf8'),{url:'https://nexus.test/data-workbench.html?project=p_1&tab=semantics',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture-token');w.setTimeout=()=>1;w.clearTimeout=()=>{};let releaseCreate;
  const text={id:'fact_1',status:options.pending?'pending':'approved',content_sha256:hash,source_revision:1,source_file_sha256:sourceHash,output_source_id:'out_1',approval_blockers:options.blocked?[{error:'missing'}]:[],facts:[{quote:'收入 12 元',value_as_printed:'12',normalized_value:'12',measure:'收入',unit:'元',period:'2026-10',dimensions:{地区:'合肥'}}]};
  if(options.multiple)text.facts.push({...text.facts[0]});if(options.noHash)delete text.source_file_sha256;
  const visual={...text,id:'visual_1',page:1,source_id:'source_1',ocr_executed:false,pixels_independently_verified:false};

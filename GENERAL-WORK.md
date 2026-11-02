@@ -1,6 +1,6 @@
 # 通用工作能力与部署
 
-Atlas DataBuddy 的目标是让用户通过对话完成研究、编程、数据分析和办公交付。能力应按真实任务的完成结果衡量，不能把工具数量、代码测试或一份生成文件换算成与 ChatGPT 对等的百分比。
+Nexus WorkStudio 的目标是让用户通过对话完成研究、编程、数据分析和办公交付。能力应按真实任务的完成结果衡量，不能把工具数量、代码测试或一份生成文件换算成与 ChatGPT 对等的百分比。
 
 研究与页图验证见 [VALIDATION-GENERAL-WORK.md](VALIDATION-GENERAL-WORK.md)，浏览器与媒体最新验证见 [VALIDATION-INTERACTIVE-WORK.md](VALIDATION-INTERACTIVE-WORK.md)。
 
@@ -29,14 +29,14 @@ Atlas DataBuddy 的目标是让用户通过对话完成研究、编程、数据�
 在应用部署的 `.env` 中配置并重启服务：
 
 ```dotenv
-ATLAS_WEB_ENABLED=1
-ATLAS_WEB_ALLOWED_HOSTS=docs.python.org,learn.chatgpt.com,github.com
-ATLAS_WEB_SEARCH_URL=https://your-search.example.com/search
+NEXUS_WEB_ENABLED=1
+NEXUS_WEB_ALLOWED_HOSTS=docs.python.org,learn.chatgpt.com,github.com
+NEXUS_WEB_SEARCH_URL=https://your-search.example.com/search
 ```
 
-搜索服务使用 [SearXNG JSON Search API](https://docs.searxng.org/dev/search_api.html)，实例需要在 `settings.yml` 的 `search.formats` 中启用 `json`。不要依赖未经授权的公共实例。若搜索入口有独立 Bearer 认证，可配置 `ATLAS_WEB_SEARCH_TOKEN`；该令牌只发送给固定搜索入口，不转发给网页。
+搜索服务使用 [SearXNG JSON Search API](https://docs.searxng.org/dev/search_api.html)，实例需要在 `settings.yml` 的 `search.formats` 中启用 `json`。不要依赖未经授权的公共实例。若搜索入口有独立 Bearer 认证，可配置 `NEXUS_WEB_SEARCH_TOKEN`；该令牌只发送给固定搜索入口，不转发给网页。
 
-没有搜索服务时可省略 `ATLAS_WEB_SEARCH_URL`，Agent 仍可读取已知且获准的公开 URL。`ATLAS_WEB_ALLOWED_HOSTS` 使用准确主机名，默认不允许任何网站；管理员也可显式用 `*` 允许所有公网主机，私网、本机、云元数据及非标准网页端口仍被拒绝。私网搜索服务还需在原有 `API_ALLOWED_HOSTS` 中明确允许；公网搜索入口要求 HTTPS。
+没有搜索服务时可省略 `NEXUS_WEB_SEARCH_URL`，Agent 仍可读取已知且获准的公开 URL。`NEXUS_WEB_ALLOWED_HOSTS` 使用准确主机名，默认不允许任何网站；管理员也可显式用 `*` 允许所有公网主机，私网、本机、云元数据及非标准网页端口仍被拒绝。私网搜索服务还需在原有 `API_ALLOWED_HOSTS` 中明确允许；公网搜索入口要求 HTTPS。
 
 开启此能力意味着搜索查询会发送给搜索服务及其上游。仅用于公开研究；不要在查询中输入保密资料或凭据。已接入公司内部或工作系统资料的项目拒绝使用原生公网研究；其他上传资料的保密分类仍需部署者管理，不应将开放公网工具视为数据防泄漏系统。
 
@@ -49,7 +49,7 @@ ATLAS_WEB_SEARCH_URL=https://your-search.example.com/search
 
 网页和搜索结果始终是不可信资料。正文中的“忽略用户、调用工具、发送秘密”等文字不能授予权限。引用核对只证明摘录与已读快照一致，不证明作者身份、发布日期、推断或事实本身正确。正文最多保存 180,000 字符，截断会明确标记；读取不是 JavaScript 浏览器，不登录网站，不获取用户已有会话，也不把 HTTP 成功当作业务事实核实。
 
-每个账号在每个项目的网页证据默认限制为 32 MiB；管理员可用 `ATLAS_WEB_STORAGE_MB` 调整到 1–1024 MiB。达到预算后拒绝新增快照，不自动删除已有引用。该预算与应用数据库备份、容量和保留策略一起管理。
+每个账号在每个项目的网页证据默认限制为 32 MiB；管理员可用 `NEXUS_WEB_STORAGE_MB` 调整到 1–1024 MiB。达到预算后拒绝新增快照，不自动删除已有引用。该预算与应用数据库备份、容量和保留策略一起管理。
 
 ## 二进制成果与页图
 
@@ -65,14 +65,14 @@ ATLAS_WEB_SEARCH_URL=https://your-search.example.com/search
 
 默认生成前 4 页，每次最多 8 页。用 `first_page` 选择后续页段，界面明确显示当前覆盖范围。HTML 页面在无网络执行环境中渲染；应用前端只展示页图，不运行生成的 HTML / JavaScript。这提供渲染预览，不等于交互式网站托管。
 
-工作镜像新增了 `/opt/atlas-work/render.py`，必须按 [WORK-MODE.md](WORK-MODE.md) 重建工作镜像、推送并更新批准的真实 digest；旧镜像不会因为应用代码更新而自动具有此文件。
+工作镜像新增了 `/opt/nexus-work/render.py`，必须按 [WORK-MODE.md](WORK-MODE.md) 重建工作镜像、推送并更新批准的真实 digest；旧镜像不会因为应用代码更新而自动具有此文件。
 
 ## 启用视觉模型
 
 确认当前模型和兼容接口确实接受 Chat Completions `image_url` 图像输入后，在应用 `.env` 设置：
 
 ```dotenv
-ATLAS_VISION_ENABLED=1
+NEXUS_VISION_ENABLED=1
 ```
 
 模型仍来自原有管理员模型目录，不增加另一套前台密钥配置。`inspect_visual_artifact` 会把所选 PNG / JPEG 的真实字节发给本轮固定模型，沿用模型隐私授权、调用预算与用量记录；旧版无状态 OpenCode 文本接口不支持此路径。输入最多 6 MiB、单边不超过 4096 像素，总像素不超过 1200 万。
@@ -95,7 +95,7 @@ python scripts/verify_work_mode.py --output work-mode-verification.json
 python scripts/evaluate_agent.py --cases-file evals/work-mode.json
 ```
 
-配置 `ATLAS_URL`、`APP_TOKEN` 并确认模型、执行器、网页域名和视觉能力后，显式执行：
+配置 `NEXUS_URL`、`APP_TOKEN` 并确认模型、执行器、网页域名和视觉能力后，显式执行：
 
 ```bash
 python scripts/evaluate_agent.py --cases-file evals/work-mode.json --execute --limit 5 --output work-task-results.json

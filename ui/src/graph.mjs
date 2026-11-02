@@ -1,4 +1,4 @@
-// Uses only IDs and relationships returned by the authenticated Atlas API.
+// Uses only IDs and relationships returned by the authenticated Nexus WorkStudio API.
 export function lineageGraph(pipeline, value) {
   if(!pipeline || !value)return {nodes:[],edges:[]};
   const sources=[...new Set((value.source_ids||[]).filter(id=>typeof id==='string'))];

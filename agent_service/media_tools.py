@@ -44,10 +44,10 @@ DEFINITIONS = {
 
 
 def status():
-    configured = bool(os.getenv('ATLAS_MEDIA_BASE_URL') and os.getenv('ATLAS_MEDIA_API_KEY'))
+    configured = bool(os.getenv('NEXUS_MEDIA_BASE_URL') and os.getenv('NEXUS_MEDIA_API_KEY'))
     return {name: configured and bool(os.getenv(variable)) for name, variable in (
-        ('images', 'ATLAS_IMAGE_MODEL'), ('transcription', 'ATLAS_TRANSCRIBE_MODEL'),
-        ('speech', 'ATLAS_SPEECH_MODEL'), ('realtime', 'ATLAS_REALTIME_MODEL'))}
+        ('images', 'NEXUS_IMAGE_MODEL'), ('transcription', 'NEXUS_TRANSCRIBE_MODEL'),
+        ('speech', 'NEXUS_SPEECH_MODEL'), ('realtime', 'NEXUS_REALTIME_MODEL'))}
 
 
 def project_scope(pid):
@@ -66,7 +66,7 @@ def project_scope(pid):
 def _request(path, *, payload=None, data=None, files=None, limit=24 * 1024 * 1024, include_headers=False, missing_ok=False):
     """Fixed administrator endpoint, pinned DNS, TLS/SNI, no redirects or URL downloads."""
     from .connectors import safe_api_url
-    raw = os.getenv('ATLAS_MEDIA_BASE_URL', '').rstrip('/')
+    raw = os.getenv('NEXUS_MEDIA_BASE_URL', '').rstrip('/')
     parsed = urlsplit(raw)
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.scheme not in ('http', 'https')):
@@ -78,7 +78,7 @@ def _request(path, *, payload=None, data=None, files=None, limit=24 * 1024 * 102
     host = '[' + ip + ']' if ':' in ip else ip
     if parsed.port: host += ':' + str(parsed.port)
     pinned = urlunsplit((parsed.scheme, host, parsed.path + '/' + path, '', ''))
-    headers = {'Host': parsed.netloc, 'Authorization': 'Bearer ' + os.environ['ATLAS_MEDIA_API_KEY']}
+    headers = {'Host': parsed.netloc, 'Authorization': 'Bearer ' + os.environ['NEXUS_MEDIA_API_KEY']}
     try:
         with httpx.Client(timeout=10 if path.endswith('/hangup') else 180, trust_env=False, follow_redirects=False) as client:
             with client.stream('POST', pinned, headers=headers, json=payload, data=data, files=files,
@@ -104,7 +104,7 @@ def _job(pid, kind, request_id):
     with FileLock(str(DATA / 'media-admission.lock'), timeout=10):
         recent = [v for v in all_items('media_job') if v['actor_id'] == current_actor()
                   and v['created_at'][:10] == now()[:10]]
-        cap = max(1, min(1000, int(os.getenv('ATLAS_MEDIA_DAILY_REQUESTS', '40'))))
+        cap = max(1, min(1000, int(os.getenv('NEXUS_MEDIA_DAILY_REQUESTS', '40'))))
         if len(recent) >= cap: raise ValueError('当前账号已达到媒体服务每日请求上限')
         value = put('media_job', {'actor_id': current_actor(), 'project_id': pid, 'kind': kind,
                                  'state': 'pending', 'created_at': now()}, identity)
@@ -136,7 +136,7 @@ def save(pid, content, name, *, turn_id=None, provenance='ai_generated'):
     target = _root() / (checksum + Path(name).suffix)
     with FileLock(str(DATA / 'media-storage.lock'), timeout=10):
         used = sum(v.get('bytes', 0) for v in all_items('media_artifact') if v['actor_id'] == current_actor())
-        if used + len(content) > int(os.getenv('ATLAS_MEDIA_STORAGE_MB', '256')) * 1024 * 1024:
+        if used + len(content) > int(os.getenv('NEXUS_MEDIA_STORAGE_MB', '256')) * 1024 * 1024:
             raise ValueError('媒体成果已达到账号存储上限')
         _atomic_bytes(target, content)
         identity = 'ma_' + hashlib.sha256((current_actor() + pid + checksum + name + (turn_id or '')).encode()).hexdigest()[:48]
@@ -181,7 +181,7 @@ def execute(turn, name, args):
         if name == 'generate_image':
             if not status()['images']: raise ValueError('管理员尚未配置图像模型')
             options = Image(**args)
-            body = {'model': os.environ['ATLAS_IMAGE_MODEL'], 'prompt': options.prompt, 'n': 1,
+            body = {'model': os.environ['NEXUS_IMAGE_MODEL'], 'prompt': options.prompt, 'n': 1,
                     'size': options.size, 'quality': options.quality, 'output_format': 'png',
                     'background': 'transparent' if options.transparent else 'opaque'}
             if options.reference_artifact_id:
@@ -202,8 +202,8 @@ def execute(turn, name, args):
             if get('turn', turn['id']).get('outcome') == 'cancelled': raise ValueError('任务已停止，未发布图像')
             return save(pid, content, 'generated-image.png', turn_id=turn['id'])
         if not status()['speech']: raise ValueError('管理员尚未配置语音模型')
-        body = {'model': os.environ['ATLAS_SPEECH_MODEL'], 'input': Speech(**args).text,
-                'voice': os.getenv('ATLAS_SPEECH_VOICE', 'alloy'), 'response_format': 'mp3'}
+        body = {'model': os.environ['NEXUS_SPEECH_MODEL'], 'input': Speech(**args).text,
+                'voice': os.getenv('NEXUS_SPEECH_VOICE', 'alloy'), 'response_format': 'mp3'}
         content = _request('audio/speech', payload=body, limit=16 * 1024 * 1024)
         if not (content.startswith(b'ID3') or len(content) > 2 and content[0] == 255 and content[1] & 224 == 224):
             raise ValueError('语音服务未返回MP3字节')
@@ -227,7 +227,7 @@ def end_call(value):
         value=get('voice_call',value['id'])
         if value['state']=='closed':return
         patch('voice_call',value['id'],close_requested=True)
-        if value['provider_sha256']!=hashlib.sha256(os.getenv('ATLAS_MEDIA_BASE_URL','').rstrip('/').encode()).hexdigest():
+        if value['provider_sha256']!=hashlib.sha256(os.getenv('NEXUS_MEDIA_BASE_URL','').rstrip('/').encode()).hexdigest():
             raise ValueError('语音服务地址已变化，请管理员核对旧会话')
         call_id=unseal(value['call_secret'])
         _request('realtime/calls/'+call_id+'/hangup',limit=1024,missing_ok=True)
@@ -276,7 +276,7 @@ def install(app, auth):
             fmt=Path(audio.filename or '').suffix.lower().lstrip('.')
             if fmt not in ('webm','mp3','mp4','m4a','wav','ogg','flac'):raise ValueError('录音格式不支持')
         def operation():
-            raw = _request('audio/transcriptions', data={'model': os.environ['ATLAS_TRANSCRIBE_MODEL']},
+            raw = _request('audio/transcriptions', data={'model': os.environ['NEXUS_TRANSCRIBE_MODEL']},
                            files={'file': ('recording.' + fmt, content, 'application/octet-stream')}, limit=256 * 1024)
             text = json.loads(raw).get('text')
             if not isinstance(text, str) or len(text) > 12000: raise ValueError('转写结果无效')
@@ -290,18 +290,18 @@ def install(app, auth):
     def voice_connect(pid: str, value: VoiceOffer):
         if not status()['realtime']: raise ValueError('管理员尚未配置实时语音')
         def operation():
-            config = {'type': 'realtime', 'model': os.environ['ATLAS_REALTIME_MODEL'],
-                      'instructions': '你是Atlas语音助手。语音回答仅供讨论；执行工作须用户把文字发送到项目对话。不要声称已执行工具或访问项目文件。',
+            config = {'type': 'realtime', 'model': os.environ['NEXUS_REALTIME_MODEL'],
+                      'instructions': '你是Nexus WorkStudio语音助手。语音回答仅供讨论；执行工作须用户把文字发送到项目对话。不要声称已执行工具或访问项目文件。',
                       'tools': [], 'max_output_tokens': 1024,
-                      'audio': {'output': {'voice': os.getenv('ATLAS_SPEECH_VOICE', 'alloy')}}}
-            if os.getenv('ATLAS_TRANSCRIBE_MODEL'):
-                config['audio']['input'] = {'transcription': {'model': os.environ['ATLAS_TRANSCRIBE_MODEL']}}
+                      'audio': {'output': {'voice': os.getenv('NEXUS_SPEECH_VOICE', 'alloy')}}}
+            if os.getenv('NEXUS_TRANSCRIBE_MODEL'):
+                config['audio']['input'] = {'transcription': {'model': os.environ['NEXUS_TRANSCRIBE_MODEL']}}
             raw,headers = _request('realtime/calls', files={'sdp': (None, value.sdp), 'session': (None, json.dumps(config))}, limit=128 * 1024,include_headers=True)
             call_id=headers.get('location','').rstrip('/').split('/')[-1]
             if not re.fullmatch(r'rtc_[a-zA-Z0-9_-]{1,120}',call_id):raise ValueError('语音服务缺少可管理的call_id，未返回连接；请管理员检查兼容接口')
             cid='vc_'+hashlib.sha256((current_actor()+pid+value.request_id).encode()).hexdigest()[:48]
             put('voice_call',{'project_id':pid,'actor_id':current_actor(),'call_secret':seal(call_id),'state':'open',
-                'provider_sha256':hashlib.sha256(os.environ['ATLAS_MEDIA_BASE_URL'].rstrip('/').encode()).hexdigest(),
+                'provider_sha256':hashlib.sha256(os.environ['NEXUS_MEDIA_BASE_URL'].rstrip('/').encode()).hexdigest(),
                 'created_at':now(),'deadline':time.time()+300},cid)
             answer = raw.decode()
             if not answer.startswith('v=0'): raise ValueError('实时语音没有返回有效连接描述')

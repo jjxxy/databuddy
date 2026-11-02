@@ -25,8 +25,8 @@ def prepare(tmp_path):
     docker.write_text('#!'+sys.executable+'\n'+r'''
 import csv,json,os,pathlib,sys
 args=sys.argv[1:]
-record={'args':args,'folder':os.environ.get('ATLAS_LOCAL_WORKSPACE_HOST'),
-        'uid':os.environ.get('ATLAS_LOCAL_UID'),'network':os.environ.get('ATLAS_NETWORK_MODE')}
+record={'args':args,'folder':os.environ.get('NEXUS_LOCAL_WORKSPACE_HOST'),
+        'uid':os.environ.get('NEXUS_LOCAL_UID'),'network':os.environ.get('NEXUS_NETWORK_MODE')}
 with pathlib.Path(os.environ['LOCAL_LAUNCH_LOG']).open('a') as output:output.write(json.dumps(record,ensure_ascii=False)+'\n')
 if args[0]=='info':print('linux')
 elif args[:2]==['compose','version']:print('Compose fixture')
@@ -35,14 +35,14 @@ elif args[0]=='run':
     source=next(item.split('=',1)[1] for item in mount if item.startswith('source='))
     if args[-1]=='setup':
         path=pathlib.Path(source)/'.env'
-        if not path.exists():path.write_text('APP_TOKEN=fixture-local-access-token\nATLAS_HTTP_PORT=8127\n')
+        if not path.exists():path.write_text('APP_TOKEN=fixture-local-access-token\nNEXUS_HTTP_PORT=8127\n')
     elif args[-1]=='info':print('访问口令：fixture-local-access-token')
 elif args[0]!='compose':raise AssertionError(args)
 ''')
     docker.chmod(0o755)
     env={**os.environ,'PATH':str(binary)+os.pathsep+os.environ.get('PATH',''),
-        'LOCAL_LAUNCH_LOG':str(log),'ATLAS_NO_OPEN':'1','ATLAS_LOCAL_UID':'1000','ATLAS_LOCAL_GID':'1000'}
-    env.pop('ATLAS_LOCAL_WORKSPACE_HOST',None)
+        'LOCAL_LAUNCH_LOG':str(log),'NEXUS_NO_OPEN':'1','NEXUS_LOCAL_UID':'1000','NEXUS_LOCAL_GID':'1000'}
+    env.pop('NEXUS_LOCAL_WORKSPACE_HOST',None)
     return bundle,chosen,log,env
 
 
@@ -59,7 +59,7 @@ def test_explicit_folder_is_one_exact_binding_and_no_host_python_needed(tmp_path
     bundle,chosen,log,env=prepare(tmp_path)
     result=run(bundle,env,'up','--folder',str(chosen),'--no-open')
     assert result.returncode==0,result.stderr
-    assert (bundle/'.atlas-local-folder').read_text().strip()==str(chosen)
+    assert (bundle/'.nexus-local-folder').read_text().strip()==str(chosen)
     calls=records(log)
     assert all(item['folder']==str(chosen) for item in calls)
     assert all(item['uid']=='1000' for item in calls)
@@ -97,7 +97,7 @@ def test_cancel_native_picker_does_not_start_or_create_state(tmp_path):
     chooser.write_text('#!/bin/sh\nexit 1\n');chooser.chmod(0o755)
     result=run(bundle,env,'up','--choose-folder')
     assert result.returncode==0 and not log.exists()
-    assert not (bundle/'.atlas-local-folder').exists()
+    assert not (bundle/'.nexus-local-folder').exists()
 
 
 @requires_posix_shell
@@ -111,10 +111,10 @@ def test_linked_folder_and_root_are_rejected_before_docker(tmp_path):
 
 def test_local_manifest_keeps_metadata_in_selected_folder_and_private_ui_on_loopback():
     compose=yaml.safe_load((ROOT/'compose.local.yaml').read_text())
-    service=compose['services']['atlas'];environment=service['environment']
-    assert environment['DATA_DIR']=='/local-workspace/.atlas'
-    assert environment['ATLAS_LOCAL_MODE']=='1' and environment['ATLAS_OPENCODE_RUNTIME']=='1'
-    assert environment['DATABASE_URL']=='sqlite:////local-workspace/.atlas/metadata.sqlite'
+    service=compose['services']['nexus'];environment=service['environment']
+    assert environment['DATA_DIR']=='/local-workspace/.nexus'
+    assert environment['NEXUS_LOCAL_MODE']=='1' and environment['NEXUS_OPENCODE_RUNTIME']=='1'
+    assert environment['DATABASE_URL']=='sqlite:////local-workspace/.nexus/metadata.sqlite'
     assert service['volumes'][0]['target']=='/local-workspace'
     assert service['volumes'][0]['bind']['create_host_path'] is False
     assert '127.0.0.1' in service['ports'][0]
@@ -125,6 +125,6 @@ def test_windows_picker_has_real_folder_dialog_and_bom_but_no_execution_claim():
     path=ROOT/'start-local.ps1';raw=path.read_bytes();text=raw.decode('utf-8-sig')
     assert raw.startswith(b'\xef\xbb\xbf') and '\r\n' in text
     assert 'System.Windows.Forms.FolderBrowserDialog' in text
-    assert 'ReparsePoint' in text and 'ATLAS_LOCAL_WORKSPACE_HOST' in text
+    assert 'ReparsePoint' in text and 'NEXUS_LOCAL_WORKSPACE_HOST' in text
     assert 'compose.local.yaml' in text
     assert 'start-local.ps1' in (ROOT/'start-local.cmd').read_text()

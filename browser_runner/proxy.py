@@ -21,16 +21,16 @@ def private_networks(host, allowed):
     The proxy remains a separate enforcement boundary: a hostname resolving to
     both an approved and an unapproved address must be rejected entirely.
     """
-    if os.getenv('ATLAS_BROWSER_PRIVATE_ENABLED') != '1':
+    if os.getenv('NEXUS_BROWSER_PRIVATE_ENABLED') != '1':
         return ()
     approved = {x.strip().lower().rstrip('.') for x in
-                os.getenv('ATLAS_BROWSER_PRIVATE_HOSTS', '').split(',') if x.strip()}
+                os.getenv('NEXUS_BROWSER_PRIVATE_HOSTS', '').split(',') if x.strip()}
     if host not in approved:
         return ()
     if host not in allowed or host == '*':
         raise ValueError('Private destination requires an exact host approval')
     try:
-        config = json.loads(os.getenv('ATLAS_BROWSER_PRIVATE_HOSTS_JSON', '{}'))
+        config = json.loads(os.getenv('NEXUS_BROWSER_PRIVATE_HOSTS_JSON', '{}'))
         if not isinstance(config, dict): raise ValueError()
         raw = config.get(host, [])
         if not isinstance(raw, list) or not raw or len(raw) > 32: raise ValueError()
@@ -74,7 +74,7 @@ async def handle(reader, writer):
         lines = raw.decode('latin1').split('\r\n')
         method, target, version = lines[0].split(' ')
         if version not in ('HTTP/1.0', 'HTTP/1.1'): raise ValueError('Invalid protocol')
-        allowed = {s.strip().lower().rstrip('.') for s in os.getenv('ATLAS_BROWSER_ALLOWED_HOSTS', '').split(',') if s.strip()}
+        allowed = {s.strip().lower().rstrip('.') for s in os.getenv('NEXUS_BROWSER_ALLOWED_HOSTS', '').split(',') if s.strip()}
         if method == 'CONNECT':
             parsed = urlsplit('https://' + target)
             if parsed.path or parsed.query or parsed.fragment: raise ValueError('Invalid CONNECT')

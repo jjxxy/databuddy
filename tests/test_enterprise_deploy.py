@@ -4,10 +4,10 @@ import pytest
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('render_enterprise',ROOT/'scripts/render_enterprise.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 
-def config():return {'namespace':'atlas-test','image':'registry.test/atlas@sha256:'+'a'*64,'gatewayImage':'registry.test/proxy@sha256:'+'b'*64,'rwxClaim':'shared-test','storageId':'test-workspace','secretName':'owner-secrets','hostname':'atlas.test','tlsSecret':'tls','provisionPostgres':True,'databaseStorageClass':'fast'}
+def config():return {'namespace':'nexus-test','image':'registry.test/nexus@sha256:'+'a'*64,'gatewayImage':'registry.test/proxy@sha256:'+'b'*64,'rwxClaim':'shared-test','storageId':'test-workspace','secretName':'owner-secrets','hostname':'nexus.test','tlsSecret':'tls','provisionPostgres':True,'databaseStorageClass':'fast'}
 
 def test_fail_closed_without_real_images_and_shared_storage_inputs():
-    c=config();c['image']='atlas:latest'
+    c=config();c['image']='nexus:latest'
     with pytest.raises(ValueError):module.render(c)
     c=config();c.pop('rwxClaim')
     with pytest.raises(ValueError):module.render(c)
@@ -20,18 +20,18 @@ def test_ha_topology_no_hostpath_and_identity_gateway_only():
         assert pod['affinity']['podAntiAffinity']['requiredDuringSchedulingIgnoredDuringExecution']
         for volume in pod.get('volumes',[]):assert 'hostPath' not in volume
     db=next(v for v in docs if v['kind']=='Cluster');assert db['spec']['instances']==3
-    ingress=next(v for v in docs if v['kind']=='Ingress');assert ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name']=='atlas-gateway'
+    ingress=next(v for v in docs if v['kind']=='Ingress');assert ingress['spec']['rules'][0]['http']['paths'][0]['backend']['service']['name']=='nexus-gateway'
     assert len([v for v in docs if v['kind']=='PodDisruptionBudget'])==4
-    api=next(d for d in deployments if d['metadata']['name']=='atlas-api');assert api['spec']['template']['spec']['containers'][0]['readinessProbe']['httpGet']['path']=='/ready'
+    api=next(d for d in deployments if d['metadata']['name']=='nexus-api');assert api['spec']['template']['spec']['containers'][0]['readinessProbe']['httpGet']['path']=='/ready'
 
 
 def test_separate_role_deployments_do_not_wait_for_an_unstarted_local_opencode():
     for deployment in module.render(config()):
-        if deployment['kind'] != 'Deployment' or deployment['metadata']['name'] == 'atlas-gateway':continue
+        if deployment['kind'] != 'Deployment' or deployment['metadata']['name'] == 'nexus-gateway':continue
         container = deployment['spec']['template']['spec']['containers'][0]
         assert 'agent_service.cloud' not in container['command']
         environment = {item['name']: item.get('value') for item in container['env']}
-        assert environment['ATLAS_OPENCODE_RUNTIME'] == '0'
+        assert environment['NEXUS_OPENCODE_RUNTIME'] == '0'
 
 
 def app_containers(docs):
@@ -94,9 +94,9 @@ def test_compose_roles_keep_compatibility_while_quickstart_starts_native_runtime
     for name, service in legacy['services'].items():
         if name == 'postgres':continue
         assert 'agent_service.cloud' not in service['command']
-        assert service['environment']['ATLAS_OPENCODE_RUNTIME'] == '0'
-    quickstart = yaml.safe_load((ROOT / 'compose.quickstart.yaml').read_text())['services']['atlas']
-    assert quickstart['environment']['ATLAS_OPENCODE_RUNTIME'] == '1'
+        assert service['environment']['NEXUS_OPENCODE_RUNTIME'] == '0'
+    quickstart = yaml.safe_load((ROOT / 'compose.quickstart.yaml').read_text())['services']['nexus']
+    assert quickstart['environment']['NEXUS_OPENCODE_RUNTIME'] == '1'
     assert 'command' not in quickstart
     assert 'CMD ["python", "-m", "agent_service.cloud"]' in (ROOT / 'Dockerfile.quickstart').read_text()
 

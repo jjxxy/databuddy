@@ -17,7 +17,7 @@ function Get-LocalUrl {
     if (Test-Path -LiteralPath $envPath) {
         # Read one numeric setting only; never execute or display .env.
         foreach ($line in [System.IO.File]::ReadAllLines($envPath, $utf8)) {
-            if ($line -match '^\s*(?:export\s+)?ATLAS_HTTP_PORT\s*=(.*)$') {
+            if ($line -match '^\s*(?:export\s+)?NEXUS_HTTP_PORT\s*=(.*)$') {
                 $value = $Matches[1].Trim()
                 if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
                     ($value.StartsWith("'") -and $value.EndsWith("'"))) {
@@ -28,13 +28,13 @@ function Get-LocalUrl {
                 if ($value -match '^0*([1-9][0-9]{0,4}|0)$') {
                     $port = [int]$Matches[1]
                 } else {
-                    throw '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+                    throw '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
                 }
             }
         }
     }
     if ($port -lt 1 -or $port -gt 65535) {
-        throw '.env 中 ATLAS_HTTP_PORT 需为 1–65535 的数字端口。'
+        throw '.env 中 NEXUS_HTTP_PORT 需为 1–65535 的数字端口。'
     }
     return "http://localhost:$port"
 }
@@ -42,7 +42,7 @@ function Get-LocalUrl {
 function Open-LocalWorkspace {
     $url = Get-LocalUrl
     Write-Host "工作空间：$url"
-    if (-not $NoOpen -and $env:ATLAS_NO_OPEN -ne '1') {
+    if (-not $NoOpen -and $env:NEXUS_NO_OPEN -ne '1') {
         try { Start-Process $url }
         catch { Write-Host '浏览器未能自动打开，请手动打开上方地址。' }
     }

@@ -2,19 +2,19 @@
 import base64,hashlib,io,os,pwd,shutil,subprocess,sys,zipfile
 from pathlib import Path
 
-def announce(message):print('ATLAS_BOOTSTRAP '+message,flush=True)
+def announce(message):print('NEXUS_BOOTSTRAP '+message,flush=True)
 def main():
     if len(os.getenv('APP_TOKEN',''))<16:raise ValueError('Missing strong APP_TOKEN')
     mount=os.getenv('RAILWAY_VOLUME_MOUNT_PATH')
     data=Path(os.getenv('DATA_DIR','/data')).resolve()
     if not mount or not data.is_relative_to(Path(mount).resolve()):raise ValueError('Persistent data volume is required')
-    count=int(os.environ['ATLAS_CODE_PARTS'])
+    count=int(os.environ['NEXUS_CODE_PARTS'])
     if not 1<=count<=100:raise ValueError('Source bundle part count is invalid')
-    encoded=''.join(os.environ[f'ATLAS_CODE_PART_{i:02d}'] for i in range(count))
+    encoded=''.join(os.environ[f'NEXUS_CODE_PART_{i:02d}'] for i in range(count))
     raw=base64.b64decode(encoded,validate=True)
     digest=hashlib.sha256(raw).hexdigest()
-    if digest!=os.environ['ATLAS_CODE_SHA256']:raise ValueError('Source bundle checksum mismatch')
-    base=Path('/opt/atlas');release=base/'source';release.mkdir(parents=True,exist_ok=True)
+    if digest!=os.environ['NEXUS_CODE_SHA256']:raise ValueError('Source bundle checksum mismatch')
+    base=Path('/opt/nexus');release=base/'source';release.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         if sum(v.file_size for v in archive.infolist())>10*1024*1024:raise ValueError('Source bundle exceeds limit')
         for entry in archive.infolist():
@@ -33,8 +33,8 @@ def main():
     announce('installing locked runtime dependencies')
     subprocess.run([str(python),'-m','pip','install','--no-cache-dir','--disable-pip-version-check','-r',str(release/'requirements-cloud.lock')],check=True)
     os.environ['PYTHONPATH']=str(release)
-    os.environ['ATLAS_DROP_PRIVILEGES']='1'
-    os.environ['ATLAS_CLOUD_VERIFY']='1'
+    os.environ['NEXUS_DROP_PRIVILEGES']='1'
+    os.environ['NEXUS_CLOUD_VERIFY']='1'
     os.environ.setdefault('XDG_CACHE_HOME',str(data/'cache'))
     os.chdir(release)
     announce('starting the supervised application')

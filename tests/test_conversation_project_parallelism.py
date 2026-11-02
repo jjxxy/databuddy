@@ -14,7 +14,7 @@ from agent_service.store import delete, get, patch, put, uid
 
 
 def test_live_project_does_not_block_another_project_and_fifo_is_preserved(monkeypatch):
-    monkeypatch.setenv('ATLAS_CONVERSATION_CONCURRENCY', '2')
+    monkeypatch.setenv('NEXUS_CONVERSATION_CONCURRENCY', '2')
     first_project, second_project = 'p_'+uid(), 'p_'+uid()
     first, next_same, other = 't_'+uid(), 't_'+uid(), 't_'+uid()
     for pid in (first_project, second_project):
@@ -86,7 +86,7 @@ def get_failure_free_counts(calls, *turns):
 
 
 def test_lost_execution_lock_stops_all_workers_and_is_reported(monkeypatch):
-    monkeypatch.setenv('ATLAS_CONVERSATION_CONCURRENCY', '2')
+    monkeypatch.setenv('NEXUS_CONVERSATION_CONCURRENCY', '2')
     stop = threading.Event()
     def lost():
         raise LockLost('lost project execution ownership')
@@ -103,7 +103,7 @@ def test_lost_execution_lock_stops_all_workers_and_is_reported(monkeypatch):
 def test_inline_worker_stops_project_slots_when_supervisor_lock_is_lost(monkeypatch):
     from agent_service import activity, collaboration_runtime, runtime, worker
 
-    monkeypatch.setenv('ATLAS_CONVERSATION_CONCURRENCY', '2')
+    monkeypatch.setenv('NEXUS_CONVERSATION_CONCURRENCY', '2')
     monkeypatch.setenv('AGENT_ORCHESTRATION_MODE', 'inline')
     monkeypatch.setattr(runtime, 'preflight', lambda: None)
     monkeypatch.setattr(runtime, 'heartbeat', lambda *args, **kwargs: None)
@@ -131,7 +131,7 @@ def test_inline_worker_stops_project_slots_when_supervisor_lock_is_lost(monkeypa
 
 def test_failure_stops_scheduler_without_releasing_another_live_project(monkeypatch):
     """Another slot's failure cannot free a live owner's lock or permit replay."""
-    monkeypatch.setenv('ATLAS_CONVERSATION_CONCURRENCY', '2')
+    monkeypatch.setenv('NEXUS_CONVERSATION_CONCURRENCY', '2')
     first_pid, second_pid = 'p_'+uid(), 'p_'+uid()
     first, second = 't_'+uid(), 't_'+uid()
     for pid in (first_pid, second_pid):
@@ -268,6 +268,6 @@ def test_concurrent_recovery_does_not_repeat_a_completed_restore(monkeypatch):
 
 @pytest.mark.parametrize('value', ['0', '9', 'bad'])
 def test_invalid_concurrency_is_rejected(monkeypatch, value):
-    monkeypatch.setenv('ATLAS_CONVERSATION_CONCURRENCY', value)
+    monkeypatch.setenv('NEXUS_CONVERSATION_CONCURRENCY', value)
     with pytest.raises(ValueError):
         concurrency()

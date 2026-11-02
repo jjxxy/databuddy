@@ -11,19 +11,19 @@ function verifyFallback(){
  const dom=new JSDOM('',{url:'http://192.168.1.7/',runScripts:'outside-only'}),w=dom.window;
  try{
   withoutNativeUUID(w);w.eval(read('secure-id.js'));
-  const ids=Array.from({length:1000},()=>w.atlasSecureUUID());
+  const ids=Array.from({length:1000},()=>w.nexusSecureUUID());
   assert(ids.every(value=>valid.test(value)));assert.equal(new Set(ids).size,ids.length);
  }finally{dom.window.close()}
  let directCalls=0,randomCalls=0;
  const native={crypto:{randomUUID(){directCalls++;return 'existing-native-id'},getRandomValues(){randomCalls++;throw Error('unneeded')}}};
- vm.runInNewContext(read('secure-id.js'),{window:native});assert.equal(native.atlasSecureUUID(),'existing-native-id');assert.equal(directCalls,1);assert.equal(randomCalls,0);
- const noEntropy={crypto:{}};vm.runInNewContext(read('secure-id.js'),{window:noEntropy});assert.throws(()=>noEntropy.atlasSecureUUID(),/安全的请求标识/);
+ vm.runInNewContext(read('secure-id.js'),{window:native});assert.equal(native.nexusSecureUUID(),'existing-native-id');assert.equal(directCalls,1);assert.equal(randomCalls,0);
+ const noEntropy={crypto:{}};vm.runInNewContext(read('secure-id.js'),{window:noEntropy});assert.throws(()=>noEntropy.nexusSecureUUID(),/安全的请求标识/);
 }
 async function scenario(mode,status,persistent=false){
  const dom=new JSDOM(read('index.html'),{url:'http://192.168.1.7:8000/',runScripts:'outside-only'}),w=dom.window,d=w.document;
  try{
   withoutNativeUUID(w);w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;
-  w.sessionStorage.setItem('atlas_token','fixture-only');let activeUploads=0,maxUploads=0,revision=0;
+  w.sessionStorage.setItem('nexus_token','fixture-only');let activeUploads=0,maxUploads=0,revision=0;
   const uploads=[],posts=[],registered=[],failures=new Map();
   const response=(value,code=200,retry=false)=>({ok:code<400,status:code,headers:{get:name=>name.toLowerCase()==='retry-after'&&retry?'0.001':null},json:async()=>value});
   w.fetch=async(url,options={})=>{
@@ -49,7 +49,7 @@ async function scenario(mode,status,persistent=false){
    else throw Error('Unexpected route '+route+' '+method);
    return response(value);
   };
-  w.eval(read('secure-id.js'));w.eval(read('lifecycle.js')+';window.createAtlasLifecycle=createAtlasLifecycle;');
+  w.eval(read('secure-id.js'));w.eval(read('lifecycle.js')+';window.createNexusLifecycle=createNexusLifecycle;');
   w.eval(read('app.js')+';window.integrationTest={send,state:()=>({projectId,sessionId,sending,attached,pending})};');
   await until(()=>w.integrationTest.state().sessionId==='c'&&!d.querySelector('#shell').hidden);
   assert.equal(registered.length,1);assert(/^d_[a-f0-9]{32}$/.test(registered[0]));

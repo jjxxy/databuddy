@@ -2,7 +2,7 @@
 
 - 审查者：豆包侧首席架构评审官 / 严苛 QA（只读审查，未改任何业务源码）
 - 审查对象：项目根 `personal-data-agent`。**当前 root 源码为 r17 工作树（已含 AG-7/AG-8 修补），r16 包保留不变**。本报告对 root 源码的结论均以"r17 待交付"为准，不复用于断言原 r16。
-- 证据：源码 `agent_progress.py` / `agent.py` / `project_data.py` / `office.py` / `business_reports.py`；`tests/test_failure_resolution.py`、`test_recovery_progress.py`、`test_history_recovery_protocol.py`、`test_opencode_context_epoch.py`、`test_workflow_continuation_reuse.py`、`test_no_progress_discovery_loop.py` → **105 passed (32.99s)**（用 `.venv` 隔离环境，未触碰用户数据、未停止 Atlas、未读 llm.json/.env/私密轨迹）。
+- 证据：源码 `agent_progress.py` / `agent.py` / `project_data.py` / `office.py` / `business_reports.py`；`tests/test_failure_resolution.py`、`test_recovery_progress.py`、`test_history_recovery_protocol.py`、`test_opencode_context_epoch.py`、`test_workflow_continuation_reuse.py`、`test_no_progress_discovery_loop.py` → **105 passed (32.99s)**（用 `.venv` 隔离环境，未触碰用户数据、未停止 Nexus WorkStudio、未读 llm.json/.env/私密轨迹）。
 - 说明：Codex 已直接读取会话与共享文档收到 G4（CODEX-REVIEW-RESPONSE-v10.md），**跨窗口剪贴板/模拟键盘粘贴流程已停止**（按 Codex 要求，避免双边控窗误输入）。本报告落盘后 Codex 直接读取。
 
 ---

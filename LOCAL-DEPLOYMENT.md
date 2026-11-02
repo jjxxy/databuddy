@@ -2,9 +2,9 @@
 
 此文档保留开发者环境的操作方式，**不是业务用户零环境配置交付入口**。
 业务用户使用随包 Python/Git/OpenCode 的 Electron 桌面交付包，不需要 WSL、Docker 或系统 PATH。
-旧 `run-local.sh` 显式使用 `ATLAS_OPENCODE_RUNTIME=0`；它是联网安装依赖的开发脚本，不满足离线首启验收。
+旧 `run-local.sh` 显式使用 `NEXUS_OPENCODE_RUNTIME=0`；它是联网安装依赖的开发脚本，不满足离线首启验收。
 
-此入口运行 Atlas DataBuddy v0.20.0 的 API、worker 和 agent 三个独立进程。仅监听
+此入口运行 Nexus WorkStudio v0.20.0 的 API、worker 和 agent 三个独立进程。仅监听
 `127.0.0.1`，浏览器访问 `http://127.0.0.1:8000`。Windows 通过 WSL localhost
 转发访问 Linux 服务。程序不会自动安装依赖或修改 Windows 防火墙。
 
@@ -12,16 +12,16 @@
 
 - WSL2 的 `Ubuntu-24.04`，发行版默认用户须为普通用户。
 - Ubuntu Python 3.12、`python3-venv`，及项目完整源码。
-- 虚拟环境 `~/.venvs/atlas-databuddy-020` 已安装 `requirements.lock` 中的依赖。
+- 虚拟环境 `~/.venvs/nexus-databuddy-020` 已安装 `requirements.lock` 中的依赖。
 - 使用默认 AI 引擎时，需要 Linux OpenCode **2.1.2**，默认路径为
-  `~/.local/bin/opencode-atlas-2.1.2`。其他版本会明确报错。
+  `~/.local/bin/opencode-nexus-2.1.2`。其他版本会明确报错。
 - `llm.json` 填写真实上游地址、模型和密钥；启动前校验，密钥不作为命令行参数。
 
 如需重建 Python 环境，在 Ubuntu 中运行：
 
 ```sh
-python3 -m venv ~/.venvs/atlas-databuddy-020
-~/.venvs/atlas-databuddy-020/bin/python -m pip install -r requirements.lock
+python3 -m venv ~/.venvs/nexus-databuddy-020
+~/.venvs/nexus-databuddy-020/bin/python -m pip install -r requirements.lock
 ```
 
 将当前目录切换到源码所在位置后执行上述安装。OpenCode 需另外安装受信任的
@@ -49,7 +49,7 @@ Windows 在本文件所在目录打开 PowerShell：
 
 ```powershell
 .\start-native.cmd start -Port 8001 -NoOpen
-.\start-native.cmd start -ModelConfig 'C:\private\llm.json' -OpenCodeBinary '/home/001/.local/bin/opencode-atlas-2.1.2'
+.\start-native.cmd start -ModelConfig 'C:\private\llm.json' -OpenCodeBinary '/home/001/.local/bin/opencode-nexus-2.1.2'
 ```
 
 `-Distro` 可选择其他 WSL 发行版，`-Python` 可选择 Linux 虚拟环境解释器。
@@ -71,7 +71,7 @@ python3 native_local.py stop
 模型目录文件，文件内容变更会验证并更新模型目录；后续模型维护使用应用后台管理员流程。
 
 如果 `llm.json` 不存在且没有已保存的模型配置，则允许启动 UI 与数据后台，输出 `MODEL UNCONFIGURED`
-提示，AI 任务需配置真实模型。此时使用 Atlas 原有兼容引擎（`ATLAS_OPENCODE_RUNTIME=0`），
+提示，AI 任务需配置真实模型。此时使用 Nexus WorkStudio 原有兼容引擎（`NEXUS_OPENCODE_RUNTIME=0`），
 没有模拟模型。存在占位内容或无效内容的文件会报错，不能视作未配置。
 要明确使用原有兼容引擎，可执行 `start -Engine compatibility`，或 Linux 参数
 `--engine compatibility`。此选项同样使用真实模型，没有上游失败后的隐藏降级。
@@ -81,12 +81,12 @@ python3 native_local.py stop
 
 ## 数据、日志和停止
 
-Linux 默认状态目录是 `~/.local/share/atlas-databuddy-020`，而非 Windows 挂载盘：
+Linux 默认状态目录是 `~/.local/share/nexus-databuddy-020`，而非 Windows 挂载盘：
 
 - `data/`：SQLite、业务文件及加密所需 `connector.key`。
 - `credentials.json`：随机生成且持久保存的两套独立口令，权限 0600。
 - `process.json`：实例 PID、内核启动时间与启动标识，避免停止复用该 PID 的无关进程。
-- `atlas.log`：服务日志；每次启动时超过 8 MiB 的旧日志保留为 `atlas.previous.log`。
+- `nexus.log`：服务日志；每次启动时超过 8 MiB 的旧日志保留为 `nexus.previous.log`。
 
 目录权限为 0700。stop 让 supervisor 正常关闭全部子服务，保留数据与口令。
 启动超时也会尝试正常停止。停止超时会报错，不会按端口或进程名强杀其他程序。

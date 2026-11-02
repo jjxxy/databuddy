@@ -4,8 +4,8 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(check){for(let i=0;i<120;i++){await tick();if(check())return}throw Error('business proposal did not settle')}
 const reply=value=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(value))});
 async function boot(state='pending',networkFail=false){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];let release;
- w.sessionStorage.setItem('atlas_token','fixture');w.setInterval=()=>0;w.matchMedia=()=>({matches:false,addEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];let release;
+ w.sessionStorage.setItem('nexus_token','fixture');w.setInterval=()=>0;w.matchMedia=()=>({matches:false,addEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  const proposal={id:'bp_'+ 'a'.repeat(40),digest:'b'.repeat(64),state,title:'收入<img>',sources:[{name:'收入表',role:'主来源',design_revision:1}],steps:[{title:'核对金额',details:['检查口径']}],warnings:['币种待核对']};
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href);calls.push({path:u.pathname,method:options.method||'GET',body:options.body});
   if(u.pathname==='/api/models')return reply({models:[],configured:false});

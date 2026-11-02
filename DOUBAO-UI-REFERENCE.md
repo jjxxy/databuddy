@@ -1,4 +1,4 @@
-# DOUBAO-UI-REFERENCE — Atlas DataBuddy Web 端界面参考规格（给 Codex 的明确指令）
+# DOUBAO-UI-REFERENCE — Nexus WorkStudio Web 端界面参考规格（给 Codex 的明确指令）
 
 > 来源：用户明确指令（2026-10-28）。Codex 必须在实现 Web 端界面时遵循本规格，并在交付前给出"采样对齐说明"，**不得先声称达标**。
 > 本文件放在 Codex 当前工作仓库根，Codex 直接读取。此前同内容被误放在 `personal-data-agent` 主仓根，本文件为正式传达位置。
@@ -7,7 +7,7 @@
 
 - 本项目**部署在服务器上**，**用户零本地安装**，用户仅通过**浏览器 Web 端访问**。
 - **Web 端是用户唯一交互入口**；不做"必须装客户端/Electron 壳才能用"的交付。
-- 当前桌面便携包（`Atlas DataBuddy.exe` 等）仅作**本机开发/验证载体**；**生产交付以云端 Web 为准**。
+- 当前桌面便携包（`Nexus WorkStudio.exe` 等）仅作**本机开发/验证载体**；**生产交付以云端 Web 为准**。
 - 与 `DOUBAO-ACCEPTANCE-v0.md` §9 一致；Web 端必须承载完整工作流程（导入→目标→加工→核对→发布→报告/PPT→审计）。
 
 ## B. 界面参考基准（用户明确）

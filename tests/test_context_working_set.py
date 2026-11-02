@@ -63,7 +63,7 @@ def table(index):
 
 def test_five_financial_tables_then_plan_and_guide_survive_actual_planning_payload_over_50k(monkeypatch):
     from agent_service.workflow_guidance import guide
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('请根据全部底稿核对单位、期间、预算版本与含税口径；先生成候选，不要发布。')
     originals=[table(i) for i in range(5)];canonical=guide()
     trace=[{'id':'financial-table-'+str(i),'tool':'read_source_table','status':'done',
@@ -96,7 +96,7 @@ def test_unconsumed_authoring_guide_does_not_expire_after_two_nonwriting_steps()
 
 
 def test_legacy_owner_contract_model_view_shows_effective_policy_without_rewriting_audit(monkeypatch):
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('继续核对底稿，不要发布。')
     legacy=copy.deepcopy(value['task_contract']);legacy.pop('budget_policy',None)
     legacy['budgets']={'model_calls':18,'input_characters':360000,'output_tokens':24000,'duration_ms':300000}
@@ -112,7 +112,7 @@ def test_legacy_owner_contract_model_view_shows_effective_policy_without_rewriti
 @pytest.mark.parametrize('extra_reference_characters',[0,30000])
 def test_requested_guide_survives_five_tables_plan_file_and_followup_tools(monkeypatch,extra_reference_characters):
     from agent_service.workflow_guidance import guide
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas','tool_protocol':'json'})
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus','tool_protocol':'json'})
     value=turn('先核对完整底稿，再保存可复用加工方案，候选等待确认。')
     canonical=guide()
     if extra_reference_characters:

@@ -55,13 +55,13 @@ def test_rendered_pages_are_version_bound_and_visible_in_original_artifact_previ
     source = get('work_artifact', aid)
     output = 'previews/' + source['sha256'][:24]
     png = sample_png()
-    manifest = {'schema': 'atlas-rendition-v1', 'input_sha256': source['sha256'], 'total_pages': 3,
+    manifest = {'schema': 'nexus-rendition-v1', 'input_sha256': source['sha256'], 'total_pages': 3,
                 'rendered_pages': 1, 'images': [{'page': 1, 'path': output + '/page-1.png', 'sha256': digest(png)}]}
     backend.output = {output + '/page-1.png': png, output + '/manifest.json': json.dumps(manifest).encode()}
     turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid, 'max_pages': 1})
     assert turn['state'] == 'waiting_work_command'
     eid = turn['work_execution_id']
-    assert '/opt/atlas-work/render.py' in engine.get(eid)['command']
+    assert '/opt/nexus-work/render.py' in engine.get(eid)['command']
     engine.step(eid);engine.step(eid)
     work.resume(turn);turn = get('turn', turn['id'])
     observation = turn['agent_trace'][-1]['observation']
@@ -83,7 +83,7 @@ def test_forged_rendition_cannot_reuse_a_different_input_hash(controller):
     engine, backend, _ = controller
     turn, aid = make_saved_work(controller, 'report.html', b'<h1>Original</h1>')
     output = 'previews/' + get('work_artifact', aid)['sha256'][:24]
-    backend.output = {output + '/manifest.json': json.dumps({'schema': 'atlas-rendition-v1', 'input_sha256': '0' * 64,
+    backend.output = {output + '/manifest.json': json.dumps({'schema': 'nexus-rendition-v1', 'input_sha256': '0' * 64,
         'total_pages': 1, 'rendered_pages': 1, 'images': [{'page': 1}]}).encode()}
     turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid})
     eid = turn['work_execution_id'];engine.step(eid);engine.step(eid)
@@ -100,7 +100,7 @@ def test_rendition_rejects_truncated_png_even_if_its_header_and_hash_match(contr
     # Previously this valid-looking signature/IHDR and matching digest passed;
     # it has no image payload and cannot be viewed by the business user.
     png = sample_png()[:24]
-    manifest = {'schema':'atlas-rendition-v1','input_sha256':sha,'total_pages':1,
+    manifest = {'schema':'nexus-rendition-v1','input_sha256':sha,'total_pages':1,
                 'rendered_pages':1,'images':[{'page':1,'path':output+'/page-1.png','sha256':digest(png)}]}
     backend.output = {output+'/page-1.png':png,output+'/manifest.json':json.dumps(manifest).encode()}
     turn = run_tool(turn,'render_work_preview',{'artifact_id':aid})
@@ -124,7 +124,7 @@ def test_rendition_readback_retries_same_execution_after_temporary_disconnect(co
     turn, aid = make_saved_work(controller, 'report.html', b'<h1>Retry snapshot read</h1>')
     sha = get('work_artifact', aid)['sha256'];output = 'previews/' + sha[:24];png = sample_png()
     backend.output = {output + '/page-1.png': png, output + '/manifest.json': json.dumps({
-        'schema': 'atlas-rendition-v1', 'input_sha256': sha, 'total_pages': 1, 'rendered_pages': 1,
+        'schema': 'nexus-rendition-v1', 'input_sha256': sha, 'total_pages': 1, 'rendered_pages': 1,
         'images': [{'page': 1, 'path': output + '/page-1.png', 'sha256': digest(png)}]}).encode()}
     turn = run_tool(turn, 'render_work_preview', {'artifact_id': aid})
     eid = turn['work_execution_id'];engine.step(eid);engine.step(eid)
@@ -146,7 +146,7 @@ def test_rendition_readback_retries_same_execution_after_temporary_disconnect(co
 def test_visual_model_receives_real_image_bytes_and_does_not_grant_financial_approval(controller, monkeypatch):
     png = sample_png()
     turn, aid = make_saved_work(controller, 'page.png', png)
-    monkeypatch.setenv('ATLAS_VISION_ENABLED', '1')
+    monkeypatch.setenv('NEXUS_VISION_ENABLED', '1')
     requests = []
     def complete(messages, **kwargs):
         requests.append((messages, kwargs))
@@ -159,16 +159,16 @@ def test_visual_model_receives_real_image_bytes_and_does_not_grant_financial_app
     assert result['scope'] == 'model_visual_assessment' and result['financial_approval'] is False
     record = get('visual_review', result['review_id'])
     assert '页图可读' not in json.dumps(record) and 'base64' not in json.dumps(record)
-    monkeypatch.delenv('ATLAS_VISION_ENABLED')
+    monkeypatch.delenv('NEXUS_VISION_ENABLED')
     with pytest.raises(ValueError, match='视觉输入'):work.execute(turn, 'inspect_visual_artifact', {'artifact_id': aid})
 
 
 @pytest.mark.parametrize('status',[401,429,503])
 def test_visual_provider_http_error_is_safe_and_does_not_create_review(controller,monkeypatch,status):
     turn, aid=make_saved_work(controller,'page.png',sample_png())
-    monkeypatch.setenv('ATLAS_VISION_ENABLED','1');monkeypatch.setenv('ATLAS_DESKTOP_MODE','1')
+    monkeypatch.setenv('NEXUS_VISION_ENABLED','1');monkeypatch.setenv('NEXUS_DESKTOP_MODE','1')
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'base_url':'https://vision.test/v1',
-        'model':'fixture','api_key':'fixture-only','engine':'atlas'})
+        'model':'fixture','api_key':'fixture-only','engine':'nexus'})
     monkeypatch.setattr('agent_service.network_policy.check_url',lambda url:None)
     original=httpx.Client
     def respond(request):return httpx.Response(status,json={'error':{'message':'FIXTURE-SECRET-GATEWAY'}})
@@ -182,8 +182,8 @@ def test_visual_provider_http_error_is_safe_and_does_not_create_review(controlle
 
 def test_visual_reasoning_is_not_saved_as_assessment(controller,monkeypatch):
     turn, aid=make_saved_work(controller,'page.png',sample_png())
-    monkeypatch.setenv('ATLAS_VISION_ENABLED','1')
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas'})
+    monkeypatch.setenv('NEXUS_VISION_ENABLED','1')
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus'})
     monkeypatch.setattr(provider,'complete',lambda *args,**kwargs:'<think>FIXTURE-PRIVATE-THOUGHT</think>图片清晰')
     current=run_tool(turn,'inspect_visual_artifact',{'artifact_id':aid})
     assert current['agent_trace'][-1]['status']=='failed'
@@ -255,7 +255,7 @@ def test_business_artifact_catalog_can_render_versioned_output(controller, kind)
     raw, meta=work.artifact_input(turn,aid)
     assert digest(raw)==meta['sha256']
     output='previews/'+meta['sha256'][:24];png=sample_png()
-    manifest={'schema':'atlas-rendition-v1','input_sha256':meta['sha256'],'total_pages':1,'rendered_pages':1,
+    manifest={'schema':'nexus-rendition-v1','input_sha256':meta['sha256'],'total_pages':1,'rendered_pages':1,
               'cjk_font_probe':'missing','images':[{'page':1,'path':output+'/page-1.png','sha256':digest(png)}]}
     backend.output={output+'/page-1.png':png,output+'/manifest.json':json.dumps(manifest).encode()}
     turn=run_tool(turn,'render_work_preview',{'artifact_id':aid})
@@ -278,8 +278,8 @@ def test_vision_request_uses_actual_compatible_http_protocol_and_safe_image_mime
     from agent_service.config import TOKEN
     png = sample_png()
     turn, aid = make_saved_work(controller, 'page.png', png)
-    monkeypatch.setenv('ATLAS_VISION_ENABLED', '1')
-    configuration = {'share_data': True, 'base_url': 'https://vision.test/v1', 'model': 'vision-fixture', 'api_key': 'vision-fixture-key', 'engine': 'atlas'}
+    monkeypatch.setenv('NEXUS_VISION_ENABLED', '1')
+    configuration = {'share_data': True, 'base_url': 'https://vision.test/v1', 'model': 'vision-fixture', 'api_key': 'vision-fixture-key', 'engine': 'nexus'}
     monkeypatch.setattr(provider, 'settings', lambda: configuration)
     seen = []
     def respond(request):
@@ -382,7 +382,7 @@ def finish(engine, value):
     return engine.get(value.execution_id)
 
 
-@pytest.mark.parametrize('path', ['/etc/passwd', '../secret', 'a/../b', 'a//b', './x', 'a\\b', '.atlas-key', 'a\x00b'])
+@pytest.mark.parametrize('path', ['/etc/passwd', '../secret', 'a/../b', 'a//b', './x', 'a\\b', '.nexus-key', 'a\x00b'])
 def test_paths_refuse_host_and_internal_names(path):
     with pytest.raises(ValueError):
         file_path(path)
@@ -458,8 +458,8 @@ def test_cancel_and_workspace_serialization(tmp_path):
 
 @pytest.fixture
 def controller(tmp_path, monkeypatch):
-    monkeypatch.setenv('ATLAS_WORK_RUNNER_URL', 'https://runner.example.test')
-    monkeypatch.setenv('ATLAS_WORK_RUNNER_TOKEN', 'r' * 40)
+    monkeypatch.setenv('NEXUS_WORK_RUNNER_URL', 'https://runner.example.test')
+    monkeypatch.setenv('NEXUS_WORK_RUNNER_TOKEN', 'r' * 40)
     monkeypatch.setattr(provider, 'settings', lambda:{'share_data':True})
     backend = FakeDocker(); engine = Engine(tmp_path, backend)
     remote = TestClient(create_app(engine, 'r' * 40))
@@ -548,9 +548,9 @@ def test_lost_submit_response_recovers_same_command_and_stop_reconciles(controll
 
 def test_disabled_runner_chat_and_human_veto_stay_enforced(controller, monkeypatch):
     _, _, turn = controller
-    monkeypatch.delenv('ATLAS_WORK_RUNNER_TOKEN')
+    monkeypatch.delenv('NEXUS_WORK_RUNNER_TOKEN')
     assert 'run_work_command' not in agent_context.allowed(turn)
-    monkeypatch.setenv('ATLAS_WORK_RUNNER_TOKEN', 'r' * 40)
+    monkeypatch.setenv('NEXUS_WORK_RUNNER_TOKEN', 'r' * 40)
     chat = dict(turn, interaction_mode='chat')
     assert 'run_work_command' not in agent_context.allowed(chat)
     with pytest.raises(ValueError):agent.authorize(chat, 'run_work_command', {'command':'true'})
@@ -600,8 +600,8 @@ def test_real_guest_command_log_cap_and_timeout_without_isolation_claim(tmp_path
     from work_runner.guest import execute
     code='import sys;sys.stdout.write("a"*100000);sys.stderr.write("b"*100000)'
     assert execute(shlex.quote(sys.executable)+' -c '+shlex.quote(code),5,workspace=tmp_path,logs=tmp_path)==0
-    assert (tmp_path/'atlas-stdout').stat().st_size==64000
-    assert (tmp_path/'atlas-stderr').stat().st_size==64000
+    assert (tmp_path/'nexus-stdout').stat().st_size==64000
+    assert (tmp_path/'nexus-stderr').stat().st_size==64000
     assert execute(shlex.quote(sys.executable)+' -c '+shlex.quote('import time;time.sleep(30)'),1,workspace=tmp_path,logs=tmp_path)==124
 
 
@@ -627,7 +627,7 @@ def test_binary_attachment_is_explicit_versioned_and_byte_exact(controller):
 
 
 def test_runner_storage_limit_fails_closed(tmp_path,monkeypatch):
-    monkeypatch.setenv('ATLAS_RUNNER_STORAGE_MB','1')
+    monkeypatch.setenv('NEXUS_RUNNER_STORAGE_MB','1')
     engine=Engine(tmp_path,FakeDocker())
     with pytest.raises(ValueError,match='storage quota'):
         engine.submit(command())
@@ -645,7 +645,7 @@ def test_cloud_work_guidance_is_provisioned_only_with_execution_configuration(co
     from agent_service import extensions
     configured=extensions.provision_presets()
     assert any(value['id']=='skp_cloud_work' for value in configured['skills'])
-    monkeypatch.delenv('ATLAS_WORK_RUNNER_TOKEN')
+    monkeypatch.delenv('NEXUS_WORK_RUNNER_TOKEN')
     unconfigured=extensions.provision_presets()
     assert not any(value['id']=='skp_cloud_work' for value in unconfigured['skills'])
 
@@ -695,7 +695,7 @@ def test_docker_launch_contract_and_missing_gvisor_fail_closed():
         assert host['Runtime']=='runsc' and host['NetworkMode']=='none' and host['ReadonlyRootfs']
         assert host['CapDrop']==['ALL'] and host['PidsLimit']==128 and host['Memory']==host['MemorySwap']
         assert 'Binds' not in host and 'Volumes' not in payload
-        assert not any(name in '\n'.join(payload['Env']) for name in ('APP_TOKEN','LLM_API_KEY','ATLAS_WORK_RUNNER_TOKEN'))
+        assert not any(name in '\n'.join(payload['Env']) for name in ('APP_TOKEN','LLM_API_KEY','NEXUS_WORK_RUNNER_TOKEN'))
         runtime.clear()
         with pytest.raises(ValueError,match='runsc'):backend.create(value.model_dump())
     finally:backend.client.close()
@@ -721,7 +721,7 @@ def test_docker_duplex_stream_stages_and_reads_tmpfs_without_archive_api(monkeyp
     from types import SimpleNamespace
     from work_runner import docker_backend
     from work_runner.docker_backend import DockerBackend
-    with tempfile.TemporaryDirectory(prefix='atlas-stream-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='nexus-stream-') as temporary:
         socket_path=str(Path(temporary)/'docker.sock')
         # This executor forbids AF_UNIX. Adapt only the test socket factory to
         # a real loopback duplex connection; production remains Unix-only.

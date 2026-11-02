@@ -32,8 +32,8 @@ def test_uploaded_multientity_mapping_preserves_keys_values_and_evidence():
                                            'source_ids':[sales['id'],mapping['id']]})
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     def col(name,kind='text',**extra):return {'name':name,'data_type':kind,'meaning':name,**extra}
-    def tab(columns):return {'meaning':'已上传资料','grain':['atlas_row'],
-                            'columns':[col('atlas_row')]+columns}
+    def tab(columns):return {'meaning':'已上传资料','grain':['nexus_row'],
+                            'columns':[col('nexus_row')]+columns}
     plan={'name':'按法人客户期间关联','inputs':{
         'sales':tab([col('c_1'),col('c_2'),col('c_3'),col('c_4','decimal',unit='CNY',aggregation='additive')]),
         'mapping':tab([col('c_1'),col('c_2'),col('c_3'),col('c_4')])},

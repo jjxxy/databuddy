@@ -10,6 +10,11 @@ from .config import DATA
 from . import project_data as data,workspace
 
 
+class CheckedRun(StrictModel):
+    expected_draft_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    request_id:str=Field(pattern=r'^[a-zA-Z0-9_-]{16,80}$')
+
+
 class ScheduleResolution(StrictModel):
     outcome:Literal['executed','not_executed']
     note:str=Field(min_length=4,max_length=500)
@@ -139,7 +144,8 @@ def install(app,auth):
 
     @app.get('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
     def workflow(pid:str,wid:str):
-        info=data.inspect_workflow(pid,wid);info['document']=data.load_document(pid,info['path']).model_dump()
+        from .config import TIMEZONE
+        info=data.inspect_workflow(pid,wid);info['document']=data.load_document(pid,info['path']).model_dump();info['timezone']=TIMEZONE
         return info
 
     @app.put('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
@@ -164,10 +170,18 @@ def install(app,auth):
         r=data.enqueue_workflow(pid,wid)
         return {k:r[k] for k in ('id','status','target','commit')}
 
+    @app.post('/api/projects/{pid}/data-workflows/{wid}/run-checked',dependencies=dependencies)
+    def run_checked(pid:str,wid:str,value:CheckedRun):
+        # The queued job stores the verified immutable plan and source snapshot.
+        key='chat_'+hashlib.sha256((pid+':'+wid+':'+value.request_id).encode()).hexdigest()
+        r=data.enqueue_workflow(pid,wid,scheduled_key=key,expected_draft_sha256=value.expected_draft_sha256)
+        if r.get('scheduled_key')!=key:raise HTTPException(409,'已有任务正在运行，请等待完成后重试')
+        return {k:r[k] for k in ('id','status','target','commit')}
+
     @app.put('/api/projects/{pid}/data-workflows/{wid}/schedule',dependencies=dependencies)
     def schedule_workflow(pid:str,wid:str,value:data.ScheduleWorkflow):
         if value.workflow_id!=wid:raise ValueError('流程标识不一致')
-        return data.schedule(pid,wid,value.cron,value.watch_sources)
+        return data.schedule(pid,wid,value.cron,value.watch_sources,value.expected_published_sha256)
 
     @app.get('/api/projects/{pid}/data-results/{rid}',dependencies=dependencies)
     def data_result(pid:str,rid:str,offset:int=0,limit:int=100):return data.read_result(pid,rid,offset,limit)

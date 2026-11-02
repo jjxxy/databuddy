@@ -8,11 +8,11 @@ from test_project_data import project, registered, source
 def _doc(sid, *, mapped_name):
     cols=[{'name':mapped_name,'data_type':'text','meaning':'source identifier'},
           {'name':'value','data_type':'text','meaning':'source value'}]
-    if mapped_name != 'atlas_row':
-        cols.insert(0, {'name':'atlas_row','data_type':'text','meaning':'snapshot row ordinal'})
+    if mapped_name != 'nexus_row':
+        cols.insert(0, {'name':'nexus_row','data_type':'text','meaning':'snapshot row ordinal'})
     names=[c['name'] for c in cols]
     return {'version':1,'plan':{'version':1,'name':'Row identity integrity',
-        'inputs':{'input':{'meaning':'source rows','grain':['atlas_row'],'columns':cols}},
+        'inputs':{'input':{'meaning':'source rows','grain':['nexus_row'],'columns':cols}},
         'stages':[{'id':'copy','kind':'select','description':'Preserve rows',
                    'input':'input','columns':names}],'output':'copy'},
         'bindings':{'input':{'source_id':sid,'column_map':{'c_1':mapped_name,'c_2':'value'}}}}
@@ -27,9 +27,9 @@ def _run(pid,wid):
     raise AssertionError('workflow did not complete')
 
 
-def test_mapped_real_atlas_row_is_not_overwritten():
+def test_mapped_real_nexus_row_is_not_overwritten():
     pid=project();s=source(pid,b'original,value\nABC,10\nDEF,20\n')
-    wid=registered(pid,_doc(s['id'],mapped_name='atlas_row'))
+    wid=registered(pid,_doc(s['id'],mapped_name='nexus_row'))
     result=_run(pid,wid)
     assert result['status']=='failed'
     assert result['error_code']=='INPUT_SCHEMA_MISMATCH'
@@ -43,4 +43,4 @@ def test_synthetic_row_ordinal_preserves_duplicate_rows():
     result=_run(pid,wid)
     assert result['status']=='validated',result
     rows=data.read_result(pid,result['id'])['rows']
-    assert [(row['atlas_row'],row['source_id'],row['value']) for row in rows]==[('1','ABC','10'),('2','ABC','10')]
+    assert [(row['nexus_row'],row['source_id'],row['value']) for row in rows]==[('1','ABC','10'),('2','ABC','10')]

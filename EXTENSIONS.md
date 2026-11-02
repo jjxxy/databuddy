@@ -6,7 +6,7 @@
 
 - **个人能力按服务端身份隔离。** OIDC 登录的不同用户分别拥有技能和连接；单一 `APP_TOKEN` 对应同一个 `owner`，共享口令不能提供员工级隔离。客户端不能提交 `owner_id` 冒充身份。
 - **项目仍是共享范围。** 个人连接配置、凭据不向其他身份展示；通过连接取得的数据、任务记录和成果会进入项目空间并按项目范围共享。需要私有项目或逐成员成果权限时，应先扩展项目 ACL，不能仅依靠个人连接隔离。
-- **安装技能不授予额外权限。** Skill 正文和引用文件只是工作指导，作为不可信内容传入已获准的模型；包内脚本不会自动在宿主机执行。计算仍经过 Atlas 已注册的工作流和执行工具，外部写操作仍需要预览、确认。
+- **安装技能不授予额外权限。** Skill 正文和引用文件只是工作指导，作为不可信内容传入已获准的模型；包内脚本不会自动在宿主机执行。计算仍经过 Nexus WorkStudio 已注册的工作流和执行工具，外部写操作仍需要预览、确认。
 - **安装 MCP 不等于批准所有工具。** 用户须明确选择只读工具和需要确认的写工具，确认资料保存以及具体模型处理范围。工具名称、Schema、连接修订号或模型目的地改变后，不会沿用旧的待执行写授权。
 
 默认提供 `finance-monthly-close` 财经月结技能，包含附件完整性、期间/币种/粒度核对、明细先汇总再关联、控制总额、成果核对和下月复用的方法。它提供操作方法，不提供财务事实。
@@ -50,38 +50,38 @@ version: '1.0'
 
 ## 本地 stdio MCP
 
-只有本地电脑模式启用 stdio：`ATLAS_LOCAL_MODE=1` 且 `ATLAS_LOCAL_WORKSPACE` 指向存在的工作文件夹。默认内置 `atlas-local-clock`，可在“能力”里启用；它启动真实 Python 子进程，通过 `get_local_time` 返回本机当前时间，不访问网络和业务文件。本机时间取决于系统时钟，不能冒充外部授时依据。
+只有本地电脑模式启用 stdio：`NEXUS_LOCAL_MODE=1` 且 `NEXUS_LOCAL_WORKSPACE` 指向存在的工作文件夹。默认内置 `nexus-local-clock`，可在“能力”里启用；它启动真实 Python 子进程，通过 `get_local_time` 返回本机当前时间，不访问网络和业务文件。本机时间取决于系统时钟，不能冒充外部授时依据。
 
-联网本地模式可由本机管理员配置 `ATLAS_STDIO_TEMPLATES`，用户选择已安装的准确程序模板，而非提交任意 shell 命令。示例：
+联网本地模式可由本机管理员配置 `NEXUS_STDIO_TEMPLATES`，用户选择已安装的准确程序模板，而非提交任意 shell 命令。示例：
 
 ```json
 {
   "approved-finance-system": {
-    "command": "/opt/atlas-mcp/bin/python",
-    "args": ["/opt/atlas-mcp/finance_server.py"],
+    "command": "/opt/nexus-mcp/bin/python",
+    "args": ["/opt/nexus-mcp/finance_server.py"],
     "allow_extra_args": false
   }
 }
 ```
 
-程序、Node/Python 运行时和依赖需要管理员实际安装，绝对路径必须在运行 Atlas 的环境内有效；不会隐式下载或运行任意 `npx`/`uvx` 软件包。在 Docker 中选择的是容器内路径。`command` API 字段填写模板别名 `approved-finance-system`。模型不能新增模板。
+程序、Node/Python 运行时和依赖需要管理员实际安装，绝对路径必须在运行 Nexus WorkStudio 的环境内有效；不会隐式下载或运行任意 `npx`/`uvx` 软件包。在 Docker 中选择的是容器内路径。`command` API 字段填写模板别名 `approved-finance-system`。模型不能新增模板。
 
-启动使用 `shell=False`、工作文件夹 cwd 和最小环境，凭据仅以用户明确配置的环境项注入。禁止覆盖 `PATH`、`HOME`、Python/Node 注入项、模型和 Atlas 密钥等系统环境。模板与可识别的固定程序文件摘要发生变化，需重新连接。每次工具会话启动独立进程，采用 stdin/stdout 换行 JSON-RPC，限制消息大小和超时，会话结束终止进程组。stdout 必须只输出协议消息；stderr 不传给模型或用户。
+启动使用 `shell=False`、工作文件夹 cwd 和最小环境，凭据仅以用户明确配置的环境项注入。禁止覆盖 `PATH`、`HOME`、Python/Node 注入项、模型和 Nexus WorkStudio 密钥等系统环境。模板与可识别的固定程序文件摘要发生变化，需重新连接。每次工具会话启动独立进程，采用 stdin/stdout 换行 JSON-RPC，限制消息大小和超时，会话结束终止进程组。stdout 必须只输出协议消息；stderr 不传给模型或用户。
 
-**stdio 进程不是操作系统沙箱。** 联网模式的可信模板可用 Atlas 服务进程的系统权限访问文件和网络，选择工作文件夹不是文件系统隔离。目录、进程与网络隔离需要额外的 OS/容器策略。`ATLAS_NETWORK_MODE=local_only` 时仅允许第一方本机时间模板，拒绝全部自定义模板；这不是对任意第三方进程断网能力的承诺。
+**stdio 进程不是操作系统沙箱。** 联网模式的可信模板可用 Nexus WorkStudio 服务进程的系统权限访问文件和网络，选择工作文件夹不是文件系统隔离。目录、进程与网络隔离需要额外的 OS/容器策略。`NEXUS_NETWORK_MODE=local_only` 时仅允许第一方本机时间模板，拒绝全部自定义模板；这不是对任意第三方进程断网能力的承诺。
 
 ## 管理员预置
 
-默认财经技能随部署包内置，无需联网。可选环境变量 `ATLAS_EXTENSION_PRESETS_FILE` 指向管理员只读 JSON 文件。启动时先读取普通文件，完成存储和模型目录初始化后注册预置；文件最多 8 MB、最多 60 个项目。见 `admin-presets.example.json`。敏感文件应由管理员创建并限制读权限，不提交到源码库。
+默认财经技能随部署包内置，无需联网。可选环境变量 `NEXUS_EXTENSION_PRESETS_FILE` 指向管理员只读 JSON 文件。启动时先读取普通文件，完成存储和模型目录初始化后注册预置；文件最多 8 MB、最多 60 个项目。见 `admin-presets.example.json`。敏感文件应由管理员创建并限制读权限，不提交到源码库。
 
-Docker Quickstart 和本地模式提供可选 `compose.presets.yaml`，将宿主机文件只读挂载到 `/run/atlas/presets.json`。先完成正常 bootstrap 并准备真实配置，然后使用：
+Docker Quickstart 和本地模式提供可选 `compose.presets.yaml`，将宿主机文件只读挂载到 `/run/nexus/presets.json`。先完成正常 bootstrap 并准备真实配置，然后使用：
 
 ```bash
-export ATLAS_EXTENSION_PRESETS_HOST=/absolute/private/admin-presets.json
+export NEXUS_EXTENSION_PRESETS_HOST=/absolute/private/admin-presets.json
 docker compose -f compose.quickstart.yaml -f compose.presets.yaml up -d --build
 ```
 
-本地模式改用 `-f compose.local.yaml -f compose.presets.yaml`，并保留正常本地启动流程设置的 `ATLAS_LOCAL_WORKSPACE_HOST` 等环境。不要把该 overlay 直接用于旧版多服务 `compose.yaml`；后者服务名和启动方式不同，需要自己的管理配置流程。默认不开启此 overlay 时，仍可使用内置财经技能以及 operator API 发布预置。
+本地模式改用 `-f compose.local.yaml -f compose.presets.yaml`，并保留正常本地启动流程设置的 `NEXUS_LOCAL_WORKSPACE_HOST` 等环境。不要把该 overlay 直接用于旧版多服务 `compose.yaml`；后者服务名和启动方式不同，需要自己的管理配置流程。默认不开启此 overlay 时，仍可使用内置财经技能以及 operator API 发布预置。
 
 ```json
 {
@@ -144,6 +144,6 @@ Agent 通过已有 `list_work_connectors`、`list_work_tools`、`read_work_tool`
 3. 连接真实 MCP，选择一个只读和一个写工具；核对只读结果、写操作确认前无外部变化、确认后只执行一次。
 4. 准备写动作后修改或停用连接；确认旧动作无法继续执行。换模型目的地后核对原授权失效。
 5. 两个独立 OIDC 身份不能发现、读取、修改对方的个人能力；另行确认项目成果共享符合组织期望。共享 `APP_TOKEN` 不能用来验证员工隔离。
-6. 本地启用 `atlas-local-clock`，取得真实系统时间；云模式拒绝 stdio，`local_only` 拒绝自定义模板。可信第三方 MCP 需要在目标电脑验证其真实依赖、权限和业务行为。
+6. 本地启用 `nexus-local-clock`，取得真实系统时间；云模式拒绝 stdio，`local_only` 拒绝自定义模板。可信第三方 MCP 需要在目标电脑验证其真实依赖、权限和业务行为。
 
 自动化用例在 `tests/test_extensions.py`、`tests/test_mcp_stdio.py`，覆盖真实 HTTP 测试服务、真实 stdio 子进程、包文件摘要、身份权限、凭据不回显、写确认、版本变化及超时清理；测试服务不代表已联通实际企业系统。

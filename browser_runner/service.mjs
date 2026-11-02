@@ -4,20 +4,20 @@ import {createHash, timingSafeEqual, randomBytes} from 'node:crypto';
 import {stat, open as openFile} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import {basename, extname} from 'node:path';
-const require = createRequire(process.env.ATLAS_BROWSER_PLAYWRIGHT_ROOT || '/opt/atlas-work/package.json');
+const require = createRequire(process.env.NEXUS_BROWSER_PLAYWRIGHT_ROOT || '/opt/nexus-work/package.json');
 const {chromium} = require('playwright-core');
-const token = process.env.ATLAS_BROWSER_TOKEN || '';
+const token = process.env.NEXUS_BROWSER_TOKEN || '';
 if(token.length < 32) throw Error('A dedicated browser service token is required');
-const proxy = process.env.ATLAS_BROWSER_PROXY;
-const testMode = process.env.ATLAS_BROWSER_TEST_MODE === '1';
-const allowDownloads = process.env.ATLAS_BROWSER_ALLOW_DOWNLOADS === '1';
-const maxDownloadMb=Number(process.env.ATLAS_BROWSER_MAX_DOWNLOAD_MB||25);
+const proxy = process.env.NEXUS_BROWSER_PROXY;
+const testMode = process.env.NEXUS_BROWSER_TEST_MODE === '1';
+const allowDownloads = process.env.NEXUS_BROWSER_ALLOW_DOWNLOADS === '1';
+const maxDownloadMb=Number(process.env.NEXUS_BROWSER_MAX_DOWNLOAD_MB||25);
 if(!Number.isSafeInteger(maxDownloadMb)||maxDownloadMb<1||maxDownloadMb>256)throw Error('Invalid download budget');
 const maxDownloadBytes=maxDownloadMb*1024*1024,downloadChunkBytes=512*1024;
 if(!proxy && !testMode) throw Error('A restricted egress proxy is mandatory');
-const expectedWorkspace=process.env.ATLAS_BROWSER_WORKSPACE_ID||'';
+const expectedWorkspace=process.env.NEXUS_BROWSER_WORKSPACE_ID||'';
 if(!testMode&&!/^[a-f0-9]{64}$/.test(expectedWorkspace))throw Error('Bind this container to one actor/project workspace');
-const hosts = new Set((process.env.ATLAS_BROWSER_ALLOWED_HOSTS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));
+const hosts = new Set((process.env.NEXUS_BROWSER_ALLOWED_HOSTS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));
 const sessions = new Map(), lifetime = 30 * 60 * 1000, maximum = 2;
 let opening=0;
 const hash = s=>createHash('sha256').update(s).digest('hex');
@@ -94,7 +94,7 @@ async function open(id,scope,url){
   checkId(scope);allowed(url);
   opening++;let browser;
   try{
-  browser=await chromium.launch({executablePath:process.env.ATLAS_BROWSER_EXECUTABLE||'/usr/bin/chromium',headless:true,
+  browser=await chromium.launch({executablePath:process.env.NEXUS_BROWSER_EXECUTABLE||'/usr/bin/chromium',headless:true,
     env:{PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/tmp',TMPDIR:'/tmp',LANG:'C.UTF-8',LD_LIBRARY_PATH:process.env.LD_LIBRARY_PATH||''},
     proxy:proxy?{server:proxy,bypass:'<-loopback>'}:undefined,
     args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote','--disable-extensions','--disable-background-networking',

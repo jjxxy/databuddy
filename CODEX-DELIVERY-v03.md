@@ -1,17 +1,17 @@
 # Codex v0.3：本机交付与 US-E3 回传
 
-2026-10-24。产品版本仍为 Atlas DataBuddy v0.20.0；v0.3 是本轮实现/评审编号。
+2026-10-24。产品版本仍为 Nexus WorkStudio v0.20.0；v0.3 是本轮实现/评审编号。
 
 ## 【本轮改动摘要】
 
-本轮交付目录：`dist/Atlas-DataBuddy-win32-x64-r3/`，双击其中 `Atlas DataBuddy.exe`。本机已启动该产物。用户原有默认工作区保留，选择本地目录会打开该目录自己的项目和资料。
+本轮交付目录：`dist/Nexus WorkStudio-WorkStudio-win32-x64-r3/`，双击其中 `Nexus WorkStudio.exe`。本机已启动该产物。用户原有默认工作区保留，选择本地目录会打开该目录自己的项目和资料。
 
 按最新 `DOUBAO-ACCEPTANCE-v0.md` §9，当前阶段为便携桌面包及本地模式；云端 web 迁移不在本轮交付范围。本轮没有部署、升级历史云端实例，也没有把本机默认数据目录标成云端。
 
 | 编号 | 修改文件清单 | 解决的问题 |
 | --- | --- | --- |
 | FG-1 / US-D1 | `agent_service/agent_context.py`, `agent_service/agent.py`, `agent_service/office.py`, `scripts/verify_desktop_model.py`, `tests/test_bounded_planning_context.py` | 控制重复上下文及预加载工具 schema；Office 参数约束与实际渲染器对齐；真实模型产出可编辑三件套并验证金额、明细及来源。 |
-| FG-2 / US-E1 | `agent_service/windows_dirfd.py`, `agent_service/local_workspace.py`, `agent_service/local_storage.py`, `portable_runtime.py`, `agent_service/cloud.py`, `acceptance/offline/verify_backend.py`, `acceptance/offline/verify_local_folder.py`, `acceptance/offline/README.md` | 原生 Windows 文件夹访问与快照/导出；所选文件夹的 .atlas 存储；按文件夹隔离访问凭据、端口、状态。 |
+| FG-2 / US-E1 | `agent_service/windows_dirfd.py`, `agent_service/local_workspace.py`, `agent_service/local_storage.py`, `portable_runtime.py`, `agent_service/cloud.py`, `acceptance/offline/verify_backend.py`, `acceptance/offline/verify_local_folder.py`, `acceptance/offline/README.md` | 原生 Windows 文件夹访问与快照/导出；所选文件夹的 .nexus 存储；按文件夹隔离访问凭据、端口、状态。 |
 | FG-2 自测发现 | `agent_service/codegen.py`, `tests/test_desktop_numeric_review.py` | 项目来源创建的流水线继承 project_id，防止项目导出漏掉其已发布应用，同时保持大整数及精确金额。 |
 | FG-2 回归 | `tests/test_local_workspace.py`, `tests/test_windows_local_workspace.py`, `tests/test_process_control_review.py` | 联接、硬链接、NTFS 特殊路径、同尺寸改写恢复 mtime、启动路径与状态目录拒绝顺序。 |
 | US-E3 | `agent_service/static/index.html`, `agent_service/static/app.js`, `agent_service/static/local-data.html`, `agent_service/static/local-data.js`, `agent_service/static/local-data.css`, `desktop/main.cjs`, `desktop/preload.cjs`, `desktop/security.cjs`, `desktop/start-screen.html`, `desktop/start-screen.css`, `desktop/start-screen.js`, `desktop/README.md`, `tests/ui/local-data.cjs`, `tests/ui/local-workspace-context.cjs`, `tests/ui/package.json`, `desktop/tests/security.test.cjs` | 工作模式内的位置选择及当前项目的工作资料；真实选目录与持久化切换；撤销独立入口；认证、项目、工作区切换时取消旧请求并拒绝迟到结果。 |
@@ -26,7 +26,7 @@
 2. 选择“本地电脑”打开当前项目的“工作模式 · 本地电脑”面板。未绑定目录时只提供“选择本地工作文件夹”，不允许在未绑定的默认目录冒充本地文件夹处理。
 3. 原生目录选择器返回真实目录，经确认后停止旧后端，使用 `--workspace-dir` 启动该目录的后端。健康就绪后才加载新的工作台；启动失败保留原选择，可重试返回原工作区或重新选目录。
 4. 已绑定后，“工作资料”在当前项目内提供导入、画像、口径、候选核对、人工发布及完整 CSV 导出；原有“本地文件”能力可导入目录内明确选中的文件，并保存项目代码与成果。不会自动上传整个文件夹。
-5. 切换目录不自动迁移项目、对话和资料。所选目录的数据在 `.atlas`，可见项目文件在 `Atlas工作区`，追加式成果在 `Atlas成果`。访问凭据、端口、运行状态按目录分别保存于当前 Windows 用户的应用数据目录。
+5. 切换目录不自动迁移项目、对话和资料。所选目录的数据在 `.nexus`，可见项目文件在 `Nexus WorkStudio工作区`，追加式成果在 `Nexus WorkStudio成果`。访问凭据、端口、运行状态按目录分别保存于当前 Windows 用户的应用数据目录。
 6. 删除右上角及桌面菜单“本地数据处理”独立入口；旧 `local-data.html` 返回主工作台。React Flow 仍只作只读溯源展示，未新增通用编辑器。
 
 ## 【实现说明】
@@ -35,7 +35,7 @@
 
 FG-1 并非模型完全不能生成文件：旧任务把大量完整工具 schema 和重复上下文反复发送，四次调用就耗尽输入预算。随后真实运行又暴露 Office 文件名/schema 没有声明实际限制，模型无法提前知道渲染器契约。现在仅预加载相关工具，保留全部受授权工具名称和按需发现完整 schema；Office 使用实际 Spec 契约及安全校验反馈。没有提高默认预算，也没有自动续跑伪造完成。
 
-FG-2 原实现依赖 POSIX 目录描述符、UID、锁和刷新语义；简单替换分隔符不足以保障快照和导出。Windows 使用锚定目录 HANDLE 相对打开，操作期间持有祖先目录，拒绝重解析点、多硬链接、越界、NTFS 数据流及设备名；成果使用同一 HANDLE 原子发布。原件保持不覆盖，ACL 仅收紧 Atlas 管理的私有目录。Windows 无 POSIX 目录 fsync 等价保证，未声称断电持久性完全一致。
+FG-2 原实现依赖 POSIX 目录描述符、UID、锁和刷新语义；简单替换分隔符不足以保障快照和导出。Windows 使用锚定目录 HANDLE 相对打开，操作期间持有祖先目录，拒绝重解析点、多硬链接、越界、NTFS 数据流及设备名；成果使用同一 HANDLE 原子发布。原件保持不覆盖，ACL 仅收紧 Nexus WorkStudio 管理的私有目录。Windows 无 POSIX 目录 fsync 等价保证，未声称断电持久性完全一致。
 
 核心片段（`portable_runtime.py`，实际源码节选）：
 

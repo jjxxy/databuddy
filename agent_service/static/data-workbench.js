@@ -4,7 +4,7 @@ const wbEl = selector => document.querySelector(selector);
 const wbParams = new URLSearchParams(location.search);
 const wbProject = wbParams.get('project') || '';
 const wbState = {
-  token: sessionStorage.getItem('atlas_token') || '', workflowId: wbParams.get('workflow') || '',
+  token: sessionStorage.getItem('nexus_token') || '', workflowId: wbParams.get('workflow') || '',
   workflows: [], workflow: null, result: null, resultId: '', offset: 0, limit: 50,
   editorBase: '', editorDirty: false, editorConflict: false, busy: false,
   loading: 0, workflowLoading: false, resultLoading: 0, pollTimer: null, activeJob: '', latestJob: null,
@@ -20,7 +20,7 @@ const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],b
 const wbSingle={key:'',generation:0,blobUrl:null,preview:null};
 function wbReloadAuthDocument(){location.reload()}
 function wbAuthError(){return Object.assign(Error('登录状态已变化，请在新页面继续'),{authTransition:true})}
-function wbChangeAuthentication(nextToken=''){wbAuthClosed=true;clearTimeout(wbState.pollTimer);for(const c of wbAuthRequests)c.abort();wbAuthRequests.clear();wbLogin();for(const key of Object.keys(sessionStorage))if(key.startsWith('atlas_'))sessionStorage.removeItem(key);if(nextToken)sessionStorage.setItem('atlas_token',nextToken);wbReloadAuthDocument()}
+function wbChangeAuthentication(nextToken=''){wbAuthClosed=true;clearTimeout(wbState.pollTimer);for(const c of wbAuthRequests)c.abort();wbAuthRequests.clear();wbLogin();for(const key of Object.keys(sessionStorage))if(key.startsWith('nexus_'))sessionStorage.removeItem(key);if(nextToken)sessionStorage.setItem('nexus_token',nextToken);wbReloadAuthDocument()}
 const wbEnc = encodeURIComponent;
 const wbRoot = () => '/api/projects/' + wbEnc(wbProject);
 const wbWorkflowUrl = () => wbRoot() + '/data-workflows/' + wbEnc(wbState.workflowId);
@@ -154,6 +154,7 @@ function wbFailure(job) {
 }
 function wbRenderTask() {
   wbRenderScheduleReview();
+  wbRenderScheduleControls();
   const workflow = wbState.workflow, result = wbState.result, job = wbState.latestJob;
   const steps = wbPlanSteps(), inputs = workflow?.inputs || {}, entries = Array.isArray(inputs) ? inputs.map((v,i) => [v.name || '来源 '+(i+1),v]) : Object.entries(inputs);
   const failure = wbFailure(job), candidate = !!result && result.run_id===wbState.resultId && wbState.resultId === wbRunId(workflow?.candidate_run);
@@ -211,6 +212,39 @@ function wbRenderTask() {
     wbEl('#workbench-failure-details').textContent = JSON.stringify({run_id:job.id,stage_id:failure.stage_id,code:failure.code,message:failure.message},null,2);
   }
 }
+let wbScheduleKey='',wbScheduleBusy=false,wbScheduleUnknown=false;
+function wbRenderScheduleControls(){
+  const w=wbState.workflow,panel=wbEl('#workbench-schedule-panel');
+  const key=w&&wbState.workflowId?JSON.stringify([wbState.workflowId,w.published_sha256]):'';
+  if(key!==wbScheduleKey){wbScheduleKey=key;wbScheduleUnknown=false;wbEl('#workbench-schedule-message').textContent='';
+    const match=typeof w?.cron==='string'?w.cron.match(/^(\d{1,2}) (\d{1,2}) \* \* \*$/):null;
+    wbEl('#workbench-schedule-time').value=match?String(match[2]).padStart(2,'0')+':'+String(match[1]).padStart(2,'0'):'';}
+  panel.hidden=!w||!w.published_run;if(panel.hidden)return;
+  const zone=typeof w.timezone==='string'&&w.timezone?w.timezone:'';let next='';
+  if(w.next_due&&zone){try{const d=new Date(w.next_due);if(!Number.isNaN(d.getTime()))next=d.toLocaleString('zh-CN',{hour12:false,timeZone:zone})}catch{next=''}}
+  const match=typeof w.cron==='string'?w.cron.match(/^(\d{1,2}) (\d{1,2}) \* \* \*$/):null;
+  wbEl('#workbench-schedule-details').textContent=(w.cron?'当前：'+(match?'每天 '+String(match[2]).padStart(2,'0')+':'+String(match[1]).padStart(2,'0'):w.cron):w.watch_sources?'当前：来源变化后运行':'当前未设置定时')+'；时区：'+(zone||'未提供')+(w.cron&&w.watch_sources?'；来源变化后也运行':'')+(next?'；下次运行：'+next:'')+(w.schedule_has_unresolved?'；上次自动运行待核对':'');
+  const locked=wbScheduleBusy||wbScheduleUnknown||wbState.busy||wbState.workflowLoading||!wbCurrentProject()||!zone||!/^[a-f0-9]{64}$/.test(w.published_sha256||'');
+  wbEl('#workbench-schedule-save').disabled=locked||!!wbState.activeJob||!!w.schedule_has_unresolved;
+  wbEl('#workbench-schedule-pause').disabled=locked||(!w.cron&&!w.watch_sources);
+  wbEl('#workbench-schedule-time').disabled=locked;
+}
+async function wbSetSchedule(pause){
+  const w=wbState.workflow,id=wbState.workflowId,sha=w?.published_sha256,zone=w?.timezone;
+  if(!wbCurrentProject()||wbScheduleBusy||wbScheduleUnknown||!id||!w?.published_run||!zone||!/^[a-f0-9]{64}$/.test(sha||''))return;
+  if(!pause&&(wbState.activeJob||w.schedule_has_unresolved))return;
+  const time=wbEl('#workbench-schedule-time').value;
+  if(!pause&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){wbNotice('请选择每天的运行时间。',true);return}
+  if(!window.confirm(pause?'确认暂停这项任务的定时运行及来源变化自动运行？':'确认每天 '+time+'（'+zone+'）运行当前已采用的正式做法？'+(w.watch_sources?'原有来源变化自动运行将保持开启。':'')))return;
+  const cron=pause?null:Number(time.slice(3))+' '+Number(time.slice(0,2))+' * * *';
+  wbScheduleBusy=true;wbRenderScheduleControls();
+  try{await wbRequest(wbRoot()+'/data-workflows/'+wbEnc(id)+'/schedule',{method:'PUT',body:{workflow_id:id,cron,watch_sources:pause?false:!!w.watch_sources,expected_published_sha256:sha}});
+    if(wbCurrentProject()&&wbState.workflowId===id){await wbLoadWorkflow(id,{preserveEditor:true,keepOffset:true});wbNotice(pause?'已暂停自动运行。':'定时已设置。')}
+  }catch(error){if(wbCurrentProject()&&wbState.workflowId===id){wbScheduleUnknown=!(error.status>=400&&error.status<500);wbEl('#workbench-schedule-message').textContent=wbScheduleUnknown?'未确认设置是否生效，请刷新后再操作。':error.message;}}
+  finally{wbScheduleBusy=false;wbRenderScheduleControls()}
+}
+wbEl('#workbench-schedule-save').addEventListener('click',()=>void wbSetSchedule(false));
+wbEl('#workbench-schedule-pause').addEventListener('click',()=>void wbSetSchedule(true));
 function wbRenderScheduleReview(){
   const run=wbState.workflow?.schedule_uncertain_run,valid=typeof run==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(run);
   const key=valid?JSON.stringify([wbProject,wbState.workflowId,run]):'';
@@ -232,12 +266,12 @@ async function wbSubmitScheduleReview(){
     }
     if(wbCurrentProject()&&token===wbState.token&&workflowId===wbState.workflowId){
       if(wbState.workflow?.schedule_uncertain_run===run){wbState.scheduleReviewUncertain=true;wbNotice('已记录核对，但未能确认最新状态；请刷新后再操作。',true)}
-      else wbNotice(wbState.workflow?.schedule_uncertain_run||receipt.remaining_count>0?'已记录当前运行的核对，仍有其他运行待核对。':'已记录核对；请回到项目对话重新设置定时或来源变化更新。原运行不会自动重跑。');
+      else wbNotice(wbState.workflow?.schedule_uncertain_run||receipt.remaining_count>0?'已记录当前运行的核对，仍有其他运行待核对。':'已记录核对；可在任务页面重新设置定时。原运行不会自动重跑。');
     }
   }catch(error){if(current()){wbState.scheduleReviewUncertain=!(error.status>=400&&error.status<500);message.textContent=wbState.scheduleReviewUncertain?'未确认核对记录是否保存，请先刷新状态，不要重复提交。':typeof error.detail==='string'&&error.detail.length<=300&&/[\u3400-\u9fff]/.test(error.detail)&&!/[\u0000-\u001f]/.test(error.detail)?error.detail:error.message;}}
   finally{wbState.scheduleReviewBusy=false;if(wbCurrentProject()&&workflowId===wbState.workflowId)wbRenderScheduleReview()}
 }
-function wbSetBusy(value) { wbState.busy = value;wbRenderButtons(); }
+function wbSetBusy(value) { wbState.busy = value;wbRenderButtons();wbRenderScheduleControls(); }
 function wbCurrentProject(){return !wbAuthClosed && new URLSearchParams(location.search).get('project')===wbProject;}
 function wbFactSemanticBlocked(){const reasons=wbState.result?.context?.semantic_review_reasons;return Array.isArray(reasons)&&reasons.includes('FACT_SEMANTIC_ALIGNMENT_REQUIRED');}
 function wbUnalignedFactCandidate(){return wbFactSemanticBlocked()&&wbState.result?.run_id===wbState.resultId&&wbRunId(wbState.workflow?.candidate_run)===wbState.resultId;}
@@ -324,6 +358,10 @@ function wbPopulateEditor(workflow, preserve) {
 }
 function wbRenderRules() {
   const steps = wbPlanSteps();
+  const graph=wbEl('#workbench-graph');if(graph&&window.renderBusinessWorkflowGraph)window.renderBusinessWorkflowGraph(graph,wbState.workflow);
+  const edit=wbEl('#workbench-graph-edit'),flow=wbState.workflow;
+  if(edit){const id=flow?.workflow_id,sha=flow?.draft_sha256;edit.hidden=!flow||id!==wbState.workflowId||!/^wf_[a-f0-9]{40}$/.test(id||'')||!/^[a-f0-9]{64}$/.test(sha||'');if(!edit.hidden)edit.href='/?project='+wbEnc(wbProject)+'&flow_kind=data&flow_edit='+wbEnc(id)+'&flow_digest='+wbEnc(sha);edit.onclick=event=>{if(wbState.editorDirty||wbState.editorConflict||wbState.busy||wbState.workflowLoading){event.preventDefault();wbNotice('\u5f53\u524d\u89c4\u5219\u6709\u672a\u4fdd\u5b58\u7684\u4fee\u6539\u6216\u4efb\u52a1\u6b63\u5728\u5904\u7406\uff0c\u8bf7\u5148\u4fdd\u5b58\u6216\u653e\u5f03\u4fee\u6539\uff0c\u518d\u5230\u5bf9\u8bdd\u4e2d\u8c03\u6574\u3002',true)}};}
+
   const target = wbEl('#workbench-steps');target.replaceChildren();
   for (const step of steps) {
     const item = wbNode('li');item.append(wbNode('strong', wbStageName(step)));
@@ -398,16 +436,16 @@ function wbRenderFields() {
 }
 function wbRenderResult() {
   const result = wbState.result;const workflow = wbState.workflow;
-  wbEl('#workbench-title').textContent = workflow?.name || '我的业务任务';document.title = (workflow?.name || '我的业务工作空间') + ' · Atlas';
+  wbEl('#workbench-title').textContent = workflow?.name || '我的业务任务';document.title = (workflow?.name || '我的业务工作空间') + ' · Nexus WorkStudio';
   const candidate = !!result && result.run_id===wbState.resultId && wbState.resultId === wbRunId(workflow?.candidate_run);
   wbEl('#workbench-result-state').textContent = !result ? '尚无结果' : wbFactSemanticBlocked() ? '需业务语义对齐' : candidate ? '新结果待确认' : '已采用';
   wbEl('#workbench-version').textContent = result ? '来源与做法随结果保留' : '运行后可以查看';
   wbEl('#workbench-record-count').textContent = result ? wbValue(result.total) + ' 条完整记录' : '';
   wbEl('#workbench-schedule').textContent = workflow?.cron ? '按计划重复' : workflow?.watch_sources ? '来源变化后运行' : '按需运行';
   const nextDue = wbDateTime(workflow?.next_due);
-  wbEl('#workbench-schedule-note').textContent = workflow?.schedule_uncertain_run ? '上次自动运行状态不确定，请先核对外部回执。' : workflow?.schedule_resume_required ? '已记录核对；请回到项目对话重新设置定时或来源变化更新。' : workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
+  wbEl('#workbench-schedule-note').textContent = workflow?.schedule_uncertain_run ? '上次自动运行状态不确定，请先核对外部回执。' : workflow?.schedule_resume_required ? '已记录核对；可在任务页面重新设置定时。' : workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
     (nextDue ? '下次：' + nextDue : '按已保存的时间安排执行') + (workflow.watch_sources ? '；同时跟踪已接入的来源版本' : '') :
-    workflow?.watch_sources ? '跟踪已接入的来源版本变化' : '也可以回到对话安排定时执行';
+    workflow?.watch_sources ? '跟踪已接入的来源版本变化' : '可在任务页面设置定时执行';
   wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();wbSyncSingleFact();
   const head = wbEl('#workbench-table-head'), body = wbEl('#workbench-table-body');head.replaceChildren();body.replaceChildren();
   const schema = result?.schema || [];

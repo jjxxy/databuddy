@@ -26,8 +26,8 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     uploaded=req('POST',base+'/attachments',files={'file':('income.csv','办事处,收入\n东部,9.00\n东部,9.00\n西部,4.00\n'.encode(),'text/csv')},data={'request_id':uid(),'local_processing':'true'})
     assert process_once();source=get('source',uploaded['id'])
     turn=req('POST',base+'/messages',json={'text':'读取收入明细并生成汇总报告','request_id':uid(),'source_id':source['id']})
-    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
-        'columns':[{'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
+        'columns':[{'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
         'stages':[{'id':'selected','kind':'filter','description':'选择东部','input':'table',

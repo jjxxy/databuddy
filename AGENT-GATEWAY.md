@@ -1,6 +1,6 @@
-# Atlas Agent 调用网关（v0.19）
+# Nexus WorkStudio Agent 调用网关（v0.19）
 
-本模块让外部 Agent 调用真实的 Atlas 项目任务。请求进入原有持久会话、模型、工具和结果验收链路；不是把请求原样交给聊天模型后直接宣称完成。返回“已接收”与返回“已完成”有不同含义。
+本模块让外部 Agent 调用真实的 Nexus WorkStudio 项目任务。请求进入原有持久会话、模型、工具和结果验收链路；不是把请求原样交给聊天模型后直接宣称完成。返回“已接收”与返回“已完成”有不同含义。
 
 ## 先配置独立调用身份
 
@@ -12,7 +12,7 @@
 - 轮换：POST /api/operator/agent-clients/{id}/rotate，提交 expected_revision
 - 停用：DELETE /api/operator/agent-clients/{id}?expected_revision=...
 
-这些后台操作使用既有的业务认证及独立 X-Atlas-Operator-Token。创建与轮换只返回一次新令牌；持久记录仅保存高熵令牌的 SHA-256，列表和模型上下文不会返回令牌或摘要。新令牌不是普通网页或管理员凭据。
+这些后台操作使用既有的业务认证及独立 X-Nexus-Operator-Token。创建与轮换只返回一次新令牌；持久记录仅保存高熵令牌的 SHA-256，列表和模型上下文不会返回令牌或摘要。新令牌不是普通网页或管理员凭据。
 
 创建请求示例：
 
@@ -66,7 +66,7 @@ request_id 至少8字符。相同调用方、项目和请求编号固定一个�
 
 ## A2A 协议配置
 
-端点为 POST /a2a；受保护的发现卡为 GET /.well-known/agent-card.json。对外站点由管理员设置 ATLAS_AGENT_PUBLIC_URL，例如 https://atlas.example.com，不能依赖不可信 Host 或转发头生成对外地址。未配置时发现卡使用本机回环地址，适用于同机接入，不代表远程可达。
+端点为 POST /a2a；受保护的发现卡为 GET /.well-known/agent-card.json。对外站点由管理员设置 NEXUS_AGENT_PUBLIC_URL，例如 https://nexus.example.com，不能依赖不可信 Host 或转发头生成对外地址。未配置时发现卡使用本机回环地址，适用于同机接入，不代表远程可达。
 
 提供两个明确的 JSON-RPC 轮询配置：
 
@@ -90,7 +90,7 @@ request_id 至少8字符。相同调用方、项目和请求编号固定一个�
       "role": "ROLE_USER",
       "parts": [
         {"text": "按已明确的口径核对本月经营数据。"},
-        {"data": {"atlas": {
+        {"data": {"nexus": {
           "project_id": "p_actual_project",
           "request_id": "finance-monthly-request-001",
           "goal": "按已明确的口径核对本月经营数据。",
@@ -104,15 +104,15 @@ request_id 至少8字符。相同调用方、项目和请求编号固定一个�
 }
 ~~~
 
-数据片段必须明确 Atlas 项目及参数。不会根据远程消息下载任意文件 URL。文本、文件内容和远端描述都属于不可信任务资料，不能扩大授权、冒充用户批准或选择任意模型连接。
+数据片段必须明确 Nexus WorkStudio 项目及参数。不会根据远程消息下载任意文件 URL。文本、文件内容和远端描述都属于不可信任务资料，不能扩大授权、冒充用户批准或选择任意模型连接。
 
 ## MCP 接入
 
-POST /mcp/atlas 提供无服务器会话状态的 Streamable HTTP JSON-RPC 工具端点。支持协商2025-11-25、2025-06-18、2025-03-26，提供 initialize、notifications/initialized、ping、tools/list、tools/call。
+POST /mcp/nexus 提供无服务器会话状态的 Streamable HTTP JSON-RPC 工具端点。支持协商2025-11-25、2025-06-18、2025-03-26，提供 initialize、notifications/initialized、ping、tools/list、tools/call。
 
-暴露四个受限工具：atlas_submit_task、atlas_get_task、atlas_cancel_task、atlas_read_artifact。工具说明和 annotations 只是能力描述；服务端仍独立检查项目、模型、调用方、参数和任务归属。当前不提供 MCP resources、prompts、SSE事件流或实验性tasks协议。
+暴露四个受限工具：nexus_submit_task、nexus_get_task、nexus_cancel_task、nexus_read_artifact。工具说明和 annotations 只是能力描述；服务端仍独立检查项目、模型、调用方、参数和任务归属。当前不提供 MCP resources、prompts、SSE事件流或实验性tasks协议。
 
-含 Origin 的请求必须来自 ATLAS_AGENT_PUBLIC_URL、ATLAS_AGENT_ALLOWED_ORIGINS 中明确的来源，或与 Host 一致的本机回环来源；不会任意放行跨站网页。机器调用通常不带 Origin。请求体最大3MB，并在应用中逐块限制，不仅依赖代理 Content-Length。JSON重复字段与非标准常量拒绝。生产仍应在TLS反向代理配置请求大小、连接和来源限流，防止授权令牌滥用。
+含 Origin 的请求必须来自 NEXUS_AGENT_PUBLIC_URL、NEXUS_AGENT_ALLOWED_ORIGINS 中明确的来源，或与 Host 一致的本机回环来源；不会任意放行跨站网页。机器调用通常不带 Origin。请求体最大3MB，并在应用中逐块限制，不仅依赖代理 Content-Length。JSON重复字段与非标准常量拒绝。生产仍应在TLS反向代理配置请求大小、连接和来源限流，防止授权令牌滥用。
 
 ## 完整数据与结果交接
 

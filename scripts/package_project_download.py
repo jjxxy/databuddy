@@ -18,7 +18,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_TREES = ('agent_service', 'tests', 'ui', 'desktop', 'packaging', 'scripts',
                 'acceptance', 'docs', 'evals', 'examples', '.github', 'vendor/metadata')
-OMIT_PARTS = {'.git', '.venv', '.atlas-native', 'node_modules', '__pycache__',
+OMIT_PARTS = {'.git', '.venv', '.nexus-native', 'node_modules', '__pycache__',
               '.pytest_cache', '.mypy_cache', '.ruff_cache', 'dist'}
 ROOT_EXTENSIONS = {'.py', '.md', '.toml', '.lock', '.yaml', '.yml', '.sh', '.cmd',
                    '.ps1', '.in', '.constraints', '.txt'}
@@ -50,7 +50,7 @@ def safe_source(path: Path) -> bool:
         return False
     if path.is_symlink():
         raise ValueError('Source archive does not accept symbolic links: ' + relative.as_posix())
-    if path.name.lower() in ('llm.json', '.env', '.atlas-local-folder'):
+    if path.name.lower() in ('llm.json', '.env', '.nexus-local-folder'):
         return False
     if path.suffix.lower() in ('.pyc', '.pyo', '.log', '.lnk', '.sqlite', '.sqlite3', '.db', '.pem', '.key'):
         return False
@@ -138,13 +138,13 @@ def source_zip(output, date, secrets):
     for relative, expected in inventory['verified_source_hashes'].items():
         if relative not in members or sha_file(members[relative]) != expected:
             raise ValueError('Source snapshot differs from the r14 inventory: ' + relative)
-    metadata = {'project': 'Atlas DataBuddy', 'version': '0.20.0', 'portable_baseline': 'r14',
+    metadata = {'project': 'Nexus WorkStudio', 'version': '0.20.0', 'portable_baseline': 'r14',
                 'export_date': date, 'kind': 'source_with_tests_and_dependency_locks',
                 'bundled_runtime_included': False, 'credentials_included': False,
                 'personal_workspace_data_included': False, 'full_finance_G1_passed': False,
                 'r14_backend_source_files_verified': len(inventory['verified_source_hashes'])}
     readme = (
-        'Atlas DataBuddy v0.20.0 源码快照（对应 r14）\n\n'
+        'Nexus WorkStudio v0.20.0 源码快照（对应 r14）\n\n'
         '此包用于在 ChatGPT 网页端继续审查、修改和开发项目。包含源码、前端、测试、合成验收样本、'
         '部署模板、锁文件和运行库元数据。\n'
         '这是源码包，不包含已安装的 Python/Node 依赖及便携运行时；直接运行请使用单独的 Windows 便携 ZIP。\n'
@@ -155,7 +155,7 @@ def source_zip(output, date, secrets):
     ).encode('utf-8')
     generated = {'下载说明.txt': readme,
                  'EXPORT-INFO.json': (json.dumps(metadata, ensure_ascii=False, indent=2) + '\n').encode()}
-    target = output / ('Atlas-DataBuddy-v0.20.0-r14-source-' + date.replace('-', '') + '.zip')
+    target = output / ('Nexus WorkStudio-WorkStudio-v0.20.0-r14-source-' + date.replace('-', '') + '.zip')
     assert not target.exists(), 'Choose a new output path instead of replacing an existing archive'
     hashes = {}
     with zipfile.ZipFile(target, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9, allowZip64=True) as archive:
@@ -164,17 +164,17 @@ def source_zip(output, date, secrets):
             if any(secret in raw for secret in secrets):
                 raise ValueError('A private model credential appeared in selected source: ' + relative)
             hashes[relative] = hashlib.sha256(raw).hexdigest()
-            archive.writestr(zip_info('Atlas-source/' + relative, date), raw)
+            archive.writestr(zip_info('Nexus WorkStudio-source/' + relative, date), raw)
         for relative, raw in generated.items():
             hashes[relative] = hashlib.sha256(raw).hexdigest()
-            archive.writestr(zip_info('Atlas-source/' + relative, date), raw)
+            archive.writestr(zip_info('Nexus WorkStudio-source/' + relative, date), raw)
         manifest = ''.join(value + '  ' + name + '\n' for name, value in sorted(hashes.items())).encode()
-        archive.writestr(zip_info('Atlas-source/SOURCE-MANIFEST.sha256', date), manifest)
+        archive.writestr(zip_info('Nexus WorkStudio-source/SOURCE-MANIFEST.sha256', date), manifest)
     with zipfile.ZipFile(target) as archive:
         assert archive.testzip() is None
         assert len(archive.namelist()) == len(hashes) + 1
         for relative, expected in hashes.items():
-            assert hashlib.sha256(archive.read('Atlas-source/' + relative)).hexdigest() == expected
+            assert hashlib.sha256(archive.read('Nexus WorkStudio-source/' + relative)).hexdigest() == expected
     assert target.stat().st_size <= 10 * 1024 * 1024, 'Source ZIP exceeds the private Pages upload limit'
     return {'path': str(target), 'bytes': target.stat().st_size, 'sha256': sha_file(target),
             'files': len(hashes) + 1, 'crc_verified': True, 'source_hashes_verified': True,
@@ -182,7 +182,7 @@ def source_zip(output, date, secrets):
 
 
 def portable_zip(output, date):
-    app = ROOT / 'dist/Atlas-DataBuddy-win32-x64-r14'
+    app = ROOT / 'dist/Nexus WorkStudio-WorkStudio-win32-x64-r14'
     manifest = app / 'FILES.sha256'
     members = {}
     for line in manifest.read_text(encoding='utf-8').splitlines():
@@ -192,11 +192,11 @@ def portable_zip(output, date):
         members[relative] = digest
     assert 'resources/app/llm.json' not in members
     members['FILES.sha256'] = sha_file(manifest)
-    target = output / ('Atlas-DataBuddy-v0.20.0-r14-Windows-portable-' + date.replace('-', '') + '.zip')
+    target = output / ('Nexus WorkStudio-WorkStudio-v0.20.0-r14-Windows-portable-' + date.replace('-', '') + '.zip')
     assert not target.exists()
     with zipfile.ZipFile(target, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as archive:
         for index, (relative, expected) in enumerate(sorted(members.items()), 1):
-            write_member(archive, 'Atlas/' + relative, app / relative, date, expected)
+            write_member(archive, 'Nexus WorkStudio/' + relative, app / relative, date, expected)
             if index % 3000 == 0:
                 print(json.dumps({'portable_progress_files': index, 'total_files': len(members)}), flush=True)
     with zipfile.ZipFile(target) as archive:
@@ -215,7 +215,7 @@ def main():
     output = args.output.resolve()
     assert not output.exists(), 'Output directory must be new'
     output.mkdir(parents=True)
-    report = {'project': 'Atlas DataBuddy', 'version': '0.20.0', 'baseline': 'r14',
+    report = {'project': 'Nexus WorkStudio', 'version': '0.20.0', 'baseline': 'r14',
               'export_date': args.date, 'cloud_page_idempotency_key': str(uuid.uuid4())}
     report['source'] = source_zip(output, args.date, local_model_secrets())
     (output / 'packaging-report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

@@ -53,7 +53,7 @@
     "harness": "acceptance/depth/verify_agent_depth.py",
     "case": "acceptance/depth/cases/finance_monthly.py",
     "official_inputs_only": "acceptance/finance_monthly/inputs/phase1/2026-09_业务源表.xlsx and 业务口径.txt",
-    "isolated_r17_powershell_command": "& '.\\dist\\Atlas-DataBuddy-win32-x64-r17\\resources\\app\\runtime\\python\\python.exe' -X utf8 '.\\acceptance\\depth\\verify_agent_depth.py' --case finance_monthly --app-root '.\\dist\\Atlas-DataBuddy-win32-x64-r17\\resources\\app' --model-config '.\\llm.json' --evidence-dir '.\\verification\\finance-monthly-r17-full-v11' --timeout 600",
+    "isolated_r17_powershell_command": "& '.\\dist\\Nexus WorkStudio-WorkStudio-win32-x64-r17\\resources\\app\\runtime\\python\\python.exe' -X utf8 '.\\acceptance\\depth\\verify_agent_depth.py' --case finance_monthly --app-root '.\\dist\\Nexus WorkStudio-WorkStudio-win32-x64-r17\\resources\\app' --model-config '.\\llm.json' --evidence-dir '.\\verification\\finance-monthly-r17-full-v11' --timeout 600",
     "command_executed": false,
     "r17_scope_note": "r17 is the pre-fix candidate. For repaired acceptance, substitute the frozen r18 or later candidate and a new evidence directory.",
     "gates": [

@@ -20,7 +20,7 @@ from . import agent_mesh_transport as transport
 
 TERMINAL={'succeeded','failed','cancelled','unknown','rejected','input_required','auth_required'}
 ACTIVE={'queued','submitting','submitted','working','cancel_requested'}
-_pool=ThreadPoolExecutor(max_workers=4,thread_name_prefix='atlas-agent-peer')
+_pool=ThreadPoolExecutor(max_workers=4,thread_name_prefix='nexus-agent-peer')
 _futures={};_pool_lock=threading.Lock()
 
 
@@ -30,7 +30,7 @@ def digest(value):return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_a
 def instance_id():
     with FileLock(str(DATA/'agent-mesh-instance.lock'),timeout=5):
         try:return get('system','agent-mesh-instance')['instance_id']
-        except KeyError:return put('system',{'instance_id':'atlas_'+uid(),'created_at':now()},'agent-mesh-instance')['instance_id']
+        except KeyError:return put('system',{'instance_id':'nexus_'+uid(),'created_at':now()},'agent-mesh-instance')['instance_id']
 
 
 class PeerInput(StrictModel):
@@ -46,9 +46,9 @@ class PeerInput(StrictModel):
     model_approved:bool=False
     approved_model_ids:list[str]=Field(default_factory=list,max_length=32)
     private_data_approved:bool=False
-    submit_tool:str=Field(default='atlas_submit_task',min_length=1,max_length=120)
-    get_tool:str=Field(default='atlas_get_task',min_length=1,max_length=120)
-    cancel_tool:str=Field(default='atlas_cancel_task',min_length=1,max_length=120)
+    submit_tool:str=Field(default='nexus_submit_task',min_length=1,max_length=120)
+    get_tool:str=Field(default='nexus_get_task',min_length=1,max_length=120)
+    cancel_tool:str=Field(default='nexus_cancel_task',min_length=1,max_length=120)
     @model_validator(mode='after')
     def bounded(self):
         self.name=self.name.strip()
@@ -122,7 +122,7 @@ def _peer_config(value,old=None):
     from .provider import settings
     import os,secrets
     raw=credential.removeprefix('Bearer ')
-    protected=[TOKEN,os.getenv('ATLAS_OPERATOR_TOKEN',''),settings().get('api_key','')]
+    protected=[TOKEN,os.getenv('NEXUS_OPERATOR_TOKEN',''),settings().get('api_key','')]
     from .model_catalog import owner_configuration
     try:protected.extend(entry.get('api_key','') for entry in owner_configuration().get('models',[]))
     except KeyError:pass
@@ -312,8 +312,8 @@ def cancel_task(pid,identity):
 
 
 def _remote_summary(response):
-    atlas=None;texts=[]
-    if 'outcome' in response or 'output_bundle' in response:atlas=response
+    nexus=None;texts=[]
+    if 'outcome' in response or 'output_bundle' in response:nexus=response
     status=response.get('status')
     message=status.get('message') if isinstance(status,dict) else None
     if isinstance(message,dict):
@@ -324,14 +324,14 @@ def _remote_summary(response):
             if not isinstance(part,dict):continue
             if isinstance(part.get('text'),str):texts.append(part['text'])
             data=part.get('data')
-            if isinstance(data,dict) and isinstance(data.get('atlas'),dict):atlas=data['atlas']
-    if atlas is None:
-        candidate=response.get('metadata',{}).get('atlas') if isinstance(response.get('metadata'),dict) else None
-        if isinstance(candidate,dict):atlas=candidate
-    atlas=atlas or {}
-    if isinstance(atlas.get('output'),dict):atlas=atlas|atlas['output']
-    answer=atlas.get('answer') or atlas.get('result_summary') or response.get('answer') or '\n'.join(texts)
-    return atlas,str(answer)[:6000]
+            if isinstance(data,dict) and isinstance(data.get('nexus'),dict):nexus=data['nexus']
+    if nexus is None:
+        candidate=response.get('metadata',{}).get('nexus') if isinstance(response.get('metadata'),dict) else None
+        if isinstance(candidate,dict):nexus=candidate
+    nexus=nexus or {}
+    if isinstance(nexus.get('output'),dict):nexus=nexus|nexus['output']
+    answer=nexus.get('answer') or nexus.get('result_summary') or response.get('answer') or '\n'.join(texts)
+    return nexus,str(answer)[:6000]
 
 
 def _receive(task,response):
@@ -351,15 +351,15 @@ def _receive(task,response):
     mapped={'submitted':'submitted','working':'working','input-required':'input_required','auth-required':'auth_required',
         'completed':'succeeded','succeeded':'succeeded','failed':'failed','rejected':'rejected','canceled':'cancelled','cancelled':'cancelled'}
     if state not in mapped:raise transport.RemoteAmbiguous('协作Agent任务状态不在已验证协议中')
-    target=mapped[state];atlas,summary=_remote_summary(response)
-    outcome=atlas.get('outcome') or response.get('outcome')
+    target=mapped[state];nexus,summary=_remote_summary(response)
+    outcome=nexus.get('outcome') or response.get('outcome')
     if target=='succeeded' and outcome in ('needs_input','blocked','paused','partial','cancelled','failed'):
         target='input_required' if outcome in ('needs_input','blocked','paused','partial') else 'failed'
     evidence={'response_sha256':digest(response),'integrity_verified':False,'financial_verified':False}
     error=None;verification_status='not_completed';execution_status=target
     if target=='succeeded':
-        output=atlas.get('output') if isinstance(atlas.get('output'),dict) else {}
-        bundle=atlas.get('output_bundle') or output.get('output_bundle') or response.get('output_bundle')
+        output=nexus.get('output') if isinstance(nexus.get('output'),dict) else {}
+        bundle=nexus.get('output_bundle') or output.get('output_bundle') or response.get('output_bundle')
         if bundle is None:
             if task.get('expected_delivery','advisory')=='advisory':verification_status='advisory_unverified'
             else:

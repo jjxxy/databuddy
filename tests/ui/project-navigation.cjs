@@ -4,8 +4,8 @@ const root=path.resolve(__dirname,'../../agent_service/static'),tick=()=>new Pro
 async function until(check){for(let i=0;i<100;i++){await tick();if(check())return}throw Error('project navigation did not settle')}
 const reply=value=>({ok:true,status:200,headers:{get:()=>null},json:async()=>JSON.parse(JSON.stringify(value))});
 async function boot({empty=false}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture-owner');w.setInterval=()=>0;w.matchMedia=()=>({matches:false,addEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture-owner');w.setInterval=()=>0;w.matchMedia=()=>({matches:false,addEventListener(){}});w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
  let release,delayed='';
  w.fetch=async(url,options={})=>{const u=new URL(url,w.location.href),route=u.pathname;calls.push({route,method:options.method||'GET'});
   if(route==='/api/models')return reply({models:[],configured:false});if(route==='/api/projects')return reply(empty?[]:[{id:'p_1',name:'项目一'},{id:'p_2',name:'项目二'}]);

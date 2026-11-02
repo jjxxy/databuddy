@@ -9,10 +9,10 @@ async function harness(reply){
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const ctx={options:{step_schema:{type:'object'},context_helper_sha256:'f'.repeat(64)},
   tool:{transform:async fn=>fn({list:()=>[],add(){},remove(){}}),hook:async()=>{}},
-  session:{get:async()=>({data:{metadata:{atlas_bridge:{url:'http://127.0.0.1:'+server.address().port+'/bridge',token:'fixture-bridge'}}}}),
+  session:{get:async()=>({data:{metadata:{nexus_bridge:{url:'http://127.0.0.1:'+server.address().port+'/bridge',token:'fixture-bridge'}}}}),
    hook:async(name,fn)=>hooks.set(name,fn)}};
- const folder=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-plugin-budget-'));
- const cleanup=async()=>{assert.equal(path.dirname(folder),os.tmpdir());assert(path.basename(folder).startsWith('atlas-plugin-budget-'));await fs.rm(folder,{recursive:true,force:true})};
+ const folder=await fs.mkdtemp(path.join(os.tmpdir(),'nexus-plugin-budget-'));
+ const cleanup=async()=>{assert.equal(path.dirname(folder),os.tmpdir());assert(path.basename(folder).startsWith('nexus-plugin-budget-'));await fs.rm(folder,{recursive:true,force:true})};
  try{
   await fs.copyFile(path.resolve(__dirname,'../../agent_service/opencode_plugin.mjs'),path.join(folder,'index.mjs'));
   await fs.copyFile(path.resolve(__dirname,'../../agent_service/opencode_context.mjs'),path.join(folder,'context.mjs'));
@@ -23,7 +23,7 @@ async function harness(reply){
 function input(max=393216,field='max_tokens'){
  return {sessionID:'synthetic',kind:'generation',request:new Request('https://fixture.test/v1/chat/completions',{
   method:'POST',body:JSON.stringify({model:'fixture',[field]:max,messages:[{role:'user',content:'x'.repeat(90000)}],
-    tools:[{type:'function',function:{name:'atlas_step',parameters:{type:'object'}}}],tool_choice:'auto'})})};
+    tools:[{type:'function',function:{name:'nexus_step',parameters:{type:'object'}}}],tool_choice:'auto'})})};
 }
 test('large generation retains upstream output capacity, with exact admission accounting',async()=>{
  const h=await harness({ok:true,max_output_tokens:393216});

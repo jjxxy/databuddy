@@ -22,8 +22,8 @@ def test_100000_rows_from_real_csv_exact_sum_encrypted_snapshot(monkeypatch):
     assert process_once(); source=get('source',source['id'])
     turn=request('POST',base+'/messages',json={'text':'按办事处汇总并生成报告','request_id':uid(),'source_id':source['id']})
     context={'project_id':pid,'actor_id':'owner','turn_id':turn['id'],'run_id':uid()}
-    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['atlas_row'],
-        'columns':[{'name':'atlas_row','data_type':'text','meaning':'本次资料行号'},
+    plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
+        'columns':[{'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
                    {'name':'c_1','data_type':'text','meaning':'办事处'},
                    {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}},
         'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table','by':['c_1'],
@@ -66,7 +66,7 @@ def test_100000_rows_from_real_csv_exact_sum_encrypted_snapshot(monkeypatch):
     report=delivery.table_report_spec(context,{'title':'核对','format':'html'},{'table':referenced})
     assert '125000' in report['spec']['sections'][1]['body']
     # A full storage quota rejects new snapshots without deleting the old ones.
-    monkeypatch.setenv('ATLAS_FLOW_SNAPSHOT_TOTAL_MB','1')
+    monkeypatch.setenv('NEXUS_FLOW_SNAPSHOT_TOTAL_MB','1')
     with pytest.raises(ValueError,match='存储容量不足'):
         flow_data._compact_table(context,{'rows':[{'value':'a'*1100000}]})
     src=result['steps'][0]['output'];ref=src['rows_ref']

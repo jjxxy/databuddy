@@ -3,7 +3,7 @@ const {JSDOM}=require('jsdom');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');const path=require('node:path');
 const root=path.resolve(__dirname,'../../agent_service/static');
-const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://atlas.test/',runScripts:'outside-only'});
+const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'});
 const w=dom.window;w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;
 w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testExports={updateMessages,jumpLatest,stableHTML,openSidebar,closeSidebar,renderThread};');Object.assign(w,w.testExports);
 const el=w.document.querySelector('#thread-scroll'),messages=w.document.querySelector('#messages');

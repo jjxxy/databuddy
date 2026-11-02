@@ -43,7 +43,7 @@ def _tool_request_key(step):
 | 最终包实跑 | 结果与证据 |
 | --- | --- |
 | `verification/verify-real-history-recovery-v09.py`，指定 r17 app-root、随包 Python、真实现有模型、独立临时空间 | **ok=true，5 次模型调用，verified_complete**；非空 file 合同、实际文件含正确合成编号/税率，未加工/发布。`verification/real-history-recovery-r17-v10.json`。 |
-| `acceptance/offline/verify_backend.py --app-root dist/Atlas-DataBuddy-win32-x64-r17/resources/app --evidence-dir verification/backend-r17-delivery` | **ok=true**；随包空 PATH、新目录、local_only 全链路及重启、错误模型、缺运行文件通过；金额 **118.150000000000**。该简化样例仍不是 G1 证明。 |
+| `acceptance/offline/verify_backend.py --app-root dist/Nexus WorkStudio-WorkStudio-win32-x64-r17/resources/app --evidence-dir verification/backend-r17-delivery` | **ok=true**；随包空 PATH、新目录、local_only 全链路及重启、错误模型、缺运行文件通过；金额 **118.150000000000**。该简化样例仍不是 G1 证明。 |
 | `verification/audit_delivery_sources.py --artifact r17 --baseline r16` | **15,240** 清单文件、**154** 个一方文件、**15,006** 个运行时文件哈希通过；相对 r16 仅两个生产文件改变，依赖不变，禁入路径为 0。`verification/r17-source-inventory.json`。 |
 | `verification/trial-r17-state-check.py before/after`、按已核验 PID 优雅更新并打开 r17 | **ok=true**；原 **8 轮记录、2 个源文件、草稿、待发送状态**均保留；active_tasks=0、native_runtime_ready=true，未自动发送或续跑用户任务；两个亲测快捷方式均更新 r17。 |
 

@@ -26,12 +26,12 @@ def test_wide_100000_csv_is_exact_and_resumes_snapshot():
     source=get('source',source['id']);assert source['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处汇总','request_id':uid(),'source_id':source['id']})
     context={'project_id':pid,'actor_id':'owner','turn_id':turn['id'],'run_id':uid()}
-    columns=[{'name':'atlas_row','data_type':'text','meaning':'读取行号'},
+    columns=[{'name':'nexus_row','data_type':'text','meaning':'读取行号'},
              {'name':'c_1','data_type':'text','meaning':'办事处'},
              {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]
     columns += [{'name':'c_'+str(i),'data_type':'text','meaning':'维度字段'} for i in range(3,13)]
     plan={'version':1,'name':'宽表精确汇总','budget':{'timeout_seconds':180},
-          'inputs':{'table':{'meaning':'全部明细','grain':['atlas_row'],'columns':columns}},
+          'inputs':{'table':{'meaning':'全部明细','grain':['nexus_row'],'columns':columns}},
           'stages':[{'id':'total','kind':'aggregate','description':'按办事处汇总','input':'table',
                      'by':['c_1'],'meaning':'收入汇总','aggregations':[{'function':'sum','column':'c_2',
                      'output':{'name':'amount','data_type':'decimal','meaning':'收入','unit':'CNY'}}]}],

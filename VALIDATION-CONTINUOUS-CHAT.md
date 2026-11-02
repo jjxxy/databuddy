@@ -16,7 +16,7 @@
 - 25 个前端 DOM 回归脚本通过；下载格式调整后复核对话成果、成果面板及滚动三个脚本。
 - 21 项原生插件 JavaScript 检查通过。
 - Chromium 153 验证桌面和手机端对话成果入口、固定版本预览、PNG 页图与分页、无横向溢出。使用受控 API，未连接真实业务系统。
-- 实际 OpenCode 2.1.2 进程加本地模拟模型：先执行一次文件写入，之后模型返回 HTTP 400 `context_length_exceeded`；原生摘要同样被模拟接口拒绝，Atlas 自动恢复并完成原任务。恢复前最大请求 125660 字符，恢复后 46864 字符；文件写入次数为 1，未要求用户继续，旧原生消息仍可回查。
+- 实际 OpenCode 2.1.2 进程加本地模拟模型：先执行一次文件写入，之后模型返回 HTTP 400 `context_length_exceeded`；原生摘要同样被模拟接口拒绝，Nexus WorkStudio 自动恢复并完成原任务。恢复前最大请求 125660 字符，恢复后 46864 字符；文件写入次数为 1，未要求用户继续，旧原生消息仍可回查。
 - 实际 OpenCode 原生压缩与记忆撤回回归通过：摘要完成回执被核对，撤回后的旧偏好未进入新会话。
 
 这些检查不代表已验证付费模型质量、Windows 安装包或生产部署；未运行全仓全部测试。
@@ -26,9 +26,9 @@
 ```bash
 node tests/ui/conversation-outputs.cjs
 node --test desktop/tests/opencode-budget.test.cjs desktop/tests/opencode-context.test.cjs desktop/tests/opencode-working-set.test.cjs
-ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py
-ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_runtime.py
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium node tests/ui/browser-render.mjs
+NEXUS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py
+NEXUS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_runtime.py
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium node tests/ui/browser-render.mjs
 ```
 
 `verify_context_overflow.py` 在临时独立数据目录内运行，只访问本地模拟模型，不需要外部模型密钥。
@@ -48,7 +48,7 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium node tests/ui/browser-render.mjs
 实际 OpenCode 2.1.2 加本地模拟模型验证：初始请求不含 Office 文件规格；发现相应工具后才补齐，随后生成真实 DOCX、核对完整文件摘要，并返回对话内成果元数据。超限自动恢复、原生压缩及记忆撤回也回归通过。未使用付费模型或外部业务账号，未运行全仓测试。
 
 ```bash
-ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --lazy-office
+NEXUS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --lazy-office
 ```
 
 ## 多附件与旧预算停止回执修复（2026-10-29）
@@ -66,8 +66,8 @@ ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify
 验证：相关 Python 两个重叠批次分别 156 项、194 项通过；25 个前端 DOM 脚本、21 项原生 JavaScript 检查通过。真实 OpenCode 的错误预算回答会自动纠正，完成真实文件写入一次，原有较高计量保留；另验证 HTTP 400 上下文溢出仍能自动压缩恢复。Chromium 使用中文字体完成桌面与手机布局检查。未调用付费模型、未运行全仓测试、未构建 Windows 包或更新用户正在运行的部署。证据见 `verification/composer-budget-repair-20261029.json`。
 
 ```bash
-ATLAS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --false-budget-stop
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tests/ui
+NEXUS_OPENCODE_BINARY=/path/to/verified/opencode .venv/bin/python scripts/verify_context_overflow.py --false-budget-stop
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tests/ui
 ```
 
 ## 多文件与模型计划兼容修复（2026-10-30）
@@ -76,7 +76,7 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tes
 
 隔离网关默认两个并发位置，包括后台轮询。旧前端并发上传全部附件，在两位置的模拟网关下实际复现了 503 与部分上传失败。新版本顺序上传，对 429/503 有限退避并复用同一个上传标识；工作资料的上传与来源状态读取也采用可恢复的重试。已成功文件保留，切换项目会中止后续重试。
 
-真实 Chromium 153 通过非安全 HTTP 连接真实 Atlas API 与 SQLite，聊天和工作模式分别一次选择并提交三份文件；服务端对话记录各保留三个独立来源。测试同时模拟首次网关 503 和服务端已保存后响应丢失，确认复用请求标识且没有重复来源。另在浏览器验证工作资料多选、部分失败和重试。网关是受控模拟，Windows Electron 原生选择窗口没有实机验证。
+真实 Chromium 153 通过非安全 HTTP 连接真实 Nexus WorkStudio API 与 SQLite，聊天和工作模式分别一次选择并提交三份文件；服务端对话记录各保留三个独立来源。测试同时模拟首次网关 503 和服务端已保存后响应丢失，确认复用请求标识且没有重复来源。另在浏览器验证工作资料多选、部分失败和重试。网关是受控模拟，Windows Electron 原生选择窗口没有实机验证。
 
 旧规划器把桌面模式的真实 HTTP 错误误当作计划格式问题；受控 401 在旧 main 可复现为“模型连续返回了无效计划”。现区分错误与格式问题：401/额度错误保留脱敏原因，429/503 沿用退避；明确不支持原生工具调用时，在同一任务的固定模型配置内回退到 JSON 协议，依然校验参数和权限。模型返回普通文本时，仅在不需要来源或工具的普通聊天中直接作为答复；工作任务仍需可验证的步骤和实际回执。
 
@@ -86,5 +86,5 @@ ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:file-picker --prefix tes
 
 ```bash
 .venv/bin/python scripts/verify_legacy_model_recovery.py
-ATLAS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:live-upload --prefix tests/ui
+NEXUS_BROWSER_EXECUTABLE=/path/to/chromium npm run test:live-upload --prefix tests/ui
 ```

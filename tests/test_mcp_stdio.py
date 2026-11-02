@@ -16,8 +16,8 @@ for line in sys.stdin:
  else:result={'content':[{'type':'text','text':json.dumps({'app_token':os.getenv('APP_TOKEN'),'model_key':os.getenv('LLM_API_KEY'),'personal_token':os.getenv('PERSONAL_TOKEN'),'cwd':os.getcwd()})}]}
  print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}),flush=True)
 ''')
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','1');monkeypatch.setenv('ATLAS_LOCAL_WORKSPACE',str(tmp_path))
-    monkeypatch.setenv('ATLAS_STDIO_TEMPLATES',json.dumps({'fixture':{'command':sys.executable,'args':[str(script)]}}))
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','1');monkeypatch.setenv('NEXUS_LOCAL_WORKSPACE',str(tmp_path))
+    monkeypatch.setenv('NEXUS_STDIO_TEMPLATES',json.dumps({'fixture':{'command':sys.executable,'args':[str(script)]}}))
     monkeypatch.setenv('APP_TOKEN','must-not-inherit');monkeypatch.setenv('LLM_API_KEY','must-not-inherit')
     return {'transport':'stdio','command':'fixture','args':[],'env':{'PERSONAL_TOKEN':'personal-only'}}
 
@@ -34,7 +34,7 @@ def test_actual_stdio_mcp_roundtrip_and_minimal_process_environment(setup):
 
 
 def test_cloud_cannot_start_local_process(setup,monkeypatch):
-    monkeypatch.setenv('ATLAS_LOCAL_MODE','0')
+    monkeypatch.setenv('NEXUS_LOCAL_MODE','0')
     with pytest.raises(ValueError,match='本地电脑'):s.validate(setup)
 
 
@@ -45,8 +45,8 @@ def test_unapproved_commands_args_ambient_credentials_and_template_drift_are_rej
 
 def test_timeout_stops_child_and_does_not_reflect_stderr(setup,tmp_path,monkeypatch):
     script=tmp_path/'hang.py';script.write_text("import sys,time;sys.stderr.write('PRIVATE-SECRET');sys.stderr.flush();time.sleep(10)")
-    monkeypatch.setenv('ATLAS_STDIO_TEMPLATES',json.dumps({'fixture':{'command':sys.executable,'args':[str(script)]}}))
-    monkeypatch.setenv('ATLAS_STDIO_TIMEOUT_SECONDS','0.1')
+    monkeypatch.setenv('NEXUS_STDIO_TEMPLATES',json.dumps({'fixture':{'command':sys.executable,'args':[str(script)]}}))
+    monkeypatch.setenv('NEXUS_STDIO_TIMEOUT_SECONDS','0.1')
     client=s.Session(setup)
     with pytest.raises(ValueError,match='超时') as error:
         with client:pass
@@ -60,6 +60,6 @@ def test_preinstalled_script_changes_are_detected_before_execution(setup,tmp_pat
 
 
 def test_local_only_policy_disables_arbitrary_stdio_even_if_template_preinstalled(setup,monkeypatch):
-    monkeypatch.setenv('ATLAS_NETWORK_MODE','local_only')
-    assert list(s.templates())==['atlas-local-clock']
+    monkeypatch.setenv('NEXUS_NETWORK_MODE','local_only')
+    assert list(s.templates())==['nexus-local-clock']
     with pytest.raises(ValueError,match='未由本机管理员预置'):s.validate(setup)

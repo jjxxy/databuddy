@@ -27,11 +27,11 @@ def interactive(monkeypatch):
     project=put('project',{'name':'Interactive fixture','created_at':now()},'p_'+uid())
     turn=put('turn',{'project_id':project['id'],'actor_id':'owner','text':'生成图片并浏览网站',
         'state':'agent','interaction_mode':'work','created_at':now()})
-    monkeypatch.setenv('ATLAS_WEB_ENABLED','1');monkeypatch.setenv('ATLAS_WEB_ALLOWED_HOSTS','public.test')
-    monkeypatch.setenv('ATLAS_BROWSER_URL','https://browser.test');monkeypatch.setenv('ATLAS_BROWSER_TOKEN','b'*40)
-    monkeypatch.setenv('ATLAS_MEDIA_BASE_URL','https://media.test/v1');monkeypatch.setenv('ATLAS_MEDIA_API_KEY','private-provider-key')
-    for name in ('IMAGE','TRANSCRIBE','SPEECH','REALTIME'):monkeypatch.setenv('ATLAS_'+name+'_MODEL','explicit-'+name.lower()+'-fixture')
-    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'atlas'})
+    monkeypatch.setenv('NEXUS_WEB_ENABLED','1');monkeypatch.setenv('NEXUS_WEB_ALLOWED_HOSTS','public.test')
+    monkeypatch.setenv('NEXUS_BROWSER_URL','https://browser.test');monkeypatch.setenv('NEXUS_BROWSER_TOKEN','b'*40)
+    monkeypatch.setenv('NEXUS_MEDIA_BASE_URL','https://media.test/v1');monkeypatch.setenv('NEXUS_MEDIA_API_KEY','private-provider-key')
+    for name in ('IMAGE','TRANSCRIBE','SPEECH','REALTIME'):monkeypatch.setenv('NEXUS_'+name+'_MODEL','explicit-'+name.lower()+'-fixture')
+    monkeypatch.setattr(provider,'settings',lambda:{'share_data':True,'engine':'nexus'})
     monkeypatch.setattr('agent_service.connectors.safe_api_url',lambda url:'93.184.216.34')
     yield turn
     for kind,previous in before.items():
@@ -118,7 +118,7 @@ def test_media_transport_pins_dns_keeps_secret_on_fixed_endpoint_and_rejects_red
 
 
 def test_media_request_quota_and_model_permission(interactive,monkeypatch):
-    monkeypatch.setenv('ATLAS_MEDIA_DAILY_REQUESTS','1')
+    monkeypatch.setenv('NEXUS_MEDIA_DAILY_REQUESTS','1')
     media.perform(interactive['project_id'],'one','a',lambda:{'ok':True})
     with pytest.raises(ValueError,match='上限'):media.perform(interactive['project_id'],'two','b',lambda:{'ok':True})
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':False})
@@ -246,7 +246,7 @@ def test_recording_transport_is_bounded_before_multipart_parsing(interactive,mon
 
 def test_browser_registry_selects_project_secret_and_never_falls_back_for_partial_entry(interactive,monkeypatch):
     wid=hashlib.sha256(('owner'+interactive['project_id']).encode()).hexdigest()
-    monkeypatch.setenv('ATLAS_BROWSER_ENDPOINTS_JSON',json.dumps({wid:{'url':'https://tenant-browser.test','token':'tenant-secret-'*4}}))
+    monkeypatch.setenv('NEXUS_BROWSER_ENDPOINTS_JSON',json.dumps({wid:{'url':'https://tenant-browser.test','token':'tenant-secret-'*4}}))
     original=httpx.Client;calls=[]
     def respond(request):
         calls.append(request);return httpx.Response(200,json={'production_policy':True,'workspace_id':wid})
@@ -254,7 +254,7 @@ def test_browser_registry_selects_project_secret_and_never_falls_back_for_partia
     browser._request('','health',{'workspace_id':wid})
     assert calls[-1].url.host=='tenant-browser.test' and calls[-1].headers['Authorization']=='Bearer '+'tenant-secret-'*4
     assert 'tenant-secret' not in json.dumps(browser.status())
-    monkeypatch.setenv('ATLAS_BROWSER_ENDPOINTS_JSON',json.dumps({wid:{'url':'https://partial.test'}}))
+    monkeypatch.setenv('NEXUS_BROWSER_ENDPOINTS_JSON',json.dumps({wid:{'url':'https://partial.test'}}))
     with pytest.raises(ValueError,match='尚未分配'):browser._request('','health',{'workspace_id':wid})
     assert len(calls)==1
 
@@ -299,7 +299,7 @@ def test_browser_proxy_pins_public_ip_and_enforces_host_port(monkeypatch):
 def test_unconfigured_tools_are_hidden_and_chat_cannot_generate(interactive,monkeypatch):
     assert 'open_browser' in agent_context.allowed(interactive)
     assert 'generate_image' not in agent_context.allowed(dict(interactive,interaction_mode='chat'))
-    monkeypatch.delenv('ATLAS_IMAGE_MODEL');monkeypatch.delenv('ATLAS_BROWSER_TOKEN')
+    monkeypatch.delenv('NEXUS_IMAGE_MODEL');monkeypatch.delenv('NEXUS_BROWSER_TOKEN')
     allowed=agent_context.allowed(interactive)
     assert 'generate_image' not in allowed and 'open_browser' not in allowed
 
@@ -338,13 +338,13 @@ def test_agent_browser_interaction_requires_explicit_origin_grant_and_never_retr
 
 def test_private_browser_requires_explicit_private_host_and_model_consent(browser_fixture,monkeypatch):
     turn,_=browser_fixture;patch('project',turn['project_id'],work_private=True)
-    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_ENABLED','1')
-    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_HOSTS','erp.company.test')
+    monkeypatch.setenv('NEXUS_BROWSER_PRIVATE_ENABLED','1')
+    monkeypatch.setenv('NEXUS_BROWSER_PRIVATE_HOSTS','erp.company.test')
     assert browser._browser_url(turn,'https://erp.company.test/path')=='https://erp.company.test/path'
     with pytest.raises(ValueError,match='内部'):browser._browser_url(turn,'https://other.company.test/')
     with pytest.raises(ValueError):browser._browser_url(turn,'https://erp.company.test.evil.test/')
     with pytest.raises(ValueError):browser._browser_url(turn,'https://user:pw@erp.company.test/')
-    monkeypatch.setenv('ATLAS_BROWSER_PRIVATE_HOSTS','*')
+    monkeypatch.setenv('NEXUS_BROWSER_PRIVATE_HOSTS','*')
     with pytest.raises(ValueError):browser._browser_url(turn,'https://erp.company.test/')
     monkeypatch.setattr(provider,'settings',lambda:{'share_data':False})
     with pytest.raises(ValueError,match='获准'):browser._scope(turn)

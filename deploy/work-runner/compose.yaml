@@ -1,15 +1,15 @@
-name: atlas-work-executor
+name: nexus-work-executor
 services:
   runner:
     build:
       context: ../..
       dockerfile: deploy/work-runner/Dockerfile.runner
     environment:
-      ATLAS_WORK_RUNNER_TOKEN: ${ATLAS_WORK_RUNNER_TOKEN:?Set a separate runner token with at least 32 characters}
-      ATLAS_SANDBOX_IMAGE: ${ATLAS_SANDBOX_IMAGE:?Set the pushed workspace image by sha256 digest}
-      ATLAS_RUNNER_STORAGE_MB: ${ATLAS_RUNNER_STORAGE_MB:-4096}
+      NEXUS_WORK_RUNNER_TOKEN: ${NEXUS_WORK_RUNNER_TOKEN:?Set a separate runner token with at least 32 characters}
+      NEXUS_SANDBOX_IMAGE: ${NEXUS_SANDBOX_IMAGE:?Set the pushed workspace image by sha256 digest}
+      NEXUS_RUNNER_STORAGE_MB: ${NEXUS_RUNNER_STORAGE_MB:-4096}
     # Place on a dedicated execution host, behind authenticated HTTPS ingress.
-    # Only this service holds the host Docker socket. Never mount it in Atlas
+    # Only this service holds the host Docker socket. Never mount it in Nexus WorkStudio
     # or in workload containers. Host firewall must prevent public port access.
     ports:
       - "127.0.0.1:8090:8090"

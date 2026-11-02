@@ -10,12 +10,12 @@
 
 ## 已核查的一手资料
 
-- [Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)：官方 SDK 提供 Claude Code 的工具循环及上下文管理，并列出工具、权限、会话、MCP、检查点和成本观测。它需要自己的部署和合适认证，不等于把当前 ChatGPT 会话能力自动交给 Atlas。
+- [Claude Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)：官方 SDK 提供 Claude Code 的工具循环及上下文管理，并列出工具、权限、会话、MCP、检查点和成本观测。它需要自己的部署和合适认证，不等于把当前 ChatGPT 会话能力自动交给 Nexus WorkStudio。
 - [Cursor：Dynamic context discovery](https://cursor.com/blog/dynamic-context-discovery)：按需发现工具、把长结果保留为可回读内容、在摘要后检索历史，避免只把过长内容截断。
 - [Cursor：Terminal](https://cursor.com/docs/agent/tools/terminal)：终端执行配合运行模式和沙箱；文件、网络及命令权限是执行能力的一部分。
 - [LangChain：Deep Agents overview](https://docs.langchain.com/oss/python/deepagents/overview)：文件、上下文管理、记忆、工具执行、可选规划及子 Agent 等组成 Agent harness。
 
-以上是官方功能与架构说明，不是独立成功率对比。没有借用厂商宣传数字证明 Atlas 性能，也没有把厂商示例模型名称当成选型建议。
+以上是官方功能与架构说明，不是独立成功率对比。没有借用厂商宣传数字证明 Nexus WorkStudio 性能，也没有把厂商示例模型名称当成选型建议。
 
 ## 差距与本轮实际改动
 
@@ -43,7 +43,7 @@
 python scripts/evaluate_agent.py
 # 只校验案例，明确 not_executed、score=null。
 
-export ATLAS_URL=https://你的实例
+export NEXUS_URL=https://你的实例
 export APP_TOKEN=实例访问令牌
 python scripts/evaluate_agent.py --execute --limit 3 --repeat 2 --label strong-model-native --output eval-current.json
 python scripts/evaluate_agent.py --execute --limit 3 --repeat 2 --label alternative --baseline eval-current.json --output eval-alternative.json

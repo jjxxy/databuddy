@@ -15,7 +15,7 @@ H = {'Authorization': 'Bearer '+TOKEN}
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setenv('ATLAS_AUTH_MODE','token')
+    monkeypatch.setenv('NEXUS_AUTH_MODE','token')
     monkeypatch.setattr(api,'_requests',{})
     kinds=('project','conversation','browser_device','browser_view')
     before={kind:{v['id'] for v in all_items(kind)} for kind in kinds}

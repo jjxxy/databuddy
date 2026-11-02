@@ -1,4 +1,4 @@
-"""Atlas's bundled runtime executes the actual planner and durable tool graph."""
+"""Nexus WorkStudio's bundled runtime executes the actual planner and durable tool graph."""
 import json
 
 import pytest

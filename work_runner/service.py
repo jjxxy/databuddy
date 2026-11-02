@@ -77,7 +77,7 @@ class Engine:
             if len(active) >= 16:
                 raise RunnerBusy('Runner queue is full')
             used = sum(path.stat().st_size for path in self.root.iterdir() if path.is_file())
-            if used + MAX_WORKSPACE + 3 * 1024 * 1024 > int(os.getenv('ATLAS_RUNNER_STORAGE_MB', '4096')) * 1024 * 1024:
+            if used + MAX_WORKSPACE + 3 * 1024 * 1024 > int(os.getenv('NEXUS_RUNNER_STORAGE_MB', '4096')) * 1024 * 1024:
                 raise ValueError('Runner checkpoint storage quota reached; operator maintenance is required')
             value.update(state='queued', request_sha256=command.sha256(), created_at=time.time(),
                          cancel_requested=False, snapshot_complete=False, stdout='', stderr='')
@@ -158,7 +158,7 @@ class Engine:
                     value['files']=[];value['command']=''
                     self.save(value)
                 except Exception:
-                    self.backend.remove(value.get('container_id') or 'atlas-work-' + eid)
+                    self.backend.remove(value.get('container_id') or 'nexus-work-' + eid)
                     value.update(state='unknown' if value.get('exec_id') else 'failed',
                                  error='Sandbox preparation or start did not complete; the command was not replayed', finished_at=time.time())
                     self.save(value)
@@ -166,7 +166,7 @@ class Engine:
             if value['state'] in ('preparing', 'starting'):
                 # A control-plane restart during an unacknowledged effect is
                 # not proof that it is safe to repeat the effect.
-                self.backend.remove(value.get('container_id') or 'atlas-work-' + eid)
+                self.backend.remove(value.get('container_id') or 'nexus-work-' + eid)
                 value.update(state='unknown', error='Runner restarted during command startup; command not replayed', finished_at=time.time())
                 self.save(value)
                 return
@@ -235,12 +235,12 @@ class Engine:
 
 
 def create_app(engine=None, token=None):
-    secret = token if token is not None else os.getenv('ATLAS_WORK_RUNNER_TOKEN', '')
+    secret = token if token is not None else os.getenv('NEXUS_WORK_RUNNER_TOKEN', '')
     if len(secret) < 32:
         raise ValueError('Runner needs a dedicated token of at least 32 characters')
     if engine is None:
         from .docker_backend import DockerBackend
-        engine = Engine(os.getenv('ATLAS_RUNNER_DATA', '/state'), DockerBackend())
+        engine = Engine(os.getenv('NEXUS_RUNNER_DATA', '/state'), DockerBackend())
 
     @asynccontextmanager
     async def lifespan(app):
@@ -257,7 +257,7 @@ def create_app(engine=None, token=None):
             stop.set()
             worker.join(timeout=2)
 
-    app = FastAPI(title='Atlas independent work runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title='Nexus WorkStudio independent work runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     @app.middleware('http')
     async def boundary(request, call_next):

@@ -14,8 +14,8 @@ def require_server_backup_layout():
     # and visible deliverables beside DATA, and has a different restore layout.
     # Refuse before touching an archive, destination, lock or database so that
     # a partial snapshot can never be advertised as a complete local backup.
-    if os.getenv('ATLAS_LOCAL_MODE')=='1' or os.getenv('ATLAS_LOCAL_WORKSPACE'):
-        raise ValueError('本地文件夹模式不支持旧format2备份或恢复。请先停止Atlas服务，备份或还原整个所选工作空间目录（含.atlas、Atlas工作区和Atlas成果），并另外保存部署目录中的llm.json、.env等配置文件；恢复前核对原挂载路径与文件权限')
+    if os.getenv('NEXUS_LOCAL_MODE')=='1' or os.getenv('NEXUS_LOCAL_WORKSPACE'):
+        raise ValueError('本地文件夹模式不支持旧format2备份或恢复。请先停止Nexus WorkStudio服务，备份或还原整个所选工作空间目录（含.nexus、Nexus WorkStudio工作区和Nexus WorkStudio成果），并另外保存部署目录中的llm.json、.env等配置文件；恢复前核对原挂载路径与文件权限')
 
 @contextlib.contextmanager
 def guard(exclusive=False,blocking=False):

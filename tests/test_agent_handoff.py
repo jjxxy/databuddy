@@ -214,7 +214,7 @@ def test_declared_result_count_or_semantics_cannot_disagree_with_actual_full_con
 
 
 def test_oversize_inputs_are_not_replaced_with_a_preview(monkeypatch):
-    monkeypatch.setenv('ATLAS_AGENT_HANDOFF_MAX_BYTES','1024')
+    monkeypatch.setenv('NEXUS_AGENT_HANDOFF_MAX_BYTES','1024')
     pid=project();s=source(pid,raw=b'id,n\n'+b'x,1\n'*300)
     with pytest.raises(handoff.HandoffError,match='超'):handoff.build_input(turn(pid),[s['id']],[])
     first=source(pid,raw=b'id,n\n'+b'x,1\n'*150);second=source(pid,raw=b'id,n\n'+b'y,2\n'*150)
@@ -264,7 +264,7 @@ def test_task_full_result_output_can_be_consumed_as_exact_typed_input():
 
 def test_large_output_uses_complete_paged_artifacts_instead_of_truncated_inline(monkeypatch):
     pid=project();t=turn(pid,agent_trace=[{'id':'text','status':'done','tool':'write_file','arguments':{'path':'large.md','content':'x'*2000},'observation':{}}])
-    monkeypatch.setenv('ATLAS_AGENT_HANDOFF_MAX_BYTES','1024')
+    monkeypatch.setenv('NEXUS_AGENT_HANDOFF_MAX_BYTES','1024')
     output=handoff.build_output(t)
     assert output['output_bundle'] is None and len(output['artifacts'])==1 and output['artifacts'][0]['bytes']==2000
     assert '未截断' in output['inline_reason']

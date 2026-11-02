@@ -39,7 +39,7 @@ def test_bounded_http_requests_preserve_tools_and_scope_thinking_override(
     monkeypatch.setattr('agent_service.quotas.reserve', lambda amount: None)
     monkeypatch.setattr('agent_service.store.put', lambda *args, **kwargs: None)
     monkeypatch.setattr('agent_service.store.all_items', lambda kind: [])
-    monkeypatch.delenv('ATLAS_MODEL_SOURCE_ID', raising=False)
+    monkeypatch.delenv('NEXUS_MODEL_SOURCE_ID', raising=False)
     messages = [{'role': 'user', 'content': 'Check the connection.'}]
     result = provider.complete(messages, max_tokens=128, configuration={
         'base_url': base_url, 'model': model, 'api_key': 'test-only-key'},
@@ -60,7 +60,7 @@ def test_managed_opencode_uses_deepseek_override_without_changing_other_provider
     root = tmp_path / 'runtime'
     binary = tmp_path / 'opencode'
     binary.write_bytes(b'not-executed')
-    monkeypatch.setenv('ATLAS_OPENCODE_BINARY', str(binary))
+    monkeypatch.setenv('NEXUS_OPENCODE_BINARY', str(binary))
     monkeypatch.setattr(opencode_runtime, '_root', lambda: root)
     monkeypatch.setattr('agent_service.store.all_items', lambda kind: [])
     monkeypatch.setattr('agent_service.network_policy.check_url', lambda value: None)

@@ -27,7 +27,7 @@ FLOW_KEYS=('name','actor_id','turn_id','published_turn_id','path','candidate_dig
 def folder(pid):
     get('project',pid)
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',pid):raise ValueError('项目标识无效')
-    if __import__('os').getenv('ATLAS_LOCAL_WORKSPACE'):
+    if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import project_folder
         return project_folder(pid)
     return DATA/'workspaces'/pid
@@ -51,7 +51,7 @@ def write_file(pid,name,content):
     target=path_for(pid,name)
     files=list_files(pid)
     if sum(f['bytes'] for f in files)+len(content.encode())>8*1024*1024:raise ValueError('项目文本工作区超过8MB限制')
-    if __import__('os').getenv('ATLAS_LOCAL_WORKSPACE'):
+    if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import write_project_file
         return write_project_file(pid,name,content)
     target.parent.mkdir(parents=True,exist_ok=True)
@@ -67,7 +67,7 @@ def write_file(pid,name,content):
 
 def read_file(pid,name):
     path=path_for(pid,name)
-    if __import__('os').getenv('ATLAS_LOCAL_WORKSPACE'):
+    if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import read_project_file
         return read_project_file(pid,name)
     import os
@@ -75,7 +75,7 @@ def read_file(pid,name):
         return stream.read(256*1024)
 
 def list_files(pid):
-    if __import__('os').getenv('ATLAS_LOCAL_WORKSPACE'):
+    if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import list_project_files
         return list_project_files(pid)
     root=folder(pid)/'files'
@@ -97,7 +97,7 @@ def lock(pid):return FileLock(str(DATA/('workspace-'+pid+'.lock')),timeout=10)
 def _init(pid):
     repo=folder(pid);repo.mkdir(parents=True,exist_ok=True)
     if not (repo/'.git').exists():
-        git(repo,'init','-b','main');git(repo,'config','user.name','Atlas Project Agent');git(repo,'config','user.email','agent@localhost')
+        git(repo,'init','-b','main');git(repo,'config','user.name','Nexus WorkStudio Project Agent');git(repo,'config','user.email','agent@localhost')
     return repo
 
 def _mirror(repo,snapshot):

@@ -106,7 +106,7 @@ def model_fingerprint(configuration=None):
     from .provider import settings
     s=settings() if configuration is None else configuration
     identity={k:s.get(k,'') for k in ('base_url','model')}
-    # Keep existing Atlas approvals stable, but never carry them across engines
+    # Keep existing Nexus WorkStudio approvals stable, but never carry them across engines
     # or a change of the model gateway behind OpenCode.
     if s.get('engine')=='opencode':identity.update(engine='opencode',upstream_base_url=s.get('upstream_base_url',''),opencode_version=s.get('opencode_version',''),runtime=s.get('opencode_fingerprint',''))
     return _hash(identity)

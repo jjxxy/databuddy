@@ -26,7 +26,7 @@ class WorkspaceDeleted(ValueError):pass
 class LifecycleConflict(ValueError):pass
 
 
-_request_visibility=contextvars.ContextVar('atlas_request_workspace_visibility',default=None)
+_request_visibility=contextvars.ContextVar('nexus_request_workspace_visibility',default=None)
 
 
 @contextmanager

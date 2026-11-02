@@ -128,7 +128,7 @@ def test_cursor_offset_pagination_empty_intermediate_loop_and_total(monkeypatch)
 
 
 def test_restore_invalid_audit_is_rejected_before_writing(tmp_path):
-    original=tmp_path/'good.atlas';backup(original);bad=tmp_path/'bad.atlas'
+    original=tmp_path/'good.nexus';backup(original);bad=tmp_path/'bad.nexus'
     with zipfile.ZipFile(original) as z:contents={name:z.read(name) for name in z.namelist()}
     rows=[json.loads(line) for line in contents['metadata.jsonl'].splitlines()]
     event=next(x for x in rows if x['table']=='audit_events');event['row']['body']='{"tampered":true}'

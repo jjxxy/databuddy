@@ -88,7 +88,7 @@ class RunnerUnavailable(ValueError):
 
 def status():
     from .browser_tools import status as browser_status
-    configured = bool(os.getenv('ATLAS_WORK_RUNNER_URL') and len(os.getenv('ATLAS_WORK_RUNNER_TOKEN', '')) >= 32)
+    configured = bool(os.getenv('NEXUS_WORK_RUNNER_URL') and len(os.getenv('NEXUS_WORK_RUNNER_TOKEN', '')) >= 32)
     return {'configured': configured, 'execution': 'remote_gvisor', 'network': 'none',
             'persistent_checkpoints': True, 'deployment_verified': False,
             'max_command_seconds': 900, 'max_file_bytes': MAX_FILE,
@@ -99,11 +99,11 @@ def status():
 def _request(method, path, *, payload=None, params=None):
     if not status()['configured']:
         raise ValueError('尚未配置云端工作执行服务；请由管理员按 WORK-MODE.md 部署，应用主机不会执行生成代码')
-    raw = os.environ['ATLAS_WORK_RUNNER_URL'].rstrip('/')
+    raw = os.environ['NEXUS_WORK_RUNNER_URL'].rstrip('/')
     parsed = urlsplit(raw)
     if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password
             or parsed.query or parsed.fragment or parsed.path not in ('', '/')
-            or (parsed.scheme != 'https' and os.getenv('ATLAS_WORK_RUNNER_ALLOW_HTTP') != '1')):
+            or (parsed.scheme != 'https' and os.getenv('NEXUS_WORK_RUNNER_ALLOW_HTTP') != '1')):
         raise ValueError('工作执行服务须为无凭证HTTPS地址；专用私网HTTP需要管理员显式启用')
     from .connectors import safe_api_url
     original = httpx.URL(raw + '/v1/' + path)
@@ -112,7 +112,7 @@ def _request(method, path, *, payload=None, params=None):
         raise ValueError('HTTP工作执行服务仅可用于管理员批准的私网地址')
     with httpx.Client(timeout=httpx.Timeout(12, connect=5), trust_env=False, follow_redirects=False) as client:
         with client.stream(method, target, headers={
-            'Authorization': 'Bearer ' + os.environ['ATLAS_WORK_RUNNER_TOKEN'], 'Host': original.netloc.decode(),
+            'Authorization': 'Bearer ' + os.environ['NEXUS_WORK_RUNNER_TOKEN'], 'Host': original.netloc.decode(),
         }, json=payload, params=params, extensions={'sni_hostname': original.host}) as response:
             if response.status_code == 404:
                 raise KeyError('执行记录或文件不存在')
@@ -137,7 +137,7 @@ def _scope(turn):
     assert_model_allowed(turn['project_id'])
     if not provider.settings().get('share_data'):
         raise ValueError('读取或发送工作环境内容需要管理员启用当前模型的项目内容读取')
-    return digest(('atlas-work-v1\0' + current_actor() + '\0' + turn['project_id']).encode())
+    return digest(('nexus-work-v1\0' + current_actor() + '\0' + turn['project_id']).encode())
 
 
 def _owned(pid, eid):
@@ -401,7 +401,7 @@ def execute(turn, name, args):
             raise ValueError('此成果不是支持渲染的HTML/PDF/Office文件')
         output = 'previews/' + metadata['sha256'][:24]
         if args['first_page'] != 1:output += '-from-' + str(args['first_page'])
-        command = ('python /opt/atlas-work/render.py ' + shlex.quote(metadata['path']) + ' --output ' + output
+        command = ('python /opt/nexus-work/render.py ' + shlex.quote(metadata['path']) + ' --output ' + output
                    + ' --max-pages ' + str(args['max_pages']) + ' --first-page ' + str(args['first_page']))
         start(turn, RunCommand(command=command, artifact_ids=[args['artifact_id']], timeout_seconds=300))
         current = get('turn', turn['id'])
@@ -482,7 +482,7 @@ def complete_render(turn, value):
     if len(raw) > 64000:raise ValueError('渲染清单过大')
     manifest = json.loads(raw)
     images = manifest.get('images', [])
-    if (manifest.get('schema') != 'atlas-rendition-v1' or manifest.get('input_sha256') != request['sha256']
+    if (manifest.get('schema') != 'nexus-rendition-v1' or manifest.get('input_sha256') != request['sha256']
             or not isinstance(images, list) or not 1 <= len(images) <= 8
             or type(manifest.get('total_pages')) is not int or manifest['total_pages'] < len(images)
             or manifest.get('rendered_pages') != len(images)):
@@ -550,8 +550,14 @@ def visual_preview(pid, checksum):
     return None
 
 
-def vision_status():
-    return {'enabled': os.getenv('ATLAS_VISION_ENABLED') == '1', 'model_verified': False,
+def vision_status(turn=None):
+    enabled = os.getenv('NEXUS_VISION_ENABLED') == '1'
+    if turn is not None and not enabled:
+        # A turn routed to a vision-capable model may use image tools even
+        # without the operator-wide flag; a text-model turn stays restricted.
+        from .model_catalog import turn_is_vision
+        enabled = turn_is_vision(turn)
+    return {'enabled': enabled, 'model_verified': False,
             'scope': 'configured_model_visual_assessment; no_financial_approval'}
 
 
@@ -584,7 +590,7 @@ def image_size(content):
 
 def inspect_image(turn, args):
     _scope(turn)
-    if not vision_status()['enabled']:raise ValueError('当前模型尚未启用视觉输入，不能声称已看过图像')
+    if not vision_status(turn)['enabled']:raise ValueError('当前模型尚未启用视觉输入，不能声称已看过图像')
     if provider.settings().get('engine') == 'opencode':
         raise ValueError('旧无状态OpenCode接口不支持真实图像输入，请使用模型目录中的直接兼容接口')
     content, metadata = artifact_input(turn, args.artifact_id)

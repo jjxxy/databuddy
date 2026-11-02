@@ -96,8 +96,8 @@ def validate_connection(value, *, container=False):
     window=value.get('context_window_tokens');output=value.get('max_output_tokens')
     if window is not None and output is not None and output>=window:
         raise ValueError('模型输出上限必须小于上下文窗口')
-    result = {'engine': 'atlas', 'share_data': False, 'tool_protocol': 'json', 'upstream_base_url': '', 'vision': False, **value}
-    if result['engine'] not in ('atlas', 'opencode') or result['tool_protocol'] not in ('json', 'native'):
+    result = {'engine': 'nexus', 'share_data': False, 'tool_protocol': 'json', 'upstream_base_url': '', 'vision': False, **value}
+    if result['engine'] not in ('nexus', 'opencode') or result['tool_protocol'] not in ('json', 'native'):
         raise ValueError('模型引擎或工具协议无效')
     if not 1 <= len(result['model']) <= 120 or len(result['upstream_base_url']) > 500:
         raise ValueError('模型名称或上游地址超过长度限制')

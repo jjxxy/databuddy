@@ -22,7 +22,7 @@ def execute(command, timeout, *, workspace='/workspace', logs='/tmp'):
                     remaining = max(0, remaining - len(chunk))
 
     threads = [threading.Thread(target=capture, args=(stream, path), daemon=True)
-               for stream, path in ((process.stdout, os.path.join(logs, 'atlas-stdout')), (process.stderr, os.path.join(logs, 'atlas-stderr')))]
+               for stream, path in ((process.stdout, os.path.join(logs, 'nexus-stdout')), (process.stderr, os.path.join(logs, 'nexus-stderr')))]
     for thread in threads:
         thread.start()
     try:

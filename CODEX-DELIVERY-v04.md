@@ -1,14 +1,14 @@
 # Codex v0.4：财经能力修补与用户亲测交接
 
-日期：2026-10-24。产品版本仍为 Atlas DataBuddy v0.20.0，本轮便携构建为 r7。
+日期：2026-10-24。产品版本仍为 Nexus WorkStudio v0.20.0，本轮便携构建为 r7。
 
 当前结论：**工作台已启动，已准备原始月结资料和未发送草稿；G1 尚未通过，不作为财经生产交付放行。** 按用户最新指令，本轮停止向豆包发起评审，交用户亲测。未继续增加收费模型运行。
 
 ## 【本轮改动摘要】
 
-- 版本号：v0.4。最终程序：`dist/Atlas-DataBuddy-win32-x64-r7/Atlas DataBuddy.exe`；使用根目录 `打开财经月结亲测.lnk` 可再次打开同一个亲测空间。
+- 版本号：v0.4。最终程序：`dist/Nexus WorkStudio-WorkStudio-win32-x64-r7/Nexus WorkStudio.exe`；使用根目录 `打开财经月结亲测.lnk` 可再次打开同一个亲测空间。
 - G1／A02：`agent_service/conversation.py`、`execution.py`、`planner.py`、`workspace.py`、`workbook_reader.py`。保留结构性探查错误分类；原件完整性校验后允许 Agent 检查需明确布局的工作簿，不把来源改为 ready。正式执行仍检查范围、合并单元格、单位、百分比和公式；异常时释放 Windows 读取句柄。
-- G1／A02–A05：`agent_service/agent.py`、`agent_context.py`、`opencode_runtime.py`、`opencode_plugin.mjs`、新增 `opencode_context.mjs`。区分画像样本与完整计数；保留小表和有界读取回执；分页恢复限定原任务及恢复链；正常 Atlas 原生请求要求工具协议。最新补丁按完整定义摘要统一驻留工具 schema，明确工具名查询不再附送无关定义，保留当前请求中真实存在的完整定义及变版定义。
+- G1／A02–A05：`agent_service/agent.py`、`agent_context.py`、`opencode_runtime.py`、`opencode_plugin.mjs`、新增 `opencode_context.mjs`。区分画像样本与完整计数；保留小表和有界读取回执；分页恢复限定原任务及恢复链；正常 Nexus WorkStudio 原生请求要求工具协议。最新补丁按完整定义摘要统一驻留工具 schema，明确工具名查询不再附送无关定义，保留当前请求中真实存在的完整定义及变版定义。
 - G1／A03：`agent_service/data_workflows.py`。生成给模型的列结构明确数值单位要求，与现有运行时校验一致。
 - G1／A04：`agent_service/result_delivery.py`、`project_data.py`、`data_api.py`、`workspace_artifacts.py`、`data_tools.py`、`static/data-workbench.html`、`static/data-workbench.js`。新增产品实际完整 CSV 下载、目录与按钮；从冻结交接包生成，按显式数值列类型保留十进制负数，公式样式文本沿用既有文字防护。CSV 使用独立格式缓存键与版本路径；重复下载回读摘要，拒绝篡改。对话采用支持精确绑定运行 ID 与方案摘要。
 - G1／验收控制器：新增 `acceptance/depth/common.py`、`verify_agent_depth.py`、`cases/finance_monthly.py`、`cases/finance_negative.py`，及前期五个规模场景控制器。只上传实际输入，标准答案不发给模型，下载实际文件后调用原始独立校验器。负例可单选并明确未运行范围。

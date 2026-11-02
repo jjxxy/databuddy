@@ -8,9 +8,9 @@ const reply=(value,status=200)=>({ok:status<400,status,json:async()=>value,blob:
 const tick=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function until(fn){for(let i=0;i<150;i++){if(fn())return;await tick()}throw Error('UI did not settle');}
 async function boot(opts={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'data-workbench.html'),'utf8'),{url:'https://atlas.test/data-workbench.html?project=p_1&workflow=wf_1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture-token');Object.defineProperty(w.crypto,'subtle',{value:opts.noCrypto?undefined:webcrypto.subtle});w.setTimeout=()=>1;w.clearTimeout=()=>{};
- w.URL.createObjectURL=()=> 'blob:https://atlas.test/file';w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'data-workbench.html'),'utf8'),{url:'https://nexus.test/data-workbench.html?project=p_1&workflow=wf_1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture-token');Object.defineProperty(w.crypto,'subtle',{value:opts.noCrypto?undefined:webcrypto.subtle});w.setTimeout=()=>1;w.clearTimeout=()=>{};
+ w.URL.createObjectURL=()=> 'blob:https://nexus.test/file';w.URL.revokeObjectURL=()=>{};w.HTMLAnchorElement.prototype.click=()=>{};
  const imageSrc=Object.getOwnPropertyDescriptor(w.HTMLImageElement.prototype,'src');Object.defineProperty(w.HTMLImageElement.prototype,'src',{get:imageSrc.get,set(value){imageSrc.set.call(this,value);setImmediate(()=>this.dispatchEvent(new w.Event(opts.imageFails?'error':'load')))}});
  let releaseConfirm;
  const workflow={workflow_id:'wf_1',name:'任务',draft_sha256:sha,candidate_run:'r_1',steps:[],inputs:{},document:{plan:{stages:[]}}};

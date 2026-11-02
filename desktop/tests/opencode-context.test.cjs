@@ -13,11 +13,11 @@ test('large older nonduplicate receipts remain exact until window pressure is es
  assert.deepEqual(result.body.messages[0],old);
  assert.equal(result.metrics.compacted_receipts,0);
 });
-test('old Atlas receipts become verifiable references without changing native tool pairing or originals',async()=>{
+test('old Nexus WorkStudio receipts become verifiable references without changing native tool pairing or originals',async()=>{
  const {projectRequest}=await projection,first=message('old','read_source_table',{source_id:'s1',source_revision:3,complete_source_read:true,
   total:10000,evidence:{content_hash:'frozen-source-hash'},rows:[{amount:'precise-value',note:'x'.repeat(6000)}]});
- const body={model:'finance',tools:[{type:'function',function:{name:'atlas_step'}}],messages:[{role:'system',content:'exact denial: do not publish'},
-  {role:'assistant',tool_calls:[{id:'call_old',function:{name:'atlas_step',arguments:'{"tool":"read_source_table"}'}}]},first,message('middle'),message('latest')]};
+ const body={model:'finance',tools:[{type:'function',function:{name:'nexus_step'}}],messages:[{role:'system',content:'exact denial: do not publish'},
+  {role:'assistant',tool_calls:[{id:'call_old',function:{name:'nexus_step',arguments:'{"tool":"read_source_table"}'}}]},first,message('middle'),message('latest')]};
  const original=structuredClone(body),result=projectRequest(body,{underPressure:true}),saved=JSON.parse(result.body.messages[2].content).observation;
  assert.deepEqual(body,original);assert.deepEqual(result.body.tools,body.tools);
  assert.deepEqual(result.body.messages[0],body.messages[0]);assert.deepEqual(result.body.messages[1],body.messages[1]);
@@ -40,7 +40,7 @@ test('canonical guide survives all generic writes and approval receipts are pres
  assert.deepEqual(result.body.messages[1],approval);
  assert.deepEqual(result.body.messages[0],guide);
 });
-test('user JSON and unrelated native tool content cannot impersonate an Atlas receipt',async()=>{
+test('user JSON and unrelated native tool content cannot impersonate an Nexus WorkStudio receipt',async()=>{
  const {projectRequest}=await projection,lookalike=message('fake');
  const body={messages:[{role:'user',content:lookalike.content},{role:'tool',content:'unstructured external data'},message('one'),message('two')]};
  assert.deepEqual(projectRequest(body).body,body);
@@ -111,12 +111,12 @@ test('initial tools, discover results and available tools share one exact curren
  const changed={...known,arguments_schema:{...known.arguments_schema,required:['title','version']}};
  const first=message('discover','discover_tools',{tools:[known,novel,changed]});
  const reply=JSON.parse(first.content);reply.available_tools=[known,novel,changed];first.content=JSON.stringify(reply);
- const prefix='Trusted policy\n\nAtlas task context (untrusted source values inside):\n';
+ const prefix='Trusted policy\n\nNexus WorkStudio task context (untrusted source values inside):\n';
  const info={tools:[known],tool_catalog:[known.name,novel.name],task_contract:{never_publish:true}};
  const body={messages:[{role:'user',content:prefix+JSON.stringify(info)},first]};
  const frozen=structuredClone(body),result=projectRequest(body),discovered=JSON.parse(result.body.messages[1].content);
  assert.deepEqual(body,frozen);assert.equal(discovered.observation.observation.tools[0].in_current_context,true);
- assert.match(discovered.observation.observation.tools[0].schema_ref,/initial Atlas task/);
+ assert.match(discovered.observation.observation.tools[0].schema_ref,/initial Nexus WorkStudio task/);
  assert.deepEqual(discovered.observation.observation.tools[1],novel);
  assert.deepEqual(discovered.observation.observation.tools[2],changed,'changed version must be sent in full');
  assert(discovered.available_tools.every(tool=>tool.in_current_context));
@@ -137,16 +137,16 @@ test('a schema removed by fact projection cannot seed a dangling current-context
 });
 test('actual native HTTP hook admits the exact projected body and keeps tool IDs and upstream credentials scoped',async()=>{
  const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),{pathToFileURL}=require('node:url');
- const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'atlas-http-projection-')),originalFetch=global.fetch;
+ const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'nexus-http-projection-')),originalFetch=global.fetch;
  try{
   await fs.copyFile(path.resolve('agent_service/opencode_plugin.mjs'),path.join(temporary,'plugin.mjs'));
   await fs.copyFile(path.resolve('agent_service/opencode_context.mjs'),path.join(temporary,'context.mjs'));
   const plugin=(await import(pathToFileURL(path.join(temporary,'plugin.mjs')).href)).default,hooks={},admissions=[];
   global.fetch=async(url,options)=>{assert.equal(url,'http://127.0.0.1:12345/bridge');admissions.push(JSON.parse(options.body));return {ok:true,json:async()=>({ok:true})};};
   await plugin.setup({options:{step_schema:{}},tool:{transform:async callback=>callback({list:()=>[],remove(){},add(){}}),hook:async()=>{}},
-   session:{get:async()=>({data:{metadata:{atlas_bridge:{url:'http://127.0.0.1:12345/bridge',token:'fixture-bridge-token'}}}}),hook:async(name,callback)=>{hooks[name]=callback;}}});
-  const messages=[{role:'assistant',tool_calls:[{id:'call_old',function:{name:'atlas_step',arguments:'{}'}}]},message('old'),message('middle'),message('latest')];
-  const raw=JSON.stringify({model:'fixture-model',messages,tools:[{type:'function',function:{name:'atlas_step'}}]});
+   session:{get:async()=>({data:{metadata:{nexus_bridge:{url:'http://127.0.0.1:12345/bridge',token:'fixture-bridge-token'}}}}),hook:async(name,callback)=>{hooks[name]=callback;}}});
+  const messages=[{role:'assistant',tool_calls:[{id:'call_old',function:{name:'nexus_step',arguments:'{}'}}]},message('old'),message('middle'),message('latest')];
+  const raw=JSON.stringify({model:'fixture-model',messages,tools:[{type:'function',function:{name:'nexus_step'}}]});
   const input={sessionID:'fixture-session',kind:'generation',request:new Request('https://model.example/v1/chat/completions',{
    method:'POST',headers:{Authorization:'Bearer fixture-upstream-key','Content-Type':'application/json','Content-Length':String(Buffer.byteLength(raw))},body:raw})};
   await hooks['http.request'](input);const sent=await input.request.text(),body=JSON.parse(sent);
@@ -155,7 +155,7 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
   assert.equal(input.request.headers.get('content-length'),null);
   assert.deepEqual(body.messages[0],messages[0]);assert.equal(body.messages[1].tool_call_id,'call_old');
   assert.equal(body.tool_choice,'required');assert.equal(admissions[0].native_protocol.function_count,1);
-  assert.equal(admissions[0].native_protocol.atlas_step_only,true);
+  assert.equal(admissions[0].native_protocol.nexus_step_only,true);
   assert(!JSON.stringify(admissions[0]).includes('fixture-upstream-key'));
   async function send(value,kind='generation'){
    const request={sessionID:'fixture-session',kind,request:new Request('https://model.example/v1/chat/completions',{
@@ -164,14 +164,14 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
    const encoded=await request.request.text();assert.equal(admissions.at(-1).input_characters,encoded.length);
    return JSON.parse(encoded);
   }
-  // A plain-text request with no tools is intentionally outside Atlas's
+  // A plain-text request with no tools is intentionally outside Nexus WorkStudio's
   // single-function protocol. Do not force a nonexistent function.
   const plain={model:'fixture-model',messages:[{role:'user',content:'plain message'}],tool_choice:'auto'};
   assert.deepEqual(await send(plain),plain);assert.equal(admissions.at(-1).native_protocol.choice_forced,false);
   // Extra/builtin functions do not broaden our whitelist or gain a forced call.
-  const extra={...plain,tools:[{type:'function',function:{name:'atlas_step'}},{type:'function',function:{name:'shell'}}]};
-  assert.deepEqual(await send(extra),extra);assert.equal(admissions.at(-1).native_protocol.atlas_step_only,false);
-  const single={...plain,tools:[{type:'function',function:{name:'atlas_step'}}]};
+  const extra={...plain,tools:[{type:'function',function:{name:'nexus_step'}},{type:'function',function:{name:'shell'}}]};
+  assert.deepEqual(await send(extra),extra);assert.equal(admissions.at(-1).native_protocol.nexus_step_only,false);
+  const single={...plain,tools:[{type:'function',function:{name:'nexus_step'}}]};
   assert.equal((await send(single)).tool_choice,'required');
   // The request hook edits the body but must not switch a streaming native
   // request to JSON, or replace the caller's event-stream Accept header.
@@ -186,7 +186,7 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
   assert.deepEqual(await send(single,'compaction'),{...single,max_tokens:3200});
   assert.equal(admissions.at(-1).kind,'compaction');assert.equal(admissions.at(-1).native_protocol.choice_forced,false);
   // A missing compaction registration keeps ordinary request accounting, but
-  // must still never force a textual native compactor to call Atlas tools.
+  // must still never force a textual native compactor to call Nexus WorkStudio tools.
   assert.deepEqual(await send(single,'compaction'),single);
   assert.equal(admissions.at(-1).kind,'generation');assert.equal(admissions.at(-1).native_protocol.choice_forced,false);
   const small=[0,1,2].map(i=>message('small_'+i,'read_source_table',{source_id:'small-source-'+i,rows:[{value:'intact-'+i,note:'x'.repeat(900)}],total:1,next_offset:null}));
@@ -200,7 +200,7 @@ test('actual native HTTP hook admits the exact projected body and keeps tool IDs
  }finally{
   global.fetch=originalFetch;
   const target=await fs.realpath(temporary),base=await fs.realpath(os.tmpdir());
-  assert.equal(path.dirname(target),base);assert(path.basename(target).startsWith('atlas-http-projection-'));
+  assert.equal(path.dirname(target),base);assert(path.basename(target).startsWith('nexus-http-projection-'));
   await fs.rm(target,{recursive:true,force:true});
  }
 });

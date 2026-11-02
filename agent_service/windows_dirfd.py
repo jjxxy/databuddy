@@ -237,14 +237,14 @@ class WindowsOS:
     O_NOFOLLOW = 1 << 30
     O_NONBLOCK = 0
     O_CLOEXEC = 0
-    O_ATLAS_STAGE = 1 << 28
+    O_NEXUS_STAGE = 1 << 28
 
     def __getattr__(self, name):
         return getattr(real_os, name)
 
     def open(self, path, flags, mode=0o600, *, dir_fd=None):
         if flags & self.O_DIRECTORY:
-            return open_directory(path, parent=dir_fd, can_rename=bool(flags & self.O_ATLAS_STAGE))
+            return open_directory(path, parent=dir_fd, can_rename=bool(flags & self.O_NEXUS_STAGE))
         if dir_fd is None:
             if flags & real_os.O_CREAT:
                 return native.create_regular_exclusive(path, mode)

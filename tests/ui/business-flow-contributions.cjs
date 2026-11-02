@@ -8,7 +8,7 @@ function detail(rowIndex,offset=0,extra={}){
  return {run_id:'r_one',node_id:'agg',row_index:rowIndex,columns:[{name:'id',label:'编号'},{name:'amount',label:'金额',unit:'CNY'}],rows,total,offset,next_offset:offset+rows.length<total?offset+rows.length:null,group:{branch:'<b>东部</b>'},aggregations:[{function:'sum',column:'amount',output:{name:'total'}}],input_sha256:input,output_sha256:output,financial_verified:false,...extra};
 }
 async function boot(options={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://atlas.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];w.sessionStorage.setItem('atlas_token','x');
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'business-flows.html'),'utf8'),{url:'https://nexus.test/business-flows.html?project=p_one',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];w.sessionStorage.setItem('nexus_token','x');
  w.fetch=async(url)=>{const u=new URL(url,w.location.href),p=u.pathname;calls.push(p+u.search);
   if(p.endsWith('/business-flows'))return reply({items:[{id:'bf_one',name:'本次流程'},{id:'bf_two',name:'另一流程'}]});
   if(p.endsWith('/business-flows/bf_one'))return reply({candidate_digest:digest,candidate_commit:commit,candidate_run:'r_one',candidate_document:{name:'汇总',inputs:[],nodes:[{id:'agg',kind:'table_workflow',title:'集团数据',config:{plan:{stages:[{id:'total',kind:'aggregate'}]}}}]}});

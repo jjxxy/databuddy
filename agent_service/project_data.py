@@ -93,6 +93,7 @@ class PublishWorkflow(RunTarget):
 class ScheduleWorkflow(WorkflowTarget):
     cron:str|None=None
     watch_sources:bool=False
+    expected_published_sha256:str|None=Field(default=None,pattern=r'^[a-f0-9]{64}$')
 
 
 def owned(pid,kind,ident):
@@ -325,7 +326,7 @@ def read_input(pid,binding,*,frozen_source=None):
             if s.get('fact_review_id'):evidence['fact_review_id']=s['fact_review_id']
         evidence.update(source_id=s['id'],source_revision=s.get('revision',1),content_hash=s.get('content_hash'),rows=len(rows))
     if binding.column_map:
-        # __-prefixed keys name engine-injected synthetic columns (e.g. atlas_row)
+        # __-prefixed keys name engine-injected synthetic columns (e.g. nexus_row)
         # and are not source fields; they never participate in column mapping.
         column_map={k:v for k,v in binding.column_map.items() if not str(k).startswith('__')}
         names={f['name'] for f in fields}
@@ -395,6 +396,7 @@ def inspect_workflow(pid,wid):
             'steps':[s.model_dump() for s in doc.plan.stages],'output':doc.plan.output,'contract':doc.contract,'document':doc.model_dump(),
             'cron':w.get('cron'),'watch_sources':w.get('watch_sources',False),'next_due':w.get('next_due'),
             'schedule_uncertain_run':w.get('schedule_uncertain_run'),'schedule_resume_required':w.get('schedule_resume_required',False),
+            'schedule_has_unresolved':bool(w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs')),
             'refresh_error':w.get('refresh_error'),'validation':'typed_plan_valid; not_executed',
             'latest_run':workflow_run_diagnostic(pid,wid,draft_sha256=digest(doc.model_dump())),
             'edit':'告诉Agent需要修改的业务要求，Agent生成新草稿并重新校验；正式计划保持固定版本'}
@@ -482,7 +484,12 @@ def workflow_run_diagnostic(pid,wid,rid=None,*,draft_sha256=None):
     stage=raw.get('stage_id');stage=stage if isinstance(stage,str) and re.fullmatch(r'(?:input:)?[A-Za-z][A-Za-z0-9_]{0,63}',stage) else None
     details=_safe_failure_details(raw.get('details'))
     if stage and stage.startswith('input:'):details['input_alias']=stage[6:]
-    failure={'stage_id':stage,'code':code,'message':_FAILURE_MESSAGES.get(code,'数据加工未通过验证；请核对输入、字段声明和处理规则，未返回未验证结果')}
+    # The fenced run already stores the precise, executor-controlled failure
+    # message (e.g. "文本与声明的日期格式不一致"). Prefer it over the static
+    # code summary, otherwise the agent only sees a generic prompt and cannot
+    # locate the offending column/value to repair the draft.
+    message=raw.get('message') or _FAILURE_MESSAGES.get(code,'数据加工未通过验证；请核对输入、字段声明和处理规则，未返回未验证结果')
+    failure={'stage_id':stage,'code':code,'message':message}
     if details:failure['details']=details
     alias=details.get('input_alias');path='bindings.'+alias+'.options.percentage_columns' if alias else 'bindings.<输入别名>.options.percentage_columns'
     if code=='MIXED_PERCENTAGE_REPRESENTATION':
@@ -503,7 +510,7 @@ def workflow_run_diagnostic(pid,wid,rid=None,*,draft_sha256=None):
     return result
 
 
-def enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,originating_turn_id=None):
+def enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,originating_turn_id=None,expected_draft_sha256=None):
     from .job_authority import for_turn,client_guard
     from contextlib import nullcontext
     if originating_turn_id is None:
@@ -514,7 +521,7 @@ def enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,originatin
         # Re-read after locking: revoke/cancel may have won admission.
         authority=for_turn(originating_turn_id)
         return _enqueue_workflow(pid,wid,use_published=use_published,scheduled_key=scheduled_key,authority=authority,
-                                 originating_turn_id=originating_turn_id)
+                                 originating_turn_id=originating_turn_id,expected_draft_sha256=expected_draft_sha256)
 
 
 def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
@@ -585,13 +592,17 @@ def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
     return None
 
 
-def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None):
+def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None,expected_draft_sha256=None):
     if authority and authority['project_id']!=pid:raise ValueError('加工任务不属于原调用授权项目')
     w=owned(pid,'data_workflow',wid)
     if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs'):
         raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
     doc=WorkflowDocument.model_validate(w['active_document']) if use_published and w.get('active_document') else load_document(pid,w['path'])
     if use_published and not w.get('active_document'):raise ValueError('流程尚未正式发布')
+    # Compare the exact frozen plan that will enter the queue, not just the
+    # mutable draft pointer. A later file edit cannot change this snapshot.
+    if expected_draft_sha256 is not None and (use_published or digest(doc.model_dump())!=expected_draft_sha256):
+        raise ValueError('任务做法已变化，请刷新并重新核对后运行')
     from .sources import snapshot
     from .jobs import enqueue,is_scheduler_key
     ids=[b.source_id for b in doc.bindings.values() if b.source_id]
@@ -608,6 +619,7 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
                                      'published_run':w.get('published_run'),'candidate_run':w.get('candidate_run')}
                                     if use_published and is_scheduler_key('data_workflow',wid,scheduled_key) else None),
                'workflow_refresh_published':bool(use_published),
+               'manual_candidate_only':expected_draft_sha256 is not None,
                'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
                'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
     if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow':raise ValueError('已有不同项目的加工任务，请核对权限')
@@ -1046,13 +1058,13 @@ def execute_job(run,folder):
             # deduplicated or flagged as conflicts inside the workflow — the
             # same convention the business-flow reader uses. It is not a
             # business key and is not stable if a later source snapshot is
-            # reordered. Only applied when the plan declares an atlas_row column.
-            if any(c.name == 'atlas_row' for c in doc.plan.inputs[alias].columns):
-                if any(f.get('name') == 'atlas_row' for f in fields) or any('atlas_row' in row for row in rows):
+            # reordered. Only applied when the plan declares an nexus_row column.
+            if any(c.name == 'nexus_row' for c in doc.plan.inputs[alias].columns):
+                if any(f.get('name') == 'nexus_row' for f in fields) or any('nexus_row' in row for row in rows):
                     fail_input('INPUT_SCHEMA_MISMATCH',
-                        '输入数据已有 atlas_row 字段，不能覆盖原始数据生成行号；请将该字段映射为其他名称后重试')
-                rows=[dict(row, atlas_row=str(index)) for index, row in enumerate(rows, 1)]
-                fields=fields+[{'name':'atlas_row','label':'本次资料行号','numeric':False}]
+                        '输入数据已有 nexus_row 字段，不能覆盖原始数据生成行号；请将该字段映射为其他名称后重试')
+                rows=[dict(row, nexus_row=str(index)) for index, row in enumerate(rows, 1)]
+                fields=fields+[{'name':'nexus_row','label':'本次资料行号','numeric':False}]
             names={f['name'] for f in fields};expected={f.name for f in doc.plan.inputs[alias].columns}
             if names!=expected:fail_input('INPUT_SCHEMA_MISMATCH','输入字段与冻结计划不一致，请修改方案后重新运行')
             upstream=proof.get('output_semantics')
@@ -1141,7 +1153,7 @@ def execute_job(run,folder):
                 # CAS protects a later candidate or a newly published result.
                 values['target_patch']={'kind':'data_workflow','expected':pointer,'values':{'candidate_run':run['id']}}
             patch_run(run,**values)
-        if (valid_pointer and w.get('published_run') and w.get('active_sha256')==run['commit']
+        if (not run.get('manual_candidate_only') and valid_pointer and w.get('published_run') and w.get('active_sha256')==run['commit']
                 and w.get('published_run')==pointer['published_run']
                 and w.get('candidate_run')==pointer['candidate_run'] and not w.get('candidate_run')
                 and not source_review and not context['requires_semantic_review']):
@@ -1256,7 +1268,7 @@ def _schedule_patch_if_current(snapshot,**values):
         return True
 
 
-def schedule(pid,wid,cron=None,watch_sources=False):
+def schedule(pid,wid,cron=None,watch_sources=False,expected_published_sha256=None):
     from .actor_context import current_actor
     from croniter import croniter
     from datetime import datetime,timezone
@@ -1266,10 +1278,30 @@ def schedule(pid,wid,cron=None,watch_sources=False):
     if not w.get('published_run'):raise ValueError('先核对并采用结果，再启用持续刷新')
     if cron and (not croniter.is_valid(cron) or len(cron.split())!=5):raise ValueError('需要有效五段cron')
     next_due=croniter(cron,_schedule_now().astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat() if cron else None
-    patch('data_workflow',wid,cron=cron,watch_sources=watch_sources,next_due=next_due,
-          refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if w.get('schedule_uncertain_run') else None),
-          refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),schedule_actor_id=current_actor(),
-          schedule_resume_required=bool(w.get('schedule_uncertain_run')))
+    if expected_published_sha256 is not None:
+        # Bind the user's confirmation to the adopted version under the same
+        # row lock as adoption. Never schedule a version that changed after the
+        # page was read or an unresolved automatic run was discovered.
+        with transaction() as c:
+            row=c.execute(select(items.c.body).where(items.c.id==wid,items.c.kind=='data_workflow').with_for_update()).first()
+            if not row:raise ValueError('任务不存在，请刷新后重试')
+            current=json.loads(row[0])
+            if current.get('project_id')!=pid or current.get('archived') or not current.get('published_run'):
+                raise ValueError('先核对并采用结果，再启用持续刷新')
+            if current.get('active_sha256')!=expected_published_sha256:
+                raise ValueError('正式版本已变化，请重新查看后设置定时')
+            if (cron or watch_sources) and (current.get('schedule_uncertain_run') or current.get('schedule_uncertain_runs')):
+                raise ValueError('上次自动运行状态需要先核对，再设置定时')
+            current.update(cron=cron,watch_sources=watch_sources,next_due=next_due,
+                refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if current.get('schedule_uncertain_run') else None),
+                refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),schedule_actor_id=current_actor(),
+                schedule_resume_required=bool(current.get('schedule_uncertain_run')))
+            c.execute(update(items).where(items.c.id==wid,items.c.kind=='data_workflow').values(body=json.dumps(current,ensure_ascii=False)))
+    else:
+        patch('data_workflow',wid,cron=cron,watch_sources=watch_sources,next_due=next_due,
+              refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if w.get('schedule_uncertain_run') else None),
+              refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),schedule_actor_id=current_actor(),
+              schedule_resume_required=bool(w.get('schedule_uncertain_run')))
     return {'workflow_id':wid,'cron':cron,'watch_sources':watch_sources,'next_due':next_due,
             'scope':'file_revision_events_or_scheduled_full_snapshot; database_CDC_not_configured'}
 

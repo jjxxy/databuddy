@@ -17,7 +17,7 @@ def historical_usage(turn):
 
 
 def test_native_bridge_accepts_large_request_after_old_totals_without_resetting_counters(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     monkeypatch.delenv('MAX_DAILY_MODEL_CALLS',raising=False)
     monkeypatch.delenv('MAX_DAILY_RESERVED_TOKENS',raising=False)
     current=historical_usage(turn)
@@ -40,7 +40,7 @@ def test_native_bridge_accepts_large_request_after_old_totals_without_resetting_
 
 
 def test_legacy_http_sends_over_80000_characters_without_a_default_task_cap(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     current=historical_usage(turn);sent=[]
     def respond(request):
         sent.append(json.loads(request.content))
@@ -56,7 +56,7 @@ def test_legacy_http_sends_over_80000_characters_without_a_default_task_cap(turn
 
 
 def test_explicit_bounded_native_allowance_is_clipped_to_remaining_output(turn,monkeypatch):
-    monkeypatch.delenv('ATLAS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
+    monkeypatch.delenv('NEXUS_OPENCODE_MODEL_INPUT_CHAR_LIMITS',raising=False)
     contract={**turn['task_contract'],'budget_policy':'bounded','budgets':dict(LEGACY_DEFAULTS,output_tokens=5000)}
     patch('turn',turn['id'],task_contract=contract)
     def during_context(bridge,state):

@@ -18,9 +18,9 @@ from urllib.request import ProxyHandler, Request, build_opener
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
-DEFAULT_STATE = Path.home() / '.local/share/atlas-databuddy-020'
-DEFAULT_PYTHON = Path.home() / '.venvs/atlas-databuddy-020/bin/python'
-DEFAULT_OPENCODE = Path.home() / '.local/bin/opencode-atlas-2.1.2'
+DEFAULT_STATE = Path.home() / '.local/share/nexus-databuddy-020'
+DEFAULT_PYTHON = Path.home() / '.venvs/nexus-databuddy-020/bin/python'
+DEFAULT_OPENCODE = Path.home() / '.local/bin/opencode-nexus-2.1.2'
 
 
 def save_json(path, value):
@@ -74,7 +74,7 @@ def owns_process(record):
         command = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
         environment = Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
         return (command[1:3] == [b'-m', b'agent_service.cloud']
-                and ('ATLAS_NATIVE_INSTANCE=' + record['instance']).encode() in environment)
+                and ('NEXUS_NATIVE_INSTANCE=' + record['instance']).encode() in environment)
     except (OSError, KeyError):
         return False
 
@@ -84,11 +84,11 @@ def credentials(state):
     value = read_json(path)
     if value is None:
         value = {'APP_TOKEN': secrets.token_urlsafe(36),
-                 'ATLAS_OPERATOR_TOKEN': secrets.token_urlsafe(36)}
+                 'NEXUS_OPERATOR_TOKEN': secrets.token_urlsafe(36)}
         save_json(path, value)
     if (not isinstance(value, dict) or any(not isinstance(value.get(k), str) or len(value[k]) < 16
-            for k in ('APP_TOKEN', 'ATLAS_OPERATOR_TOKEN'))
-            or value['APP_TOKEN'] == value['ATLAS_OPERATOR_TOKEN']):
+            for k in ('APP_TOKEN', 'NEXUS_OPERATOR_TOKEN'))
+            or value['APP_TOKEN'] == value['NEXUS_OPERATOR_TOKEN']):
         raise ValueError('Invalid local credentials; restore credentials.json from your backup.')
     path.chmod(0o600)
     return value
@@ -114,7 +114,7 @@ def service_ready(record, token):
 
 
 def display(record):
-    print(f'Atlas DataBuddy v0.20.0: http://127.0.0.1:{record["port"]}')
+    print(f'Nexus WorkStudio v0.20.0: http://127.0.0.1:{record["port"]}')
     if record.get('model_configured'):
         print('Model configured; engine: ' + record['engine'] + '. Real model acceptance is separate from service readiness.')
     else:
@@ -155,7 +155,7 @@ def start(args, state):
     access = credentials(state)
     if owns_process(old):
         if not service_ready(old, access['APP_TOKEN']):
-            raise ValueError('Atlas supervisor is running but services are not ready. Check logs or stop before restarting.')
+            raise ValueError('Nexus WorkStudio supervisor is running but services are not ready. Check logs or stop before restarting.')
         display(old)
         return old
     python = Path(args.python).expanduser().absolute()
@@ -188,23 +188,23 @@ def start(args, state):
     data.mkdir(exist_ok=True, mode=0o700)
     instance = 'native-' + secrets.token_hex(12)
     env = dict(os.environ)
-    for key in ('ATLAS_INITIAL_MODEL', 'ATLAS_LLM_CONFIG_FILE', 'ATLAS_DROP_PRIVILEGES',
-                'ATLAS_LOCAL_MODE', 'ATLAS_LOCAL_WORKSPACE', 'ATLAS_QUICKSTART_CONTAINER',
+    for key in ('NEXUS_INITIAL_MODEL', 'NEXUS_LLM_CONFIG_FILE', 'NEXUS_DROP_PRIVILEGES',
+                'NEXUS_LOCAL_MODE', 'NEXUS_LOCAL_WORKSPACE', 'NEXUS_QUICKSTART_CONTAINER',
                 'LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL'):
         env.pop(key, None)
     env.update(access)
     env.update(DATA_DIR=str(data), DATABASE_URL='sqlite:///' + str(data / 'metadata.sqlite'),
-               PORT=str(args.port), ATLAS_API_HOST='127.0.0.1', ATLAS_INSTANCE_ID=instance,
-               ATLAS_NATIVE_INSTANCE=instance, ATLAS_DEPLOYMENT_PROFILE='single', ATLAS_AUTH_MODE='token',
-               ATLAS_OPENCODE_RUNTIME='1' if engine == 'opencode' else '0',
-               ATLAS_OPENCODE_BINARY=str(binary), APP_TIMEZONE='Asia/Shanghai', PYTHONUTF8='1',
+               PORT=str(args.port), NEXUS_API_HOST='127.0.0.1', NEXUS_INSTANCE_ID=instance,
+               NEXUS_NATIVE_INSTANCE=instance, NEXUS_DEPLOYMENT_PROFILE='single', NEXUS_AUTH_MODE='token',
+               NEXUS_OPENCODE_RUNTIME='1' if engine == 'opencode' else '0',
+               NEXUS_OPENCODE_BINARY=str(binary), APP_TIMEZONE='Asia/Shanghai', PYTHONUTF8='1',
                RUNTIME__DLTHUB_TELEMETRY='false', DBT_SEND_ANONYMOUS_USAGE_STATS='false')
     if has_model_file:
-        env['ATLAS_LLM_CONFIG_FILE'] = str(model_path)
+        env['NEXUS_LLM_CONFIG_FILE'] = str(model_path)
     # Rotation bounds routine logs without losing the previous startup diagnosis.
-    logfile = state / 'atlas.log'
+    logfile = state / 'nexus.log'
     if logfile.exists() and logfile.stat().st_size > 8 * 1024 * 1024:
-        logfile.replace(state / 'atlas.previous.log')
+        logfile.replace(state / 'nexus.previous.log')
     with logfile.open('ab', buffering=0) as output:
         logfile.chmod(0o600)
         process = subprocess.Popen([str(python), '-m', 'agent_service.cloud'], cwd=ROOT,
@@ -216,7 +216,7 @@ def start(args, state):
     deadline = time.monotonic() + args.wait
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise ValueError(f'Atlas exited with code {process.returncode}. See {logfile}; no model fallback was attempted.')
+            raise ValueError(f'Nexus WorkStudio exited with code {process.returncode}. See {logfile}; no model fallback was attempted.')
         if service_ready(record, access['APP_TOKEN']):
             display(record)
             return record
@@ -250,10 +250,10 @@ def main(argv=None):
             if args.action == 'token':
                 value = read_json(state / 'credentials.json')
                 if value is None:
-                    raise ValueError('Start Atlas first to create local credentials.')
+                    raise ValueError('Start Nexus WorkStudio first to create local credentials.')
                 print(value['APP_TOKEN'])  # Explicit owner request only; never print the operator token.
             elif args.action == 'logs':
-                path = state / 'atlas.log'
+                path = state / 'nexus.log'
                 if path.exists():
                     print('\n'.join(path.read_text(encoding='utf-8', errors='replace').splitlines()[-100:]))
                 else:
@@ -262,10 +262,10 @@ def main(argv=None):
                 if not stop_service(record):
                     raise ValueError('Supervisor did not stop in 25 seconds; inspect logs. No unrelated process was signalled.')
                 (state / 'process.json').unlink(missing_ok=True)
-                print('Atlas stopped. Data and credentials retained.')
+                print('Nexus WorkStudio stopped. Data and credentials retained.')
             elif args.action == 'status':
                 if not owns_process(record):
-                    print('Atlas is stopped.')
+                    print('Nexus WorkStudio is stopped.')
                     return 1
                 display(record)
                 if not service_ready(record, credentials(state)['APP_TOKEN']):
@@ -275,7 +275,7 @@ def main(argv=None):
             elif args.action == 'start':
                 record = start(args, state)
             elif not owns_process(record):
-                raise ValueError('Atlas is stopped. Run start first.')
+                raise ValueError('Nexus WorkStudio is stopped. Run start first.')
             else:
                 display(record)
         if args.action in ('start', 'open') and not args.no_open:

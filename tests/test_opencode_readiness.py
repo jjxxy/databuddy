@@ -15,7 +15,7 @@ def healthy_runtime(monkeypatch, tmp_path):
     config = json.loads((root / 'config/opencode/opencode.json').read_bytes().decode('utf-8'))
     plugins = [{'id': name, 'state': {'status': 'active'}, 'source': {'type': 'builtin'}}
                for name in runtime.BUILTIN_PLUGINS]
-    plugins.append({'id': 'atlas.business-tools', 'state': {'status': 'active'},
+    plugins.append({'id': 'nexus.business-tools', 'state': {'status': 'active'},
                     'source': {'type': 'local', 'path': str(root / 'plugin/index.js')}})
     responses = {'/api/info': {'version': runtime.VERSION}, '/api/plugin': {'data': plugins},
                  '/api/config': [{'type': 'document', 'path': str(root / 'config/opencode/opencode.json'),

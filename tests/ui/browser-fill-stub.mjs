@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import net from 'node:net';
 import {createHash} from 'node:crypto';
-const dir=await mkdtemp(join(tmpdir(),'atlas-browser-stub-'));
+const dir=await mkdtemp(join(tmpdir(),'nexus-browser-stub-'));
 await mkdir(join(dir,'node_modules','playwright-core'),{recursive:true});
 await writeFile(join(dir,'package.json'),'{}');
 const payload=Buffer.alloc(3*1024*1024+17,65);await writeFile(join(dir,'export.csv'),payload);
@@ -22,7 +22,7 @@ exports.chromium={launch:async()=>({newContext:async()=>ctx,close:async()=>{}})}
 `);
 const port=await new Promise((resolve,reject)=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))});s.on('error',reject)});
 const token='t'.repeat(40),sid='b'.repeat(64),wid='c'.repeat(64);
-const server=spawn(process.execPath,['browser_runner/service.mjs'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),ATLAS_BROWSER_PLAYWRIGHT_ROOT:join(dir,'package.json'),ATLAS_BROWSER_TEST_MODE:'1',ATLAS_BROWSER_TOKEN:token,ATLAS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',ATLAS_BROWSER_ALLOW_DOWNLOADS:'1',FAKE_DOWNLOAD_PATH:join(dir,'export.csv')},stdio:'ignore'});
+const server=spawn(process.execPath,['browser_runner/service.mjs'],{cwd:process.cwd(),env:{...process.env,PORT:String(port),NEXUS_BROWSER_PLAYWRIGHT_ROOT:join(dir,'package.json'),NEXUS_BROWSER_TEST_MODE:'1',NEXUS_BROWSER_TOKEN:token,NEXUS_BROWSER_ALLOWED_HOSTS:'127.0.0.1',NEXUS_BROWSER_ALLOW_DOWNLOADS:'1',FAKE_DOWNLOAD_PATH:join(dir,'export.csv')},stdio:'ignore'});
 const call=async(path,body)=>{const r=await fetch('http://127.0.0.1:'+port+path,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});return [r.status,await r.json()]};
 try {
   let ready=false;for(let i=0;i<60;i++){try{const r=await fetch('http://127.0.0.1:'+port+'/v1/health',{headers:{Authorization:'Bearer '+token}});if(r.ok){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,50))}assert(ready);

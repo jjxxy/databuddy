@@ -1,4 +1,4 @@
-# DOUBAO 复审报告 · v02（第一轮独立复审：Atlas DataBuddy H1/H2 最小范围）
+# DOUBAO 复审报告 · v02（第一轮独立复审：Nexus WorkStudio H1/H2 最小范围）
 
 > 评审角色：最终验收人 / 严苛 QA（只读，未操作 Codex 窗口/剪贴板，未改代码，未读 llm.json/.env/用户数据）
 > 版本：v02 · 2026-10-24
@@ -31,7 +31,7 @@
 | US-A1 上传即用（离线） | `verify_backend.py:124-134/188-196`：multipart 上传→画像→ready；`local-data.html/js` GUI 完整入口 | ✅ |
 | 重启保留数据/凭据/端口 | `verify_backend.py:292-299`：重启后 url/token/data 一致、audit ok | ✅ |
 | 审计与边界（401/空/超长/空文件） | `verify_backend.py:179-187`：401×2、空名、超长名、空文件、超长消息、空消息全部断言 | ✅ |
-| DV-1 修复（OPENCODE_RUNTIME） | `portable_runtime.py:78` `ATLAS_OPENCODE_RUNTIME='1'` | ✅ 已修复 |
+| DV-1 修复（OPENCODE_RUNTIME） | `portable_runtime.py:78` `NEXUS_OPENCODE_RUNTIME='1'` | ✅ 已修复 |
 | 证据真实性（非手写） | `verify_backend.py:266-336`：异常写 diagnostic log、`ok` 由 harness 判定、token 从不出现在 evidence（`:158-159` redact） | ✅ |
 | 视觉规范 R5 | `ui/src/main.jsx:19` + `graph.mjs:3-11`：白底、`#111` 黑线箭头、nodesDraggable/connectable/reconnectable 全 false（只读） | ✅ |
 | 技术栈 R2/R8 | `desktop/main.cjs`（Electron 壳）、`ui/`（React+Vite+ReactFlow 溯源，`ui/dist` 构建产物随包）、langgraph/MCP 保留 | ✅ |
@@ -61,15 +61,15 @@
 ### P2 · 待补交 / 观察
 
 **OB-1 [P2] dist 包内验收结果待补交**
-- **位置**：`dist/Atlas-DataBuddy-win32-x64/`
+- **位置**：`dist/Nexus WorkStudio-WorkStudio-win32-x64/`
 - **现象**：当前真实证据在包外（`verification/windows-offline-06`）；dist 包内 `resources/app` 结构完整（已验证 runtime/python、portable_runtime、ui/dist、local-data 均在内），但**在 dist 包本体上跑的验收结果**尚未补交。
 - **为什么是问题**：验收的最终对象是交付包，不是源码树；包内打包/路径是否与源码树一致需在包内复验。
-- **期望行为**：对 `dist/Atlas-DataBuddy-win32-x64` 本体跑一遍 verify_backend（`--app-root dist/...`），产出包内 `backend-verification.json`。
+- **期望行为**：对 `dist/Nexus WorkStudio-WorkStudio-win32-x64` 本体跑一遍 verify_backend（`--app-root dist/...`），产出包内 `backend-verification.json`。
 - **修复建议**：`python acceptance/offline/verify_backend.py --app-root "<dist>" --evidence-dir verification/windows-offline-dist-01`。
 
 **OB-2 [P2] 离线验证基于 local_only 策略，未在真实断网/防火墙隔离 VM 复验**
 - **位置**：`backend-verification.json:7` `os_firewall_or_disconnected_vm_evaluated=false`
-- **现象**：离线通过"应用层 `ATLAS_NETWORK_MODE=local_only` + telemetry 全关"达成，未在物理断网/防火墙隔离环境确认无隐蔽外连。
+- **现象**：离线通过"应用层 `NEXUS_NETWORK_MODE=local_only` + telemetry 全关"达成，未在物理断网/防火墙隔离环境确认无隐蔽外连。
 - **为什么是问题**：H2a 判定"离线启动/查看/本地加工导出必须可用"，当前缺 OS 层断网证据。
 - **期望行为**：在断网（或防火墙全阻断）环境跑同一 harness，确认全链仍通过。
 - **修复建议**：Windows 防火墙出站全禁（或断网）再跑 verify_backend；不通过则该 P2 升 P1。
@@ -103,4 +103,4 @@
 
 - DV-3（撤回维持）：`admit_model_request` 记账无上限——接受 Codex 反驳，维持撤回，本轮未复提。
 - DV-4（撤回维持）：`workspace_gateway` semaphore 非原子——接受 asyncio 语义 + 实跑证据，维持撤回，本轮未复提。
-- DV-1（已确认修复）：`run-local.sh` 未设 `ATLAS_OPENCODE_RUNTIME`——`portable_runtime.py:78` 已显式 `'1'`，本轮关闭。
+- DV-1（已确认修复）：`run-local.sh` 未设 `NEXUS_OPENCODE_RUNTIME`——`portable_runtime.py:78` 已显式 `'1'`，本轮关闭。

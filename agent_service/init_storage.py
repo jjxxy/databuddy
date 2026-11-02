@@ -5,7 +5,7 @@ from .store import cipher,get,put,seal,unseal
 from .locks import FileLock
 
 def main():
-    expected=os.environ['ATLAS_STORAGE_ID']
+    expected=os.environ['NEXUS_STORAGE_ID']
     if not expected or len(expected)>100:raise ValueError('需要唯一存储标识')
     with FileLock(str(DATA/'storage-init.lock'),timeout=30):
         marker=DATA/'storage.identity'
@@ -17,5 +17,5 @@ def main():
             cipher();put('system',{'storage_id':expected,'key_proof':seal({'storage_id':expected})},'shared-storage')
         if not marker.exists():
             with marker.open('x') as f:f.write(expected+'\n');f.flush();os.fsync(f.fileno())
-    print('ATLAS_SHARED_STORAGE_INITIALIZED',flush=True)
+    print('NEXUS_SHARED_STORAGE_INITIALIZED',flush=True)
 if __name__=='__main__':main()

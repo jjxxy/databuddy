@@ -9,7 +9,7 @@ import zipfile
 
 def test_backup_and_restore_unicode_metadata_with_utf8_mode_disabled(tmp_path):
     root=Path(__file__).resolve().parents[1]
-    source=tmp_path/'source';target=tmp_path/'restored';archive=tmp_path/'unicode.atlas'
+    source=tmp_path/'source';target=tmp_path/'restored';archive=tmp_path/'unicode.nexus'
     label='财经核对🧾与预算'
     environment=dict(os.environ,DATA_DIR=str(source),DATABASE_URL='sqlite:///'+str(source/'metadata.sqlite'),
                      PYTHONPATH=str(root),PYTHONUTF8='0',APP_TOKEN='utf8-fixture-only-access-token')

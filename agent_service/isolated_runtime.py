@@ -6,7 +6,7 @@ from pathlib import Path
 def main():
     if os.geteuid() != 10001 or os.getenv('DATA_DIR') != '/data' or os.getenv('HOME') != '/data/home':
         raise ValueError('Isolated runtime requires UID 10001 and dedicated /data home')
-    if os.getenv('ATLAS_AUTH_MODE') != 'oidc' or os.getenv('OIDC_ACCEPT_PROXY_HEADER') != '0':
+    if os.getenv('NEXUS_AUTH_MODE') != 'oidc' or os.getenv('OIDC_ACCEPT_PROXY_HEADER') != '0':
         raise ValueError('Isolated runtime requires direct OIDC verification')
     from .identity import validate_config
     validate_config()

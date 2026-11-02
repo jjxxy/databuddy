@@ -43,22 +43,22 @@ def _pack(value: Any) -> Any:
     if isinstance(value, Decimal):
         if not value.is_finite():
             raise DeliveryError('Non-finite Decimal cannot be delivered')
-        return {'$atlas': 'decimal', 'value': str(value)}
+        return {'$nexus': 'decimal', 'value': str(value)}
     if isinstance(value, datetime):
-        return {'$atlas': 'datetime', 'value': value.isoformat()}
+        return {'$nexus': 'datetime', 'value': value.isoformat()}
     if isinstance(value, date):
-        return {'$atlas': 'date', 'value': value.isoformat()}
+        return {'$nexus': 'date', 'value': value.isoformat()}
     if isinstance(value, dict):
         if any(not isinstance(k, str) for k in value):
             raise DeliveryError('JSON object keys must be strings')
         # All user objects are wrapped, so they cannot impersonate a type marker.
-        return {'$atlas': 'object', 'items': [[k, _pack(v)] for k, v in value.items()]}
+        return {'$nexus': 'object', 'items': [[k, _pack(v)] for k, v in value.items()]}
     if isinstance(value, (list, tuple)):
         return [_pack(v) for v in value]
     if isinstance(value, float) and not math.isfinite(value):
         raise DeliveryError('Non-finite float cannot be delivered')
     if isinstance(value, int) and not isinstance(value, bool) and abs(value) > 9_007_199_254_740_991:
-        return {'$atlas': 'integer', 'value': str(value)}
+        return {'$nexus': 'integer', 'value': str(value)}
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     raise DeliveryError('Unsupported handoff value type: ' + type(value).__name__)
@@ -68,15 +68,15 @@ def _unpack(value: Any, native_types: bool = True) -> Any:
     if isinstance(value, list):
         return [_unpack(v, native_types) for v in value]
     if isinstance(value, dict):
-        kind = value.get('$atlas')
-        if kind == 'object' and set(value) == {'$atlas', 'items'}:
+        kind = value.get('$nexus')
+        if kind == 'object' and set(value) == {'$nexus', 'items'}:
             entries = value['items']
             if not isinstance(entries, list) or any(not isinstance(x, list) or len(x) != 2 or not isinstance(x[0], str) for x in entries):
                 raise DeliveryError('Invalid handoff object encoding')
             if len({x[0] for x in entries}) != len(entries):
                 raise DeliveryError('Duplicate handoff object keys')
             return {k: _unpack(v, native_types) for k, v in entries}
-        if kind in ('decimal', 'integer', 'datetime', 'date') and set(value) == {'$atlas', 'value'}:
+        if kind in ('decimal', 'integer', 'datetime', 'date') and set(value) == {'$nexus', 'value'}:
             raw = value['value']
             if not isinstance(raw, str):
                 raise DeliveryError('Invalid typed handoff value')
@@ -269,10 +269,10 @@ def write_handoff(folder: str | Path, rows: Iterable[dict], schema: Any,
                 out.write(_json({'entry_index': provenance_count, 'value': _pack(entry)}) + '\n')
             out.flush()
             os.fsync(out.fileno())
-        manifest = {'version': 1, 'format': 'atlas-complete-result', 'complete': True,
+        manifest = {'version': 1, 'format': 'nexus-complete-result', 'complete': True,
                     'row_count': count, 'field_count': len(fields), 'provenance_count': provenance_count,
                     'created_at': datetime.now(timezone.utc).isoformat(),
-                    'encoding': 'atlas-tagged-json-v1; decimals_are_exact; preview_is_not_a_handoff',
+                    'encoding': 'nexus-tagged-json-v1; decimals_are_exact; preview_is_not_a_handoff',
                     'files': {name: {'sha256': _sha(temporary / name), 'bytes': (temporary / name).stat().st_size}
                               for name in sorted(HANDOFF_FILES)}}
         with (temporary / 'manifest.json').open('w', encoding='utf-8', newline='\n') as out:
@@ -303,7 +303,7 @@ def verify_handoff(folder: str | Path, expected_manifest_sha256: str | None = No
         manifest = json.loads(manifest_file.read_text(encoding='utf-8'))
     except (OSError, json.JSONDecodeError) as exc:
         raise DeliveryError('Invalid handoff manifest') from exc
-    if manifest.get('version') != 1 or manifest.get('format') != 'atlas-complete-result' or manifest.get('complete') is not True:
+    if manifest.get('version') != 1 or manifest.get('format') != 'nexus-complete-result' or manifest.get('complete') is not True:
         raise DeliveryError('Unsupported or incomplete handoff manifest')
     if not isinstance(manifest.get('files'), dict) or set(manifest['files']) != HANDOFF_FILES:
         raise DeliveryError('Invalid handoff file set')

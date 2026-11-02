@@ -89,12 +89,12 @@ def chromium_browser():
     sync=pytest.importorskip('playwright.sync_api',reason='Optional real-browser fixture requires Python Playwright')
     with sync.sync_playwright() as p:
         options={'headless':True,'args':['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking','--disable-component-update','--disable-sync']}
-        executable=os.getenv('ATLAS_TEST_BROWSER_EXECUTABLE')
+        executable=os.getenv('NEXUS_TEST_BROWSER_EXECUTABLE')
         if executable:options['executable_path']=executable
         try:browser=p.chromium.launch(**options)
         except sync.Error as exc:
             if "Executable doesn't exist" in str(exc):
-                pytest.skip('Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE')
+                pytest.skip('Optional Chromium fixture binary is missing; install the matching Playwright browser or set NEXUS_TEST_BROWSER_EXECUTABLE')
             raise RuntimeError('Chromium fixture launch failed: '+str(exc)[:1200]) from None
         try:yield browser
         finally:browser.close()

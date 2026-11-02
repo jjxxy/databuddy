@@ -32,7 +32,7 @@ def test_uploaded_rules_select_version_at_business_date_and_preserve_evidence():
                                                'source_ids':[transaction['id'],rules['id']]})
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     def col(name,kind='text',**extra):return {'name':name,'data_type':kind,'meaning':name,**extra}
-    def table(columns):return {'meaning':'已上传资料','grain':['atlas_row'],'columns':[col('atlas_row')]+columns}
+    def table(columns):return {'meaning':'已上传资料','grain':['nexus_row'],'columns':[col('nexus_row')]+columns}
     plan={'name':'按生效日关联','inputs':{
         'transactions':table([col('c_1'),col('c_2'),col('c_3','date'),col('c_4','decimal',unit='CNY',aggregation='additive')]),
         'rules':table([col('c_1'),col('c_2'),col('c_3','date'),col('c_4','date'),col('c_5')])},
@@ -40,7 +40,7 @@ def test_uploaded_rules_select_version_at_business_date_and_preserve_evidence():
                    'input':'transactions','right':'rules',
                    'keys':[{'left':'c_1','right':'c_1'},{'left':'c_2','right':'c_2'}],
                    'business_date':'c_3','valid_from':'c_3','valid_to':'c_4',
-                   'outputs':{'atlas_row':col('rule_row'),'c_3':col('effective_from','date'),
+                   'outputs':{'nexus_row':col('rule_row'),'c_3':col('effective_from','date'),
                               'c_4':col('effective_to','date'),'c_5':col('owner')}}], 'output':'mapped'}
     def node(name,source):return {'id':name,'kind':'source_table','title':'读取资料',
         'config':{'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash']}}

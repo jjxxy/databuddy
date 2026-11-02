@@ -32,19 +32,19 @@
     },
     {
       "test": "tests.test_browser_reports_live.test_actual_chromium_iframe_filters_full_download_and_idempotence",
-      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set NEXUS_TEST_BROWSER_EXECUTABLE"
     },
     {
       "test": "tests.test_browser_reports_live.test_actual_chromium_filter_reset_blocks_export",
-      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set NEXUS_TEST_BROWSER_EXECUTABLE"
     },
     {
       "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[html]",
-      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set NEXUS_TEST_BROWSER_EXECUTABLE"
     },
     {
       "test": "tests.test_browser_reports_live.test_actual_chromium_bad_or_interrupted_download_is_not_a_result[interrupted]",
-      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set ATLAS_TEST_BROWSER_EXECUTABLE"
+      "reason": "Optional Chromium fixture binary is missing; install the matching Playwright browser or set NEXUS_TEST_BROWSER_EXECUTABLE"
     },
     {
       "test": "tests.test_enterprise_deploy.test_cross_node_postgres_lock_and_recovery_after_holder_killed",
@@ -151,28 +151,28 @@
         "kind": "primary",
         "model": "quickstart-simulated-model",
         "tools": [
-          "atlas_step"
+          "nexus_step"
         ]
       },
       {
         "kind": "compaction",
         "model": "quickstart-simulated-model",
         "tools": [
-          "atlas_step"
+          "nexus_step"
         ]
       },
       {
         "kind": "primary",
         "model": "quickstart-simulated-model",
         "tools": [
-          "atlas_step"
+          "nexus_step"
         ]
       },
       {
         "kind": "primary",
         "model": "quickstart-simulated-model",
         "tools": [
-          "atlas_step"
+          "nexus_step"
         ]
       }
     ],
@@ -194,7 +194,7 @@
   "deployment_profiles": {
     "quickstart": "one owner/common-authorized space, native OpenCode session, API/Agent/Worker and SQLite persistent volume",
     "local": "Docker, explicitly selected folder, immutable imports, visible live code, verified immutable exports",
-    "legacy_split_services": "Atlas legacy loop; native OpenCode HA not qualified"
+    "legacy_split_services": "Nexus WorkStudio legacy loop; native OpenCode HA not qualified"
   },
   "personal_identity": "APP_TOKEN is one owner; OIDC scopes personal Skill/MCP/memory, while projects/data/history/results remain shared",
   "network_policy": "local_only is an application destination policy, not an OS firewall; custom stdio is disabled in this mode",

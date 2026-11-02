@@ -4,18 +4,18 @@ import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {chromium as playwright} from 'playwright-core';
 const root=fileURLToPath(new URL('../../agent_service/static',import.meta.url));
-const evidenceDir=process.env.ATLAS_BROWSER_EVIDENCE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'atlas-browser-check-'));fs.mkdirSync(evidenceDir,{recursive:true});
-if(!process.env.ATLAS_BROWSER_EXECUTABLE)throw Error('Set ATLAS_BROWSER_EXECUTABLE to an installed Chromium binary; this test never downloads browsers.');
+const evidenceDir=process.env.NEXUS_BROWSER_EVIDENCE_DIR||fs.mkdtempSync(path.join(os.tmpdir(),'nexus-browser-check-'));fs.mkdirSync(evidenceDir,{recursive:true});
+if(!process.env.NEXUS_BROWSER_EXECUTABLE)throw Error('Set NEXUS_BROWSER_EXECUTABLE to an installed Chromium binary; this test never downloads browsers.');
 const project={id:'p',name:'Work validation fixture',revision:1},session={id:'c',name:'Report review',revision:1};
 const aid='wa_'+'a'.repeat(44),renditionId='waf_'+'c'.repeat(48);let image;
 const item={id:aid,name:'report.html',kind:'work',format:'html',sha256:'b'.repeat(64),updated_at:'2026-10-29T04:00:00Z',preview_url:'/api/projects/p/artifacts/'+aid+'/preview',download_url:'/api/projects/p/artifacts/'+aid+'/download'};
 const calls=[],errors=[];let browserMode='human';const browserSession='d'.repeat(64);
-const browser=await playwright.launch({executablePath:process.env.ATLAS_BROWSER_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote'],headless:true});
+const browser=await playwright.launch({executablePath:process.env.NEXUS_BROWSER_EXECUTABLE,args:['--no-sandbox','--disable-dev-shm-usage','--no-zygote'],headless:true});
 try{
  const fixture=await browser.newPage({viewport:{width:1024,height:720}});await fixture.setContent('<!doctype html><style>body{font:24px sans-serif;padding:40px;color:#123}h1{color:#17694c}.cards{display:flex;gap:20px}.card{border:1px solid #bbb;border-radius:12px;padding:20px}</style><h1>Work report preview</h1><p>Controlled fixture, no business approval.</p><div class=cards><div class=card>Research</div><div class=card>118.1500</div><div class=card>Needs review</div></div>');image=await fixture.screenshot();await fixture.close();
  const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
- if(process.env.ATLAS_BROWSER_FONT_PACKAGE){
-  const folder=process.env.ATLAS_BROWSER_FONT_PACKAGE,css=fs.readFileSync(path.join(folder,'400.css'),'utf8');
+ if(process.env.NEXUS_BROWSER_FONT_PACKAGE){
+  const folder=process.env.NEXUS_BROWSER_FONT_PACKAGE,css=fs.readFileSync(path.join(folder,'400.css'),'utf8');
   const fonts=[...css.matchAll(/@font-face\s*\{([\s\S]*?)\}/g)].map(match=>{
    const file=match[1].match(/url\(\.\/([^)]*\.woff2)\)/)?.[1],range=match[1].match(/unicode-range:\s*([^;]+);/)?.[1];
    if(!file||!range)throw Error('Invalid optional fixture font package');
@@ -23,15 +23,15 @@ try{
   });
   await context.addInitScript(async fonts=>{
    await Promise.all(fonts.map(async value=>{const bytes=Uint8Array.from(atob(value.bytes),c=>c.charCodeAt(0));const font=await new FontFace('Microsoft YaHei',bytes,{weight:'400',unicodeRange:value.range}).load();document.fonts.add(font)}));
-   window.__atlasFixtureFontsReady=true;
+   window.__nexusFixtureFontsReady=true;
   },fonts);
  }
- await context.addInitScript(()=>sessionStorage.setItem('atlas_token','controlled-ui-fixture'));
+ await context.addInitScript(()=>sessionStorage.setItem('nexus_token','controlled-ui-fixture'));
  const page=await context.newPage();
  page.on('pageerror',error=>errors.push(error.message));
  await page.route('**/*',async route=>{
   const url=new URL(route.request().url());
-  if(url.origin!=='https://atlas.fixture')return route.abort();
+  if(url.origin!=='https://nexus.fixture')return route.abort();
   const p=url.pathname;
   if(p.startsWith('/api/')){
    calls.push(p);
@@ -56,8 +56,8 @@ try{
   const type=file.endsWith('.html')?'text/html':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'application/octet-stream';
   return route.fulfill({status:200,contentType:type,body:fs.readFileSync(file),headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"}});
  });
- await page.goto('https://atlas.fixture/?project=p');
- if(process.env.ATLAS_BROWSER_FONT_PACKAGE)await page.waitForFunction(()=>window.__atlasFixtureFontsReady);
+ await page.goto('https://nexus.fixture/?project=p');
+ if(process.env.NEXUS_BROWSER_FONT_PACKAGE)await page.waitForFunction(()=>window.__nexusFixtureFontsReady);
  await page.waitForSelector('#shell:not([hidden])',{timeout:15000});
  await page.waitForSelector('.conversation-artifact');
  if(/模型请求|本步加载|123456|7654321|9999/.test(await page.locator('#messages').innerText()))throw Error('Internal request/loading counters leaked into conversation');

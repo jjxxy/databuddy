@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 
 def mode():
-    value=os.getenv('ATLAS_NETWORK_MODE','connected')
+    value=os.getenv('NEXUS_NETWORK_MODE','connected')
     if value not in ('connected','local_only'):raise ValueError('网络模式无效')
     return value
 
@@ -15,7 +15,7 @@ def check_host(host,port=None,*,addresses=None):
     if mode()!='local_only':return
     if not isinstance(host,str) or not host:raise ValueError('仅本地连接模式需要明确的主机地址')
     normalized=host.lower().rstrip('.')
-    allowed={entry.strip().lower().rstrip('.') for entry in os.getenv('ATLAS_LOCAL_ONLY_HOSTS','').split(',') if entry.strip()}
+    allowed={entry.strip().lower().rstrip('.') for entry in os.getenv('NEXUS_LOCAL_ONLY_HOSTS','').split(',') if entry.strip()}
     try:literal=ipaddress.ip_address(normalized)
     except ValueError:literal=None
     if normalized!='localhost' and not (literal and literal.is_loopback) and normalized not in allowed:

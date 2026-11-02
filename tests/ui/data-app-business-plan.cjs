@@ -5,8 +5,8 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 async function until(check){for(let i=0;i<150;i++){await tick();if(check())return}throw Error('business plan did not settle')}
 const reply=(value,status=200)=>({ok:status<400,status,json:async()=>value});
 async function boot({selectedRole='candidate',wrongCommit=false,unavailable=false,delay=false,omitRequest=false}={}){
- const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:'https://atlas.test/data-app.html?project=p1&app=a1&preview=1&run=r1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
- w.sessionStorage.setItem('atlas_token','fixture');w.setInterval=()=>0;
+ const dom=new JSDOM(fs.readFileSync(path.join(root,'data-app.html'),'utf8'),{url:'https://nexus.test/data-app.html?project=p1&app=a1&preview=1&run=r1',runScripts:'outside-only'}),w=dom.window,d=w.document,calls=[];
+ w.sessionStorage.setItem('nexus_token','fixture');w.setInterval=()=>0;
  const evidence={run_id:'r1',commit:'c1',inputs:[{name:'收入明细',revision:3,records:100,input_hash:'hash-input'}],output_hash:'hash-output',quality:{available:true,passed:2,failed:1,other:0},replay:{available:false,reason:'尚未验证复现'}};
  const plan={version:1,origin:'stored',user_request:'统计 <img src=x> 收入',summary:'核对收入 <img src=x>',steps:[{title:'读取数据',details:['检查总数']}],sources:[{id:'s1',name:'收入表',design_revision:2,role:'主资料'}],rules:{filter:'已付款'},warnings:['金额口径待确认']};
  if(omitRequest)plan.user_request=null;

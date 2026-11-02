@@ -161,6 +161,10 @@ def _table_folder(context):
     folder=root/scope
     folder.mkdir(mode=0o700,exist_ok=True)
     if folder.is_symlink() or folder.resolve()!=folder.absolute():raise ValueError('数据快照目录无效')
+    if os.name=='nt':
+        # Windows temporary files inherit this app-owned directory's protected ACL.
+        from .platform_files import private_directory
+        private_directory(folder)
     return folder,scope
 
 
@@ -170,7 +174,7 @@ def _table_key(scope):
     cipher() # Exclusive key initialization shared with encrypted checkpoints.
     master=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
     return HKDF(algorithm=hashes.SHA256(),length=32,salt=bytes.fromhex(scope),
-                info=b'atlas-business-flow-table-v1').derive(master)
+                info=b'nexus-business-flow-table-v1').derive(master)
 
 
 def _index_key():
@@ -179,7 +183,7 @@ def _index_key():
     cipher()
     master=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
     return HKDF(algorithm=hashes.SHA256(),length=32,salt=None,
-                info=b'atlas-business-flow-owner-index-v1').derive(master)
+                info=b'nexus-business-flow-owner-index-v1').derive(master)
 
 
 def _owner_claim(context,scope,key):
@@ -245,9 +249,9 @@ def snapshot_storage_usage(project_id,actor_id):
             raise ValueError('数据快照目录无效')
         actor,project,unindexed=_indexed_usage(root,claim,key) if root.is_dir() else (0,0,0)
         return {'actor_bytes':actor,'project_bytes':project,'has_unindexed_legacy':bool(unindexed),
-                'actor_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024,
-                'project_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024,
-                'global_limit_bytes':_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024,
+                'actor_limit_bytes':_quota_mb('NEXUS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024,
+                'project_limit_bytes':_quota_mb('NEXUS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024,
+                'global_limit_bytes':_quota_mb('NEXUS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024,
                 'note':'未归属历史快照只计入全局配额；不会自动清除历史。'}
 
 
@@ -260,9 +264,9 @@ def _save_rows(context,rows,raw):
     ref={'version':1,'sha256':sha,'bytes':len(raw),'row_count':len(rows),'scope':scope}
     from .locks import FileLock
     from .config import DATA
-    total_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)
-    actor_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)
-    project_mb=_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)
+    total_mb=_quota_mb('NEXUS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)
+    actor_mb=_quota_mb('NEXUS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)
+    project_mb=_quota_mb('NEXUS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)
     root=DATA/'business-flow-tables'
     # One cross-process lock serializes quota accounting and atomic publication,
     # including across workers when the configured shared filesystem/DB locks
@@ -305,12 +309,15 @@ def _save_rows(context,rows,raw):
         encrypted=nonce+AESGCM(_table_key(scope)).encrypt(nonce,raw,scope.encode())
         fd,name=tempfile.mkstemp(prefix='.pending-',dir=folder)
         try:
-            os.fchmod(fd,0o600)
+            from .platform_files import chmod_descriptor
             with os.fdopen(fd,'wb') as out:
+                fd=None
+                chmod_descriptor(out.fileno(),0o600)
                 out.write(encrypted);out.flush();os.fsync(out.fileno())
             # Lock serializes writers for this run and id; publishing is atomic.
             os.replace(name,target)
         finally:
+            if fd is not None:os.close(fd)
             if os.path.exists(name):os.unlink(name)
     return ref
 
@@ -318,11 +325,14 @@ def _save_rows(context,rows,raw):
 def _write_owner(path,claim):
     fd,name=tempfile.mkstemp(prefix='.owner-pending-',dir=path.parent)
     try:
-        os.fchmod(fd,0o600)
+        from .platform_files import chmod_descriptor
         with os.fdopen(fd,'wb') as out:
+            fd=None
+            chmod_descriptor(out.fileno(),0o600)
             out.write(canonical(claim));out.flush();os.fsync(out.fileno())
         os.replace(name,path)
     finally:
+        if fd is not None:os.close(fd)
         if os.path.exists(name):os.unlink(name)
 
 
@@ -410,7 +420,7 @@ def _paged_index(stream,ref,scope):
 def _page_chunk(stream,scope,ref,index,item):
     stream.seek(item['offset']);encrypted=stream.read(item['length'])
     if hashlib.sha256(encrypted).hexdigest()!=item['sha256']:raise ValueError('数据快照分块校验失败')
-    aad=canonical(['atlas-table-page-v2',scope,ref['sha256'],index,item['start'],item['count']])
+    aad=canonical(['nexus-table-page-v2',scope,ref['sha256'],index,item['start'],item['count']])
     try:plain=AESGCM(_table_key(scope)).decrypt(encrypted[:12],encrypted[12:],aad);rows=json.loads(plain)
     except Exception:raise ValueError('数据快照分块无法解密') from None
     if not isinstance(rows,list) or len(rows)!=item['count'] or any(not isinstance(row,dict) for row in rows):
@@ -502,27 +512,30 @@ def _save_rows_paged(context,rows,raw,table_sha=None):
         if _scope_bytes(folder)+reserve>_MAX_RUN_BYTES:
             raise FlowStepError('BYTE_BUDGET','本次运行的数据快照超过安全容量，未截断或发布')
         additional=reserve+(0 if marker.exists() else len(canonical(claim)))
-        if actor_used+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024:
+        if actor_used+additional>_quota_mb('NEXUS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024:
             raise FlowStepError('BYTE_BUDGET','当前用户的数据快照容量不足；未删除历史结果')
-        if project_used+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024:
+        if project_used+additional>_quota_mb('NEXUS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024:
             raise FlowStepError('BYTE_BUDGET','当前项目的数据快照容量不足；未删除历史结果')
         total=0
         for item in root.iterdir():
             if item.is_symlink():raise ValueError('数据快照目录包含不可用的链接')
             if item.is_dir():total+=_scope_bytes(item)
             elif item.is_file():total+=item.stat().st_size
-        if total+additional>_quota_mb('ATLAS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024:
+        if total+additional>_quota_mb('NEXUS_FLOW_SNAPSHOT_TOTAL_MB',_DEFAULT_TOTAL_MB)*1024*1024:
             raise FlowStepError('BYTE_BUDGET','数据快照存储容量不足；未删除历史结果')
         if not marker.exists():_write_owner(marker,claim)
         fd,name=tempfile.mkstemp(prefix='.pending-',dir=folder)
         try:
-            os.fchmod(fd,0o600);entries=[];page_key=_table_key(scope)
+            from .platform_files import chmod_descriptor
             with os.fdopen(fd,'wb') as stream:
+                fd=None
+                chmod_descriptor(stream.fileno(),0o600)
+                entries=[];page_key=_table_key(scope)
                 stream.write(_PAGE_MAGIC)
                 plain_hash=hashlib.sha256();plain_hash.update(b'[');plain_bytes=1
                 for i in range(0,len(rows),_PAGE_ROWS):
                     page=rows[i:i+_PAGE_ROWS];nonce=secrets.token_bytes(12)
-                    aad=canonical(['atlas-table-page-v2',scope,sha,len(entries),i,len(page)])
+                    aad=canonical(['nexus-table-page-v2',scope,sha,len(entries),i,len(page)])
                     page_bytes=canonical(page)
                     if entries:plain_hash.update(b',');plain_bytes+=1
                     plain_hash.update(page_bytes[1:-1]);plain_bytes+=len(page_bytes)-2
@@ -544,6 +557,7 @@ def _save_rows_paged(context,rows,raw,table_sha=None):
             os.replace(name,target)
             return ref
         finally:
+            if fd is not None:os.close(fd)
             if os.path.exists(name):os.unlink(name)
 
 
@@ -660,10 +674,10 @@ def source_table(context, config, inputs):
     # coordinate gives the typed engine a unique grain without silently
     # identifying equal-valued transactions as duplicates. It is not a
     # business key and is not stable if a later source snapshot is reordered.
-    if any('atlas_row' in row for row in rows) or any(f.get('name')=='atlas_row' for f in fields):
+    if any('nexus_row' in row for row in rows) or any(f.get('name')=='nexus_row' for f in fields):
         raise ValueError('来源字段与内部行标识冲突，请调整字段映射')
-    rows=[dict(row,atlas_row=str(index)) for index,row in enumerate(rows,1)]
-    fields=list(fields)+[{'name':'atlas_row','label':'本次资料行号','numeric':False}]
+    rows=[dict(row,nexus_row=str(index)) for index,row in enumerate(rows,1)]
+    fields=list(fields)+[{'name':'nexus_row','label':'本次资料行号','numeric':False}]
     # canonical encodes Decimal values exactly as strings and rejects binary
     # floats for numeric execution through the existing typed workflow engine.
     return _compact_table(context,{'kind':'source_table_v1','source_id':pin.source_id,

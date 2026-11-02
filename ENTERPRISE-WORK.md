@@ -1,6 +1,6 @@
-# Atlas v0.13：企业部署与对话式工作助手
+# Nexus WorkStudio v0.13：企业部署与对话式工作助手
 
-v0.17 兼容说明：本文件及 Kubernetes 生成器描述旧的分角色企业拓扑，生成清单显式设置 `ATLAS_OPENCODE_RUNTIME=0`，保留 Atlas 工具循环。镜像包含 OpenCode 不代表该拓扑已集成其原生多副本运行服务。当前 OpenCode 原生业务 Agent 使用 `compose.quickstart.yaml` 的 cloud supervisor；集群原生会话归属和故障接管仍需另外实现和验收。
+v0.17 兼容说明：本文件及 Kubernetes 生成器描述旧的分角色企业拓扑，生成清单显式设置 `NEXUS_OPENCODE_RUNTIME=0`，保留 Nexus WorkStudio 工具循环。镜像包含 OpenCode 不代表该拓扑已集成其原生多副本运行服务。当前 OpenCode 原生业务 Agent 使用 `compose.quickstart.yaml` 的 cloud supervisor；集群原生会话归属和故障接管仍需另外实现和验收。
 
 本版继续以“项目 + 聊天/工作模式”为主入口。用户描述目标，Agent 选工具、执行、检查并交付；接入权限和基础设施由所有者/管理员配置。后台管理能力不会要求普通用户先理解数据管道。
 
@@ -37,7 +37,7 @@ PostgreSQL 会话锁要求连接直达 PostgreSQL 或使用 session pooling，�
 4. 核对真实文件、结构、哈希、执行回执或数据质量；发现未完成项则修正、暂停或说明阻碍。
 5. 在对话中交付文件、应用或业务结果，保留版本与可继续入口。外部写入需要一次性确认。
 
-深度工作模式由 `ATLAS_AGENT_EFFORT=deep` 控制，单轮上限提高到 40 次模型请求、128,000 个预留输出 token、约 10 分钟累计模型时间；仍受每日总预算限制。它增加可处理的步骤，不保证更高正确率。OpenCode 决策接口未提供完整上游用量，因此这些限制不是严格的金额上限，费用应与供应商账单核对。
+深度工作模式由 `NEXUS_AGENT_EFFORT=deep` 控制，单轮上限提高到 40 次模型请求、128,000 个预留输出 token、约 10 分钟累计模型时间；仍受每日总预算限制。它增加可处理的步骤，不保证更高正确率。OpenCode 决策接口未提供完整上游用量，因此这些限制不是严格的金额上限，费用应与供应商账单核对。
 
 ### 可下载办公成果
 
@@ -47,7 +47,7 @@ PostgreSQL 会话锁要求连接直达 PostgreSQL 或使用 session pooling，�
 
 ### 工作系统与 MCP
 
-工作系统连接由管理员通过后台 API 提供 HTTPS Streamable HTTP 地址、凭证和明确的只读/写入工具列表，业务页面不提供模型密钥或连接配置入口。配置列表与新建使用 `/api/projects/{project_id}/work-connectors` 的 GET/POST，修改或停用使用 `/api/projects/{project_id}/work-connectors/{connector_id}` 的 PUT/DELETE；这些请求除有效的业务身份外，都需要独立请求头 `X-Atlas-Operator-Token`，与服务端至少 16 字符的 `ATLAS_OPERATOR_TOKEN` 匹配。未设置管理员口令时管理 API 禁用，业务访问口令不授予管理权限。
+工作系统连接由管理员通过后台 API 提供 HTTPS Streamable HTTP 地址、凭证和明确的只读/写入工具列表，业务页面不提供模型密钥或连接配置入口。配置列表与新建使用 `/api/projects/{project_id}/work-connectors` 的 GET/POST，修改或停用使用 `/api/projects/{project_id}/work-connectors/{connector_id}` 的 PUT/DELETE；这些请求除有效的业务身份外，都需要独立请求头 `X-Nexus-Operator-Token`，与服务端至少 16 字符的 `NEXUS_OPERATOR_TOKEN` 匹配。未设置管理员口令时管理 API 禁用，业务访问口令不授予管理权限。
 
 支持协商的 MCP 2025-06-18 / 2025-03-26、JSON/SSE 响应、会话编号、工具目录与 JSON Schema 校验；不支持本地 stdio、模型驱动的采样/凭证索取或任意工具自动安装。
 
@@ -75,19 +75,19 @@ PostgreSQL 示例要求至少一个同步副本确认提交；同步副本不足
 
 - 可部署的 Kubernetes context、足够的跨节点/可用区容量、Ingress、TLS 和 CloudNativePG operator。
 - 支持 POSIX 锁、可跨节点挂载且自身具有容错能力的 RWX PVC；单台 NFS 服务不能替代 HA 存储。
-- 已构建并上传的 Atlas 镜像摘要、已批准的 OAuth2 Proxy 镜像摘要。
-- Secret：`APP_TOKEN`（OIDC 模式下不可用作降级登录）、`DATABASE_URL`、`OIDC_ISSUER`、`OIDC_JWKS_URL`、`OIDC_AUDIENCE`、`OIDC_ALLOWED_SUBJECTS`、`OIDC_CLIENT_SECRET`、`OIDC_COOKIE_SECRET`。若由本清单引导 PostgreSQL，还需 CNPG 所需的 `username=atlas` 与 `password`；Secret 类型及字段须符合所安装 operator 要求。
+- 已构建并上传的 Nexus WorkStudio 镜像摘要、已批准的 OAuth2 Proxy 镜像摘要。
+- Secret：`APP_TOKEN`（OIDC 模式下不可用作降级登录）、`DATABASE_URL`、`OIDC_ISSUER`、`OIDC_JWKS_URL`、`OIDC_AUDIENCE`、`OIDC_ALLOWED_SUBJECTS`、`OIDC_CLIENT_SECRET`、`OIDC_COOKIE_SECRET`。若由本清单引导 PostgreSQL，还需 CNPG 所需的 `username=nexus` 与 `password`；Secret 类型及字段须符合所安装 operator 要求。
 - OIDC 回调为 `https://站点/oauth2/callback`；主体允许列表要使用 issuer 颁发的稳定 sub，不使用邮箱猜测身份。
 
 从 `deploy/enterprise/config.example.json` 填写实际配置。镜像未固定摘要、共享盘/密钥身份不匹配时，生成器或服务会直接拒绝。部署脚本先做 Kubernetes server-side dry-run，再初始化共享状态并发布各角色。不会自动选集群，不会覆盖所有者管理的 Secret/PVC。
 
 ```bash
-python scripts/render_enterprise.py enterprise-config.json atlas-enterprise.yaml
+python scripts/render_enterprise.py enterprise-config.json nexus-enterprise.yaml
 bash scripts/deploy_enterprise.sh enterprise-config.json YOUR_KUBECTL_CONTEXT
-python scripts/verify_enterprise_ha.py --url https://YOUR_ATLAS_HOST
+python scripts/verify_enterprise_ha.py --url https://YOUR_NEXUS_HOST
 ```
 
-验收凭证通过 `ATLAS_VERIFY_TOKEN` 环境变量提供。`--disrupt-agent --context ... --namespace ...` 才允许删除测试任务所属的 Atlas Agent Pod；脚本会先检查标签和执行归属。单次演练通过不等于长期可用性 SLO 已达标。
+验收凭证通过 `NEXUS_VERIFY_TOKEN` 环境变量提供。`--disrupt-agent --context ... --namespace ...` 才允许删除测试任务所属的 Nexus WorkStudio Agent Pod；脚本会先检查标签和执行归属。单次演练通过不等于长期可用性 SLO 已达标。
 
 ## 当前部署与迁移边界
 
@@ -103,7 +103,7 @@ Restic 的仓库密码使用独立随机密钥，不写进备份仓或源码；�
 
 当前兼容部署每天备份一次，失败延后重试；企业清单可配置独立 CronJob。上传后恢复到临时目录并比较完整快照哈希。恢复安装仍只允许空工作空间，避免覆盖现有资料。
 
-`ATLAS_BACKUP_RETENTION_DAYS=0` 默认不自动删备份。设置正整数才启用 Restic 的保留/清理策略，须先确定企业留存政策。异卷备份仍与应用处于同一账号/地域；Railway 桶文档列明不支持 Object Lock、对象版本和桶生命周期配置，因此不能宣称具备不可变备份或完整跨账号灾备。正式灾备应接入独立权限/账号的存储并做空环境恢复演练。
+`NEXUS_BACKUP_RETENTION_DAYS=0` 默认不自动删备份。设置正整数才启用 Restic 的保留/清理策略，须先确定企业留存政策。异卷备份仍与应用处于同一账号/地域；Railway 桶文档列明不支持 Object Lock、对象版本和桶生命周期配置，因此不能宣称具备不可变备份或完整跨账号灾备。正式灾备应接入独立权限/账号的存储并做空环境恢复演练。
 
 备份保留的时间间隔决定灾难恢复可能丢失的工作量；每日快照不是实时 RPO=0。备份还会使用临时盘、CPU、存储与服务网络流量，应纳入预算。
 

@@ -73,7 +73,7 @@ def checkpoint(run):
 def invoke(args,run,folder,env=None,stage='execution'):
     logfile=folder/'execution.log'
     with logfile.open('a',encoding='utf-8') as log:
-        child_env=dict(env or os.environ,ATLAS_PARENT_PID=str(os.getpid()))
+        child_env=dict(env or os.environ,NEXUS_PARENT_PID=str(os.getpid()))
         proc=spawn(args,stdout=log,stderr=log,env=child_env)
         start=time.monotonic();beat=0
         try:
@@ -140,7 +140,7 @@ def execute(run):
             patch_run(run,status='succeeded' if result['state']=='succeeded' else 'failed',finished_at=now(),stage='外部操作'+result['state'])
             return
         if run['kind']=='probe':
-            runtime_env['ATLAS_MODEL_SOURCE_ID']=run['target']
+            runtime_env['NEXUS_MODEL_SOURCE_ID']=run['target']
             invoke([sys.executable,'-m','agent_service.probe',run['target'],str(folder/'error.json')],run,folder,runtime_env)
             checkpoint(run)
             patch_run(run,status='succeeded',finished_at=now(),stage='探查完成')

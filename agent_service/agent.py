@@ -187,7 +187,7 @@ def capabilities():
     native=configured_name()=='opencode'
     from .opencode import VERSION
     runtime={'supported_version':VERSION,'active':native and opencode_runtime.ready(),'integration':'native_session_tool_loop' if native else 'legacy_decision_backend','native_tools_restricted':True,'full_coding_harness':False}
-    return {'engine':'OpenCode session agent' if native else 'Atlas legacy durable harness','version':'0.20.0','model_configured':model['configured'],'decision_engine':'opencode' if native else model['engine'],'opencode':runtime,'tool_protocol':'native' if native else model['tool_protocol'],'native_tool_calling':model['configured'] and (native or model['tool_protocol']=='native'),'work_tools':len(agent_context.allowed({'interaction_mode':'work'})),'chat_tools':len(agent_context.allowed({'interaction_mode':'chat'})),'features':['tool_discovery','recoverable_tool_results','literal_file_search','optimistic_file_edit','repeat_detection','verified_artifacts','typed_data_workflows','workbook_cell_evidence','reviewed_semantic_alignment','immutable_semantic_catalog','complete_data_handoff','business_finance_reports','data_contract_gates','column_lineage','versioned_metric_confirmation','project_git','durable_activity','encrypted_browser_state','opt_in_web_push','multiple_versioned_attachments','local_folder_workspace','personal_and_preset_skills','personal_and_preset_mcp','actor_scoped_memory','revocable_memory','bounded_context_checkpoints','native_context_compaction','scoped_agent_gateway','bounded_agent_teams','durable_remote_delegation','reversible_project_conversation_deletion','versioned_safe_artifact_preview'],'web_research':web_research.status(),'cloud_browser':browser_tools.status(),'media':media_tools.status(),'visual_input':__import__('agent_service.work_runtime',fromlist=['vision_status']).vision_status(),'work_environment':__import__('agent_service.work_runtime',fromlist=['status']).status(),'code_execution':runner_status(),'real_model_evaluation':'requires_external_task_evaluation','intelligence_score':None}
+    return {'engine':'OpenCode session agent' if native else 'Nexus WorkStudio legacy durable harness','version':'0.20.0','model_configured':model['configured'],'decision_engine':'opencode' if native else model['engine'],'opencode':runtime,'tool_protocol':'native' if native else model['tool_protocol'],'native_tool_calling':model['configured'] and (native or model['tool_protocol']=='native'),'work_tools':len(agent_context.allowed({'interaction_mode':'work'})),'chat_tools':len(agent_context.allowed({'interaction_mode':'chat'})),'features':['tool_discovery','recoverable_tool_results','literal_file_search','optimistic_file_edit','repeat_detection','verified_artifacts','typed_data_workflows','workbook_cell_evidence','reviewed_semantic_alignment','immutable_semantic_catalog','complete_data_handoff','business_finance_reports','data_contract_gates','column_lineage','versioned_metric_confirmation','project_git','durable_activity','encrypted_browser_state','opt_in_web_push','multiple_versioned_attachments','local_folder_workspace','personal_and_preset_skills','personal_and_preset_mcp','actor_scoped_memory','revocable_memory','bounded_context_checkpoints','native_context_compaction','scoped_agent_gateway','bounded_agent_teams','durable_remote_delegation','reversible_project_conversation_deletion','versioned_safe_artifact_preview'],'web_research':web_research.status(),'cloud_browser':browser_tools.status(),'media':media_tools.status(),'visual_input':__import__('agent_service.work_runtime',fromlist=['vision_status']).vision_status(),'work_environment':__import__('agent_service.work_runtime',fromlist=['status']).status(),'code_execution':runner_status(),'real_model_evaluation':'requires_external_task_evaluation','intelligence_score':None}
 
 
 def search_history(pid,query='',limit=10):
@@ -258,6 +258,8 @@ def planning_context(turn, *, native=None):
           'project_history_matches':search_history(pid,turn['text'],5),'conversation':[{'user':t['text'],'agent':t.get('answer','')[:3500]} for t in recent],
           'completed_steps':agent_context.trace_context(turn,public_observation,preserve_full=True),
           'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':response_schema(Step)}
+    if turn.get('selected_workflow'):
+        info['selected_workflow']={**turn['selected_workflow'],'usage':'这是用户当前界面选中的流程，仅在用户指代当前流程且未指定其他目标时作为辅助上下文；新建或明确指定其他流程的要求优先。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
     active_names={tool['name'] for tool in tools}
     if active_names & {'company_search_status','search_company_documents','read_company_document'} or turn.get('knowledge_refs') or turn.get('knowledge_read_refs'):
         info.update(company_search=company_search.status(pid),company_candidates=company_search.candidates_for_model(turn),company_evidence=company_search.for_model(turn))
@@ -319,7 +321,7 @@ def planning_context(turn, *, native=None):
     from .context_window import fit,request_size
     info,native_tools=fit(turn,prompt,info,native_tools)
     encoded_info=json.dumps(info,ensure_ascii=False,default=str,separators=(',',':'))
-    patch('turn',turn['id'],context_metrics={'request_characters':request_size(prompt,info,native_tools),'selected_tools':len(native_tools)-1 if native_tools else len(info.get('tools',tools)),'available_tools':len(agent_context.allowed(turn)),'engine':provider.settings().get('engine','atlas'),'protocol':'native' if native else 'json','context_characters':len(encoded_info),'prompt_characters':len(prompt),'tool_schema_characters':len(json.dumps(tools,ensure_ascii=False,default=str)),'tool_catalog_characters':len(json.dumps(info['tool_catalog'],ensure_ascii=False)),'completed_step_characters':len(json.dumps(info['completed_steps'],ensure_ascii=False,default=str)),'source_context_characters':len(json.dumps(info['source_context'],ensure_ascii=False,default=str)),'automatic_tool_schema_budget':agent_context.AUTO_SCHEMA_CHARACTERS,'recoverable_results':sum(isinstance(s['observation'],dict) and bool(s['observation'].get('recover_with')) for s in info['completed_steps'])})
+    patch('turn',turn['id'],context_metrics={'request_characters':request_size(prompt,info,native_tools),'selected_tools':len(native_tools)-1 if native_tools else len(info.get('tools',tools)),'available_tools':len(agent_context.allowed(turn)),'engine':provider.settings().get('engine','nexus'),'protocol':'native' if native else 'json','context_characters':len(encoded_info),'prompt_characters':len(prompt),'tool_schema_characters':len(json.dumps(tools,ensure_ascii=False,default=str)),'tool_catalog_characters':len(json.dumps(info['tool_catalog'],ensure_ascii=False)),'completed_step_characters':len(json.dumps(info['completed_steps'],ensure_ascii=False,default=str)),'source_context_characters':len(json.dumps(info['source_context'],ensure_ascii=False,default=str)),'automatic_tool_schema_budget':agent_context.AUTO_SCHEMA_CHARACTERS,'recoverable_results':sum(isinstance(s['observation'],dict) and bool(s['observation'].get('recover_with')) for s in info['completed_steps'])})
     messages=[{'role':'system','content':prompt},{'role':'user','content':encoded_info}]
     return messages,native_tools
 
@@ -555,7 +557,7 @@ def observe(turn,value,error=False):
         if not previous_feedback or previous_feedback.get('code')=='INSPECTION_NO_NEW_EVIDENCE':
             fields['verification_feedback']={'code':'INSPECTION_NO_NEW_EVIDENCE',
                 'error':'最近的资料核查多次返回相同结果，没有取得新依据。',
-                'next_step':'请根据已有计划和真实回执推进尚未完成的处理；需要不同资料或分页时明确读取，确实无法推进时说明具体阻碍。'}
+                'next_step':'请根据已有计划和真实回执推进尚未完成的处理。如果是在反复读取同一个项目文件来定位一次失败，请改用能返回真实失败诊断的工具：数据工作流失败用 inspect_data_workflow 查看 latest_run.workflow_failure（里面有精确的失败阶段和原因），或重新运行该步骤取得回执；不要反复读同一文件猜测。需要不同资料或分页时明确读取，确实无法推进时说明具体阻碍。'}
     elif (not error and (inspection is None or not inspection['duplicate'])
           and previous_feedback.get('code')=='INSPECTION_NO_NEW_EVIDENCE'
           and (not isinstance(value,dict) or value.get('executed') is not False)):
@@ -883,7 +885,7 @@ def execute(turn,step):
         return {'path':args['path'],'content':text[start:end],'sha256':__import__('hashlib').sha256(text.encode()).hexdigest(),'next_offset':end if len(text)>end else None}
     if name=='write_file':return workspace.write_file(pid,args['path'],args['content'])
     if name=='delete_file':
-        if os.getenv('ATLAS_LOCAL_WORKSPACE'):
+        if os.getenv('NEXUS_LOCAL_WORKSPACE'):
             from .local_workspace import delete_project_file
             return delete_project_file(pid,args['path'])
         path=workspace.path_for(pid,args['path']);existed=path.exists();path.unlink(missing_ok=True);return {'deleted':args['path'],'already_absent':not existed}
@@ -1247,7 +1249,7 @@ def _pause_unknown_started(turn):
             'observation':{'executed':False,'code':'OPERATION_RESULT_UNKNOWN','error':message}}
 
 def opencode_step(turn_id,value,call_id):
-    """Replay an OpenCode call using Atlas's durable, authorized tool boundary."""
+    """Replay an OpenCode call using Nexus WorkStudio's durable, authorized tool boundary."""
     from .locks import assert_owned
     assert_owned()
     turn=get('turn',turn_id)

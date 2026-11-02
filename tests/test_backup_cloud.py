@@ -4,13 +4,13 @@ import pytest
 from agent_service import backup_cloud as b
 
 def test_backup_environment_does_not_export_app_or_model_credentials(monkeypatch):
-    for key,value in {'ATLAS_S3_ENDPOINT':'https://s3.test','ATLAS_S3_BUCKET':'private','ATLAS_S3_ACCESS_KEY_ID':'bucket-only-key','ATLAS_S3_SECRET_ACCESS_KEY':'bucket-only-secret','ATLAS_BACKUP_KEY':'x'*40,'APP_TOKEN':'application-private','LLM_API_KEY':'model-private','DATABASE_URL':'database-private'}.items():monkeypatch.setenv(key,value)
-    e=b.environment();assert e['RESTIC_REPOSITORY']=='s3:https://s3.test/private/atlas'
+    for key,value in {'NEXUS_S3_ENDPOINT':'https://s3.test','NEXUS_S3_BUCKET':'private','NEXUS_S3_ACCESS_KEY_ID':'bucket-only-key','NEXUS_S3_SECRET_ACCESS_KEY':'bucket-only-secret','NEXUS_BACKUP_KEY':'x'*40,'APP_TOKEN':'application-private','LLM_API_KEY':'model-private','DATABASE_URL':'database-private'}.items():monkeypatch.setenv(key,value)
+    e=b.environment();assert e['RESTIC_REPOSITORY']=='s3:https://s3.test/private/nexus'
     assert 'APP_TOKEN' not in e and 'LLM_API_KEY' not in e and 'DATABASE_URL' not in e
 
 @pytest.mark.parametrize('url',['http://s3.test','https://user:password@s3.test','https://s3.test?token=bad'])
 def test_backup_destination_validation(monkeypatch,url):
-    monkeypatch.setenv('ATLAS_S3_ENDPOINT',url)
+    monkeypatch.setenv('NEXUS_S3_ENDPOINT',url)
     with pytest.raises(ValueError):b.environment()
 
 @pytest.mark.skipif(not shutil.which('restic'),reason='Restic binary is installed in deployment images')
