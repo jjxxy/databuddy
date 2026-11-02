@@ -29,6 +29,10 @@ try {
  assert.match(container.textContent,/版本不一致/,'missing version binding must fail closed');
  w.NexusBusinessFlowView.render(container,{plan,version,run:{...run,status:'unknown',receipts:[{node_id:'income',status:'unknown'}]}});
  assert.match(container.textContent,/结果待核对/);assert.match(container.textContent,/不会自动重复外部操作/);
+ w.NexusBusinessFlowView.render(container,{plan,version,run:{...run,status:'failed',receipts:[{node_id:'analysis',status:'failed',error_code:'TYPE_MISMATCH',error_message:'字段类型不匹配 <img src=x>'}]}});
+ assert.match(container.textContent,/失败原因：字段类型不匹配/);assert.match(container.textContent,/错误编号：TYPE_MISMATCH/);assert.equal(container.querySelectorAll('img').length,0);
+ container.querySelectorAll('.flow-graph g[role=button]')[1].dispatchEvent(new w.Event('click'));assert.match(container.querySelector('.flow-graph-detail').textContent,/字段类型不匹配/);
+ w.NexusBusinessFlowView.render(container,{plan,version,run:{...run,commit:'other',receipts:[{node_id:'analysis',status:'failed',error_message:'旧版本错误'}]}});assert.doesNotMatch(container.textContent,/旧版本错误/);
  w.NexusBusinessFlowView.render(container,{plan,version});
  assert.match(container.textContent,/尚未选择运行/);
  w.NexusBusinessFlowView.render(container,{plan:null});assert.match(container.textContent,/尚无可展示/);

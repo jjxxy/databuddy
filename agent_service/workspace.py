@@ -107,7 +107,10 @@ def _mirror(repo,snapshot):
     for sid,source in snapshot['sources'].items():
         public['sources'][sid]['status']=source.get('status')
         public['sources'][sid]['schema_hash']=hashlib.sha256(json.dumps((source.get('profile') or {}).get('fields',[]),sort_keys=True).encode()).hexdigest()
-    (repo/'project-state.json').write_text(json.dumps(public,ensure_ascii=False,sort_keys=True,indent=2))
+    # Windows' default text encoding can be GBK even though Git readers and
+    # project exports use UTF-8. Pin both encoding and line endings so Chinese
+    # project metadata round-trips identically on every deployment host.
+    (repo/'project-state.json').write_text(json.dumps(public,ensure_ascii=False,sort_keys=True,indent=2),encoding='utf-8',newline='\n')
     target=repo/'pipelines'
     if target.exists():shutil.rmtree(target)
     for pid,p in snapshot['pipelines'].items():

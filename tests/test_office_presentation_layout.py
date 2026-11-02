@@ -57,9 +57,11 @@ def test_editable_chart_keeps_original_numeric_text_and_units(tmp_path):
                   {'label':'华北','value':'0.00'}]})
     path=tmp_path/'chart.pptx';deck=render(spec,path)
     chart_shape=next(s for slide in deck.slides for s in slide.shapes if s.has_chart)
-    assert [c.label for c in chart_shape.chart.plots[0].categories]==['华东','华南','华北']
-    assert chart_shape.chart.category_axis.reverse_order is True
-    assert list(chart_shape.chart.series[0].values)==[1234.5,50.25,0.0]
+    # The chart stores paired data in reverse so standard horizontal axes put
+    # the original first item at the top, matching the exact-value list.
+    assert [c.label for c in chart_shape.chart.plots[0].categories]==['华北','华南','华东']
+    assert chart_shape.chart.category_axis.reverse_order is False
+    assert list(chart_shape.chart.series[0].values)==[0.0,50.25,1234.5]
     labels={s.name:s.text for s in deck.slides[-1].shapes if s.has_text_frame}
     assert labels['nexus:chart-value:0:0']=='1234.50'
     assert labels['nexus:chart-value:0:2']=='0.00'

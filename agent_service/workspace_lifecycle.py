@@ -297,7 +297,7 @@ def _cancel(connection,pid,sid=None):
     rows=connection.execute(select(jobs).where(jobs.c.status.in_(ACTIVE)).with_for_update()).mappings().all()
     for row in rows:
         body=json.loads(row['body'])
-        if row['id'] not in job_ids and row['target'] not in target_ids and not (sid is None and body.get('project_id')==pid):continue
+        if row['id'] not in job_ids and row['target'] not in target_ids and body.get('flow_turn_id') not in scoped and not (sid is None and body.get('project_id')==pid):continue
         body.update(cancel_requested=True,lifecycle_cancelled_at=stamp)
         state='cancelled' if row['status'] in ('queued','retrying') else row['status']
         body['status']=state

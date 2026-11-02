@@ -132,7 +132,7 @@ class BusinessFlow(StrictModel):
                 if pinned==bool(node.inputs):raise ValueError('数据来源须选择固定版本或运行输入其中一种')
             if node.kind=='table_report_spec':
                 if (not {'table'}<=set(node.inputs) or set(node.inputs)-{'table','commentary'} or node.inputs['table'].source!='node'
-                        or kinds.get(node.inputs['table'].name)!='table_workflow'):
+                        or kinds.get(node.inputs['table'].name) not in ('table_workflow','quality_gate','human_review')):
                     raise ValueError('报告数据必须来自已执行的数据加工步骤')
                 if 'commentary' in node.inputs:
                     ref=node.inputs['commentary']
@@ -143,8 +143,10 @@ class BusinessFlow(StrictModel):
                 if reference.source=='node' and reference.name not in node.depends_on:raise ValueError('节点输入必须引用声明过的前序依赖')
                 table_parameter=(node.kind=='table_workflow' and reference.source=='input'
                     and reference.name in (self.input_specs or {}) and key in (node.config.get('parameter_bindings') or {}))
-                if node.kind=='table_workflow' and not table_parameter and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','table_workflow')):
+                if node.kind=='table_workflow' and not table_parameter and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','table_workflow','quality_gate','human_review')):
                     raise ValueError('数据加工只能使用已执行的数据来源或加工结果，不能将模型内容作为已核验财务数据')
+            if node.kind in ('quality_gate','human_review') and (set(node.inputs)!={'table'} or node.inputs['table'].source!='node' or kinds.get(node.inputs['table'].name) not in ('table_workflow','quality_gate','human_review')):
+                raise ValueError('检查节点必须引用已执行的数据加工结果')
             for key,reference in node.inputs.items():
                 table_parameter=(node.kind=='table_workflow' and key in (node.config.get('parameter_bindings') or {}))
                 if reference.source=='input' and reference.name in (self.input_specs or {}) and not ((node.kind in ('model','skill') and key=='content') or table_parameter):
@@ -241,7 +243,7 @@ def run(document, frozen_inputs, handlers, context, *, checkpoint=None, persist=
             if len(state['steps'])!=len(flow.nodes):raise ValueError('已完成的流程缺少步骤记录')
             if any(not isinstance(step,dict) or step.get('status')!='succeeded' for step in state['steps']):
                 raise ValueError('已完成的流程存在未完成步骤')
-        elif state.get('status') in ('failed','unknown'):
+        elif state.get('status') in ('failed','unknown','awaiting_review'):
             return state
         elif state.get('status')!='running':raise ValueError('流程检查点状态无效')
     values={}
@@ -260,6 +262,10 @@ def run(document, frozen_inputs, handlers, context, *, checkpoint=None, persist=
                 if digest(output,_MAX_OUTPUT)!=receipt.get('output_sha256'):raise ValueError('流程步骤结果摘要不一致')
                 values[node.id]=output
                 continue
+            if node.kind=='human_review' and receipt.get('status')=='awaiting_review' and receipt.get('approval',{}).get('approved') is True:
+                output=_copy(arguments['table'],_MAX_OUTPUT)
+                receipt.update(status='succeeded',finished_at=_now(),output_sha256=digest(output,_MAX_OUTPUT),output=output)
+                values[node.id]=output;persist(_copy(state,_MAX_CHECKPOINT));continue
             if receipt.get('status')=='running' and not handler.replay_safe:
                 if index!=len(state['steps'])-1:raise ValueError('未完成的步骤之后存在异常记录')
                 receipt.update(status='unknown',finished_at=_now(),error_code='EXECUTION_OUTCOME_UNKNOWN')
@@ -274,6 +280,9 @@ def run(document, frozen_inputs, handlers, context, *, checkpoint=None, persist=
                      'replay_safe':handler.replay_safe,'handler_version':handler.version,'started_at':_now()}
             state['steps'].append(receipt)
             persist(_copy(state,_MAX_CHECKPOINT))
+        if node.kind=='human_review':
+            receipt['status']='awaiting_review';state['status']='awaiting_review'
+            persist(_copy(state,_MAX_CHECKPOINT));return state
         try:
             output=_copy(handler.run(context,_copy(node.config,_MAX_INPUT),_copy(arguments,_MAX_INPUT)),_MAX_OUTPUT)
             output_hash=digest(output,_MAX_OUTPUT)

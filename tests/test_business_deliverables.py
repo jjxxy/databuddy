@@ -253,10 +253,22 @@ def test_business_html_renders_complete_structured_table_and_safe_paged_preview(
     from agent_service.store import get
     identity=workspace_artifacts._record(execution['project_id'],report['artifact_id'])['private']['flow_artifact_id']
     blocks=delivery.preview_blocks(execution['project_id'],identity)
+    assert workspace_artifacts.preview(execution['project_id'],report['artifact_id'])['safe_generated_html'] is True
     tables=[item['table'] for item in blocks if item.get('type')=='table']
     assert [len(item['rows']) for item in tables]==[100,100,5]
     assert [cell for item in tables for cell in item['rows']]==[[r['office'],r['amount']] for r in rows]
     assert not report['financial_verified']
+
+
+def test_generated_html_preview_never_interprets_user_markup(execution):
+    payload='<script>window.evil=1</script><img src="https://example.invalid/x" onerror="alert(1)">'
+    spec={'title':payload,'sections':[{'heading':payload,'body':payload,'bullets':[payload]}]}
+    value=delivery.render_html(execution,config('安全预览',delivery.HTML_RENDERER),{'spec':spec})
+    path,_=workspace_artifacts.file(execution['project_id'],value['artifact_id'])
+    content=path.read_text(encoding='utf-8')
+    assert '<script>' not in content and '<img' not in content
+    assert '&lt;script&gt;' in content and "default-src 'none'" in content
+    assert workspace_artifacts.preview(execution['project_id'],value['artifact_id'])['safe_generated_html'] is True
 
 
 def test_legacy_html_artifact_remains_byte_identical_and_previewable(execution):

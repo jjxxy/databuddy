@@ -112,6 +112,10 @@ def execute(run):
     runtime_env=dict(os.environ,RUN_DIR=str(folder),PYTHONPATH=str(Path(__file__).resolve().parent.parent))
     try:
         checkpoint(run)
+        if run['kind']=='business_flow_debug':
+            from .business_flow_debug import execute_job as execute_business_flow_debug
+            execute_business_flow_debug(run,folder)
+            return
         if run['kind']=='business_flow':
             from .business_flows import execute_job as execute_business_flow
             execute_business_flow(run,folder)

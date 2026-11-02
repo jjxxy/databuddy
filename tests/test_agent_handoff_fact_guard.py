@@ -77,12 +77,12 @@ def test_forged_peer_source_cannot_restore_mixed_fact_aggregation():
     result = run(target, wid)
     assert Decimal(data.read_result(target, result['id'])['rows'][0]['total']) == Decimal('323.4500')
     with pytest.raises(ValueError, match='语义对齐'):
-        data.publish_result(target, result['id'], result['commit'], review_actor='owner',
+        data.publish_result(target, result['id'], result['commit'], review_actor='owner',semantic_review_actor='owner',
                             review_handoff_sha256=result['data_result']['handoff_sha256'])
     response = TestClient(app).post(f'/api/projects/{target}/data-results/{result["id"]}/publish',
         headers={'Authorization': 'Bearer ' + os.environ['APP_TOKEN']},
         json={'run_id': result['id'], 'expected_plan_sha256': result['commit'],
-              'confirm_source_review': True, 'expected_handoff_sha256': result['data_result']['handoff_sha256']})
+              'confirm_source_review': True, 'confirm_semantic_review': True, 'expected_handoff_sha256': result['data_result']['handoff_sha256']})
     assert response.status_code == 400 and '语义对齐' in response.json()['detail']
     with pytest.raises(ValueError):
         data.read_input(target, {'result_id': result['id']})

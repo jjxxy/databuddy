@@ -1,0 +1,12 @@
+const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const root=path.resolve(__dirname,'../../agent_service/static');
+const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window,d=w.document;
+w.matchMedia=()=>({matches:false,addEventListener(){}});w.setInterval=()=>0;w.fetch=async()=>({ok:false,status:404,json:async()=>({})});
+let opened=0,events=[];w.nexusShell={openWorkflow(){opened++}};w.addEventListener('nexus-open-chat-flow',e=>events.push(e.detail.id));
+w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.flowTest={workflowRefs,businessFlowCard,observeNewFlows,setContext:(p,e)=>{projectId=p;viewEpoch=e;navigating=false;authSealed=false}};');
+const api=w.flowTest;api.setContext('p',1);const bf='bf_'+'a'.repeat(40),wf='wf_'+'b'.repeat(40),bad='wf_'+'c'.repeat(40);
+const old={id:'old',business_flow:{id:bf,name:'旧工作流'}},fresh={id:'new',agent_trace:[{tool:'register_data_workflow',status:'done',observation:{workflow_id:wf,name:'订单汇总'}},{tool:'register_data_workflow',status:'failed',observation:{workflow_id:bad}}]};
+api.observeNewFlows([old]);assert.equal(opened,0,'history must not auto-open');api.observeNewFlows([old,fresh]);assert.equal(opened,1);assert.deepEqual(events,[wf]);api.observeNewFlows([old,fresh]);assert.equal(opened,1,'polling must not reopen');
+assert.equal(api.workflowRefs(fresh).length,1);const host=d.querySelector('#messages');host.innerHTML=api.businessFlowCard(fresh);host.querySelector('[data-chat-flow]').click();assert.equal(opened,2);assert.deepEqual(events,[wf,wf]);
+api.setContext('other',2);api.observeNewFlows([fresh]);assert.equal(opened,2,'project switch must establish a new baseline');assert.equal(d.querySelector('#workflow-panel')?.contains(d.querySelector('.chat-workflows-host')),true);
+dom.window.close();console.log('workflow cards, auto-open and project baseline passed');

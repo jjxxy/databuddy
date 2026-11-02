@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');const path=require('node:path');const {JSDOM}=require('jsdom');
+const dom=new JSDOM('<!doctype html><div id="g"></div>',{runScripts:'outside-only'}),w=dom.window,root=w.document.getElementById('g');
+w.eval(fs.readFileSync(path.join(__dirname,'../../agent_service/static/workflow-overview.js'),'utf8'));
+let groups,opened=0;w.NexusFlowGraph={mount(_root,items){groups=items}};
+const stages=[];for(let i=0;i<10;i++)stages.push({id:'s'+i,input:i?'s'+(i-1):'orders',kind:i===0?'filter':'aggregate'});
+const workflow={document:{plan:{inputs:{orders:{meaning:'订单资料'}},stages,output:'s9'}},draft_sha256:'new',published_sha256:'old',published_run:'r1',latest_run:{matches_current_draft:false,status:'failed'}};
+w.renderWorkflowOverview(root,{kind:'data',workflow,onDetail:()=>opened++});
+assert(groups.length<=5);assert(groups.length>1);assert(groups.every((g,i)=>g.x===0&&g.y===i*112));assert.equal(root.querySelector('.workflow-overview-graph').style.getPropertyValue('--workflow-overview-height'),(groups.length*112+40)+'px');assert.match(root.textContent,/运行未完成/);assert.match(root.textContent,/已采用版本不同/);assert.match(root.textContent,/至少存在一条依赖/);assert(groups[1].deps.includes(groups[0].id));root.querySelector('button').click();assert.equal(opened,1);
+const business={nodes:[{id:'a',title:'读取资料',depends_on:[]},{id:'b',title:'生成报告',depends_on:['a']}]};
+w.renderWorkflowOverview(root,{kind:'business',plan:business,version:{digest:'one',commit:'one'},run:{status:'succeeded',plan_digest:'other',commit:'one'}});assert.match(root.textContent,/不一致/);
+w.renderWorkflowOverview(root,{kind:'business',plan:{nodes:[{id:'a',depends_on:['missing']}]},onDetail:()=>opened++});assert.match(root.textContent,/依赖不完整/);root.querySelector('button').click();assert.equal(opened,2);
+console.log('overview grouping, real dependencies, version mismatch and accessible details passed');dom.window.close();

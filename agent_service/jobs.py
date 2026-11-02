@@ -17,7 +17,7 @@ Index('jobs_ready_idx',jobs.c.status,jobs.c.available_at,jobs.c.created)
 from .store import create_tables
 create_tables()
 
-ACTIVE=('queued','running','retrying')
+ACTIVE=('queued','running','retrying','awaiting_review')
 
 def render(row):
     d=json.loads(row['body'])
@@ -272,7 +272,7 @@ def request_cancel(job_id):
         if not row:raise KeyError(job_id)
         if row['target']!=target_id:raise RuntimeError('任务目标已变更，请重新处理')
         body=render(row);body['cancel_requested']=True
-        status='cancelled' if row['status'] in ('queued','retrying') else row['status']
+        status='cancelled' if row['status'] in ('queued','retrying','awaiting_review') else row['status']
         c.execute(update(jobs).where(jobs.c.id==job_id).values(status=status,body=json.dumps(body,ensure_ascii=False),updated=time.time()))
         if status=='cancelled':_notify_scheduled_outcome(c,body,status)
     return get_job(job_id)

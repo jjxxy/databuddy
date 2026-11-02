@@ -316,7 +316,7 @@ TRUSTED_SUBMISSION_FIELDS=frozenset({
     'collaboration_parent_turn_id','collaboration_root_turn_id','collaboration_task_id','collaboration_peer_id',
     'collaboration_depth','collaboration_budget_inherited','collaboration_readonly','collaboration_source_ids','collaboration_result_ids',
     'collaboration_application_ids','collaboration_input_result_ids','collaboration_deadline_at','collaboration_context','collaboration_application_snapshots',
-    'task_contract','model_id','model_name','model_catalog_revision'})
+    'task_contract','model_id','model_name','model_catalog_revision','auto_diagnostic'})
 
 def assert_resumable_effects(turn):
     """A new turn cannot discard an unfinished write of uncertain outcome.

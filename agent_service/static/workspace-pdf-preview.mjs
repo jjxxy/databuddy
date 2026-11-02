@@ -1,0 +1,14 @@
+import {getDocument,GlobalWorkerOptions,AnnotationMode} from './pdfjs/pdf.mjs';
+GlobalWorkerOptions.workerSrc='/pdfjs/pdf.worker.mjs';
+
+/* Display local, authenticated PDF bytes only. PDF actions/links are disabled. */
+export function mountPdfPreview(box,blob,isCurrent){
+ let destroyed=false,loading=null,pdf=null,rendering=null,pageNumber=1,generation=0;
+ const el=(tag,text)=>{const node=document.createElement(tag);if(text!=null)node.textContent=text;return node};
+ const wrapper=el('div'),notice=el('p','正在读取 PDF…'),controls=el('div'),prev=el('button','上一页'),next=el('button','下一页'),label=el('span'),canvas=el('canvas');
+ prev.type=next.type='button';prev.disabled=next.disabled=true;canvas.style.maxWidth='100%';canvas.style.height='auto';canvas.setAttribute('aria-label','PDF 当前页');controls.append(prev,label,next);wrapper.append(notice,controls,canvas);box.replaceChildren(wrapper);
+ async function page(number){const ticket=++generation;rendering?.cancel();try{const p=await pdf.getPage(number);if(destroyed||!isCurrent()||ticket!==generation)return;const base=p.getViewport({scale:1}),width=Math.min(1100,Math.max(320,box.clientWidth||800)),scale=Math.min(2,width/base.width,3000/base.height),viewport=p.getViewport({scale});if(!Number.isFinite(scale)||scale<=0||viewport.width*viewport.height>5000000)throw Error('页面尺寸过大');canvas.width=Math.max(1,Math.ceil(viewport.width));canvas.height=Math.max(1,Math.ceil(viewport.height));rendering=p.render({canvasContext:canvas.getContext('2d'),viewport,annotationMode:AnnotationMode.DISABLE});await rendering.promise;if(destroyed||!isCurrent()||ticket!==generation)return;pageNumber=number;label.textContent='第 '+number+' / '+pdf.numPages+' 页';notice.textContent='按 PDF 页面渲染；业务数据和口径仍需核对。';prev.disabled=number<=1;next.disabled=number>=pdf.numPages;}catch(error){if(!destroyed&&isCurrent()&&ticket===generation&&error?.name!=='RenderingCancelledException')notice.textContent='当前页无法安全预览，请下载原件查看。';}}
+ prev.onclick=()=>void page(pageNumber-1);next.onclick=()=>void page(pageNumber+1);
+ (async()=>{try{if(blob.size>40*1024*1024)throw Error('文件过大');const bytes=new Uint8Array(await blob.arrayBuffer());if(destroyed||!isCurrent())return;if(String.fromCharCode(...bytes.subarray(0,5))!=='%PDF-')throw Error('无效 PDF');loading=getDocument({data:bytes,isEvalSupported:false,enableXfa:false,disableAutoFetch:true,disableStream:true,useWorkerFetch:false,cMapUrl:'/pdfjs/cmaps/',cMapPacked:true,standardFontDataUrl:'/pdfjs/standard_fonts/',wasmUrl:'/pdfjs/wasm/',iccUrl:'/pdfjs/iccs/',maxImageSize:20000000});pdf=await loading.promise;if(destroyed||!isCurrent())return;if(pdf.numPages>10000)throw Error('页数过多');await page(1)}catch(_){if(!destroyed&&isCurrent())notice.textContent='PDF 暂时无法预览，请下载原件查看。'}})();
+ return {destroy(){destroyed=true;generation++;rendering?.cancel();if(loading)void loading.destroy();canvas.width=canvas.height=0;wrapper.remove()}};
+}

@@ -43,7 +43,7 @@ CORE={'project_context','set_task_plan','load_workflow','business_rules','search
 # A working set is model context, not an authorization grant. The complete
 # allowed catalog remains discoverable, with unchanged server-side validators.
 ESSENTIAL={'project_context','set_task_plan','business_rules','discover_tools','read_tool_result'}
-OFFICE_WORKING_SET=ESSENTIAL|{'source_schema','read_source_table','write_file','render_office_artifact'}
+OFFICE_WORKING_SET=ESSENTIAL|{'source_schema','read_source_table','write_file','render_office_artifact','inspect_pptx_template','render_pptx_template'}
 INLINE_SCHEMA_CHARACTERS=2500
 AUTO_SCHEMA_CHARACTERS=8000
 DATA_WORKING_SET=('source_schema','inspect_source_tables','read_source_table','data_workflow_guide',
@@ -99,7 +99,12 @@ def allowed(turn):
     if not media['images']:names.discard('generate_image')
     if not media['speech']:names.discard('synthesize_speech')
     from . import agent_gateway,agent_team
-    return agent_team.allowed_tools(turn,agent_gateway.allowed_tools(turn,names))
+    names=agent_team.allowed_tools(turn,agent_gateway.allowed_tools(turn,names))
+    if turn.get('auto_diagnostic') is True:
+        # These background turns can inspect a failure but cannot publish,
+        # mutate the project, rerun a workflow, or invoke outside systems.
+        names &= {'discover_tools','read_tool_result','inspect_business_flow','inspect_business_flow_run','inspect_business_flow_debug_run','business_flow_guide','source_schema','source_preview'}
+    return names
 
 def definition(name):
     from .agent import TOOLS

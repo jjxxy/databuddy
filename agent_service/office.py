@@ -8,7 +8,7 @@ from .config import DATA
 from .store import get,put,now
 from . import workspace
 
-RENDERER='office-v4'
+RENDERER='office-v5'
 PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
 MANIFEST_MAX_BYTES=256*1024
 
@@ -276,6 +276,9 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
         _verify_structure(file,ext,spec)
         workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
         return {'artifact_id':aid,'sha256':record['sha256'],'format':ext,'structural_validation':True,
+            'source_spec':spec_path if frozen_spec is None else None,
+            'source_sha256':identity['source_sha256'],
+            'source_spec_editable_in_workspace':frozen_spec is None,
             'precision_policy':'text_exact','precision_notes':record.get('precision_notes',[]),
             'precision_notes_format':PRECISION_NOTES_FORMAT,
             'visual_validation':False,'formula_recalculation':False,

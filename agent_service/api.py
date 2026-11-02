@@ -124,6 +124,8 @@ async def boundary(request:Request,call_next):
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Referrer-Policy']='no-referrer'
             response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+            if request.url.path in ('/docx-frame.html', '/pptx-frame.html'):
+                response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; frame-ancestors 'self'"
             # HTML has a stable URL. Reusing it can load the old composer even
             # after versioned scripts changed; source updates need revalidation.
             response.headers['Cache-Control']='no-store'
@@ -903,6 +905,10 @@ from .business_proposals import install as install_business_proposals
 install_business_proposals(app,auth)
 from .business_flows import install as install_business_flows
 install_business_flows(app,auth)
+from .business_flow_debug import install as install_business_flow_debug
+install_business_flow_debug(app,auth)
+from .business_flow_checkpoint import install as install_business_flow_checkpoint
+install_business_flow_checkpoint(app,auth)
 
 @app.get('/api/desktop/runtime',dependencies=[Depends(auth)])
 def desktop_runtime_status():

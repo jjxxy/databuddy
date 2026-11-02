@@ -142,6 +142,11 @@ def install(app,auth):
         receipt=data.register(pid,value.path);workspace.checkpoint(pid,reason='保存数据加工方案')
         return receipt
 
+    @app.get('/api/projects/{pid}/data-workflows/{wid}/download',dependencies=dependencies)
+    def download_workflow(pid:str,wid:str,expected_digest:str):
+        from .workflow_export import data_bundle
+        return Response(data_bundle(pid,wid,expected_digest),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="workflow.zip"','Cache-Control':'no-store'})
+
     @app.get('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
     def workflow(pid:str,wid:str):
         from .config import TIMEZONE

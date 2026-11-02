@@ -1,5 +1,17 @@
-nexus-flow-graph{display:block;width:100%;height:380px;min-height:240px;background:#fff;border:1px solid #d7ded9;border-radius:10px}
-nexus-flow-graph .react-flow__node-business{box-sizing:border-box;width:214px;height:80px;padding:10px 12px;border:1px solid #303a35;border-radius:7px;background:#fff;color:#1d2a24;display:flex;flex-direction:column;gap:6px;overflow:hidden;cursor:pointer;font:14px system-ui,sans-serif}
-nexus-flow-graph .react-flow__node-business strong,nexus-flow-graph .react-flow__node-business span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}nexus-flow-graph .react-flow__node-business span{color:#59655f;font-size:12px}nexus-flow-graph .react-flow__handle{opacity:0;pointer-events:none}
-
-nexus-flow-graph .nexus-node-action{display:flex;flex:1;flex-direction:column;gap:6px;min-width:0;width:100%;border:0;padding:0;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}nexus-flow-graph .nexus-node-action:focus-visible{outline:2px solid #197461;outline-offset:2px}
+nexus-flow-graph{display:block;width:100%;height:380px;min-height:240px;background:#fff;border:1px solid #d9dfdb;border-radius:14px;box-shadow:0 2px 12px rgba(25,40,33,.04)}
+nexus-flow-graph .react-flow__node-business{box-sizing:border-box;width:214px;height:80px;padding:0;border:1px solid #aab5ae;border-radius:10px;background:#fff;color:#202c25;overflow:hidden;cursor:pointer;font:14px system-ui,sans-serif;box-shadow:0 2px 7px rgba(24,38,31,.07);transition:border-color .15s,box-shadow .15s}
+nexus-flow-graph .react-flow__node-business:hover{border-color:#55685c;box-shadow:0 4px 12px rgba(24,38,31,.12)}
+nexus-flow-graph .react-flow__node-business.is-selected{border-color:#183b2c;box-shadow:0 0 0 2px #183b2c,0 4px 12px rgba(24,38,31,.12)}
+nexus-flow-graph .nexus-node-action{display:flex;align-items:flex-start;gap:10px;width:100%;height:100%;min-width:0;border:0;padding:12px;background:transparent;color:inherit;text-align:left;font:inherit;cursor:pointer}
+nexus-flow-graph .nexus-node-action:focus-visible{outline:2px solid #197461;outline-offset:-3px;border-radius:9px}
+nexus-flow-graph .nexus-node-number{display:flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;border:1px solid #cdd6cf;border-radius:7px;background:#f5f7f5;color:#445249;font-size:11px;font-weight:700;letter-spacing:.02em}
+nexus-flow-graph .nexus-node-content{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;padding-top:1px}
+nexus-flow-graph .nexus-node-content strong,nexus-flow-graph .nexus-node-caption{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+nexus-flow-graph .nexus-node-content strong{font-size:14px;font-weight:650;line-height:19px}
+nexus-flow-graph .nexus-node-caption{display:flex;align-items:center;gap:5px;color:#65726a;font-size:12px;line-height:16px}
+nexus-flow-graph .nexus-node-caption.status-success{color:#276442}nexus-flow-graph .nexus-node-caption.status-failed{color:#a03630}nexus-flow-graph .nexus-node-caption.status-running{color:#316092}
+nexus-flow-graph .nexus-node-caption:is(.status-success,.status-failed,.status-running)::before{content:'';display:inline-block;flex:none;width:6px;height:6px;border-radius:50%;background:currentColor}
+nexus-flow-graph .react-flow__handle{opacity:0;pointer-events:none}
+nexus-flow-graph .react-flow__controls{overflow:hidden;border:1px solid #d6ded8;border-radius:8px;box-shadow:0 2px 8px rgba(24,38,31,.08)}
+nexus-flow-graph .react-flow__controls-button{border-color:#e1e7e2;background:#fff;color:#36453c}
+nexus-flow-graph .react-flow__controls-button:hover{background:#f3f6f4}

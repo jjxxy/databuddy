@@ -55,10 +55,12 @@ def _owned(pid,fid,actor=None):
 
 
 def _handlers():
-    from . import business_flow_data,business_deliverables,workflow_model_skill
+    from . import business_flow_data,business_deliverables,workflow_model_skill,business_flow_quality_gate,business_flow_human_review
     from .business_flow_engine import Handler
     result={'source_table':Handler(business_flow_data.source_table,False,True,business_flow_data.validate_source),
-            'table_workflow':Handler(business_flow_data.table_workflow,False,True,business_flow_data.validate_table)}
+            'table_workflow':Handler(business_flow_data.table_workflow,False,True,business_flow_data.validate_table),
+            'quality_gate':Handler(business_flow_quality_gate.run,True,True,business_flow_quality_gate.validate),
+            'human_review':Handler(business_flow_human_review.never_execute,True,True,business_flow_human_review.validate)}
     result.update(business_deliverables.handlers());result.update(workflow_model_skill.handlers())
     extra=getattr(business_deliverables,'data_handlers',lambda:{})()
     result.update(extra)
@@ -106,8 +108,10 @@ def _runtime_lock(document):
     kinds={n['kind'] for n in document['nodes']}
     names={'business_flow_engine.py','business_flows.py','workflow_model_skill.py',
            'agent_context.py','agent_gateway.py','agent_team.py','workspace.py'}
-    if kinds & {'source_table','table_workflow','table_report_spec'}:
+    if kinds & {'source_table','table_workflow','table_report_spec','quality_gate'}:
         names|={'business_flow_data.py','project_data.py','data_workflows.py','workbook_reader.py','connectors.py'}
+    if 'quality_gate' in kinds:names.add('business_flow_quality_gate.py')
+    if 'human_review' in kinds:names|={'business_flow_human_review.py','business_flow_checkpoint.py'}
     if kinds & {'office_document','html_report','table_report_spec'}:
         names|={'business_deliverables.py','office.py','workspace_artifacts.py'}
     if 'office_document' in kinds:names.add('office_presentation.py')
@@ -332,7 +336,7 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True,page_request=No
                 # other tables still receive full-snapshot verification.
                 requested_page=get_table_page(context,output,page_request[1],page_request[2])
             else:verify_table_snapshot(context,output)
-        if verify_evidence and isinstance(output,dict) and 'evidence_tables' in output:
+        if verify_evidence and node.kind not in ('quality_gate','human_review') and isinstance(output,dict) and 'evidence_tables' in output:
             entries=output['evidence_tables']
             if not isinstance(entries,list) or not entries or len(entries)>30:
                 raise ValueError('换算明细回执不完整')
@@ -344,7 +348,7 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True,page_request=No
                 if not isinstance(entry,dict):raise ValueError('换算明细回执无效')
                 verified=_fx_evidence(output,entry.get('stage_id'))
                 verify_table_snapshot(context,{**verified,'kind':'table_workflow_v1'})
-        if verify_evidence and isinstance(output,dict) and 'contribution_evidence' in output:
+        if verify_evidence and node.kind not in ('quality_gate','human_review') and isinstance(output,dict) and 'contribution_evidence' in output:
             entry,_=_aggregate_contribution(job,node.id,output)
             from .business_flow_data import verify_table_snapshot
             context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
@@ -356,6 +360,47 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True,page_request=No
     if page_request is not None and requested_page is None:
         raise ValueError('所请求的数据快照不存在')
     return requested_page
+
+
+def _verify_partial_table(pid,job,state,node_id,offset,limit):
+    """Verify a durable completed prefix of an unsuccessful, terminal run.
+
+    This authorizes inspection only, never publication or replay. Inputs,
+    execution handler versions, each prior receipt and its referenced snapshot
+    are bound to the frozen document and the originating run.
+    """
+    if job.get('status') not in ('failed','cancelled','awaiting_review') or state.get('status') not in ('failed','unknown','running','awaiting_review'):
+        raise ValueError('该运行状态不支持查看部分结果')
+    if state.get('version')!=1 or state.get('flow_sha256')!=job.get('commit'):
+        raise ValueError('流程执行回执与版本不一致')
+    doc=BusinessFlow.model_validate(_read_commit(pid,job['target'],job['project_commit'],job['commit']))
+    payload=unseal(job['secret_flow_payload']);inputs=payload.get('inputs')
+    if not isinstance(inputs,dict) or state.get('inputs_sha256')!=digest(inputs,2*1024*1024):
+        raise ValueError('运行输入回执不一致')
+    steps=state.get('steps')
+    if not isinstance(steps,list) or len(steps)>len(doc.nodes):raise ValueError('流程步骤回执不完整')
+    from .business_flow_data import verify_table_snapshot,get_table_page
+    context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],
+             'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+    handlers=_handlers();values={}
+    for node,step in zip(doc.nodes,steps):
+        handler=handlers[node.kind]
+        try:arguments={key:(inputs[ref.name] if ref.source=='input' else values[ref.name]) for key,ref in node.inputs.items()}
+        except KeyError:raise ValueError('步骤输入依赖不完整') from None
+        if (not isinstance(step,dict) or step.get('node_id')!=node.id or step.get('kind')!=node.kind
+            or step.get('status')!='succeeded' or step.get('deterministic') is not handler.deterministic
+            or step.get('replay_safe') is not handler.replay_safe or step.get('handler_version')!=handler.version
+            or step.get('input_sha256')!=digest({'config':node.config,'inputs':arguments},2*1024*1024)
+            or step.get('output_sha256')!=digest(step.get('output'))):
+            raise ValueError('步骤回执与冻结版本不一致')
+        output=step['output'];values[node.id]=output
+        if isinstance(output,dict) and 'rows_ref' in output:
+            ref=output['rows_ref']
+            if node.id==node_id and isinstance(ref,dict) and ref.get('version')==2:
+                return get_table_page(context,output,offset,limit)
+            verify_table_snapshot(context,output)
+        if node.id==node_id:return None
+    raise ValueError('该步骤没有已完成的结果')
 
 def _review_view(pid,job,state):
     if job.get('status')!='succeeded' or state.get('status')!='succeeded':return None
@@ -462,7 +507,7 @@ def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_publis
             previous_payload=unseal(previous[0].get('secret_flow_payload',''))
             if previous_payload!=payload:raise ValueError('同一请求标识已用于其他流程或输入')
             return {'run_id':previous[0]['id'],'status':previous[0]['status'],'plan_digest':sha,'commit':commit}
-        if previous and previous[0].get('status') in ('queued','running','retrying'):
+        if previous and previous[0].get('status') in ('queued','running','retrying','awaiting_review'):
             raise ValueError('该流程已有运行正在处理，请等待完成后再发起')
         if previous and previous[0].get('secret_flow_checkpoint'):
             state=unseal(previous[0]['secret_flow_checkpoint'])
@@ -484,10 +529,13 @@ def get_run(pid,flow_id,run_id,actor_id=None):
     steps=[];artifacts=[]
     for item in state.get('steps',[]):
         steps.append({k:item.get(k) for k in ('node_id','title','status','started_at','finished_at','input_sha256','output_sha256','error_code','error_message')})
+        if item.get('kind')=='human_review' and item.get('status')=='succeeded' and isinstance(item.get('approval'),dict) and item['approval'].get('approved') is True:
+            steps[-1]['human_review']={k:item['approval'].get(k) for k in ('note','approved_at','checkpoint_sha256')}
         output=item.get('output')
-        steps[-1]['table_available']=bool(job.get('status')=='succeeded' and item.get('status')=='succeeded' and
+        table_status=(job.get('status')=='succeeded' or (job.get('status') in ('failed','cancelled','awaiting_review') and state.get('status') in ('failed','unknown','running','awaiting_review')))
+        steps[-1]['table_available']=bool(table_status and item.get('status')=='succeeded' and
                                          isinstance(output,dict) and output.get('kind')=='table_workflow_v1' and output.get('complete') is True)
-        if steps[-1]['table_available']:
+        if steps[-1]['table_available'] and job.get('status')=='succeeded':
             try:
                 entries=output.get('evidence_tables',[])
                 if not isinstance(entries,list) or len(entries)>30 or any(not isinstance(entry,dict) for entry in entries):raise ValueError('明细记录无效')
@@ -509,10 +557,17 @@ def get_run(pid,flow_id,run_id,actor_id=None):
     messages={'BUSINESS_RUNTIME_CHANGED':'流程执行器或依赖已变化，请重新验证并生成候选版本',
               'BUSINESS_RUNTIME_LOCK_MISSING':'该流程版本缺少执行环境锁，不能运行',
               'WORKER_LOST':'执行服务中断，已有回执已保存'}
+    waiting=next((s for s in steps if s.get('status')=='awaiting_review'),None)
+    checkpoint_review={'node_id':waiting['node_id'],'checkpoint_sha256':_checkpoint_sha(state)} if status=='awaiting_review' and waiting else None
+    if checkpoint_review:
+        document=_read_commit(pid,flow_id,job['project_commit'],job['commit'])
+        definition=next((n for n in document['nodes'] if n['id']==waiting['node_id'] and n['kind']=='human_review'),None)
+        if not definition:raise ValueError('人工核对节点与流程版本不一致')
+        checkpoint_review.update(instructions=definition['config']['instructions'],input_node=definition['inputs']['table']['name'])
     return {'id':job['id'],'flow_id':flow_id,'status':status,'plan_digest':job['commit'],
             'commit':job.get('project_commit'),'steps':steps,'artifacts':artifacts,'created_at':job.get('created_at'),
             'finished_at':job.get('finished_at'),'message':job.get('public_error') or messages.get(job.get('error_code')),'financial_verified':False,
-            'review':_review_view(pid,job,state),'unknown_resolution':_resolution_view(job,state)}
+            'review':_review_view(pid,job,state),'unknown_resolution':_resolution_view(job,state),'human_checkpoint':checkpoint_review}
 
 
 def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
@@ -524,7 +579,7 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
     """
     actor=current_actor();_owned(pid,flow_id,actor);job=get_job(run_id)
     if (job.get('project_id')!=pid or job.get('target')!=flow_id or job.get('kind')!='business_flow'
-            or job.get('actor_id')!=actor or job.get('status')!='succeeded'):
+            or job.get('actor_id')!=actor or job.get('status') not in ('succeeded','failed','cancelled','awaiting_review')):
         raise ValueError('运行记录不属于当前项目或尚未完成')
     turn=_turn(pid,actor,job.get('flow_turn_id'))
     from . import agent_gateway,agent_team
@@ -539,7 +594,7 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
         raise ValueError('流程步骤回执不完整')
     match=[item for item in state['steps'] if isinstance(item,dict) and item.get('node_id')==node_id]
     output=match[0].get('output') if len(match)==1 else None
-    if (not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
+    if (len(match)!=1 or match[0].get('status')!='succeeded' or not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
         raise ValueError('该步骤没有完整可查看的数据结果')
     from .business_flow_data import get_table_page,materialize_table
     from .data_workflows import TableSchema, digest as table_digest
@@ -552,10 +607,12 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
         # receipt. Only pages intersecting this request are decrypted.
         total=output.get('row_count')
         if type(total) is not int or total<0:raise ValueError('数据结果行数无效')
-        page=_verify_completed_state(pid,job,state,verify_evidence=False,page_request=(node_id,offset,limit))
+        page=(_verify_completed_state(pid,job,state,verify_evidence=False,page_request=(node_id,offset,limit))
+              if job['status']=='succeeded' else _verify_partial_table(pid,job,state,node_id,offset,limit))
     else:
         # Inline and legacy v1 records still need full data verification.
-        _verify_completed_state(pid,job,state,verify_evidence=False)
+        if job['status']=='succeeded':_verify_completed_state(pid,job,state,verify_evidence=False)
+        else:_verify_partial_table(pid,job,state,node_id,offset,limit)
         table=materialize_table(context,output);rows=table.get('rows')
         if (not isinstance(rows,list) or type(table.get('row_count')) is not int or table['row_count']!=len(rows)
                 or table.get('output_sha256')!=table_digest({'schema':schema,'rows':rows})):
@@ -566,7 +623,8 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
     return {'run_id':run_id,'node_id':node_id,'columns':[{'name':c.name,'label':c.label or c.name,'unit':c.unit} for c in parsed.columns],
             'rows':page,'total':total,'offset':offset,'next_offset':offset+len(page) if offset+len(page)<total else None,
             'output_sha256':output['output_sha256'],'financial_verified':False,
-            'notice':'展示实际完整结果的分页；财务口径和数据仍需业务复核。'}
+            'notice':('展示已完成步骤的实际结果；整体流程未完成，财务口径和数据仍需业务复核。' if job['status']!='succeeded'
+                      else '展示实际完整结果的分页；财务口径和数据仍需业务复核。')}
 
 
 def _fx_evidence(output,stage_id):
@@ -796,7 +854,7 @@ def get_run_reconciliation(pid,flow_id,run_id):
                 if current.get('project_id')==pid:source['name']=current.get('name')
             except KeyError:pass
             sources.append(source)
-        if output.get('kind')!='table_workflow_v1':continue
+        if output.get('kind')!='table_workflow_v1' or step.get('kind') in ('quality_gate','human_review'):continue
         stages=[]
         for receipt in output.get('stage_receipts',[]):
             check=receipt.get('reconciliation') if isinstance(receipt,dict) else None
@@ -832,7 +890,7 @@ def cancel_run(pid,flow_id,run_id,actor_id=None):
     if job.get('kind')!='business_flow' or job.get('target')!=flow_id or job.get('project_id')!=pid or job.get('actor_id')!=actor:
         raise ValueError('运行记录不属于当前项目或使用者')
     from .jobs import request_cancel
-    if job.get('status') in ('queued','running','retrying'):request_cancel(run_id)
+    if job.get('status') in ('queued','running','retrying','awaiting_review'):request_cancel(run_id)
     return get_run(pid,flow_id,run_id,actor)
 
 
@@ -1009,7 +1067,18 @@ def execute_job(job,folder):
                              'turn_id':job['flow_turn_id']},'values':{'candidate_run':job['id']}}
                 patch_run(job,status='succeeded',finished_at=now(),stage='完成，等待业务核对',
                           target_patch=target)
-            else:patch_run(job,status='failed',finished_at=now(),stage='流程未完成',public_error='流程步骤未完成或执行状态未知，已有回执已保留')
+            elif result.get('status')=='awaiting_review':
+                patch_run(job,status='awaiting_review',stage='等待人工核对')
+            else:
+                patch_run(job,status='failed',finished_at=now(),stage='流程未完成',public_error='流程步骤未完成或执行状态未知，已有回执已保留')
+                if result.get('status')=='failed':
+                    # Diagnosis must never change the recorded workflow outcome.
+                    try:
+                        from .business_flow_repair import enqueue_diagnostic
+                        enqueue_diagnostic(job)
+                    except Exception:
+                        import logging
+                        logging.getLogger(__name__).warning('自动诊断未启动；原失败回执已保留')
     finally:stop.set();thread.join(timeout=6)
 
 
@@ -1066,6 +1135,12 @@ def install(app,auth):
     def listing(pid:str):return list_views(pid)
     @app.post('/api/projects/{pid}/business-flows',dependencies=[Depends(auth)])
     def create_route(pid:str,value:CreateInput):return create(pid,current_actor(),value.turn_id,value.document.model_dump(mode='json'),value.request_id)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/download',dependencies=[Depends(auth)])
+    def download_workflow(pid:str,fid:str,expected_digest:str):
+        from fastapi.responses import Response
+        from .workflow_export import business_bundle
+        return Response(business_bundle(pid,fid,expected_digest,current_actor()),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="workflow.zip"','Cache-Control':'no-store'})
+
     @app.get('/api/projects/{pid}/business-flows/{fid}',dependencies=[Depends(auth)])
     def detail(pid:str,fid:str):return get_view(pid,fid)
     @app.get('/api/projects/{pid}/business-flows/{fid}/input-sources',dependencies=[Depends(auth)])

@@ -86,6 +86,17 @@ def test_delete_default_session_tombstone_cancels_legacy_and_internal_child_only
     assert sid in {row['id'] for row in conversation.sessions(pid)}
 
 
+def test_delete_session_cancels_isolated_flow_debug_only_for_that_conversation(project):
+    pid=project['id'];first=session(project);other=session(project)
+    first_turn=turn(project,first['id'],state='done');other_turn=turn(project,other['id'],state='done')
+    target='bfd_'+uid();other_target='bfd_'+uid()
+    debug=jobs.save({'kind':'business_flow_debug','target':target,'status':'queued','project_id':pid,'flow_turn_id':first_turn['id']},'j_'+uid())
+    unrelated=jobs.save({'kind':'business_flow_debug','target':other_target,'status':'queued','project_id':pid,'flow_turn_id':other_turn['id']},'j_'+uid())
+    life.delete_session(pid,first['id'])
+    assert jobs.get_job(debug['id'])['status']=='cancelled'
+    assert jobs.get_job(unrelated['id'])['status']=='queued'
+
+
 def test_project_delete_preserves_files_and_stops_jobs_schedules_shares(project):
     pid=project['id'];source=put('source',{'project_id':pid,'name':'收入.csv'},'s_'+uid())
     pipeline=put('pipeline',{'project_id':pid,'name':'汇总','cron':'0 9 * * 1','watch_sources':True,

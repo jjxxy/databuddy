@@ -77,6 +77,24 @@ def rendered_document(turn):
     return spec,result,file,record
 
 
+def test_revised_office_spec_creates_new_artifact_and_preserves_original(isolated_office):
+    turn,_=isolated_office
+    spec,first,original,_=rendered_document(turn)
+    original_bytes=original.read_bytes()
+    assert first['source_spec']=='report.json'
+    assert first['source_sha256']==hashlib.sha256(spec.encode()).hexdigest()
+    assert first['source_spec_editable_in_workspace'] is True
+    revised=spec.replace('118.15','118.16')
+    workspace.write_file(turn['project_id'],'report.json',revised)
+    second=office.render(turn,'report.json','synthetic-report')
+    assert second['artifact_id']!=first['artifact_id']
+    assert second['source_sha256']==hashlib.sha256(revised.encode()).hexdigest()
+    assert office.artifact(turn['project_id'],first['artifact_id'])[0].read_bytes()==original_bytes
+    from docx import Document
+    second_file,_=office.artifact(turn['project_id'],second['artifact_id'])
+    assert '118.16' in '\n'.join(p.text for p in Document(second_file).paragraphs)
+
+
 def test_repeated_render_cannot_resign_registered_corrupt_bytes(isolated_office):
     turn,_=isolated_office
     _,original,file,record=rendered_document(turn)

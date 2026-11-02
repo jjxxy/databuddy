@@ -14,7 +14,7 @@ _MAX_LINES=11
 _MAX_SLIDES=120
 _MAX_TABLE_ROWS=100
 _MAX_TABLE_COLUMNS=5
-_TABLE_ROWS_PER_PAGE=7  # Table bottom stays above the footer even when full.
+_TABLE_ROWS_PER_PAGE=6  # Preserve space for larger, readable two-line cells.
 
 
 def _width(ch):
@@ -96,9 +96,15 @@ def _table_pages(table,section_index):
                 pieces=[]
                 for line in row[col].split('\n'):pieces.extend(_wrapped(line,units))
                 if len(pieces)>2:raise ValueError('PPT 单元格过长，请使用完整表格附件；未截断内容')
-        batches=[table.rows[i:i+_TABLE_ROWS_PER_PAGE] for i in range(0,len(table.rows),_TABLE_ROWS_PER_PAGE)] or [[]]
-        for batch_no,rows in enumerate(batches):out.append({'kind':'table','section':section_index,'indices':indices,
-            'row_offset':batch_no*_TABLE_ROWS_PER_PAGE,'rows':rows,'group':group_index,'groups':len(groups),'total':len(table.rows)})
+        # Balance pages so seven or eight rows do not strand a single row on
+        # the last slide. Never reorder rows or assume which one is a total.
+        count=max(1,(len(table.rows)+_TABLE_ROWS_PER_PAGE-1)//_TABLE_ROWS_PER_PAGE)
+        base,extra=divmod(len(table.rows),count);offset=0
+        for batch_no in range(count):
+            size=base+(batch_no<extra);rows=table.rows[offset:offset+size]
+            out.append({'kind':'table','section':section_index,'indices':indices,
+                'row_offset':offset,'rows':rows,'group':group_index,'groups':len(groups),'total':len(table.rows)})
+            offset+=size
     return out
 
 
@@ -106,7 +112,7 @@ def _layout(spec):
     pages=[]
     for index,section in enumerate(spec.sections):
         heading=section.heading or spec.title
-        if len(_wrapped(heading,74))>2:raise ValueError('幻灯片标题过长，请拆分标题后重试')
+        if len(_wrapped(heading,60))>2:raise ValueError('幻灯片标题过长，请拆分标题后重试')
         lines=_lines(section,index)
         pages.extend({'kind':'text','section':index,'items':lines[i:i+_MAX_LINES]} for i in range(0,len(lines),_MAX_LINES))
         if section.table:pages.extend(_table_pages(section.table,index))
@@ -160,7 +166,7 @@ def _rect(slide,x,y,w,h,color):
 def build(spec,path):
     from pptx import Presentation
     from pptx.util import Inches,Pt
-    from pptx.enum.text import MSO_ANCHOR
+    from pptx.enum.text import MSO_ANCHOR,PP_ALIGN
     from pptx.dml.color import RGBColor
     if not spec.sections:raise ValueError('演示文稿至少需要一页内容')
     if len(_wrapped(spec.title,44))>4:raise ValueError('演示文稿封面标题过长，请拆分后重试')
@@ -169,7 +175,7 @@ def build(spec,path):
     title=cover.shapes.title;title.left=Inches(.82);title.top=Inches(1.55);title.width=Inches(11.65);title.height=Inches(2.65)
     title.text=spec.title;title.text_frame.word_wrap=True;title.text_frame.vertical_anchor=MSO_ANCHOR.MIDDLE
     title.text_frame.margin_left=title.text_frame.margin_right=Pt(0)
-    for p in title.text_frame.paragraphs:_font(p,34,'FFFFFF',True)
+    for p in title.text_frame.paragraphs:_font(p,36,'FFFFFF',True);p.alignment=PP_ALIGN.LEFT
     if len(cover.placeholders)>1:cover.placeholders[1].text=''
     _rect(cover,.82,1.05,.8,.05,'80C5A2')
     _text(cover,.82,.57,8,.35,'业务报告',14,'C8E5D5')
@@ -180,58 +186,66 @@ def build(spec,path):
         title=slide.shapes.title;title.left=Inches(.68);title.top=Inches(.38);title.width=Inches(11.9);title.height=Inches(1.05)
         title.text=section.heading or spec.title;title.text_frame.word_wrap=True
         title.text_frame.margin_left=title.text_frame.margin_right=Pt(0)
-        for p in title.text_frame.paragraphs:_font(p,24,'17352D',True)
+        for p in title.text_frame.paragraphs:_font(p,28,'17352D',True);p.alignment=PP_ALIGN.LEFT
         _rect(slide,.7,1.5,11.93,.012,'D8E5DF')
         if page['kind']=='text':
+            # Give shorter summaries more breathing room without truncating or
+            # changing supplied wording. Long pages retain a compact layout.
+            short=len(page['items'])<=6
             for i,(name,text,bullet) in enumerate(page['items']):
-                y=1.75+i*.41
-                if bullet:_text(slide,.76,y,.22,.32,'•',17,'2A7960')
-                _text(slide,1.02,y,11.55,.34,text,18,'253B34',name=name)
+                y=(1.86+i*.56) if short else (1.75+i*.44)
+                if bullet:_text(slide,.76,y,.22,.38,'•',18 if short else 17,'2A7960')
+                _text(slide,1.02,y,11.55,.42 if short else .38,text,22 if short else 20,'253B34',name=name)
         elif page['kind']=='table':
             table=section.table;indices=page['indices'];count=len(indices);width=11.9/count
-            shape=slide.shapes.add_table(len(page['rows'])+1,count,Inches(.7),Inches(1.9),Inches(11.9),Inches(.60*(len(page['rows'])+1)))
+            shape=slide.shapes.add_table(len(page['rows'])+1,count,Inches(.7),Inches(1.9),Inches(11.9),Inches(.68*(len(page['rows'])+1)))
             shape.name=f"nexus:table:{page['section']}:{page['group']}:{page['row_offset']}"
             t=shape.table
             for i in range(count):t.columns[i].width=Inches(width)
             for ri in range(len(page['rows'])+1):
-                t.rows[ri].height=Inches(.60)
+                t.rows[ri].height=Inches(.68)
                 for ci,col in enumerate(indices):
                     cell=t.cell(ri,ci);cell.text=table.columns[col] if ri==0 else page['rows'][ri-1][col]
                     cell.margin_left=cell.margin_right=Pt(6);cell.margin_top=cell.margin_bottom=Pt(3)
                     cell.vertical_anchor=MSO_ANCHOR.MIDDLE;cell.text_frame.word_wrap=True
                     cell.fill.solid();cell.fill.fore_color.rgb=RGBColor.from_string('E7F1EC' if ri==0 else ('F5F8F6' if ri%2==0 else 'FFFFFF'))
-                    for p in cell.text_frame.paragraphs:_font(p,12,'17352D' if ri==0 else '253B34',ri==0)
+                    for p in cell.text_frame.paragraphs:_font(p,14,'17352D' if ri==0 else '253B34',ri==0)
             _text(slide,.72,1.58,11.8,.23,
                   f"完整数据：{page['total']} 行 · 本页 {page['row_offset']+1 if page['rows'] else 0}–{page['row_offset']+len(page['rows'])} 行 · 列组 {page['group']+1}/{page['groups']}",
                   10,'5D756C')
         else:
             from pptx.chart.data import ChartData
             from pptx.enum.chart import XL_CHART_TYPE
-            from pptx.enum.text import PP_ALIGN
             chart_spec=section.chart
-            _text(slide,.75,1.58,7.35,.45,chart_spec.title,17,'17352D',True,name=f"nexus:chart-title:{page['section']}")
-            data=ChartData();data.categories=[point.label for point in chart_spec.points]
-            data.add_series(chart_spec.title,[float(point.value) for point in chart_spec.points])
+            _text(slide,.75,1.58,7.35,.45,chart_spec.title,18,'17352D',True,name=f"nexus:chart-title:{page['section']}")
+            # A horizontal chart displays the first data category at the
+            # bottom in the standard Office axis order. Reverse category/value
+            # pairs in the embedded chart together, leaving the displayed
+            # exact-value list in the user's original order. This also avoids
+            # relying on maxMin, which some browser viewers ignore.
+            chart_points=list(reversed(chart_spec.points))
+            data=ChartData();data.categories=[point.label for point in chart_points]
+            data.add_series(chart_spec.title,[float(point.value) for point in chart_points])
             shape=slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED,Inches(.76),Inches(2.15),Inches(7.15),Inches(4.24),data)
             shape.name=f"nexus:chart:{page['section']}"
             chart=shape.chart;chart.has_legend=False;chart.has_title=False
-            # Keep the chart's top-to-bottom order aligned with the adjacent
-            # exact-value list; horizontal Office charts otherwise reverse it.
-            chart.category_axis.reverse_order=True
+            chart.category_axis.reverse_order=False
             chart.category_axis.tick_labels.font.name='Noto Sans CJK SC';chart.category_axis.tick_labels.font.size=Pt(11)
             chart.value_axis.tick_labels.font.name='Noto Sans CJK SC';chart.value_axis.tick_labels.font.size=Pt(10)
+            chart.value_axis.tick_labels.number_format='#,##0'
+            chart.value_axis.tick_labels.number_format_is_linked=False
             values=[float(point.value) for point in chart_spec.points]
             if min(values)>=0:chart.value_axis.minimum_scale=0
             if max(values)<=0 and min(values)<0:chart.value_axis.maximum_scale=0
             series=chart.series[0]
             series.format.fill.solid();series.format.fill.fore_color.rgb=RGBColor.from_string('2A7960')
             _rect(slide,8.15,1.7,4.4,4.68,'F3F8F5')
-            _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,13,'17352D',True,name=f"nexus:chart-unit:{page['section']}")
+            _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,14,'17352D',True,name=f"nexus:chart-unit:{page['section']}")
             for i,point in enumerate(chart_spec.points):
                 y=2.28+i*.46
-                label=_text(slide,8.38,y,1.85,.40,point.label,11,'435B50',name=f"nexus:chart-label:{page['section']}:{i}")
+                label=_text(slide,8.38,y,1.85,.40,point.label,12,'435B50',name=f"nexus:chart-label:{page['section']}:{i}")
                 label.text_frame.word_wrap=True
-                value=_text(slide,10.26,y,2.07,.40,point.value,11,'17352D',True,name=f"nexus:chart-value:{page['section']}:{i}")
+                value=_text(slide,10.26,y,2.07,.40,point.value,12,'17352D',True,name=f"nexus:chart-value:{page['section']}:{i}")
                 value.text_frame.paragraphs[0].alignment=PP_ALIGN.RIGHT
             _text(slide,8.38,6.08,3.95,.25,'图形用于比较；请以原始数值核对',9,'5D756C')
         _rect(slide,.7,6.83,11.93,.012,'D8E5DF')
@@ -263,10 +277,13 @@ def verify(spec,deck):
             charts=[s for s in slide.shapes if s.has_chart]
             if len(charts)!=1 or len(charts[0].chart.series)!=1:raise ValueError('演示文稿图表不完整')
             chart=charts[0].chart
-            if [c.label for c in chart.plots[0].categories]!=[p.label for p in chart_spec.points]:
+            chart_points=list(reversed(chart_spec.points))
+            if chart.category_axis.reverse_order is not False:
+                raise ValueError('演示文稿图表类别方向不一致')
+            if [c.label for c in chart.plots[0].categories]!=[p.label for p in chart_points]:
                 raise ValueError('演示文稿图表类别不一致')
             from decimal import Decimal
-            if [Decimal(str(v)) for v in chart.series[0].values]!=[Decimal(p.value) for p in chart_spec.points]:
+            if [Decimal(str(v)) for v in chart.series[0].values]!=[Decimal(p.value) for p in chart_points]:
                 raise ValueError('演示文稿图表数值不一致')
             # PowerPoint edits charts through a separate embedded workbook.
             # Verify it too, so opening the editor cannot reveal different
@@ -281,7 +298,7 @@ def verify(spec,deck):
                     raise ValueError('图表数据工作簿尺寸不一致')
                 rows=list(sheet.iter_rows())
                 if rows[0][1].data_type!='s' or rows[0][1].value!=chart_spec.title:raise ValueError('图表数据系列不一致')
-                for cells,point in zip(rows[1:],chart_spec.points):
+                for cells,point in zip(rows[1:],chart_points):
                     if (cells[0].data_type!='s' or cells[0].value!=point.label or cells[1].data_type!='n'
                             or isinstance(cells[1].value,bool)
                             or Decimal(str(cells[1].value))!=Decimal(point.value)):

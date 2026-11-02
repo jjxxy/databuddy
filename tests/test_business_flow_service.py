@@ -38,7 +38,9 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     document={'name':'收入汇总','inputs':[],'nodes':[
         {'id':'read','kind':'source_table','title':'读取资料','config':{'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash']}},
         {'id':'aggregate','kind':'table_workflow','title':'汇总收入','depends_on':['read'],'inputs':{'table':{'source':'node','name':'read'}},'config':{'plan':plan}},
-        {'id':'spec','kind':'table_report_spec','title':'整理报告','depends_on':['aggregate'],'inputs':{'table':{'source':'node','name':'aggregate'}},'config':{'title':'收入汇总','format':'html'}},
+        {'id':'check','kind':'quality_gate','title':'自动核对金额','depends_on':['aggregate'],'inputs':{'table':{'source':'node','name':'aggregate'}},'config':{'rules':[{'kind':'required','column':'amount'},{'kind':'range','column':'amount','minimum':'0'},{'kind':'unique','columns':['c_1']}]}},
+        {'id':'review','kind':'human_review','title':'人工核对','depends_on':['check'],'inputs':{'table':{'source':'node','name':'check'}},'config':{'instructions':'核对收入合计'}},
+        {'id':'spec','kind':'table_report_spec','title':'整理报告','depends_on':['review'],'inputs':{'table':{'source':'node','name':'review'}},'config':{'title':'收入汇总','format':'html'}},
         {'id':'report','kind':'html_report','title':'生成报告','depends_on':['spec'],'inputs':{'spec':{'source':'node','name':'spec'}},'config':{'name':'收入汇总','renderer_version':'business-html-v1'}}], 'outputs':['report']}
     # Exercise the same validated Agent tool boundary as the conversation, not
     # only the management endpoint. A replay must not create another draft.
@@ -62,15 +64,71 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert saved['candidate_commit'] and saved['published_run'] is None
     assert len(req('GET',base+'/business-flows')['items'])==1
     flow=base+'/business-flows/'+saved['id'];run_request=uid();body={'request_id':run_request,'expected_digest':saved['candidate_digest'],'inputs':{}}
+    debug={'request_id':uid(),'expected_digest':saved['candidate_digest'],'selected_nodes':['read','aggregate'],'inputs':{}}
+    missing=client.post(flow+'/debug-runs',headers=h,json={**debug,'request_id':uid(),'selected_nodes':['aggregate']})
+    assert missing.status_code==400
+    unsafe=client.post(flow+'/debug-runs',headers=h,json={**debug,'request_id':uid(),'selected_nodes':['read','aggregate','spec','report']})
+    assert unsafe.status_code==400
+    partial=req('POST',flow+'/debug-runs',json=debug)
+    assert req('POST',flow+'/debug-runs',json=debug)['run_id']==partial['run_id']
+    assert process_once()
+    done=req('GET',flow+'/debug-runs/'+partial['run_id'])
+    assert done['status']=='succeeded' and done['publishable'] is False,done
+    assert [step['node_id'] for step in done['steps']]==['read','aggregate']
+    source_page=req('GET',flow+'/debug-runs/'+partial['run_id']+'/tables/read?limit=2')
+    assert source_page['total']==3 and len(source_page['rows'])==2 and source_page['publishable'] is False
+    result=req('GET',flow+'/debug-runs/'+partial['run_id']+'/tables/aggregate')
+    assert result['rows'][0]['amount']=='18.00' and result['publishable'] is False
+    from agent_service.business_flow_debug import status as debug_status
+    from agent_service.actor_context import actor_scope
+    import pytest,copy
+    with actor_scope('u_'+'f'*64):
+        with pytest.raises(ValueError):debug_status(pid,saved['id'],partial['run_id'],'u_'+'f'*64)
+    from agent_service.jobs import get_job,save
+    from agent_service.store import seal
+    debug_job=get_job(partial['run_id']);tampered=copy.deepcopy(debug_job);envelope=unseal(debug_job['secret_debug_checkpoint'])
+    envelope['state']['steps'][0]['input_sha256']='0'*64;tampered['secret_debug_checkpoint']=seal(envelope)
+    try:
+        save(tampered,tampered['id'])
+        assert client.get(flow+'/debug-runs/'+partial['run_id']+'/tables/aggregate',headers=h).status_code==400
+    finally:save(debug_job,debug_job['id'])
+    clean=req('GET',flow)
+    assert clean['latest_run'] is None and clean['candidate_run'] is None and clean['published_run'] is None
+    assert client.get(flow+'/runs/'+partial['run_id'],headers=h).status_code==400
+    checked=req('POST',flow+'/debug-runs',json={**debug,'request_id':uid(),'selected_nodes':['read','aggregate','check']})
+    assert process_once()
+    checked_status=req('GET',flow+'/debug-runs/'+checked['run_id'])
+    assert checked_status['status']=='succeeded' and checked_status['steps'][-1]['node_id']=='check'
+    assert req('GET',flow+'/debug-runs/'+checked['run_id']+'/tables/check')['rows'][0]['amount']=='18.00'
+    from agent_service import business_flow_repair
+    failed_document=copy.deepcopy(document);failed_document['nodes'][2]['config']['rules'][1]['maximum']='17.99'
+    failed_flow=req('POST',base+'/business-flows',json={'request_id':uid(),'turn_id':turn['id'],'document':failed_document})
+    failed_url=base+'/business-flows/'+failed_flow['id']
+    failed=req('POST',failed_url+'/debug-runs',json={'request_id':uid(),'expected_digest':failed_flow['candidate_digest'],'selected_nodes':['read','aggregate','check'],'inputs':{}})
+    with monkeypatch.context() as m:
+        m.setattr(business_flow_repair,'enqueue_diagnostic',lambda job:None)
+        assert process_once()
+    failed_status=req('GET',failed_url+'/debug-runs/'+failed['run_id'])
+    assert failed_status['status']=='failed' and failed_status['steps'][-1]['error_code']=='CHECK_RANGE_FAILED'
+    assert not any(s['node_id']=='spec' for s in failed_status['steps'])
+    stopped=req('POST',flow+'/debug-runs',json={**debug,'request_id':uid()})
+    assert req('POST',flow+'/debug-runs/'+stopped['run_id']+'/cancel')['cancel_requested'] is True
+    assert req('GET',flow+'/debug-runs/'+stopped['run_id'])['status']=='cancelled'
     usage=req('GET',flow+'/storage');assert usage['project_limit_bytes']>0 and usage['actor_limit_bytes']>0
     run=req('POST',flow+'/runs',json=body)
     assert req('POST',flow+'/runs',json=body)['run_id']==run['run_id']
     conflict=client.post(flow+'/runs',headers=h,json={**body,'request_id':uid()});assert conflict.status_code==400
     assert req('GET',flow+'/requests/'+run_request)['accepted'] is True
     assert req('GET',flow+'/requests/'+uid())['accepted'] is None
+    assert process_once();paused=req('GET',flow+'/runs/'+run['run_id']);assert paused['status']=='awaiting_review',paused
+    assert paused['human_checkpoint']['instructions']=='核对收入合计'
+    assert req('GET',flow+'/runs/'+run['run_id']+'/tables/check')['rows'][0]['amount']=='18.00'
+    approval={'expected_checkpoint_sha256':paused['human_checkpoint']['checkpoint_sha256'],'note':'已核对来源和合计'}
+    assert client.post(flow+'/runs/'+run['run_id']+'/approve-checkpoint',headers=h,json={**approval,'expected_checkpoint_sha256':'0'*64}).status_code==400
+    resumed=req('POST',flow+'/runs/'+run['run_id']+'/approve-checkpoint',json=approval);assert resumed['status']=='retrying'
     assert process_once();status=req('GET',flow+'/runs/'+run['run_id']);assert status['status']=='succeeded',status
     assert status['plan_digest']==saved['candidate_digest'] and status['commit']==saved['candidate_commit']
-    assert len(status['steps'])==4 and len(status['artifacts'])==1
+    assert len(status['steps'])==6 and len(status['artifacts'])==1
     assert status['steps'][1]['table_available']
     page=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
     assert page['total']==1 and page['next_offset'] is None and page['rows'][0]['amount']=='18.00'
@@ -95,6 +153,30 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert bad.status_code==400
     invalid=client.get(flow+'/runs/'+run['run_id']+'/tables/aggregate?limit=101',headers=h)
     assert invalid.status_code==400
+    # An interrupted run may expose a completed prefix for inspection only.
+    # It must bind every upstream receipt to the frozen inputs and version.
+    from agent_service.jobs import get_job,save
+    from agent_service.store import seal
+    import copy
+    original=get_job(run['run_id']);partial=copy.deepcopy(original)
+    checkpoint=unseal(original['secret_flow_checkpoint']);checkpoint['steps']=checkpoint['steps'][:2]
+    checkpoint['status']='failed';checkpoint.pop('outputs',None)
+    partial['status']='failed';partial['secret_flow_checkpoint']=seal(checkpoint)
+    try:
+        save(partial,partial['id'])
+        failed=req('GET',flow+'/runs/'+run['run_id'])
+        assert failed['status']=='failed' and failed['steps'][1]['table_available']
+        prefix=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
+        assert prefix['rows'][0]['amount']=='18.00' and '整体流程未完成' in prefix['notice']
+        changed=copy.deepcopy(checkpoint);changed['steps'][0]['input_sha256']='0'*64
+        partial['secret_flow_checkpoint']=seal(changed);save(partial,partial['id'])
+        assert client.get(flow+'/runs/'+run['run_id']+'/tables/aggregate',headers=h).status_code==400
+        changed=copy.deepcopy(checkpoint);changed['steps'][1]['output']['rows'][0]['amount']='19.00'
+        partial['secret_flow_checkpoint']=seal(changed);save(partial,partial['id'])
+        assert client.get(flow+'/runs/'+run['run_id']+'/tables/aggregate',headers=h).status_code==400
+        partial['secret_flow_checkpoint']=seal(checkpoint);partial['status']='cancelled';save(partial,partial['id'])
+        assert req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate')['rows'][0]['amount']=='18.00'
+    finally:save(original,original['id'])
     result=client.get(status['artifacts'][0]['download_url'],headers=h)
     assert result.status_code==200 and '18.00' in result.text and '未经' not in result.text
     record=unseal(get('run',run['run_id'])['secret_flow_checkpoint'])
@@ -138,6 +220,8 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     # The same published Git version reruns without changing logic or inputs;
     # a successful clean run advances the formal result pointer.
     again=req('POST',flow+'/runs',json={'request_id':uid(),'expected_digest':saved['candidate_digest'],'inputs':{},'use_published':True})
+    assert process_once();repeated=req('GET',flow+'/runs/'+again['run_id']);assert repeated['status']=='awaiting_review',repeated
+    req('POST',flow+'/runs/'+again['run_id']+'/approve-checkpoint',json={'expected_checkpoint_sha256':repeated['human_checkpoint']['checkpoint_sha256'],'note':'已核对本次收入'})
     assert process_once();repeated=req('GET',flow+'/runs/'+again['run_id']);assert repeated['status']=='succeeded',repeated
     after=req('GET',flow);assert after['published_run']==again['run_id'] and after['published_digest']==saved['candidate_digest']
     req('PUT',flow+'/schedule',json={'cron':'* * * * *','source_bindings':{},'expected_published_digest':saved['candidate_digest']})
@@ -146,6 +230,9 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     patch('business_flow',saved['id'],next_due=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat())
     from agent_service.business_flows import queue_due
     queue_due();assert process_once()
+    scheduled_pause=req('GET',flow)['latest_run'];assert scheduled_pause['status']=='awaiting_review'
+    req('POST',flow+'/runs/'+scheduled_pause['id']+'/approve-checkpoint',json={'expected_checkpoint_sha256':scheduled_pause['human_checkpoint']['checkpoint_sha256'],'note':'已核对本次收入'})
+    assert process_once()
     scheduled=req('GET',flow);assert scheduled['published_run'] not in (run['run_id'],again['run_id'])
     assert scheduled['published_digest']==saved['candidate_digest']
     # A new draft does not replace the adopted version. Project rollback
@@ -158,8 +245,12 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert changed['candidate_digest']!=saved['candidate_digest'] and changed['published_digest']==saved['candidate_digest']
     old_run=req('POST',flow+'/runs',json={'request_id':uid(),'expected_digest':saved['candidate_digest'],'inputs':{},'use_published':True})
     assert get('run',old_run['run_id'])['flow_turn_id']==turn['id']
+    assert process_once();old_pause=req('GET',flow+'/runs/'+old_run['run_id']);assert old_pause['status']=='awaiting_review'
+    req('POST',flow+'/runs/'+old_run['run_id']+'/approve-checkpoint',json={'expected_checkpoint_sha256':old_pause['human_checkpoint']['checkpoint_sha256'],'note':'已核对收入'})
     assert process_once();assert req('GET',flow+'/runs/'+old_run['run_id'])['status']=='succeeded'
     changed_run=req('POST',flow+'/runs',json={'request_id':uid(),'expected_digest':changed['candidate_digest'],'inputs':{}})
+    assert process_once();changed_pause=req('GET',flow+'/runs/'+changed_run['run_id']);assert changed_pause['status']=='awaiting_review'
+    req('POST',flow+'/runs/'+changed_run['run_id']+'/approve-checkpoint',json={'expected_checkpoint_sha256':changed_pause['human_checkpoint']['checkpoint_sha256'],'note':'已核对收入'})
     assert process_once();assert req('GET',flow+'/runs/'+changed_run['run_id'])['status']=='succeeded'
     new_formal=req('POST',flow+'/publish',json={'run_id':changed_run['run_id'],'expected_digest':changed['candidate_digest']})
     assert new_formal['cron'] is None and '定时已暂停' in new_formal['refresh_error']

@@ -49,7 +49,8 @@ DEFINITIONS={
     'list_business_flows':(Empty,False,'列出当前项目、当前用户的业务流程草稿与正式版本。'),
     'inspect_business_flow':(FlowTarget,False,'查看指定业务流程的真实版本、步骤和运行状态；不运行也不发布。'),
     'run_business_flow':(RunFlow,True,'用户要求执行时，按已查看的候选版本摘要和明确输入入队运行；仅支持本地读取、确定性加工和成果生成，不自动发布。模型、技能或其他可能产生外部影响的步骤不能通过此工具自动执行。入队不等于完成，应使用 inspect_business_flow_run 查询真实回执。'),
-    'inspect_business_flow_run':(RunTarget,False,'读取指定业务流程运行的真实状态和成果；执行完成不代表财务结果已核对。'),
+    'inspect_business_flow_run':(RunTarget,False,'读取指定业务流程运行的真实状态、成果和失败修复指引；根据实际回执核对并修复有依据的问题，缺少财务口径时询问。未知执行结果不得重试；执行完成不代表财务结果已核对。'),
+    'inspect_business_flow_debug_run':(RunTarget,False,'读取指定业务流程调试运行的真实状态和失败修复指引；调试结果不可发布。'),
     'business_flow_guide':(Empty,False,'查看当前业务流程的实际节点、配置结构和数据连接方式，再据此创建可执行草稿。'),
     'prepare_business_flow_source':(SourceTarget,False,'取得本项目已就绪文件的固定版本和摘要，供业务流程准确引用；不读取全部业务数据。'),
     'prepare_business_flow_model':(Empty,False,'读取本轮已授权的模型目录版本，供业务流程模型步骤固定使用；不调用模型。'),
@@ -69,11 +70,15 @@ def execute(turn,name,args):
     context={'project_id':pid,'actor_id':actor,'turn_id':turn['id'],'originating_turn_id':turn['id']}
     if name=='business_flow_guide':
         from .business_flow_data import SourceConfig,TableConfig
+        from .business_flow_quality_gate import Config as QualityConfig
+        from .business_flow_human_review import Config as HumanReviewConfig
         from .business_deliverables import DeliveryConfig,TableReportConfig,HTML_RENDERER
         from .office import RENDERER
         return {'flow_schema':BusinessFlow.model_json_schema(),
                 'nodes':{'source_table':{'config_schema':SourceConfig.model_json_schema(),'output':'source_table_v1'},
                          'table_workflow':{'config_schema':TableConfig.model_json_schema(),'output':'table_workflow_v1'},
+                         'quality_gate':{'config_schema':QualityConfig.model_json_schema(),'input':'table（table_workflow 或 quality_gate 输出）','output':'table_workflow_v1','notice':'只配置用户明确要求的字段和规则；失败阻断后续步骤，不改数据，不代表财务结果已核验。'},
+                         'human_review':{'config_schema':HumanReviewConfig.model_json_schema(),'input':'table（已加工或已核对的数据表）','output':'table_workflow_v1','notice':'仅用户明确要求人工复核时添加；此节点暂停，明确确认后继续。'},
                          'table_report_spec':{'config_schema':TableReportConfig.model_json_schema(),'input':'table','optional_input':'commentary（仅 model 或 skill 输出，明确标注未经核验）','output':'table_report_spec_v1'},
                          'office_document':{'config_schema':DeliveryConfig.model_json_schema(),'renderer_version':RENDERER,'input':'spec'},
                          'html_report':{'config_schema':DeliveryConfig.model_json_schema(),'renderer_version':HTML_RENDERER,'input':'spec'},
@@ -91,7 +96,15 @@ def execute(turn,name,args):
     if name=='prepare_business_flow_skill':return workflow_model_skill.freeze_skill(context,args['skill_id'])
     if name=='list_business_flows':return business_flows.list_views(pid,actor)
     if name=='inspect_business_flow':return business_flows.get_view(pid,args['flow_id'],actor)
-    if name=='inspect_business_flow_run':return business_flows.get_run(pid,args['flow_id'],args['run_id'],actor)
+    if name=='inspect_business_flow_run':
+        from .business_flow_repair import guidance
+        run=business_flows.get_run(pid,args['flow_id'],args['run_id'],actor)
+        return {**run,'repair_guidance':guidance(run)}
+    if name=='inspect_business_flow_debug_run':
+        from .business_flow_debug import status
+        from .business_flow_repair import guidance
+        run=status(pid,args['flow_id'],args['run_id'],actor)
+        return {**run,'repair_guidance':guidance(run)}
     if name=='run_business_flow':
         from . import agent_context,agent_gateway,agent_team
         from .intents import require
@@ -99,12 +112,12 @@ def execute(turn,name,args):
         flow=business_flows.get_view(pid,args['flow_id'],actor)
         if flow.get('candidate_digest')!=args['expected_digest']:raise ValueError('流程版本已变化，请重新查看')
         doc=BusinessFlow.model_validate(flow.get('candidate_document'))
-        permitted={'source_table','table_workflow','table_report_spec','html_report','office_document'}
+        permitted={'source_table','table_workflow','quality_gate','human_review','table_report_spec','html_report','office_document'}
         if any(node.kind not in permitted for node in doc.nodes):raise ValueError('该流程包含需单独确认的模型、技能或外部步骤，请在业务流程页面核对后运行')
         # Check the current turn as well as the original flow's execution
         # authority, which submit_run and the worker validate independently.
         names=agent_context.allowed(turn)
-        required={'source_table':'read_source_table','table_workflow':'run_data_workflow',
+        required={'source_table':'read_source_table','table_workflow':'run_data_workflow','quality_gate':'run_data_workflow','human_review':'run_data_workflow',
                   'table_report_spec':'write_file','html_report':'write_file',
                   'office_document':'render_office_artifact'}
         for node in doc.nodes:

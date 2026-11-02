@@ -141,3 +141,37 @@
 
 .flow-edit-handoff{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;margin:0 0 8px;border:1px solid #d6dfed;border-radius:10px;background:#f5f8fc;color:#34445a;font-size:13px;line-height:1.5}.flow-edit-handoff button{flex:none}
 @media(max-width:600px){.flow-edit-handoff{align-items:flex-start;flex-direction:column}}
+
+/* Conversation stays visible beside the optional workflow or result panel. */
+@media(min-width:1101px){.workspace-artifacts-panel{width:min(720px,46vw)}.artifacts-open #main{margin-right:min(720px,46vw)}}
+#workflow-panel{min-width:0}#workflow-panel .chat-workflows-host{max-width:none;margin:0;padding:16px 0 0}#workflow-panel .chat-workflows{border:0;padding:0}#artifact-content{min-width:0}
+
+/* Expand the flow into the viewport while keeping the live project chat usable. */
+body.workflow-expanded .shell{grid-template-columns:minmax(0,1fr)}
+body.workflow-expanded #sidebar{display:none}
+body.workflow-expanded .workspace-artifacts-panel{width:66vw;box-shadow:none}
+body.workflow-expanded #main{margin-right:66vw;min-width:0}
+body.workflow-expanded .topbar{padding:0 16px}
+body.workflow-expanded .messages{padding-left:16px;padding-right:16px}
+body.workflow-expanded #workflow-panel nexus-flow-graph{min-height:55vh}
+@media(max-width:699px){
+ body.workflow-expanded .workspace-artifacts-panel{width:100vw;height:52dvh;bottom:auto;padding:12px 16px;box-shadow:none}
+ body.workflow-expanded #main{position:fixed;left:0;right:0;bottom:0;height:48dvh;margin:0;border-top:1px solid #dce5df}
+ body.workflow-expanded .topbar{height:42px;min-height:42px;padding:0 12px}
+ body.workflow-expanded #workflow-panel nexus-flow-graph{min-height:30vh}
+}
+/* Node debugging remains distinct from an adopted business result. */
+.workflow-debug{margin:16px 0;padding:16px;border:1px solid #dce5e1;border-radius:12px;background:#f9fbfa}
+.workflow-debug h4{margin:0 0 6px;font-size:15px;color:#203b32}
+.workflow-debug>p{margin:0 0 12px;font-size:13px;line-height:1.55;color:#53675f}
+.workflow-debug-nodes{display:grid;gap:6px;margin:0 0 14px}
+.workflow-debug-nodes label{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;background:#fff;border:1px solid #e2e9e5;border-radius:8px;font-size:13px;line-height:1.45}
+.workflow-debug-nodes input{margin:3px 0 0;accent-color:#226e54}
+.workflow-debug-nodes label:has(input:disabled){color:#78847f;background:#f3f6f4}
+.workflow-debug>button{padding:8px 14px;border-radius:8px;background:#226e54;color:#fff;font-size:13px;font-weight:600}
+.workflow-debug>button+button{margin-left:8px;background:#eef3f0;color:#284a3d}
+.workflow-debug-progress button{padding:4px 8px;margin-left:8px;border:1px solid #b9ccc2;border-radius:6px;color:#226e54}
+.workflow-debug-progress{font-size:13px;line-height:1.5;overflow:auto}
+.workflow-debug-progress>div{padding:9px 0;border-bottom:1px solid #e1e9e5}
+.workflow-debug-progress table{border-collapse:collapse;margin-top:8px;max-width:100%}
+.workflow-debug-progress th,.workflow-debug-progress td{padding:6px 9px;border:1px solid #d9e4de;text-align:left;white-space:nowrap}

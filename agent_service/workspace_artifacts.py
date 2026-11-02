@@ -132,7 +132,13 @@ def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=N
     return _public(record)
 
 
-def _public(record):return {k:v for k,v in record.items() if k not in ('project_id','private','resource_id')}
+def _public(record):
+    result={k:v for k,v in record.items() if k not in ('project_id','private','resource_id')}
+    # The identifier of a connection is not a hash of remote data.
+    if record.get('private',{}).get('connected_source'):
+        result.pop('sha256',None)
+        result.pop('sha256_scope',None)
+    return result
 
 
 def _verified(record):return dict(_public(record),verified=True,integrity_verified=True,verification_scope='complete_selected_version_bytes_checked; no_financial_approval')
@@ -150,17 +156,36 @@ def _source_entry(pid,source_id,value):
         source_refs=[{'source_id':source_id,'revision':revision}])
 
 
+def _connected_source_entry(pid,value):
+    """Register metadata only; listing the catalog never contacts the source."""
+    version=value.get('revision',1)
+    identity=value['id']+':'+str(version)
+    checksum=_hash(json.dumps([pid,identity],ensure_ascii=False).encode())
+    return _register(pid,'source',identity,value.get('name') or '数据连接',checksum,
+        format=value['kind'],version=str(version),updated_at=value.get('created_at') or now(),
+        status='connected_source',private={'source_id':value['id'],'source_revision':version,
+                                          'connected_source':True},downloads=[],
+        source_refs=[{'source_id':value['id'],'revision':version}],
+        sha256_scope='connection_registration')
+
+
 def source_artifact(pid,source_id,revision=None,expected_sha256=None):
     """Resolve one exact uploaded version without scanning unrelated artifacts."""
     _live(pid)
     source=get('source',source_id)
     if source.get('project_id')!=pid:raise KeyError(source_id)
     if _gone(source):raise ArtifactGone('来源已归档，不能继续查看或下载')
-    if source.get('kind')!='file':raise ArtifactError('只有上传文件支持原件预览')
     if revision is not None and (type(revision) is not int or revision<1):raise ArtifactError('来源版本编号无效')
     if expected_sha256 is not None and (not isinstance(expected_sha256,str) or not re.fullmatch(r'[a-f0-9]{64}',expected_sha256)):
         raise ArtifactError('来源内容摘要无效')
     if expected_sha256 is not None and revision is None:raise ArtifactError('按报告查看原件时必须指定准确来源版本')
+    if source.get('kind') in ('api','database'):
+        if expected_sha256 is not None:raise ArtifactError('实时数据连接不提供原始文件摘要，不能代替历史依据')
+        if revision is not None and revision!=source.get('revision',1):raise ArtifactGone('历史数据连接版本不能作为当前数据打开')
+        result=_connected_source_entry(pid,source)
+        if result is None:raise ArtifactGone('该数据连接已归档')
+        return result
+    if source.get('kind')!='file':raise ArtifactError('此类型来源暂不支持查看')
     selected=source
     if revision is not None and revision!=source.get('revision',1):
         versions=[value for value in all_items('source_version')
@@ -303,8 +328,10 @@ def catalog(pid,kind='',offset=0,limit=40):
             status='needs_review' if value.get('external_agent_import') else 'saved',semantic_status='requires_review' if value.get('requires_semantic_review') else 'not_confirmed',
             private={'agent_artifact_id':value['id'],'turn_id':value['turn_id']},source_refs=[{'task_id':value['turn_id'],'handoff_sha256':value.get('external_handoff_manifest_sha256')}])
     for value in all_items('source'):
-        if value.get('project_id')!=pid or value.get('kind')!='file' or _gone(value) or not value.get('content_hash'):continue
-        item=_source_entry(pid,value['id'],value)
+        if value.get('project_id')!=pid or _gone(value):continue
+        if value.get('kind')=='file' and value.get('content_hash'):item=_source_entry(pid,value['id'],value)
+        elif value.get('kind') in ('api','database'):item=_connected_source_entry(pid,value)
+        else:continue
         if item:items.append(item)
     items.sort(key=lambda x:(x['updated_at'],x['id']),reverse=True)
     if kind not in ('','all'):items=[item for item in items if item['kind']==kind]
@@ -343,6 +370,8 @@ def _record(pid,aid):
     if kind=='source':
         value=get('source',private['source_id'])
         if value.get('project_id')!=pid or _gone(value):raise ArtifactGone('来源已归档，不能继续查看或下载')
+        if private.get('connected_source') and (value.get('revision',1)!=private.get('source_revision') or value.get('kind')!=record['format']):
+            raise ArtifactError('数据连接配置已变化，请重新打开项目成果')
     elif kind in ('office','report'):
         value=get('office_artifact' if kind=='office' else 'business_report',record['resource_id'])
         if value.get('project_id')!=pid or _gone(value):raise ArtifactGone('该成果已归档或不可用')
@@ -520,6 +549,30 @@ def _chart(rows,columns,x,y,maximum=100):
 def _content_preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart_x=None,chart_y=None):
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100 or type(text_limit) is not int or not 1<=text_limit<=20000:raise ArtifactError('成果预览分页无效')
     record=_record(pid,aid);kind=record['kind'];private=record['private']
+    if private.get('connected_source'):
+        if offset!=0:raise ArtifactError('实时数据样本不支持翻页；请使用完整加工结果查看分页')
+        source=get('source',private['source_id'])
+        from .connectors import read_source
+        from .store import unseal
+        try:
+            rows,fields,evidence,truncated=read_source(source,limit=min(limit,50),allow_empty=True,
+                expected_labels=[x['label'] for x in source.get('profile',{}).get('fields',[]) if x.get('label')])
+            cfg=unseal(source['secret_config'])
+        except Exception:
+            # Drivers and remote servers can include credentials or SQL in errors.
+            raise ArtifactError('数据连接暂不可读取，请检查连接状态和只读权限') from None
+        # Show only the configured table and schema, never the connection string,
+        # request URL, headers, parameters, cursor, or raw connector evidence.
+        location=''
+        if source['kind']=='database':
+            schema=cfg.get('schema');table=cfg.get('table')
+            if isinstance(table,str):location='；已配置表：'+((schema+'.') if isinstance(schema,str) and schema else '')+table
+        note=('当前为实时只读样本，最多 50 行，不代表完整数据；再次打开时来源可能变化'+location+
+              ('；来源还有更多数据' if truncated else '；不能据此确认全量'))
+        return {'artifact':_public(record),'render':'table','verified':False,'fidelity_note':note,
+                'table':{'columns':[{'name':f['name'],'label':f.get('label',f['name'])} for f in fields],
+                         'rows':_plain([{f['name']:r.get(f['name']) for f in fields} for r in rows]),
+                         'offset':0,'next_offset':None},'next_offset':None}
     if kind=='work' and private.get('flow_artifact_id') and record.get('format')=='html':
         from .business_deliverables import preview_blocks
         blocks=preview_blocks(pid,private['flow_artifact_id']);page=blocks[offset:offset+limit];end=offset+len(page)
@@ -527,7 +580,7 @@ def _content_preview(pid,aid,offset=0,limit=50,text_limit=12000,sheet=None,chart
                 'next_offset':end if end<len(blocks) else None,'unit':'blocks','verified':True,
                 'warnings':['业务口径及财经数字尚需核对'],
                 'fidelity_note':'根据已保存并校验的报告规格显示文本，不执行网页代码；版式请下载原件核对。',
-                'layout_fidelity':False}
+                'layout_fidelity':False,'safe_generated_html':True}
     if kind=='result':
         from .project_data import read_result,result_folder
         page=read_result(pid,private['run_id'],offset,limit)
