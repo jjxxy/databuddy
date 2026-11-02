@@ -209,11 +209,32 @@ def search_history(pid,query='',limit=10):
     return filter_history_matches(pid,[r[2] for r in sorted(rows,key=lambda r:(r[0],r[1]),reverse=True)[:limit]])
 
 
+def _field_summary(fields):
+    """Compact per-field detail for the project directory overview.
+
+    The full profile (header coordinates, number formats, semantic status,
+    nulls/uniques, sample candidates) stays available on demand through
+    ``source_schema``. The directory read only needs enough to identify each
+    column and its role, so a 14-source project does not force the agent to
+    paginate a bloated tool result.
+    """
+    out=[]
+    for field in fields or []:
+        if not isinstance(field,dict):continue
+        item={'name':field.get('name')}
+        label=field.get('label')
+        if label not in (None,'',field.get('name')):item['label']=label
+        if field.get('numeric') is not None:item['numeric']=field.get('numeric')
+        if field.get('unit'):item['unit']=field.get('unit')
+        out.append(item)
+    return out
+
+
 def context(pid):
     from .conversation import owned
     p=get('project',pid)
     return {'project':{'name':p['name'],'source_id':p.get('source_id'),'pipeline_id':p.get('pipeline_id')},
-            'sources':[{'id':s['id'],'name':s['name'],'status':s['status'],'fields':s.get('profile',{}).get('fields',[]),'error':s.get('error'),'error_code':s.get('error_code')} for s in all_items('source') if s.get('project_id')==pid and not s.get('archived')],
+            'sources':[{'id':s['id'],'name':s['name'],'status':s['status'],'fields':_field_summary(s.get('profile',{}).get('fields',[])),'error':s.get('error'),'error_code':s.get('error_code')} for s in all_items('source') if s.get('project_id')==pid and not s.get('archived')],
             'analyses':[{k:p.get(k) for k in ('id','name','source_id','spec','published_run','candidate_run','cron')} for p in all_items('pipeline') if p.get('project_id')==pid and not p.get('archived')],
             'applications':__import__('agent_service.applications',fromlist=['catalog']).catalog(pid),
             'data_workflows':__import__('agent_service.workflow_guidance',fromlist=['catalog']).catalog(pid),
