@@ -134,7 +134,7 @@ TOOLS={
  'create_data_application':(TransformArgs,True,'根据用户目标生成可用数据、可打开的应用页面和对应采集/dbt/语义/页面代码；验证后预览，等待确认发布'),
  'revise_data_application':(AppRevision,True,'调整已有应用的数据规则、名称、展示字段、表格或汇总图；生成并验证新代码，已发布旧版本保留'),
  'run_data_application':(AppTarget,True,'用户明确要求重跑/运行应用时，按已确认规则重新采集加工；代码不改，产出新数据版本'),
- 'project_context':(Empty,False,'读取项目资料目录、各分析的字段/口径/状态、当前文件和版本，建议先调用以避免猜测'),
+ 'project_context':(Empty,False,'读取项目资料目录、各来源与分析的字段/口径/状态、当前文件和版本；仅需调用一次，结果保留在completed_steps中，不要重复调用'),
  'search_project_history':(HistoryQuery,False,'检索本项目所有对话（跨会话）的用户需求、回答及已完成操作，获取之前约定'),
  'source_schema':(SourceArgs,False,'读取指定项目来源的画像、字段、建议；不读取连接密码'),
  'source_preview':(SourceArgs,False,'读取项目来源最多20条样本或文档片段及来源信息，需启用模型项目内容读取；样本不能代表全量统计'),
@@ -213,7 +213,7 @@ def context(pid):
     from .conversation import owned
     p=get('project',pid)
     return {'project':{'name':p['name'],'source_id':p.get('source_id'),'pipeline_id':p.get('pipeline_id')},
-            'sources':[{'id':s['id'],'name':s['name'],'status':s['status'],'fields':s.get('profile',{}).get('fields',[])} for s in all_items('source') if s.get('project_id')==pid and not s.get('archived')],
+            'sources':[{'id':s['id'],'name':s['name'],'status':s['status'],'fields':s.get('profile',{}).get('fields',[]),'error':s.get('error'),'error_code':s.get('error_code')} for s in all_items('source') if s.get('project_id')==pid and not s.get('archived')],
             'analyses':[{k:p.get(k) for k in ('id','name','source_id','spec','published_run','candidate_run','cron')} for p in all_items('pipeline') if p.get('project_id')==pid and not p.get('archived')],
             'applications':__import__('agent_service.applications',fromlist=['catalog']).catalog(pid),
             'data_workflows':__import__('agent_service.workflow_guidance',fromlist=['catalog']).catalog(pid),
@@ -1192,9 +1192,30 @@ def _execute_node(state):
     if repeat:
         count=turn.get('loop_attempts',0)+1
         patch('turn',turn['id'],loop_attempts=count)
+        plan=turn.get('task_plan') or {}
+        steps=plan.get('steps') or []
+        current=plan.get('current_step')
+        if step.tool=='project_context':
+            # project_context is a one-time directory read; its result already
+            # sits in completed_steps. Point the model at the next real work
+            # instead of letting it silently re-read the same directory.
+            if steps and isinstance(current,int) and 0<=current<len(steps):
+                next_step=f'项目资料目录已读取过（结果保留在completed_steps），不要重复调用project_context。请直接执行计划第{current+1}步：{steps[current]}'
+            else:
+                next_step='项目资料目录已读取过（结果保留在completed_steps），不要重复调用project_context。请调用set_task_plan制定计划，或直接读取需要的数据来源'
+        elif step.tool=='discover_tools':
+            # Tool discovery is a lookup, not business progress. Once the
+            # schemas are loaded they stay in the working set; repeated search
+            # with near-identical queries must resolve into actually using them.
+            if steps and isinstance(current,int) and 0<=current<len(steps):
+                next_step=f'所需工具已通过discover_tools加载到当前tools列表，不要再重复搜索。请直接用已加载的工具执行计划第{current+1}步：{steps[current]}'
+            else:
+                next_step='所需工具已通过discover_tools加载到当前tools列表，不要再重复搜索。请直接用read_source_table/inspect_source_tables等已加载工具读取数据来源'
+        else:
+            next_step='使用已有工具结果、修复输入或方案，或说明当前阻碍'
         _record_guard_block(get('turn',turn['id']),step,state,
             {'executed':False,'code':'TOOL_NO_PROGRESS','error':repeat,
-             'next_step':'使用已有工具结果、修复输入或方案，或说明当前阻碍'},pause=count>=2)
+             'next_step':next_step},pause=count>=2)
         return {}
     source_before=agent_context.inspection_source_version(turn,step.tool,step.arguments)
     trace.append({'id':uid(),'tool':step.tool,'arguments':_trace_arguments(step),'status':'started','started_at':now(),

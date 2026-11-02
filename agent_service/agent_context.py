@@ -124,22 +124,21 @@ def selected(turn):
                  and re.search(r'创建|生成|写|做|制作|导出|\b(?:create|generate|export|write|make)\b',text,re.I))
     data_task=re.search(r'汇总|对账|数据加工|工作流|底稿|库存|销售|人事|财务|金额|订单|CSV|SQL',text,re.I)
     document_output=re.search(r'(?:创建|生成|写|做|制作|导出|create|generate|export|write|make)[^。；;\n]{0,24}(?:Word|PPT|PowerPoint|docx|pptx|文档|幻灯片|演示文稿)',text,re.I)
+    flow_task=re.search(r'业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I)
     if office_task and (not data_task or document_output):
         # "Excel + report + source + verify" used to union unrelated application,
         # report-acquisition, semantic and delegation schemas (~40k characters).
         # Start with document/source tools; data-workflow/report capabilities are
         # still in the catalog and are loaded in full when the agent needs them.
         names=sorted(OFFICE_WORKING_SET)
-    elif data_task or re.search(r'工作流|业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I):
+    elif data_task or flow_task:
         # A data task needs a small executable workflow frontier. Keywords such
         # as "口径、核对、报告、文件" must not union every unrelated subsystem.
         # The complete authorized catalog remains available through discovery.
         names=list(DATA_WORKING_SET)
-        if re.search(r'工作流|业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I):
+        if flow_task:
             # Make the actual flow lifecycle discoverable without eagerly
             # loading the much larger creation schema into every request.
-            # Data-workflow core tools (register/run/read) must keep their
-            # inline budget before the flow-lifecycle extras are considered.
             names=names+['list_business_flows','business_flow_guide','inspect_business_flow',
                          'run_business_flow','inspect_business_flow_run']
     else:
@@ -149,6 +148,12 @@ def selected(turn):
     if focus is not None:names=[]
     permitted=allowed(turn)
     forced=ESSENTIAL|retained|{name for name in permitted if re.search(r'(?<![a-z0-9_])'+re.escape(name)+r'(?![a-z0-9_])',text,re.I)}
+    if flow_task:
+        # A step-by-step workflow request exposes the real flow lifecycle
+        # (guide/inspect/run/inspect-run). These schemas are small, but the
+        # data-workflow core tools fill the inline budget first, so force them
+        # into the working set instead of letting them be crowded out.
+        forced.update({'business_flow_guide','inspect_business_flow','run_business_flow','inspect_business_flow_run'})
     if turn.get('application_id'):forced.update({'application_info','view_result','ask_data_application'})
     selected_names=forced & permitted
     used=sum(len(json.dumps(definition(name),ensure_ascii=False)) for name in selected_names)
@@ -434,7 +439,22 @@ def repetition(turn,step):
         if count and observed!=outcome:break
         outcome=observed;count+=1
     if count>=2:return '同一操作和参数已连续执行两次，未再次执行。请读取已有结果、改变方法或说明阻碍'
-    if step.tool=='discover_tools':return None
+    if step.tool=='discover_tools':
+        # Discovery is a lookup, not business progress. It is useful once to
+        # load schemas the inline working set omitted; after that the tools are
+        # already in the current tools list and further searching with different
+        # keywords must not run unbounded. Count consecutive successful
+        # discovery calls back to the last real (non-discovery) tool, so a fresh
+        # discovery after real progress is still allowed.
+        discovery=0
+        for prior in reversed(trace):
+            if prior.get('tool')=='discover_tools' and prior.get('status')=='done':
+                discovery+=1
+                continue
+            break
+        if discovery>=2:
+            return '工具目录已连续搜索多次而未推进实际工作；所需工具已加载到当前工具列表，请直接执行计划中的下一步或说明具体阻碍'
+        return None
     # Discovery may change the model's information without changing business
     # state. Only identical, already-seen definitions/metadata are transparent;
     # a new schema or any other tool (read/load/write/input) breaks the streak.
