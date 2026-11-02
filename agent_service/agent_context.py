@@ -186,16 +186,27 @@ def discover(turn,value):
     return {'tools':[definition(n) for n in matches],'next_step':'下一步可调用这些工具；目录匹配不代表已经执行'}
 
 def row_scope(value,tool):
-    """Keep authoritative counts outside a potentially truncated row excerpt."""
+    """Keep authoritative counts and pagination cursors outside a truncated row excerpt."""
     if tool not in ('source_schema','source_preview','read_source_table','inspect_source_tables') or not isinstance(value,dict):return None
     scope={}
     if value.get('source_id'):scope['source_id']=value['source_id']
     profile=value.get('profile')
     if isinstance(profile,dict) and type(profile.get('sample_rows')) is int:
         scope.update(profile_sample_rows=profile['sample_rows'],profile_statistics_scope='sample_only')
+    # A large row excerpt is truncated, but its pagination cursor must survive so
+    # the model can page forward with the exact next offset instead of guessing
+    # (deepseek regresses to overlapping/backward pages when next_offset is lost).
+    if type(value.get('total')) is int:
+        scope['source_total_rows']=value['total']
+    if type(value.get('offset')) is int:
+        scope['offset']=value['offset']
+    if value.get('next_offset') is not None:
+        scope['next_offset']=value['next_offset']
+    if value.get('sample_only') is True:
+        scope['sample_only']=True
     if value.get('complete_source_read') is True and type(value.get('total')) is int:
         returned=len(value['rows']) if isinstance(value.get('rows'),list) else None
-        scope.update(source_total_rows=value['total'],source_total_scope='complete_source_count',
+        scope.update(source_total_scope='complete_source_count',
                      preview_rows_returned=returned,preview_contains_all_rows=returned==value['total'])
     return scope if len(scope)>1 else None
 
@@ -314,6 +325,16 @@ def trace_context(turn,clean,*,preserve_full=False):
                                 'source_turn_id':raw.get('source_turn_id',turn['id']) if isinstance(raw,dict) else turn['id'],'offset':0},'not_full_result':True}
             if step['tool'] in ('read_context_original','read_context_checkpoint'):
                 observation['recover_with']={'tool':step['tool'],**args}
+            elif step['tool']=='read_source_table':
+                # A preview page pages forward via read_source_table's own offset
+                # cursor (row_scope.next_offset), never via read_tool_result
+                # character paging — that recovery looped on the same ≤100-row
+                # sample. Keep the real offset/source_id so the model can ask for
+                # the next page instead of re-reading one preview by characters.
+                observation['recover_with']={'tool':'read_source_table',
+                                             'source_id':args.get('source_id'),
+                                             'offset':(raw or {}).get('next_offset') if isinstance(raw,dict) else None}
+                observation['recover_note']='预览分页请用 read_source_table 传入 row_scope.next_offset 作为 offset；不要用 read_tool_result 逐字符恢复预览行'
         receipt={'step_id':sid,'tool':step['tool'],'arguments':args,'status':step['status'],'observation':observation}
         if step['tool']=='read_tool_result' and isinstance(raw,dict):
             receipt['original_result']={'step_id':raw.get('step_id') or args.get('step_id'),
@@ -439,6 +460,29 @@ def repetition(turn,step):
         if count and observed!=outcome:break
         outcome=observed;count+=1
     if count>=2:return '同一操作和参数已连续执行两次，未再次执行。请读取已有结果、改变方法或说明阻碍'
+    if step.tool=='read_source_table':
+        # read_source_table is a bounded preview (≤100 rows, sample_only). Paging
+        # the same source+sheet many times to "read the whole table" defeats the
+        # workflow engine, which is the only path that reads complete data. Nudge
+        # the model back to authoring/running a workflow instead of enumerating.
+        args=step.arguments if isinstance(step.arguments,dict) else {}
+        src=args.get('source_id');opt=args.get('options') if isinstance(args.get('options'),dict) else {}
+        sheet=opt.get('sheet')
+        reads=0
+        for prior in reversed(trace):
+            if not isinstance(prior,dict):break
+            if prior.get('tool')!='read_source_table':break
+            obs=prior.get('observation')
+            if isinstance(obs,dict) and obs.get('executed') is False:break
+            if prior.get('status') not in ('done','failed'):break
+            pa=prior.get('arguments') if isinstance(prior.get('arguments'),dict) else {}
+            po=pa.get('options') if isinstance(pa.get('options'),dict) else {}
+            if pa.get('source_id')==src and po.get('sheet')==sheet:reads+=1
+            else:break
+        if reads>=8:
+            return ('已连续多次分页读取同一来源同一页签的预览，但 read_source_table 每页最多 100 行且 sample_only，'
+                    '不是全量读取。请停止逐页读大表：用 register_data_workflow 登记方案并 run_data_workflow，'
+                    '由引擎读取完整数据做汇总/去重/异常筛选；或直接读取已有 run 的结果')
     if step.tool=='discover_tools':
         # Discovery is a lookup, not business progress. It is useful once to
         # load schemas the inline working set omitted; after that the tools are

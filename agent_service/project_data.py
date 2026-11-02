@@ -330,7 +330,16 @@ def read_input(pid,binding,*,frozen_source=None):
         # and are not source fields; they never participate in column mapping.
         column_map={k:v for k,v in binding.column_map.items() if not str(k).startswith('__')}
         names={f['name'] for f in fields}
-        if not set(column_map)<=names or len({column_map.get(n,n) for n in names})!=len(names):raise ValueError('输入列映射无效或目标重复')
+        if not set(column_map)<=names or len({column_map.get(n,n) for n in names})!=len(names):
+            from .connectors import SourceError
+            out_of_range=sorted(set(column_map)-names)
+            targets=list(column_map.values())
+            duplicates=sorted({v for v in targets if targets.count(v)>1})
+            message='输入列映射与读取到的列不一致'
+            if out_of_range:message+='；column_map 引用了读取范围外的列 %s（cell_range/表格读取结果里没有这些列）'%','.join(out_of_range)
+            if duplicates:message+='；目标列重复 %s'%','.join(duplicates)
+            message+='。请把 cell_range 扩到包含该列，或从 column_map 移除范围外/重复的键'
+            raise SourceError(message,'COLUMN_MAP_INVALID')
         rows=[{column_map.get(k,k):v for k,v in r.items()} for r in rows]
         fields=[dict(f,name=column_map.get(f['name'],f['name'])) for f in fields]
     if len(rows)>MAX_ROWS:raise ValueError('输入超过部署行数预算，未截断或发布')
@@ -1052,6 +1061,12 @@ def execute_job(run,folder):
                                 details['column']=b.column_map.get(key,key)
                         except (ValueError,TypeError):pass
                 fail_input(error.code,' '.join(str(error).split())[:1000],details)
+            except ValueError as error:
+                # These are controlled validation messages (binding/range/column
+                # mismatches), never raw source values. Surfacing them keeps the
+                # agent from re-running an identical broken plan against a generic
+                # TASK_FAILED that hides the real repair.
+                fail_input('INPUT_INVALID',' '.join(str(error).split())[:1000])
             # A snapshot-scoped physical row ordinal gives the typed engine a
             # unique grain so fully-duplicate physical rows (an identical
             # business row entered twice) can still be loaded and then be
@@ -1066,7 +1081,12 @@ def execute_job(run,folder):
                 rows=[dict(row, nexus_row=str(index)) for index, row in enumerate(rows, 1)]
                 fields=fields+[{'name':'nexus_row','label':'本次资料行号','numeric':False}]
             names={f['name'] for f in fields};expected={f.name for f in doc.plan.inputs[alias].columns}
-            if names!=expected:fail_input('INPUT_SCHEMA_MISMATCH','输入字段与冻结计划不一致，请修改方案后重新运行')
+            if names!=expected:
+                missing=sorted(expected-names);extra=sorted(names-expected)
+                message='输入字段与冻结计划不一致，请修改方案后重新运行'
+                if missing:message+='；计划声明但未读取到的字段 %s'%','.join(missing)
+                if extra:message+='；读取到但计划未声明的字段 %s'%','.join(extra)
+                fail_input('INPUT_SCHEMA_MISMATCH',message,{'missing_columns':missing,'extra_columns':extra})
             upstream=proof.get('output_semantics')
             declared=doc.plan.inputs[alias].model_dump()
             if upstream:

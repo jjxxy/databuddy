@@ -849,7 +849,18 @@ def _operate(stage, tables, budget, deadline):
                         unit=rule.source_unit, unit_multiplier=rule.unit_multiplier, date_format=rule.date_format,
                         missing_policy=rule.missing_policy, missing_tokens=rule.missing_tokens)
                 except WorkbookReadError as error:
-                    raise WorkflowError(error.code, str(error)) from error
+                    # Surface server-owned coordinates and the declared policy so the
+                    # agent can locate the offending cell via read_source_table and
+                    # repair (pre-filter) the draft. Never echo the raw cell value.
+                    if rule.kind == 'date':
+                        declared = '声明日期格式 %s' % rule.date_format
+                    elif rule.kind == 'percent':
+                        declared = '百分比规范化'
+                    else:
+                        declared = '声明单位 %s、倍率 %s' % (rule.source_unit or '无', rule.unit_multiplier)
+                    raise WorkflowError(error.code,
+                        '%s（列 %s，第 %d 行，%s）' % (str(error), rule.column, index + 1, declared),
+                        details={'column': rule.column, 'row_index': index + 1}) from error
                 normalized[rule.output.name] = _coerce(parsed['value'], rule.output)
             result.append(normalized)
         return _new_schema(schema, list(schema.columns) + [rule.output for rule in stage.rules]), result

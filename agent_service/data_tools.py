@@ -54,7 +54,7 @@ DEFINITIONS={
  'render_business_report':(BusinessBrief,True,'按项目中的可复用简报方案计算完整数值，生成带来源的汇报材料；金额和比率由确定性代码计算，不靠模型心算'),
  'list_business_reports':(Empty,False,'查看当前个人业务空间内已生成的简报及其来源结果，可复用原报告方案'),
  'inspect_source_tables':(SourceId,False,'查看当前项目资料的多页签、命名表格、合并区域、字段和公式读取边界；不能将首次样本当完整数据'),
- 'read_source_table':(data.SourceTable,False,'按明确页签和header_rows读取有坐标证据的表格预览；需模型内容读取授权；完整数据由后续流程直接读取'),
+ 'read_source_table':(data.SourceTable,False,'按明确页签和header_rows读取有坐标证据的表格预览（每页≤100行、sample_only，仅核对结构）；需模型内容读取授权；不要逐页读完整张大表，完整数据的汇总/统计由数据工作流引擎直接读取'),
  'register_data_workflow':(data.RegisterWorkflow,True,'校验并登记项目JSON加工方案：version=1,plan为类型化输入/依赖步骤/output,bindings绑定source_id或result_id，可选contract；不等于已执行'),
  'inspect_data_workflow':(data.WorkflowTarget,False,'查看可编辑加工方案、正式与草稿版本及latest_run.workflow_failure安全诊断；失败按next_step修复，不能将失败运行当结果分页读取'),
  'run_data_workflow':(data.WorkflowTarget,True,'冻结并排队执行多来源加工方案，逐步验证依赖、精度、完整行数和契约；失败保留旧正式结果；等待真实回执'),
