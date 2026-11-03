@@ -138,23 +138,37 @@ def render_bytes(pid,source_id,revision,expected_sha256,replacements):
 
 def render(turn,source_id,revision,expected_sha256,name,replacements):
     """Create an immutable registered artifact from an authorized template."""
-    import json
-    from . import office,workspace
     from .intents import require
+    from .office_slide_progress import for_turn
+    require(turn,'write')
+    authority=for_turn(turn,tool='render_pptx_template')
+    return render_for_project(turn['project_id'],source_id,revision,expected_sha256,name,replacements,
+                              publication_guard=authority.publication_guard if authority else None)
+
+
+def render_for_project(pid,source_id,revision,expected_sha256,name,replacements,*,before_render=None,publication_guard=None):
+    """Render an explicitly submitted project action; caller enforces authority."""
+    import json
+    from contextlib import contextmanager,nullcontext
+    from . import office,workspace
     from .locks import assert_owned
     from .platform_files import assert_plain_path
     from .result_delivery import durable_cached_artifact
     from .store import get,put,now
-    require(turn,'write')
+    from .workspace_lifecycle import _project_lock,assert_project_live
     value=TemplateRender.model_validate({'source_id':source_id,'revision':revision,'expected_sha256':expected_sha256,'name':name,'replacements':replacements})
-    entries=[x.model_dump() for x in value.replacements];pid=turn['project_id']
+    entries=[x.model_dump() for x in value.replacements]
     identity={'project_id':pid,'template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
               'spec_sha256':hashlib.sha256(json.dumps(entries,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
               'renderer':'ppt-template-v3','name':name+'.pptx'}
     digest=hashlib.sha256(json.dumps(identity,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     aid='of_'+digest[:40];folder=office.DATA/'deliverables'/aid;file=folder/(name+'.pptx')
     identity['relative_path']=str(file.relative_to(office.DATA))
-    with workspace.lock(pid):
+    # Serialize user-initiated rendering with project deletion/restore as well
+    # as project template edits; Agent cancellation still has its turn guard.
+    with workspace.lock(pid),_project_lock(pid):
+        assert_project_live(pid)
+        if before_render:before_render()
         _template(pid,source_id,revision,expected_sha256)
         assert_plain_path(folder);folder.mkdir(parents=True,exist_ok=True);assert_plain_path(file)
         try:record=get('office_artifact',aid)
@@ -169,8 +183,17 @@ def render(turn,source_id,revision,expected_sha256,name,replacements):
         def committed(checksum):
             if record.get('sha256')!=checksum:raise ValueError('成果回执不一致')
             record.update(put('office_artifact',dict(record,state='committed'),aid))
+        @contextmanager
+        def checked_publication():
+            with publication_guard() if publication_guard else nullcontext():
+                assert_owned();assert_project_live(pid)
+                if before_render:before_render()
+                # Revalidate the actual source bytes for both new results and
+                # recovered/cached ones immediately before publication.
+                _template(pid,source_id,revision,expected_sha256)
+                yield
         durable_cached_artifact(file,expected_sha256=record.get('sha256') if record.get('state')=='committed' else None,
-            pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,build=build,save_pending=pending,save_committed=committed,before_publish=assert_owned)
-        office._verify_structure(file,'pptx')
+            pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,build=build,save_pending=pending,save_committed=committed,before_publish=assert_owned,
+            publication_guard=checked_publication,after_publish=lambda:office._verify_structure(file,'pptx'))
     return {'artifact_id':aid,'sha256':record['sha256'],'format':'pptx','template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
             'visual_validation':False,'notice':'已填充指定文本位置；版式和财务内容仍需人工核对。','download':{'label':name+'.pptx','url':'/api/projects/'+pid+'/deliverables/'+aid}}

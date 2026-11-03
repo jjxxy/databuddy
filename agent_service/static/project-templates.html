@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>汇报模板 · Nexus WorkStudio</title><link rel="stylesheet" href="/project-templates.css?v=1">
+<script src="/secure-id.js?v=1" defer></script><script src="/workspace-session.js?v=1" defer></script><script src="/project-templates.js?v=1" defer></script></head>
+<body><header><a href="/">← 返回项目对话</a><span>Nexus WorkStudio</span></header>
+<main><div class="heading"><div><p class="eyebrow">我的项目资料</p><h1>汇报模板</h1><p>保存本项目常用的 PPTX 模板，选择位置填写内容，生成新的汇报文件。</p></div><button id="refresh" type="button">刷新清单</button></div>
+<p class="note">模板清单按当前账号和项目区分；原文件仍属于项目资料。生成后请核对版式、图表和财务内容。共享访问口令的使用者会被识别为同一账号。</p>
+<p id="status" role="status" aria-live="polite"></p>
+<div class="layout"><section class="panel" aria-labelledby="manage-title"><h2 id="manage-title">添加模板</h2><p>选择本项目已经上传的 PPTX，或者上传一个文件。</p>
+<label for="upload-file">上传 PPTX 文件</label><input id="upload-file" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"><button type="button" id="upload">上传到本项目</button>
+<form id="register-form"><label for="source">项目中的 PPTX</label><select id="source" required><option value="">请选择文件</option></select><label for="title">模板名称</label><input id="title" required maxlength="100" placeholder="例如：月度经营汇报"><button class="primary" type="submit">保存为我的模板</button></form>
+<h2>我的模板</h2><p id="empty" hidden>还没有保存模板。</p><div id="templates" class="template-list"></div></section>
+<section class="panel" aria-labelledby="edit-title"><h2 id="edit-title">填写模板</h2><p id="selected">从左侧选择模板，查看可以填写的文字位置。</p><div id="editor" hidden><p class="note">只修改勾选的位置。其他文字、图表和版式将保留；数据与结论需要自行核对。</p><div id="positions"></div><label for="output-name">新文件名称</label><input id="output-name" maxlength="91" value="汇报材料"><button class="primary" type="button" id="render">生成 PPTX 文件</button><p id="result" role="status" aria-live="polite"></p></div></section></div></main></body></html>

@@ -32,11 +32,12 @@ jobs:
       - run: node --check agent_service/static/lifecycle.js
       - run: node --check agent_service/static/sw.js
       - run: node --check agent_service/static/data-app.js
+      - name: Install OpenCode 2 binary
+        if: matrix.metadata == 'sqlite'
+        run: npm install --prefix /tmp/opencode-verified @opencode/cli@2.1.2 --no-audit --no-fund
       - name: OpenCode 2 binary protocol integration
         if: matrix.metadata == 'sqlite'
-        run: |
-          npm install --prefix /tmp/opencode-verified @opencode/cli@2.1.2 --no-audit --no-fund
-          python scripts/verify_agent_protocol.py --opencode-binary /tmp/opencode-verified/node_modules/.bin/opencode
+        run: python scripts/verify_agent_protocol.py --opencode-binary /tmp/opencode-verified/node_modules/.bin/opencode
       - name: Tests against SQLite
         if: matrix.metadata == 'sqlite'
         run: python -m pytest tests -q

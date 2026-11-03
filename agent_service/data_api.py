@@ -8,6 +8,8 @@ from .models import StrictModel
 from .store import get,put,patch,all_items,seal,unseal,uid,now
 from .config import DATA
 from . import project_data as data,workspace
+from .interactive_analysis import ExploreRequest
+from .factor_analysis import FactorRequest
 
 
 class CheckedRun(StrictModel):
@@ -208,6 +210,16 @@ def install(app,auth):
     def data_result(pid:str,rid:str,request:Request,offset:int=0,limit:int=100):
         from .actor_context import actor_from_identity,actor_scope
         with actor_scope(actor_from_identity(getattr(request.state,'identity',{}))):return data.read_result(pid,rid,offset,limit)
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/explore',dependencies=dependencies)
+    def explore_result(pid:str,rid:str,value:ExploreRequest):
+        from .interactive_analysis import explore
+        return explore(pid,rid,value)
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/factor-analysis',dependencies=dependencies)
+    def factor_result(pid:str,rid:str,value:FactorRequest):
+        from .factor_analysis import analyze
+        return analyze(pid,rid,value)
 
     @app.get('/api/projects/{pid}/data-results/{rid}/external-alignment',dependencies=dependencies)
     def external_alignment_preview(pid:str,rid:str,anchor_source_id:str,request:Request):
@@ -423,15 +435,19 @@ def install(app,auth):
         return revoke(pid,sid,actor(request))
 
     @app.get('/api/shared-data/{sid}')
-    def shared_data(sid:str,request:Request,offset:int=0,limit:int=100):
-        from .data_sharing import authorize
-        share=authorize(request,sid)
-        return data.read_result(share['project_id'],share['result_id'],offset,limit)
+    def shared_data(sid:str,request:Request,response:Response,offset:int=0,limit:int=100):
+        from .data_sharing import read_shared
+        response.headers['Cache-Control']='private, no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        return read_shared(request,sid,offset,limit)
 
     @app.get('/api/shared-data/{sid}/download')
     def shared_download(sid:str,request:Request):
-        from .data_sharing import authorize
-        share=authorize(request,sid)
-        if not share['allow_download']:raise HTTPException(403,'该共享不允许下载')
-        path=data.result_download(share['project_id'],share['result_id'])
-        return FileResponse(path,filename='shared-data-result.zip')
+        from .data_sharing import download_shared
+        from .api import _SnapshotResponse
+        snapshot,size=download_shared(request,sid)
+        response=_SnapshotResponse(snapshot,filename='shared-data-result.csv',size=size)
+        response.headers['Content-Type']='text/csv; charset=utf-8'
+        response.headers['X-Content-Type-Options']='nosniff'
+        response.headers['Cache-Control']='private, no-store'
+        return response

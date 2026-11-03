@@ -215,6 +215,7 @@ _SECURITY_HEADERS = {
     'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
     'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'",
 }
+_FRAME_CSP = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; frame-ancestors 'self'"
 
 
 class _SecurityHeaders:
@@ -224,9 +225,12 @@ class _SecurityHeaders:
     async def __call__(self, scope, receive, send):
         async def secure_send(message):
             if message['type'] == 'http.response.start':
-                owned = {k.lower().encode() for k in _SECURITY_HEADERS}
+                headers=dict(_SECURITY_HEADERS)
+                if scope.get('path') in ('/docx-frame.html','/pptx-frame.html'):
+                    headers['Content-Security-Policy']=_FRAME_CSP
+                owned = {k.lower().encode() for k in headers}
                 message['headers'] = [(k, v) for k, v in message.get('headers', []) if k.lower() not in owned]
-                message['headers'] += [(k.lower().encode(), v.encode()) for k, v in _SECURITY_HEADERS.items()]
+                message['headers'] += [(k.lower().encode(), v.encode()) for k, v in headers.items()]
             await send(message)
         await self.app(scope, receive, secure_send)
 
@@ -236,6 +240,12 @@ _STATIC = frozenset(('index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.
     'secure-id.js', 'lifecycle.js', 'safe-markdown.js', 'workspace-features.js', 'workspace-shell.js', 'agent-collaboration.js',
     'local-data.html', 'local-data.js', 'local-data.css', 'work-runtime.js', 'interactive-work.js',
     'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css',
+    'share-management.js', 'share-management.css', 'analysis-explore.js', 'analysis-explore.css', 'factor-analysis.js',
+    'project-template-entry.js', 'project-templates.html', 'project-templates.js', 'project-templates.css',
+    'chat-business-schedule.js', 'chat-business-debug.js', 'version-compare.js',
+    'workflow-overview.css', 'workflow-overview.js', 'workspace-docx-preview.js',
+    'workspace-html-view.js', 'workspace-onlyoffice-view.js', 'workspace-pptx-preview.js',
+    'docx-frame.html', 'docx-bundle/docx-sandbox.js', 'pptx-frame.html', 'pptx-bundle/pptx-sandbox.js',
     'business-flows.html', 'business-flows.js', 'business-flows.css', 'business-flow-view.js', 'business-flow-view.css',
     'flow-edit-handoff.js', 'workbench-dag.js', 'react-dag/web-dag.css', 'react-dag/web-dag.js',
     'chat-workflows.css', 'chat-workflows.js', 'chat-workflow-results.js', 'chat-workflow-schedule.js',

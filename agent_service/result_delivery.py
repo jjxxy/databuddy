@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import zipfile
 import xml.etree.ElementTree as ET
+from contextlib import nullcontext
 from typing import Any, Callable, Iterable
 from .platform_files import atomic_replace,assert_plain_path,open_regular_read,fsync_file
 
@@ -148,14 +149,18 @@ def durable_cached_artifact(path: str | Path, *, expected_sha256: str | None,
                             pending_sha256: str | None, build: Callable[[Path], Any],
                             save_pending: Callable[[str], Any],
                             save_committed: Callable[[str], Any],
-                            before_publish: Callable[[], Any] | None = None) -> Path:
+                            before_publish: Callable[[], Any] | None = None,
+                            publication_guard: Callable[[], Any] | None = None,
+                            after_publish: Callable[[], Any] | None = None) -> Path:
     """Publish under the caller's lock with an independently persisted receipt.
 
     The pending receipt must be committed to the authoritative metadata store
     before rename. A retry can then complete either side of the rename without
     trusting an orphan file or a receipt kept beside the file itself. ``build``
     must validate its complete output before returning; callbacks bind the hash
-    to the frozen source and export options in that metadata store.
+    to the frozen source and export options in that metadata store. When given,
+    publication_guard covers replacement, committed receipt and after_publish;
+    it also protects cached and already-replaced recovery paths.
     """
     destination = Path(path)
     temporary = destination.with_name('.' + destination.stem + '.pending' + destination.suffix)
@@ -168,16 +173,21 @@ def durable_cached_artifact(path: str | Path, *, expected_sha256: str | None,
 
     if destination.is_symlink() or temporary.is_symlink():
         raise DeliveryError('产物路径不允许符号链接')
+    guard = publication_guard or nullcontext
     if expected_sha256:
-        verified(destination, expected_sha256)
-        return destination
+        with guard():
+            verified(destination, expected_sha256)
+            if after_publish:after_publish()
+            return destination
     if destination.exists():
-        if not pending_sha256:
-            raise DeliveryError('产物缺少独立完整性回执，未返回或覆盖')
-        verified(destination, pending_sha256)
-        _fsync_directory(destination.parent)
-        save_committed(pending_sha256)
-        return destination
+        with guard():
+            if not pending_sha256:
+                raise DeliveryError('产物缺少独立完整性回执，未返回或覆盖')
+            verified(destination, pending_sha256)
+            _fsync_directory(destination.parent)
+            save_committed(pending_sha256)
+            if after_publish:after_publish()
+            return destination
     if pending_sha256 and temporary.exists():
         verified(temporary, pending_sha256)
         checksum = pending_sha256
@@ -197,15 +207,17 @@ def durable_cached_artifact(path: str | Path, *, expected_sha256: str | None,
         _fsync_directory(destination.parent)
         checksum = _sha(temporary)
         save_pending(checksum)
-    if before_publish:
-        before_publish()
-    # The lock serializes cooperating writers; this check also refuses an
-    # unexpected destination created after receipt preparation.
-    if destination.exists() or destination.is_symlink():
-        raise DeliveryError('产物目标在发布期间出现，未覆盖')
-    atomic_replace(temporary, destination)
-    _fsync_directory(destination.parent)
-    save_committed(checksum)
+    with guard():
+        if before_publish:
+            before_publish()
+        # The lock serializes cooperating writers; this check also refuses an
+        # unexpected destination created after receipt preparation.
+        if destination.exists() or destination.is_symlink():
+            raise DeliveryError('产物目标在发布期间出现，未覆盖')
+        atomic_replace(temporary, destination)
+        _fsync_directory(destination.parent)
+        save_committed(checksum)
+        if after_publish:after_publish()
     return destination
 
 

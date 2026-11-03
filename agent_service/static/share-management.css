@@ -1,0 +1,9 @@
+#data-share-panel h2{font-size:17px;margin:0 0 8px;color:#234a37}
+#data-share-panel p{color:#52685b;font-size:13px;line-height:1.65}
+#data-share-panel form{display:grid;gap:12px;max-width:680px}
+#data-share-panel form label{display:grid;gap:5px;color:#304f3e;font-size:13px}
+#data-share-panel textarea,#data-share-panel input:not([type=checkbox]){width:100%;min-height:0;padding:9px;border:1px solid #ccdcd1;border-radius:7px;background:#fff;font:inherit}
+#data-share-panel textarea{min-height:78px;resize:vertical}
+#data-share-panel form label:has(input[type=checkbox]){display:flex;align-items:center;gap:7px}
+#data-share-panel form button,#data-share-panel div button{justify-self:start;max-width:max-content}
+#data-share-panel div div{border-top:1px solid #e4ede7;margin-top:12px;padding-top:4px}

@@ -11,11 +11,11 @@
 | 数据加工 | 加工可追溯 | 部分：保留方案、输入证据、版本及结果信息；外部交接资料仍需受控核对，不能据此证明远端来源真实。 | `agent_service/project_data.py`、`agent_service/business_explanation.py`、`agent_service/external_alignment.py` |
 | 数据加工 | 数据变化后的增量更新 | 待建设：可重跑或计划更新，但当前数据应用描述为全量快照，不能将定时重跑等同于增量计算或 CDC。 | `agent_service/codegen.py`、`agent_service/execution.py` |
 | 数据分析 | 数据问答 | 部分：对已发布数据可执行受约束的只读 SQL 或规则问答；限制返回量、时间和类型，复杂问题需模型及真实资料。 | `agent_service/analysis.py` |
-| 数据分析 | 透视、下钻、筛选和切月 | 部分：工作流和报告方案支持筛选及期间字段；未发现完整的交互式透视、跨层下钻及切月分析工作台。 | `agent_service/data_workflows.py`、`agent_service/business_reports.py` |
-| 数据分析 | GAP、归因和双因素分析 | 部分：报告支持基于指定字段的差异和比率计算；缺少完整的可配置归因及双因素分解工作台，不能由数值差异自动推断因果。 | `agent_service/business_reports.py` |
+| 数据分析 | 透视、下钻、筛选和切月 | 部分：当前已采用结果可按文本、日期或布尔维度筛选、分组、逐级下钻，按严格月份或日期切月，并进行记录数或明确可加数值求和；限制20 MiB和500个分组，尚无拖拽透视或多指标图表。 | `agent_service/interactive_analysis.py`、`agent_service/data_workflows.py` |
+| 数据分析 | GAP、归因和双因素分析 | 部分：报告支持差异、比率；工作台提供基于固定正式结果的数量与单价两因素逐行分解，严格要求字段单位和期间。分解顺序影响贡献，数学分解不证明业务因果；其他因素模型尚未覆盖。 | `agent_service/factor_analysis.py`、`agent_service/business_reports.py` |
 | 数据分析 | 分析结论提炼、解释和验证 | 部分：报告可记录完整结果、公式、筛选与假设；业务原因不能自动视为事实，仍需真实依据与复核。 | `agent_service/business_reports.py`、`agent_service/business_explanation.py` |
 | 模板 | 上传、检查、选用 PPT 模板 | 部分：可检查项目中固定版本的 PPTX，占位符、文本框及组合内文本可按明确位置填充，并检查整个替换后文本；不承诺复杂图表和版式保真。 | `agent_service/ppt_template.py` |
-| 模板 | 组织级和个人级模板管理、切换、调试 | 待建设：现有项目文件与 PPTX 填充不等于完整的组织/个人模板库、授权、检索、切换和调试闭环。 | `agent_service/ppt_template.py` |
+| 模板 | 组织级和个人级模板管理、切换、调试 | 部分：当前账号可在项目内登记、重命名、移除并使用固定版本的 PPTX 文本模板；源文件仍为项目共享。没有完整组织级模板库、跨项目权限和设计保真调试。 | `agent_service/ppt_template.py` |
 | 模板 | 从 PPT、截图、设计稿提取并复用风格 | 待建设：有限 PPTX 文本检查不等于模板设计结构、截图和设计稿的准确提取及风格重建。 | `agent_service/ppt_template.py` |
 | 报告生成 | 报告、HTML、Word、Excel、PPT | 部分：已有报告和 Office 文档生成及成果查看入口；复杂内容的布局、数据准确性及企业级视觉质量仍需真实材料验收。 | `agent_service/business_reports.py`、`agent_service/office.py`、`agent_service/office_presentation.py`、`agent_service/workspace_artifacts.py` |
 | 报告生成 | PPT 逐页生成、逐页展示与进度 | 部分：交互式 Agent 的标准 PPT 生成会在实际构建每页后展示文字和表格内容；最终文件通过结构检查后另行交付。这不是逐页图片渲染或可视化编辑；模板填充、计划任务和缓存命中不提供同等逐页回放，业务和视觉准确性仍需核验。 | `agent_service/office_presentation.py`、`agent_service/office_slide_progress.py`、`agent_service/office.py` |
@@ -27,9 +27,9 @@
 | 编辑调整 | 历史版本、对比、回退及零污染 | 部分：项目工作文件有版本、回退和固定版本的文本差异对比；二进制及大文件没有逐页视觉差异。结果记录固定摘要；“零污染”还依赖业务输入、隔离、安全回退和部署配置的真实验证。 | `agent_service/workspace.py`、`agent_service/project_data.py` |
 | 编辑调整 | 多人协作编辑 | 待建设：只读 Office 预览不等于多人同时编辑、冲突解决或协作留痕。 | `agent_service/onlyoffice_readonly.py` |
 | 发布分享 | 发布及版本级、文件级控制 | 部分：数据结果有候选和采用流程；不能等同于覆盖所有报告、文件和页面的统一发布中心。 | `agent_service/data_api.py`、`agent_service/project_data.py` |
-| 发布分享 | 权限配置、链接分享、有效期、撤销 | 部分：已有针对当前已采用数据结果的 OIDC 指定主体只读分享，可设置期限、下载权限并撤销；结果版本替换后旧链接失效，访问中的撤销/回退并发仍需加强。不等同于通用 PPT/HTML 分享和完整组织权限管理。 | `agent_service/data_sharing.py`、`agent_service/data_api.py` |
+| 发布分享 | 权限配置、链接分享、有效期、撤销 | 部分：当前已采用数据结果支持 OIDC 指定主体只读分享、期限、撤销和可选结果 CSV 下载；版本替换后旧链接失效。直接部署接收页需可信身份反向代理，独立工作空间网关不支持跨账号分享；无法撤回已捕获或发送的数据。 | `agent_service/data_sharing.py`、`agent_service/data_api.py` |
 | 发布分享 | 消息通知与分享通知 | 部分：已有工作完成提醒和动态；不代表对指定收件人自动发送分享通知。 | `agent_service/static/index.html`、`agent_service/data_sharing.py` |
-| 发布物查看 | 分享链接查看、列表、下载 | 部分：已有数据结果分享和下载；完整的统一报告发布物列表、各类成果的访客访问体验需继续建设与验证。 | `agent_service/data_api.py`、`agent_service/workspace_artifacts.py` |
+| 发布物查看 | 分享链接查看、列表、下载 | 部分：数据结果支持分享管理、分页接收页和可选 CSV 下载；CSV 不区分空值与空串，类公式文本会被转义。统一报告发布物列表、PPT/HTML 分享和跨空间访问尚未完成。 | `agent_service/data_api.py`、`agent_service/workspace_artifacts.py` |
 | 发布物查看 | 评论、批注、反馈与二次编辑 | 待建设：未发现覆盖已发布成果的完整评论、批注、反馈及受控二次编辑闭环。 | `agent_service/data_sharing.py`、`agent_service/onlyoffice_readonly.py` |
 | 发布物查看 | 术语解析、指标解读留痕 | 部分：存在指标登记、确认、定义及报告依据；没有因此证明跨报告的完整术语解析与阅读交互留痕。 | `agent_service/metric_registry.py`、`agent_service/business_explanation.py` |
 

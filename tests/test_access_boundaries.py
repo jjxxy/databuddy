@@ -191,7 +191,10 @@ def test_scoped_share_identity_never_grants_owner_routes(client, monkeypatch):
     monkeypatch.setattr(project_data, 'result_folder', lambda pid, rid: (None, metadata))
     monkeypatch.setattr(project_data, 'ensure_candidate_bulk_allowed', lambda pid, rid: None)
     from agent_service import jobs
-    monkeypatch.setattr(jobs, 'get_job', lambda rid: {'project_id': project['id'], 'kind': 'data_workflow', 'status': 'succeeded', 'target': 'wid'})
+    wid = 'wf_' + uid()
+    put('data_workflow', {'project_id': project['id'], 'published_run': 'one-result'}, wid)
+    jobs.save({'kind':'data_workflow','target':wid,'status':'succeeded','project_id':project['id']}, 'one-result')
+    monkeypatch.setattr(jobs, 'get_job', lambda rid: {'project_id': project['id'], 'kind': 'data_workflow', 'status': 'succeeded', 'target': wid})
     monkeypatch.setattr(project_data, 'owned', lambda pid, kind, wid: {'published_run': 'one-result'})
     monkeypatch.setattr(project_data, 'read_result', lambda pid, rid, offset, limit:
                         {'result_id': rid, 'rows': [{'amount': '1.23'}]})
@@ -214,4 +217,7 @@ def test_scoped_share_identity_never_grants_owner_routes(client, monkeypatch):
             assert {session['project_id'] for session in response.json()} == {project['id']}
     finally:
         delete(data_sharing.KIND, share['id'])
+        with engine.begin() as connection:
+            connection.execute(jobs.jobs.delete().where(jobs.jobs.c.id=='one-result'))
+        delete('data_workflow', wid)
         delete('project', project['id'])

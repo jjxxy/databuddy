@@ -304,11 +304,10 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
         # Only a live, explicitly started Agent tool invocation may populate
         # conversation progress. Scheduled business-flow runs retain their own
         # run progress and cannot impersonate an interactive tool call.
-        slide_progress=None
-        if spec.kind=='presentation':
-            from .office_slide_progress import for_turn
-            slide_progress=for_turn(turn)
-            if slide_progress:slide_progress.begin()
+        from .office_slide_progress import for_turn
+        authority=for_turn(turn)
+        slide_progress=authority if spec.kind=='presentation' else None
+        if slide_progress:slide_progress.begin()
         def build(temporary):
             precision_notes.clear();_build_file(spec,temporary,precision_notes,renderer_version=renderer_version,
                                                on_slide=slide_progress.page if slide_progress else None)
@@ -324,13 +323,15 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
             record.update(put('office_artifact',dict(record,state='committed'),aid))
         def check_before_publish():
             assert_owned()
-            if slide_progress:slide_progress.check_live()
+            if authority:authority.check_live()
+        def complete_manifest():
+            _verify_structure(file,ext,spec)
+            workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
         try:
             durable_cached_artifact(file,expected_sha256=record.get('sha256') if record.get('state')=='committed' else None,
                 pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,
-                build=build,save_pending=save_pending,save_committed=save_committed,before_publish=check_before_publish)
-            _verify_structure(file,ext,spec)
-            workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
+                build=build,save_pending=save_pending,save_committed=save_committed,before_publish=check_before_publish,
+                publication_guard=authority.publication_guard if authority else None,after_publish=complete_manifest)
         except Exception:
             if slide_progress:slide_progress.finish(False)
             raise

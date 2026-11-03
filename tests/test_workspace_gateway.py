@@ -135,14 +135,23 @@ def test_workbench_and_data_application_assets_are_served_by_isolated_gateway(se
                 self.files.append(urlsplit(values['href']).path)
 
     with client_for(settings) as client:
-        for page in ('/','/data-app.html'):
+        for page in ('/','/data-app.html','/project-templates.html','/data-workbench.html'):
             markup=client.get(page);assert markup.status_code==200
             assets=Assets();assets.feed(markup.text)
-            assert assets.scripts[0]=='/secure-id.js'
+            if page!='/data-workbench.html':assert assets.scripts[0]=='/secure-id.js'
             for asset in assets.files:
                 response=client.get(asset)
                 assert response.status_code==200,(page,asset,response.status_code)
                 assert response.headers['cache-control']=='no-store'
+        for page in ('/docx-frame.html','/pptx-frame.html'):
+            markup=client.get(page);assert markup.status_code==200
+            policy=markup.headers['content-security-policy']
+            assert "frame-ancestors 'self'" in policy and "connect-src 'none'" in policy
+            assert "form-action 'none'" in policy and "navigate-to 'none'" in policy
+            assert "frame-src 'none'" in policy and "object-src 'none'" in policy
+            assets=Assets();assets.feed(markup.text)
+            for asset in assets.files:
+                assert client.get(asset).status_code==200,(page,asset)
 
 
 @pytest.mark.parametrize('changes', [

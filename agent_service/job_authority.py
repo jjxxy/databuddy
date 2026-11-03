@@ -58,7 +58,7 @@ def admission_guard(extra):
     else:yield
 
 @contextmanager
-def client_guard(identity):
+def client_guard(identity,*,timeout=None):
     from .agent_gateway import _lock
     if identity in _held.get():
         # Context propagation must not reuse a lock after its owning scope exits.
@@ -66,7 +66,9 @@ def client_guard(identity):
         assert_owned()
         yield
         return
-    with _lock(identity):
+    lock=_lock(identity)
+    if timeout is not None:lock.timeout=timeout
+    with lock:
         token=_held.set(_held.get()|{identity})
         try:yield
         finally:_held.reset(token)

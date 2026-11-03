@@ -7,7 +7,12 @@
   <link rel="stylesheet" href="/data-workbench.css?v=22-business-graph">
   <script src="/workspace-session.js?v=1" defer></script>
   <link rel="stylesheet" href="/react-dag/web-dag.css?v=3"><script src="/react-dag/web-dag.js?v=3" defer></script><script src="/workbench-dag.js?v=2-react" defer></script>
-  <script src="/data-workbench.js?v=30-external-alignment" defer></script>
+  <link rel="stylesheet" href="/share-management.css?v=1">
+  <script src="/share-management.js?v=1" defer></script>
+  <link rel="stylesheet" href="/analysis-explore.css?v=1">
+  <script src="/analysis-explore.js?v=1" defer></script>
+  <script src="/factor-analysis.js?v=1" defer></script>
+  <script src="/data-workbench.js?v=31-exploration" defer></script>
 </head>
 <body>
 <section id="workbench-login" class="login" hidden>
@@ -95,6 +100,9 @@
         </div>
         <div class="pagination"><span id="workbench-page-info">尚无结果</span><button id="workbench-prev" type="button" disabled>上一页</button><button id="workbench-next" type="button" disabled>下一页</button></div>
       </section>
+      <section id="data-explore-panel" class="panel panel-body" hidden></section>
+      <section id="data-factor-panel" class="panel panel-body" hidden></section>
+      <section id="data-share-panel" class="panel panel-body" hidden></section>
       <div class="context-grid">
         <section class="panel"><div class="panel-heading"><h2>来源与范围</h2></div><div id="workbench-sources" class="panel-body muted">尚未选择任务。</div></section>
         <section class="panel"><div class="panel-heading"><h2>处理记录与校验</h2></div><div id="workbench-stages" class="panel-body muted">运行后显示各步处理记录。</div></section>

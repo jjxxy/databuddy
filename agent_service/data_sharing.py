@@ -223,3 +223,115 @@ def authorize(request, share_id):
     except KeyError:
         raise HTTPException(404, '分享不存在') from None
     return _authorize_record(record, subject)
+
+
+def _locked_snapshot(request, share_id, materialize):
+    """Authorize and capture one response while revocation and restore wait.
+
+    Only the captured response is returned after the transaction. A later
+    revocation cannot recall bytes already captured for an in-flight request.
+    """
+    from . import workspace
+    from .jobs import get_job, jobs
+    from .workspace_lifecycle import _project_lock, assert_project_live
+    _require_oidc(request_context=True)
+    subject=verified_subject(request)
+    try: initial=get(KIND,share_id)
+    except KeyError:raise HTTPException(404,'分享不存在') from None
+    pid=initial.get('project_id')
+    if not isinstance(pid,str):raise HTTPException(403,'分享记录无效')
+    with workspace.lock(pid),_project_lock(pid):
+        try:assert_project_live(pid)
+        except (KeyError,ValueError):raise HTTPException(410,'所分享的固定结果版本已不可用') from None
+        # Lock waits or CSV generation can outlast a short-lived token.
+        # Validate the identity again before locking and capturing data.
+        if verified_subject(request)!=subject:raise HTTPException(401,'身份凭据无效或已过期')
+        try:initial=get(KIND,share_id);run=get_job(initial['result_id'])
+        except (KeyError,ValueError):raise HTTPException(410,'所分享的固定结果版本已不可用') from None
+        target=run.get('target')
+        if initial.get('project_id')!=pid or not isinstance(target,str):
+            raise HTTPException(410,'所分享的固定结果版本已不可用')
+        # Lock the same rows modified by revoke() and publish_result(). SQLite
+        # uses BEGIN IMMEDIATE; PostgreSQL uses row-level FOR UPDATE. Acquiring
+        # workspace/lifecycle before the transaction matches restore/delete.
+        with transaction() as connection:
+            row=connection.execute(select(items.c.body).where(items.c.id==share_id,
+                                   items.c.kind==KIND).with_for_update()).first()
+            if row is None:raise HTTPException(404,'分享不存在')
+            record=json.loads(row[0])
+            workflow=connection.execute(select(items.c.body).where(items.c.id==target,
+                                        items.c.kind=='data_workflow').with_for_update()).first()
+            if workflow is None:raise HTTPException(410,'所分享的固定结果版本已不可用')
+            locked=json.loads(workflow[0])
+            job=connection.execute(select(jobs.c.target,jobs.c.status).where(
+                                   jobs.c.id==record.get('result_id')).with_for_update()).first()
+            if (record.get('project_id')!=pid or record.get('result_id')!=initial.get('result_id')
+                    or locked.get('project_id')!=pid or locked.get('published_run')!=record.get('result_id')
+                    or job is None or job.target!=target or job.status!='succeeded'):
+                raise HTTPException(403,'共享结果不是当前正式版本，或来源、业务语义尚未通过核对')
+            _authorize_record(record,subject)
+            # Shared recipients are not the workspace owner. Run any
+            # actor-scoped reads under the verified issuer+subject identity.
+            from .actor_context import actor_scope,actor_from_identity
+            actor=actor_from_identity({'authenticated':True,'mode':'oidc','subject':subject,
+                                       'issuer':record['issuer']})
+            with actor_scope(actor):value=materialize(record)
+            # Check again before releasing either lock; no path is opened by
+            # the HTTP response after the authorization boundary.
+            _authorize_record(record,subject)
+            return value
+
+
+def read_shared(request,share_id,offset=0,limit=100):
+    from .project_data import read_result
+    def capture(record):
+        page=read_result(record['project_id'],record['result_id'],offset,limit)
+        # Only the shared result and its version/pagination are public to a
+        # recipient. Owner-only alignment receipts, workflow context, source
+        # identifiers, and future internal fields must not leak by default.
+        allowed=('result_id','run_id','plan_sha256','data_as_of','rows','schema','offset','limit','total',
+                 'next_offset','complete_result_available','page_is_complete_result','manifest_sha256',
+                 'decimal_representation')
+        return {key:page[key] for key in allowed if key in page}
+    return _locked_snapshot(request,share_id,capture)
+
+
+def download_shared(request,share_id):
+    """Return a private verified result CSV snapshot, never a deferred FileResponse."""
+    import hashlib,os,tempfile
+    from .data_workflows import digest
+    from .platform_files import open_regular_read
+    from .project_data import result_download
+    # Export creation writes its own durable receipt. Do it before the locked
+    # transaction, then reauthorize and validate the bytes under the locks.
+    first=authorize(request,share_id)
+    if first.get('allow_download') is not True:raise HTTPException(403,'该共享不允许下载')
+    # The internal handoff archive also contains raw provenance and source
+    # values. A result share grants only the final result, so export CSV and
+    # never include the internal handoff archive.
+    path=result_download(first['project_id'],first['result_id'],'csv',expected_handoff_sha256=first['handoff_sha256'])
+    snapshot=tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b')
+    try:
+        def capture(record):
+            if record.get('allow_download') is not True:raise HTTPException(403,'该共享不允许下载')
+            if (record.get('project_id')!=first['project_id'] or record.get('result_id')!=first['result_id']
+                    or record.get('handoff_sha256')!=first['handoff_sha256']):
+                raise HTTPException(410,'所分享的固定结果版本已不可用')
+            key='dc_'+digest([record['project_id'],record['result_id'],record['handoff_sha256'],'csv-literal-v2'])[:40]
+            receipt=get('data_export',key)
+            if (receipt.get('project_id')!=record['project_id'] or receipt.get('run_id')!=record['result_id']
+                    or receipt.get('source_manifest')!=record['handoff_sha256'] or receipt.get('state')!='committed'
+                    or not isinstance(receipt.get('sha256'),str) or len(receipt['sha256'])!=64):
+                raise ValueError('共享文件回执不可用')
+            hasher=hashlib.sha256()
+            with os.fdopen(open_regular_read(path),'rb') as stream:
+                while chunk:=stream.read(64*1024):
+                    snapshot.write(chunk);hasher.update(chunk)
+            if not secrets.compare_digest(hasher.hexdigest(),receipt.get('sha256','')):
+                raise ValueError('共享文件内容与回执不一致')
+            size=snapshot.tell();snapshot.seek(0)
+            return snapshot,size
+        return _locked_snapshot(request,share_id,capture)
+    except BaseException:
+        snapshot.close()
+        raise

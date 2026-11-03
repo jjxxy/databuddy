@@ -4,6 +4,7 @@ These previews are extracted from constructed shapes; they are not a rendering
 of the slide, a final artifact, or a financial/visual validation receipt.
 """
 from sqlalchemy import select, update
+from contextlib import contextmanager
 from . import store
 
 _MAX_PREVIEW_CHARS = 2000
@@ -38,12 +39,14 @@ def _slide_preview(number, slide):
 
 
 class SlideProgress:
-    def __init__(self, turn, step_id):
+    def __init__(self, turn, step_id, tool='render_office_artifact'):
         self.turn_id = turn['id']
         self.project_id = turn['project_id']
         self.step_id = step_id
+        self.tool = tool
         self.actor_id = turn.get('actor_id','owner')
         self.session_id = turn.get('session_id')
+        self.gateway_client_id = turn.get('gateway_client_id')
         self.pages = []
         self.total = None
 
@@ -64,7 +67,7 @@ class SlideProgress:
                 if (current.get('project_id')!=self.project_id or current.get('actor_id','owner')!=self.actor_id
                         or current.get('session_id')!=self.session_id or current.get('state')!='agent_tool'
                         or current.get('outcome')=='cancelled' or not trace or not isinstance(trace[-1],dict)
-                        or trace[-1].get('id')!=self.step_id or trace[-1].get('tool')!='render_office_artifact'
+                        or trace[-1].get('id')!=self.step_id or trace[-1].get('tool')!=self.tool
                         or trace[-1].get('status')!='started'):
                     raise ValueError('演示文稿生成任务已停止或发生变化')
                 if write:
@@ -83,6 +86,41 @@ class SlideProgress:
 
     def check_live(self):
         self._update(None,write=False)
+
+    @contextmanager
+    def publication_guard(self):
+        """Serialize the actual receipt/rename with Stop and workspace removal.
+
+        The caller already holds the workspace lock; lifecycle removal takes
+        the project lock, while owner Stop takes turn_guard and gateway Stop
+        takes client_guard. A later Stop cannot undo an already committed
+        artifact.
+        """
+        from .job_authority import turn_guard,client_guard
+        from .workspace_lifecycle import _project_lock,assert_turn_live
+        from .locks import assert_owned
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            # Gateway admission may hold client while acquiring workspace.
+            # We already hold workspace, so never wait for that client lock:
+            # a busy grant fails closed and the durable pending result can
+            # later be retried. Owner Stop never takes the lifecycle lock.
+            if self.gateway_client_id:
+                stack.enter_context(client_guard(self.gateway_client_id,timeout=0))
+                stack.enter_context(_project_lock(self.project_id))
+            else:
+                stack.enter_context(_project_lock(self.project_id))
+                stack.enter_context(turn_guard(self.turn_id))
+            current=store.get('turn',self.turn_id)
+            assert_turn_live(current)
+            if current.get('gateway_client_id')!=self.gateway_client_id:
+                raise ValueError('演示文稿生成任务已停止或发生变化')
+            if self.gateway_client_id:
+                from .agent_gateway import assert_turn_allowed
+                assert_turn_allowed(current)
+            self.check_live()
+            yield
+            assert_owned()
 
     def page(self, number, total, slide):
         if (type(number) is not int or type(total) is not int or not 1 <= number <= total <= 120
@@ -103,11 +141,11 @@ class SlideProgress:
             pass
 
 
-def for_turn(turn):
+def for_turn(turn, *, tool='render_office_artifact'):
     trace = turn.get('agent_trace') or []
     if (turn.get('state') != 'agent_tool' or not trace or not isinstance(trace[-1], dict)
-            or trace[-1].get('tool') != 'render_office_artifact'
+            or trace[-1].get('tool') != tool
             or trace[-1].get('status') != 'started' or not isinstance(trace[-1].get('id'), str)
             or not turn.get('id') or not turn.get('project_id')):
         return None
-    return SlideProgress(turn, trace[-1]['id'])
+    return SlideProgress(turn, trace[-1]['id'],tool)

@@ -990,6 +990,8 @@ from .workspace_lifecycle import install as install_workspace_lifecycle
 from .workspace_artifacts import install as install_workspace_artifacts
 install_workspace_lifecycle(app,auth)
 install_workspace_artifacts(app,auth)
+from .project_templates import install as install_project_templates
+install_project_templates(app,auth)
 from .runtime_config_api import install as install_runtime_config
 install_runtime_config(app,auth,operator_auth)
 from .business_proposals import install as install_business_proposals
