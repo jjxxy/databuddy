@@ -18,7 +18,7 @@ async function run() {
     ];
     const plan = {inputs: {sales: {meaning: '销售记录'}}, stages: [{id: 'calc', kind: 'aggregate', input: 'sales'}], output: 'calc'};
     const latestRun={id:'run1',flow_id:business,plan_digest:digest,commit,steps:[{node_id:'ppt',status:'succeeded',artifact:{id:'art1',name:'汇报材料.pptx',preview_url:'https://bad.invalid/trap'}}]};
-    const returned = [], tick = () => new Promise(resolve => setTimeout(resolve, 0));
+    const requested = [], tick = () => new Promise(resolve => setTimeout(resolve, 0));
     let sourceArgs, resultArgs;
     w.nexusShell = {openSource: async (...args) => {sourceArgs = args}, openArtifact: async value => {resultArgs = value}};
     let finish, delay = false, mismatch = false, historical = false;
@@ -46,8 +46,8 @@ async function run() {
       assert.equal(u.searchParams.get('commit'), m.commit);
       const path = u.searchParams.get('path');
       assert(m.files.some(file => file.path === path));
+      requested.push(path);
       if (delay) await new Promise(resolve => {finish = resolve});
-      returned.push(path);
       return {flow_id:id, digest: mismatch ? 'x' : digest, commit:m.commit, path, content:'<script>unsafe()</script>\n' + path};
     }
     const panel = w.document.querySelector('#panel'), state = {projectId,viewEpoch:1};
@@ -60,31 +60,47 @@ async function run() {
       const id = kind === 'business' ? 'sum' : 'calc';
       const overview = panel.querySelector('.workflow-overview-graph');
       assert.match(overview.textContent, /核对本期收入/);
+      const beforeGroup=requested.length;
       overview.querySelector('button').click();
-      const sections = panel.querySelectorAll('.workflow-step-files');
-      assert.equal(sections.length, 2);
-      assert.equal(app.getSelectedWorkflow().node_id,undefined,'opening a group must not select its last rendered step');
-      assert.doesNotMatch(sections[0].textContent + sections[1].textContent, /nodes\/ppt|nodes\/__overview_result__/);
-      assert.deepEqual([...sections[1].querySelectorAll('.workflow-file-links summary')].map(s=>s.textContent),['nodes/','runtime/','shared/','math/']);
-      const shared = sections[0].querySelector('button[title="shared/math/money.py"]');
-      let folder = shared.parentElement;
-      assert(folder.open);folder.open=false;
-      assert(!folder.open);
-      assert(sections[1].querySelector('button[title="shared/math/money.py"]').parentElement.open);
-      const sourceButton=[...sections[0].querySelectorAll('button')].find(b=>b.textContent.includes(kind==='business'?'固定版本的来源原件':'当前绑定的来源'));
+      assert.equal(panel.querySelector('.workflow-step-files'),null);
+      assert.equal(requested.length,beforeGroup,'opening a group must not fetch any node files');
+      assert.equal(app.getSelectedWorkflow().node_id,undefined);
+      const buttons=panel.querySelectorAll('.workflow-group-graph button');
+      assert.equal(buttons.length,2,'keyboard-accessible graph fallback exposes only this group');
+      const sourceId=kind==='business'?'load':'sales';
+      buttons[0].click();await tick();
+      const section=()=>panel.querySelector('.workflow-step-files');
+      assert.equal(panel.querySelectorAll('.workflow-step-files').length,1);
+      assert.equal(app.getSelectedWorkflow().node_id,sourceId);
+      assert.equal(requested.length,beforeGroup+1);
+      assert.match(section().querySelector('pre').textContent,new RegExp('runtime/'+sourceId+'\\.py'));
+      assert.equal(section().querySelector('button[title="nodes/'+id+'.json"]'),null);
+      const shared=section().querySelector('button[title="shared/math/money.py"]');
+      assert(shared.parentElement.open);
+      shared.parentElement.open=false;
+      const sourceButton=[...section().querySelectorAll('button')].find(b=>b.textContent.includes(kind==='business'?'固定版本的来源原件':'当前绑定的来源'));
       sourceButton.click();await tick();
       assert.deepEqual(sourceArgs,kind==='business'?['file1',2,digest]:['file1']);
-      assert(![...sections[1].querySelectorAll('button')].some(b=>b.textContent.includes('来源原件')||b.textContent.includes('绑定的来源')));
-      if(kind==='data'){
-        const sql=sections[1].querySelector('button[title="nodes/calc.sql"]');
-        sql.click();await tick();assert.match(sections[1].querySelector('pre').textContent,/nodes\/calc.sql/);
-      }
-      const file = sections[1].querySelector('button[title$=".py"]');
-      file.click(); await tick();
-      assert.equal(app.getSelectedWorkflow().node_id,id,'opening a node file binds that node to chat');
-      const viewer = sections[1].querySelector('pre');
-      assert.equal(viewer.textContent, '<script>unsafe()</script>\nruntime/' + id + '.py');
-      assert.equal(viewer.querySelector('script'), null);
+
+      // An old node file request may finish after another selection in the same version.
+      delay=true;shared.click();
+      const finishOld=finish;
+      delay=false;buttons[1].click();await tick();
+      const expected=kind==='data'?'nodes/calc.sql':'runtime/sum.py';
+      assert.equal(section().querySelector('pre').textContent,'<script>unsafe()</script>\n'+expected);
+      finishOld();await tick();
+      assert.equal(section().querySelector('pre').textContent,'<script>unsafe()</script>\n'+expected);
+      assert.equal(panel.querySelectorAll('.workflow-step-files').length,1);
+      assert.equal(section().querySelector('button[title="nodes/'+sourceId+'.json"]'),null);
+      assert.deepEqual([...section().querySelectorAll('.workflow-file-links summary')].map(s=>s.textContent),['nodes/','runtime/','shared/','math/']);
+      assert(section().querySelector('button[title="shared/math/money.py"]').parentElement.open);
+      assert(![...section().querySelectorAll('button')].some(b=>b.textContent.includes('来源原件')||b.textContent.includes('绑定的来源')));
+      assert.equal(app.getSelectedWorkflow().node_id,id,'clicking a graph node binds that node to chat');
+      const file=section().querySelector('button[title="runtime/'+id+'.py"]');
+      file.click();await tick();
+      const viewer=section().querySelector('pre');
+      assert.equal(viewer.textContent,'<script>unsafe()</script>\nruntime/'+id+'.py');
+      assert.equal(viewer.querySelector('script'),null);
       panel.querySelector('.workflow-overview-detail').click();
       assert.equal(app.getSelectedWorkflow().node_id,undefined,'switching diagrams clears the prior step');
       const full = panel.querySelector(kind === 'business' ? '.flow-graph' : '.workflow-graph-scroll');
@@ -114,7 +130,10 @@ async function run() {
     await choose('data');
     assert.match(panel.querySelector('.workflow-project-files').textContent, /还原/);
     assert.equal(panel.querySelector('button[title^="runtime/"]'), null);
-    assert(returned.length >= 7);
+    // A legacy definition without Python source still shows its recoverable rule.
+    panel.querySelector('.workflow-overview-graph button').click();
+    panel.querySelector('.workflow-group-graph button').click();await tick();
+    assert.match(panel.querySelector('.workflow-step-files pre').textContent,/nodes\/sales\.json/);
     console.log('project chat drilldown passed for both DAG engines, exact file contents, version rejection, stale reads and derived history');
   } finally {dom.window.close()}
 }

@@ -30,17 +30,45 @@ try{
  assert.equal(await page.locator('#two .react-flow__node').filter({hasText:'读取订单'}).locator('button').getAttribute('aria-pressed'),'true');
  await page.locator('#one .react-flow__node').filter({hasText:'订单资料'}).click();await page.evaluate(()=>window.finishSource([{id:'s_1',name:'已核对订单',project_id:'p1'}]));await page.waitForFunction(()=>document.querySelector('#one .workflow-graph-detail')?.textContent.includes('已核对订单'));assert.match(await page.locator('#one').innerText(),/与已采用版本不同/);assert.match(await page.locator('#two').innerText(),/尚未选择对应运行/);
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);const small=await page.locator('#one nexus-flow-graph').boundingBox();assert(small.width<=390&&small.height>=240);assert(await page.locator('#one .react-flow__controls-zoomin').isVisible());await page.locator('#one .react-flow__controls-zoomin').click();
- await page.evaluate(()=>{
-  const host=document.querySelector('#three'),node=(id,title,depends_on)=>({id,title,depends_on});
+ await page.addScriptTag({content:file('workflow-code-assets.js')});
+ await page.evaluate(async()=>{
+  const host=document.querySelector('#three'), node=(id,title,depends_on)=>({id,title,depends_on});
+  host.style.width='100%';
   const plan={nodes:[node('load','读取资料',[]),node('sum','汇总收入',['load']),node('publish','发布结果',['sum'])]};
-  const assets={showNode(section,id){const b=document.createElement('button');b.textContent=id+'.json';b.className='file-target';const box=document.createElement('div');box.className='workflow-file-links';box.append(b);section.append(box)}};
-  window.renderWorkflowGroupDetail(host,{kind:'business',ids:['load','sum'],plan,assets});
+  const ids=plan.nodes.map(n=>n.id), digest='1'.repeat(64), commit='2'.repeat(40);
+  const identity={flow_id:'flow',digest,commit,storage:'git'};
+  const nodes=ids.map(id=>({id,path:id+'/rule.json',handler_path:'shared/'+id+'.py'}));
+  const files=nodes.flatMap(n=>[n.path,n.handler_path]).map(path=>({path,label:path}));
+  const code=n=>'def '+n.id+'():\n    return '+JSON.stringify(n.title);
+  window.nodeReads=[];
+  const api=async url=>{
+   if(url.includes('/code-assets?'))return {...identity,nodes,files,groups:[{id:'g',nodeIds:ids,deps:[]}]};
+   const path=new URL(url,location.origin).searchParams.get('path');
+   window.nodeReads.push(path);
+   return {...identity,path,content:code(plan.nodes.find(n=>path==='shared/'+n.id+'.py'))};
+  };
+  const assets=await window.loadWorkflowCodeAssets({kind:'business',projectId:'p1',flowId:'flow',digest,commit,expectedNodes:ids,api,isCurrent:()=>true});
+  window.renderWorkflowGroupDetail(host,{kind:'business',ids:['load','sum'],plan,assets,isCurrent:()=>true});
  });
  await page.waitForSelector('#three .workflow-group-graph .react-flow__edge',{state:'attached'});
- assert.equal(await page.locator('#three .workflow-group-graph .react-flow__node').count(),2);
- await page.locator('#three .workflow-group-graph .react-flow__node').filter({hasText:'汇总收入'}).locator('button').click();
- assert.equal(await page.evaluate(()=>document.activeElement.textContent),'sum.json');
- assert.equal(await page.locator('#three .file-target').count(),2);
+ const group=page.locator('#three .workflow-group-graph'), inspector=page.locator('#three .workflow-step-files');
+ assert.equal(await group.locator('.react-flow__node').count(),2);
+ assert.equal(await inspector.count(),0);
+ assert.deepEqual(await page.evaluate(()=>window.nodeReads),[]);
+ const sum=group.locator('.react-flow__node').filter({hasText:'汇总收入'}).locator('button');
+ await sum.click();
+ await inspector.locator('pre').waitFor();
+ assert.equal(await inspector.count(),1);
+ assert.match(await inspector.locator('pre').innerText(),/def sum/);
+ assert.equal(await sum.getAttribute('aria-pressed'),'true');
+ assert.equal(await inspector.locator('button[title="shared/load.py"]').count(),0);
+ const load=group.locator('.react-flow__node').filter({hasText:'读取资料'}).locator('button');
+ await load.focus();await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#three .workflow-step-files pre')?.textContent.includes('def load'));
+ assert.equal(await inspector.count(),1);
+ assert.equal(await inspector.locator('button[title="shared/sum.py"]').count(),0);
+ assert.equal(await load.getAttribute('aria-pressed'),'true');
+ assert.deepEqual(await page.evaluate(()=>window.nodeReads),['shared/sum.py','shared/load.py']);
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log(JSON.stringify({react_flow_both_diagrams:true,browser_nodes_and_edges:true,node_business_explanations:true,version_state_preserved:true,no_network_requests:true,source_update_refreshes_selected_detail:true,mobile_controls_available:true,hidden_tab_reveals_graph:true}));
 }finally{await browser.close()}

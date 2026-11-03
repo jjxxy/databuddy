@@ -81,10 +81,12 @@ window.renderBusinessWorkflowGraph = function (container, workflow, context = nu
   scroller.append(svg);container.append(scroller,detail);
   if(window.NexusFlowGraph){
     let selected=null;
-    const show=id=>{selected=id;const item=lookup.get(id)||nodes.find(value=>value.id===id);if(!item)return;detail.replaceChildren();const heading=document.createElement('strong');heading.textContent=item.label;const body=document.createElement('p');body.textContent=item.description||'请查看完整规则。';detail.append(heading,body);context?.onNode?.(detail,item.type==='result'?'__overview_result__':item.id)};
+    const heading=document.createElement('strong'),body=document.createElement('p');
+    const updateLabel=item=>{heading.textContent=item.label;body.textContent=item.description||'请查看完整规则。'};
+    const show=id=>{const item=lookup.get(id)||nodes.find(value=>value.id===id);if(!item)return;selected=id;updateLabel(item);detail.replaceChildren(heading,body);context?.onNode?.(detail,item.type==='result'?'__overview_result__':item.id)};
     for(const item of nodes)item.caption=item.description;
     scroller.replaceChildren();const controller=window.NexusFlowGraph.mount(scroller,nodes,show);
-    for(const item of nodes){const prior=item.paint;item.paint=()=>{prior();item.caption=item.description;controller.update();if(selected===item.id)show(item.id)}}
+    for(const item of nodes){const prior=item.paint;item.paint=()=>{prior();item.caption=item.description;controller.update();if(selected===item.id)updateLabel(item)}}
   }
 
   // Source names come only from the authenticated source list, constrained to

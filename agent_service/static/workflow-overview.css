@@ -6,8 +6,9 @@
 .workflow-file-links details{padding-left:12px;border-left:1px solid #dbe4df}
 .workflow-file-links button{display:block;max-width:100%;border:0;border-radius:4px;background:transparent;color:#235f4f;text-align:left;overflow-wrap:anywhere;padding:5px 7px;font:inherit;cursor:pointer}
 .workflow-file-links button:hover,.workflow-file-links button:focus-visible{background:#edf5f1}
-.workflow-file-viewer{min-width:0;overflow-wrap:anywhere;font-size:13px}
+.workflow-file-viewer{min-width:0;overflow-wrap:anywhere;font-size:13px;scroll-margin-block-end:min(28vh,14rem)}
 .workflow-file-viewer:not(:empty){margin:10px 0}
 .workflow-file-viewer pre{max-height:24rem;overflow:auto;white-space:pre;background:#f5f7f6;border:1px solid #dbe4df;border-radius:6px;margin:.5rem 0;padding:12px;font:12px/1.6 ui-monospace,Consolas,monospace}
 .workflow-step-files h5,.workflow-step-files h6{margin:8px 0 4px}
 .workflow-step-files{padding:12px 0;border-bottom:1px solid #dbe4df}
+.workflow-group-graph nexus-flow-graph{height:var(--group-graph-height,240px);min-height:180px}

@@ -14,6 +14,8 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
   if (!identityMatches(manifest) || !Array.isArray(manifest.files) || !Array.isArray(manifest.nodes) || !Array.isArray(manifest.groups)) {
     throw Error('流程文件版本不一致');
   }
+  if (manifest.files.some(file => typeof file?.path !== 'string' ||
+      !/^(?:[\w-]+\/)*[\w-]+\.(?:json|sql|py)$/.test(file.path))) throw Error('流程文件路径无效');
   const files = new Map(manifest.files.map(file => [file.path, file]));
   const nodes = new Map(manifest.nodes.map(node => [node.id, node]));
   const groupIds = new Set(manifest.groups.map(group => group.id));
@@ -33,7 +35,7 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
         return false;
       }) || covered.size !== nodes.size) throw Error('流程文件与步骤不匹配');
 
-  function fileList(container, entries, expandedFiles = []) {
+  function fileList(container, entries, expandedFiles = [], initialFile = null) {
     const doc = container.ownerDocument;
     const links = doc.createElement('div'), viewer = doc.createElement('div');
     links.className = 'workflow-file-links';
@@ -56,46 +58,67 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
       }
       return parent;
     }
-    let ticket = 0;
+    let ticket = 0, selectedButton;
+    async function openFile(file, button) {
+      if (!isCurrent()) return;
+      const mark = ++ticket;
+      const current = () => mark === ticket && isCurrent() && viewer.isConnected;
+      selectedButton?.setAttribute('aria-pressed', 'false');
+      selectedButton = button;
+      button.setAttribute('aria-pressed', 'true');
+      viewer.textContent = '正在读取 ' + file.path + '…';
+      // Move the visible code area into reach on the user's click. A delayed
+      // server response must never pull someone back after they scroll away.
+      viewer.scrollIntoView?.({block:'nearest',inline:'nearest'});
+      try {
+        const params = new URLSearchParams(query);
+        params.set('path', file.path);
+        const value = await api(endpoint + '/code-asset?' + params);
+        if (!current()) return;
+        if (!identityMatches(value) || (value.commit ?? null) !== assetCommit || value.path !== file.path || typeof value.content !== 'string') throw Error();
+        const caption = doc.createElement('strong'), pre = doc.createElement('pre');
+        caption.textContent = file.path;
+        pre.tabIndex = 0;
+        pre.textContent = value.content;
+        viewer.replaceChildren(caption, pre);
+      } catch (_) {
+        if (current()) viewer.textContent = '无法读取此版本的文件。请重新打开当前流程，再试一次。';
+      }
+    }
+    let initialButton;
     for (const file of entries) {
       const button = doc.createElement('button');
       button.type = 'button';
       button.textContent = (file.label ? file.label + ' · ' : '') + file.path.split('/').pop();
       button.title = file.path;
-      button.addEventListener('click', async () => {
-        const mark = ++ticket;
-        const current = () => mark === ticket && isCurrent() && viewer.isConnected;
-        viewer.textContent = '正在读取 ' + file.path + '…';
-        try {
-          const params = new URLSearchParams(query);
-          params.set('path', file.path);
-          const value = await api(endpoint + '/code-asset?' + params);
-          if (!current()) return;
-          if (!identityMatches(value) || (value.commit ?? null) !== assetCommit || value.path !== file.path || typeof value.content !== 'string') throw Error();
-          const caption = doc.createElement('strong'), pre = doc.createElement('pre');
-          caption.textContent = file.path;
-          pre.tabIndex = 0;
-          pre.textContent = value.content;
-          viewer.replaceChildren(caption, pre);
-          viewer.scrollIntoView?.({block: 'nearest'});
-        } catch (_) {
-          if (current()) viewer.textContent = '无法读取此版本的文件。请重新打开当前流程，再试一次。';
-        }
-      });
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', () => openFile(file, button));
+      if (file === initialFile) initialButton = button;
       parentFor(file.path).append(button);
     }
-    container.append(links, viewer);
+    if (initialButton) {
+      container.append(viewer, links);
+      openFile(initialFile, initialButton);
+    } else container.append(links, viewer);
   }
 
   function showNode(container, id) {
     const node = nodes.get(id);
     if (!node) return;
     const heading = container.ownerDocument.createElement('h6');
-    heading.textContent = '节点文件';
+    heading.textContent = '节点源码与规则';
     container.append(heading);
     const paths = new Set([node.path, node.handler_path, ...(node.paths || [])]);
     const entries = Array.from(paths, path => files.get(path)).filter(Boolean);
-    fileList(container, entries, entries.length <= 6 ? entries.map(file => file.path) : [node.path, node.handler_path].filter(Boolean));
+    const queries = entries.filter(file => file.path.endsWith('.sql'));
+    const initialFile = (queries.length === 1 ? queries[0] : null) || files.get(node.handler_path) || files.get(node.path);
+    if (manifest.storage === 'derived') {
+      const note = container.ownerDocument.createElement('p');
+      note.textContent = '以下内容从该版本保存的流程定义还原。此版本未保存 Python 源码。';
+      container.append(note);
+    }
+    const expandedFiles = entries.length <= 6 ? entries.map(file => file.path) : [initialFile.path];
+    fileList(container, entries, expandedFiles, initialFile);
   }
 
   function showProject(container) {
