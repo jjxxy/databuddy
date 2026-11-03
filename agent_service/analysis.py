@@ -70,8 +70,14 @@ def read_query(folder,sql):
         _reject_historical_float_inputs(con,tree)
         timer=threading.Timer(5,con.interrupt);timer.start()
         try:
-            cursor=con.execute('select * from ('+canonical+') query_result limit 200')
-            return {'columns':[x[0] for x in cursor.description],'rows':_exact_query_value(cursor.fetchall()),'limit':200}
+            # Read one sentinel row so callers know whether the displayed
+            # result is complete. Do not claim a total without counting it.
+            cursor=con.execute('select * from ('+canonical+') query_result limit 201')
+            rows=cursor.fetchall();truncated=len(rows)>200
+            return {'columns':[x[0] for x in cursor.description],
+                    'rows':_exact_query_value(rows[:200]),'limit':200,
+                    'returned_rows':min(len(rows),200),'truncated':truncated,
+                    'result_complete':not truncated,'completeness_scope':'executed_sql_result'}
         finally:timer.cancel()
 
 def ask(folder,manifest,question):
@@ -90,7 +96,10 @@ def ask(folder,manifest,question):
             plan=json.loads(content)
             if not plan.get('sql'):return {'answer':str(plan.get('explanation','缺少所需数据'))[:2000],'mode':'llm_unanswerable','limitations':plan.get('limitations',[])}
             result=read_query(folder,plan['sql'])
-            return dict(result,answer=str(plan.get('explanation','已根据当前版本查询'))[:2000],sql=plan['sql'],mode='llm_sql',limitations=[str(x)[:500] for x in plan.get('limitations',[])][:10])
+            limitations=[str(x)[:500] for x in plan.get('limitations',[])][:10]
+            if result['truncated']:
+                limitations.insert(0,'查询结果超过200条，当前仅返回前200条；不能据此代表完整结果，请缩小筛选范围或按需汇总。')
+            return dict(result,answer=str(plan.get('explanation','已根据当前版本查询'))[:2000],sql=plan['sql'],mode='llm_sql',limitations=limitations)
         except Exception:
             warning='模型规划或 SQL 校验失败，原问题尚未得到验证'
     else:warning=None

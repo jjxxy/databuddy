@@ -153,7 +153,7 @@ def _verify_structure(file,ext,spec=None):
         raise ValueError('Office产物结构或完整性验证失败，未返回或覆盖') from None
 
 
-def _build_file(spec,tmp,precision_notes,*,renderer_version=RENDERER):
+def _build_file(spec,tmp,precision_notes,*,renderer_version=RENDERER,on_slide=None):
     ext=tmp.suffix.lstrip('.')
     if renderer_version not in SUPPORTED_RENDERERS:raise ValueError('Office渲染器版本不可用')
     if ext=='pptx' and renderer_version!=RENDERER and any(s.chart and any(Decimal(p.value)<0 for p in s.chart.points) for s in spec.sections):
@@ -227,7 +227,7 @@ def _build_file(spec,tmp,precision_notes,*,renderer_version=RENDERER):
         book.save(tmp)
     else:
         from .office_presentation import build
-        build(spec,tmp)
+        build(spec,tmp,on_slide=on_slide)
     _verify_structure(tmp,ext,spec)
 
 
@@ -301,8 +301,17 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
                 raise ValueError('交付物完整性校验失败，未返回或重新登记篡改内容')
             _verify_structure(file,ext,spec)
         precision_notes=list(record.get('precision_notes',[]));built_bytes=[None]
+        # Only a live, explicitly started Agent tool invocation may populate
+        # conversation progress. Scheduled business-flow runs retain their own
+        # run progress and cannot impersonate an interactive tool call.
+        slide_progress=None
+        if spec.kind=='presentation':
+            from .office_slide_progress import for_turn
+            slide_progress=for_turn(turn)
+            if slide_progress:slide_progress.begin()
         def build(temporary):
-            precision_notes.clear();_build_file(spec,temporary,precision_notes,renderer_version=renderer_version)
+            precision_notes.clear();_build_file(spec,temporary,precision_notes,renderer_version=renderer_version,
+                                               on_slide=slide_progress.page if slide_progress else None)
             _compact_precision_notes(precision_notes)
             built_bytes[0]=temporary.stat().st_size
         def save_pending(checksum):
@@ -313,11 +322,19 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
         def save_committed(checksum):
             if record.get('sha256')!=checksum:raise ValueError('交付物发布回执不一致')
             record.update(put('office_artifact',dict(record,state='committed'),aid))
-        durable_cached_artifact(file,expected_sha256=record.get('sha256') if record.get('state')=='committed' else None,
-            pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,
-            build=build,save_pending=save_pending,save_committed=save_committed,before_publish=assert_owned)
-        _verify_structure(file,ext,spec)
-        workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
+        def check_before_publish():
+            assert_owned()
+            if slide_progress:slide_progress.check_live()
+        try:
+            durable_cached_artifact(file,expected_sha256=record.get('sha256') if record.get('state')=='committed' else None,
+                pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,
+                build=build,save_pending=save_pending,save_committed=save_committed,before_publish=check_before_publish)
+            _verify_structure(file,ext,spec)
+            workspace.write_file(pid,'deliverables/'+name+'.manifest.json',_manifest_text(record,aid))
+        except Exception:
+            if slide_progress:slide_progress.finish(False)
+            raise
+        if slide_progress:slide_progress.finish(True)
         return {'artifact_id':aid,'sha256':record['sha256'],'format':ext,'structural_validation':True,
             'source_spec':spec_path if frozen_spec is None else None,
             'source_sha256':identity['source_sha256'],

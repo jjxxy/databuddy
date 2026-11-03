@@ -93,9 +93,32 @@ def _public(record):
             if key not in ('allowed_subject_hashes', 'issuer', 'audience')}
 
 
+def _require_published_result(project_id,result_id):
+    """A pageable share exposes all rows, so require the current adopted version."""
+    from . import project_data
+    from .jobs import get_job
+    run=get_job(result_id)
+    if run.get('project_id')!=project_id or run.get('kind')!='data_workflow' or run.get('status')!='succeeded':
+        raise ValueError('仅可分享当前已采用的正式结果')
+    workflow=project_data.owned(project_id,'data_workflow',run['target'])
+    if workflow.get('published_run')!=result_id:
+        raise ValueError('仅可分享当前已采用的正式结果；版本变更后需重新分享')
+    project_data.ensure_candidate_bulk_allowed(project_id,result_id)
+
+
 def create_share(project_id, result_id, allowed_subjects, actor,
                  expires_hours=168, allow_download=False):
     """Owner API only; no invitations or messages are sent by this function."""
+    from . import workspace
+    from .workspace_lifecycle import _project_lock, assert_project_live
+    # Match restore's workspace -> lifecycle order and prevent a share from
+    # appearing after project removal has completed its revocation scan.
+    with workspace.lock(project_id), _project_lock(project_id):
+        assert_project_live(project_id)
+        return _create_share(project_id,result_id,allowed_subjects,actor,expires_hours,allow_download)
+
+
+def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours, allow_download):
     _require_oidc()
     actor_hash = _actor(actor)
     get('project', project_id)
@@ -112,6 +135,9 @@ def create_share(project_id, result_id, allowed_subjects, actor,
         raise ValueError('分享对象不能重复或使用通配符')
     from .project_data import result_folder
     _, metadata = result_folder(project_id, result_id)
+    # A recipient can page through the complete result. Creating a share must
+    # therefore enforce the same source/semantic gate as a bulk export.
+    _require_published_result(project_id, result_id)
     issuer = os.environ['OIDC_ISSUER']
     created = _utcnow()
     record = {'project_id': project_id, 'result_id': result_id,
@@ -153,13 +179,7 @@ def revoke(project_id, share_id, actor):
     return _public(record)
 
 
-def authorize(request, share_id):
-    _require_oidc(request_context=True)
-    subject = verified_subject(request)
-    try:
-        record = get(KIND, share_id)
-    except KeyError:
-        raise HTTPException(404, '分享不存在') from None
+def _authorize_record(record, subject):
     try:
         expires = datetime.fromisoformat(record['expires_at'])
         if expires.tzinfo is None:
@@ -177,10 +197,29 @@ def authorize(request, share_id):
     # Verify that the exact immutable snapshot remains available. A newer result
     # is never silently substituted for the originally shared one.
     from .project_data import result_folder
+    from .workspace_lifecycle import assert_project_live
     try:
+        assert_project_live(record['project_id'])
         _, metadata = result_folder(record['project_id'], record['result_id'])
         if metadata['plan_sha256'] != record['plan_sha256'] or metadata['handoff_sha256'] != record['handoff_sha256']:
             raise ValueError('Shared snapshot changed')
     except (KeyError, ValueError, OSError):
         raise HTTPException(410, '所分享的固定结果版本已不可用') from None
+    # Recheck every access, including shares issued before this guard existed.
+    # A change to a source, ancestry or review state must not silently keep a
+    # previously created share open.
+    try:
+        _require_published_result(record['project_id'], record['result_id'])
+    except (KeyError, ValueError, OSError):
+        raise HTTPException(403, '共享结果不是当前正式版本，或来源、业务语义尚未通过核对') from None
     return record
+
+
+def authorize(request, share_id):
+    _require_oidc(request_context=True)
+    subject = verified_subject(request)
+    try:
+        record = get(KIND, share_id)
+    except KeyError:
+        raise HTTPException(404, '分享不存在') from None
+    return _authorize_record(record, subject)

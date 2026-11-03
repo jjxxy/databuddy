@@ -539,6 +539,11 @@ def submit(project_id, value, *, trusted_fields=None):
 def public_turn(turn):
     from .company_search import visible_answer,public_sources
     value={k:v for k,v in turn.items() if k in {'id','project_id','text','source_id','state','progress','created_at','finished_at','answer','result','download','plan','mode','session_id','interaction_mode','work_version','agent_trace','application_id','resume_available','outcome','resumed_from','resume_turn_id','suggestions','task_contract','verification','model_usage','knowledge_usage','context_metrics','task_plan','execution_node','model_id','model_name','web_citations'}}
+    slide_progress=turn.get('office_slide_progress')
+    if isinstance(slide_progress,dict):
+        from .actor_context import current_actor
+        if turn.get('actor_id','owner')==current_actor():
+            value['office_slide_progress']=slide_progress
     value['source_ids']=attachment_ids(turn)
     value['attached_sources']=attachment_details(turn)
     flow_ref=turn.get('business_flow')

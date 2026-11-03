@@ -145,7 +145,7 @@ TOOLS={
  'read_file':(FileRead,False,'读取项目文本文件；需用户启用模型读取项目内容'),
  'versions':(Empty,False,'列出整个项目跨所有会话的 Git 检查点'),
  'view_result':(ResultArgs,False,'获取指定分析的真实候选或正式结果预览；只读，不发布'),
- 'query_sql':(QueryArgs,False,'对项目已发布业务表执行单条只读 SELECT（最多200行）；禁止外部数据访问'),
+ 'query_sql':(QueryArgs,False,'对项目已发布业务表执行单条只读 SELECT（最多返回200行）；truncated 为真时不能将返回明细当作完整结果；禁止外部数据访问'),
  'export_result':(ResultArgs,False,'准备正式结果 CSV 下载链接'),
  'write_file':(FileWrite,True,'创建或修改工作区文本报告、计划、代码等。不会自动执行 Python/SQL文件；每轮变更自动提交Git'),
  'delete_file':(FilePath,True,'删除工作区文本文件，可通过项目检查点恢复'),
@@ -862,7 +862,10 @@ def execute(turn,step):
             from .models import AskInput
             question=turn.get('work_request',turn['text']) if turn.get('task_contract',{}).get('kind')=='query' else args['question']
             answer=ask(target['id'],AskInput(question=question))
-            result=result_card(target['id']);patch('turn',turn['id'],agent_result=result)
+            result=result_card(target['id'])
+            if answer.get('mode')=='llm_sql' and isinstance(answer.get('rows'),list):
+                result['query']={'columns':answer['columns'],'rows':answer['rows'],'truncated':answer['truncated'],'limit':answer['limit']}
+            patch('turn',turn['id'],agent_result=result)
             return dict(answer,result=result)
         if name=='run_data_application':name='refresh_data';args={'pipeline_id':target['id']}
         else:
@@ -952,7 +955,7 @@ def execute(turn,step):
         from .api import query
         from .models import QueryInput
         p=target_pipeline(turn,args);value=query(p['id'],QueryInput(sql=args['sql']))
-        card=result_card(p['id']);card['query']={'columns':value['columns'],'rows':value['rows']}
+        card=result_card(p['id']);card['query']={'columns':value['columns'],'rows':value['rows'],'truncated':value['truncated'],'limit':value['limit']}
         patch('turn',turn['id'],agent_result=card)
         return value
     if name=='export_result':

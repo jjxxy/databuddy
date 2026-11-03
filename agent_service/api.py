@@ -741,6 +741,14 @@ def project_versions(project_id:str,limit:int=100):
         assert_project_live(project_id)
         return workspace.history(project_id,max(1,min(limit,200)))
 
+@app.get('/api/projects/{project_id}/versions/compare',dependencies=[Depends(auth)])
+def project_version_compare(project_id:str,base:str,target:str,path:str|None=None):
+    from . import workspace,version_compare
+    from .workspace_lifecycle import assert_project_live
+    with workspace.lock(project_id):
+        assert_project_live(project_id)
+        return version_compare.compare(project_id,base,target,path)
+
 @app.get('/api/projects/{project_id}/files',dependencies=[Depends(auth)])
 def project_files(project_id:str):
     from . import workspace

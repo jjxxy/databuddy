@@ -127,7 +127,7 @@ def test_actual_authorized_focus_change_does_not_clear_a_failed_implicit_query(t
     def query(pipeline,value):
         attempts.append(pipeline)
         if len(attempts)==1:raise ValueError('Synthetic first application query failed')
-        return {'rows':[{'total':'123.45'}],'columns':['total'],'sql':value.sql}
+        return {'rows':[['123.45']],'columns':['total'],'sql':value.sql,'limit':200,'truncated':False,'result_complete':True,'completeness_scope':'executed_sql_result'}
     def refresh(current):
         assert current['forced_decision']['action']=='refresh'
         assert get('project',turn['project_id'])['pipeline_id']==second

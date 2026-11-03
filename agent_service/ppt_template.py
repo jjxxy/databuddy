@@ -7,9 +7,11 @@ import hashlib
 import io
 import re
 import zipfile
+from copy import deepcopy
 from xml.etree import ElementTree
 
 from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pydantic import Field
 
 from . import project_data
@@ -17,6 +19,8 @@ from .models import StrictModel
 
 MAX_BYTES=25*1024*1024
 MAX_EXPANDED=96*1024*1024
+MAX_SHAPES=5000
+MAX_GROUP_DEPTH=16
 
 class TemplateRef(StrictModel):
     source_id:str=Field(min_length=1,max_length=100)
@@ -60,51 +64,73 @@ def _template(pid,source_id,revision,expected_sha256):
     return raw
 
 
+def _text_shapes(slide):
+    """Enumerate text in nested groups without trusting shape IDs or depth.
+
+    Coordinates on a grouped child use its parent group's coordinate system,
+    not slide coordinates. The caller must not present them as slide positions.
+    """
+    count=0
+    def walk(shapes,groups):
+        nonlocal count
+        for shape in shapes:
+            count+=1
+            if count>MAX_SHAPES:raise ValueError('模板对象数量超过安全范围，请拆分模板')
+            if shape.shape_type==MSO_SHAPE_TYPE.GROUP:
+                if len(groups)>=MAX_GROUP_DEPTH:raise ValueError('模板组合层级超过安全范围')
+                yield from walk(shape.shapes,groups+(shape.shape_id,))
+            elif shape.has_text_frame:
+                yield shape,groups
+    yield from walk(slide.shapes,())
+
+
 def inspect(pid,source_id,revision,expected_sha256):
     raw=_template(pid,source_id,revision,expected_sha256);deck=Presentation(io.BytesIO(raw))
     if len(deck.slides)>120:raise ValueError('模板页数超过安全范围')
     slides=[];count=0;remaining=20000
     for number,slide in enumerate(deck.slides,1):
         shapes=[];text_shapes=[]
-        for s in slide.shapes:
-            if not s.has_text_frame:continue
+        for s,groups in _text_shapes(slide):
             count+=1
             if count>200:raise ValueError('模板文本位置超过安全范围，请拆分模板')
             text=s.text;shown=text[:min(2000,remaining)];remaining-=len(shown)
             entry={'shape_id':s.shape_id,'name':s.name[:200],'text':shown,'text_truncated':len(shown)<len(text),
-                   'left':s.left,'top':s.top,'width':s.width,'height':s.height}
+                   'left':s.left,'top':s.top,'width':s.width,'height':s.height,
+                   'group_path':list(groups),'coordinate_space':'group' if groups else 'slide'}
             (shapes if s.is_placeholder else text_shapes).append(entry)
         slides.append({'page':number,'placeholders':shapes,'text_shapes':text_shapes})
     return {'source_id':source_id,'revision':revision,'sha256':expected_sha256,'slides':slides,
-            'notice':'列出原有占位符和文本形状；只修改明确指定的位置，不自动推断数据或修改模板原件。'}
+            'notice':'列出原有占位符和文本形状；组合内对象坐标属于所在组合，不是幻灯片坐标。只修改明确指定的位置，不自动推断数据或修改模板原件。'}
 
 
 def render_bytes(pid,source_id,revision,expected_sha256,replacements):
     raw=_template(pid,source_id,revision,expected_sha256)
     if not isinstance(replacements,list) or not 1<=len(replacements)<=200:raise ValueError('请提供明确的模板填充内容')
     deck=Presentation(io.BytesIO(raw));seen=set()
+    if len(deck.slides)>120:raise ValueError('模板页数超过安全范围')
     for entry in replacements:
         if not isinstance(entry,dict) or set(entry)!={'page','shape_id','text'}:raise ValueError('填充项格式无效')
         page,shape_id,text=entry['page'],entry['shape_id'],entry['text']
         if type(page) is not int or not 1<=page<=len(deck.slides) or type(shape_id) is not int or not isinstance(text,str) or len(text)>1000 or any(ord(c)<32 and c not in '\n\t' for c in text):raise ValueError('填充内容或位置无效')
         key=(page,shape_id)
         if key in seen:raise ValueError('同一文本位置不能重复填充')
-        seen.add(key);matches=[s for s in deck.slides[page-1].shapes if s.shape_id==shape_id and s.has_text_frame]
+        seen.add(key);matches=[s for s,_ in _text_shapes(deck.slides[page-1]) if s.shape_id==shape_id]
         if len(matches)!=1:raise ValueError('模板占位符或文本位置不存在或不允许修改')
         frame=matches[0].text_frame
-        # Keep the first run's formatting; avoid flattening untouched shapes.
-        paragraphs=frame.paragraphs
-        first=paragraphs[0]
-        if first.runs:first.runs[0].text=text
-        else:first.add_run().text=text
-        for run in list(first.runs)[1:]:run.text=''
-        for para in paragraphs[1:]:
-            for run in para.runs:run.text=''
+        # Preserve first-paragraph and first-run formatting, but remove *all*
+        # previous content (including fields and soft breaks, not just runs).
+        # Old numbers must never survive in an ostensibly replaced text box.
+        first=frame.paragraphs[0]
+        properties=deepcopy(first.runs[0]._r.rPr) if first.runs and first.runs[0]._r.rPr is not None else None
+        frame.clear()
+        new_run=frame.paragraphs[0].add_run()
+        if properties is not None:new_run._r.insert(0,properties)
+        new_run.text=text
     out=io.BytesIO();deck.save(out);result=out.getvalue()
     check=Presentation(io.BytesIO(result))
     for entry in replacements:
-        shapes=[s for s in check.slides[entry['page']-1].shapes if s.shape_id==entry['shape_id']]
-        if len(shapes)!=1 or shapes[0].text_frame.paragraphs[0].runs[0].text!=entry['text']:raise ValueError('生成的模板内容未通过核对')
+        shapes=[s for s,_ in _text_shapes(check.slides[entry['page']-1]) if s.shape_id==entry['shape_id']]
+        if len(shapes)!=1 or shapes[0].text_frame.text!=entry['text']:raise ValueError('生成的模板内容未通过核对')
     # Recheck the source after generation to catch concurrent replacement.
     _template(pid,source_id,revision,expected_sha256)
     return result
@@ -124,7 +150,7 @@ def render(turn,source_id,revision,expected_sha256,name,replacements):
     entries=[x.model_dump() for x in value.replacements];pid=turn['project_id']
     identity={'project_id':pid,'template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
               'spec_sha256':hashlib.sha256(json.dumps(entries,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
-              'renderer':'ppt-template-v2','name':name+'.pptx'}
+              'renderer':'ppt-template-v3','name':name+'.pptx'}
     digest=hashlib.sha256(json.dumps(identity,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     aid='of_'+digest[:40];folder=office.DATA/'deliverables'/aid;file=folder/(name+'.pptx')
     identity['relative_path']=str(file.relative_to(office.DATA))

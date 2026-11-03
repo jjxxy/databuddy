@@ -24,6 +24,10 @@ def configured(monkeypatch):
         if project_id!=pid or result_id!='verified-result':raise ValueError('结果不属于当前项目')
         return None,dict(metadata)
     monkeypatch.setattr(project_data,'result_folder',result_folder)
+    monkeypatch.setattr(project_data,'ensure_candidate_bulk_allowed',lambda project_id,result_id:None)
+    from agent_service import jobs
+    monkeypatch.setattr(jobs,'get_job',lambda rid:{'project_id':pid,'kind':'data_workflow','status':'succeeded','target':'wid'})
+    monkeypatch.setattr(project_data,'owned',lambda pid,kind,wid:{'published_run':'verified-result'})
     yield pid,other,metadata
     # These unit tests stub a result that has no real run record. Do not leave
     # artificial active shares for later dependency-safe retention tests.
@@ -159,3 +163,96 @@ def test_unapproved_jwt_algorithm_is_rejected(configured):
     token=jwt.encode(payload,'a'*64,algorithm='HS256',headers={'kid':'fixed-key'})
     with pytest.raises(HTTPException) as error:sharing.verified_subject(request(token))
     assert error.value.status_code==401
+
+
+def test_existing_share_cannot_page_through_unaligned_fact_result(monkeypatch):
+    """A prior share is not a way to turn a limited preview into a full export."""
+    from fastapi.testclient import TestClient
+    from agent_service.api import app
+    from test_fact_semantic_gate import fact_source, workflow
+    from test_project_data import run
+
+    values={'NEXUS_AUTH_MODE':'oidc','OIDC_ISSUER':'https://identity.example.test',
+            'OIDC_AUDIENCE':'nexus','OIDC_JWKS_URL':'https://identity.example.test/jwks',
+            'OIDC_ALLOWED_SUBJECTS':'workspace-owner'}
+    for name,value in values.items():monkeypatch.setenv(name,value)
+    pid,sid=fact_source();wid,_=workflow(pid,sid);result=run(pid,wid);rid=result['id']
+    # The owner still has the deliberately limited preview.
+    assert project_data.read_result(pid,rid)['total']==2
+    with pytest.raises(ValueError,match='正式结果'):
+        sharing.create_share(pid,rid,['recipient-a'],'owner')
+    # Simulate a share that was created by an older release before this guard.
+    with monkeypatch.context() as old:
+        old.setattr(sharing,'_require_published_result',lambda pid,rid:None)
+        record=sharing.create_share(pid,rid,['recipient-a'],'owner',allow_download=True)
+    monkeypatch.setattr(sharing,'verified_subject',lambda req:'recipient-a')
+    client=TestClient(app)
+    try:
+        for route in ('', '?offset=1&limit=1', '/download'):
+            response=client.get('/api/shared-data/'+record['id']+route)
+            assert response.status_code==403,response.text
+            assert '语义' in response.text
+    finally:
+        delete(sharing.KIND,record['id'])
+
+
+def test_share_access_revalidates_changed_result_policy(configured,monkeypatch):
+    pid,_,_=configured;record=create(pid)
+    monkeypatch.setattr(sharing,'verified_subject',lambda req:'recipient-a')
+    assert sharing.authorize(request(),record['id'])['id']==record['id']
+    def blocked(pid,rid):raise ValueError('source review no longer valid')
+    monkeypatch.setattr(project_data,'ensure_candidate_bulk_allowed',blocked)
+    with pytest.raises(HTTPException) as error:sharing.authorize(request(),record['id'])
+    assert error.value.status_code==403
+    with pytest.raises(ValueError):create(pid)
+
+
+def test_only_current_published_result_is_shareable(monkeypatch):
+    from test_business_reports import real_result
+    from agent_service.jobs import get_job
+    from agent_service import workspace_lifecycle
+    values={'NEXUS_AUTH_MODE':'oidc','OIDC_ISSUER':'https://identity.example.test',
+            'OIDC_AUDIENCE':'nexus','OIDC_JWKS_URL':'https://identity.example.test/jwks',
+            'OIDC_ALLOWED_SUBJECTS':'workspace-owner'}
+    for name,value in values.items():monkeypatch.setenv(name,value)
+    pid,rid=real_result();run=get_job(rid)
+    with pytest.raises(ValueError,match='正式结果'):
+        sharing.create_share(pid,rid,['recipient-a'],'owner')
+    project_data.publish_result(pid,rid,run['commit'])
+    shared=sharing.create_share(pid,rid,['recipient-a'],'owner')
+    monkeypatch.setattr(sharing,'verified_subject',lambda req:'recipient-a')
+    assert sharing.authorize(request(),shared['id'])['result_id']==rid
+    workflow=get('data_workflow',run['target'])
+    patch('data_workflow',workflow['id'],published_run='new-version')
+    with pytest.raises(HTTPException) as error:sharing.authorize(request(),shared['id'])
+    assert error.value.status_code==403 and '正式版本' in str(error.value.detail)
+    patch('data_workflow',workflow['id'],published_run=rid)
+    workspace_lifecycle.delete_project(pid)
+    with pytest.raises(HTTPException):sharing.authorize(request(),shared['id'])
+    with pytest.raises(ValueError):sharing.create_share(pid,rid,['recipient-a'],'owner')
+
+
+def test_project_removal_cannot_miss_an_inflight_share(configured,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from agent_service import workspace_lifecycle
+    pid,_,_=configured;entered=Event();proceed=Event()
+    original=project_data.result_folder
+    def wait_in_gate(project_id,result_id):
+        entered.set()
+        assert proceed.wait(5)
+        return original(project_id,result_id)
+    monkeypatch.setattr(project_data,'result_folder',wait_in_gate)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        created=pool.submit(create,pid)
+        assert entered.wait(5)
+        deleting=pool.submit(workspace_lifecycle.delete_project,pid)
+        try:
+            assert not deleting.done()
+        finally:
+            proceed.set()
+        share=created.result(timeout=10)
+        deleting.result(timeout=10)
+    assert get(sharing.KIND,share['id'])['state']=='revoked'
+    monkeypatch.setattr(sharing,'verified_subject',lambda req:'recipient-a')
+    with pytest.raises(HTTPException):sharing.authorize(request(),share['id'])

@@ -1,0 +1,21 @@
+const {JSDOM}=require('jsdom');
+const fs=require('fs');const assert=require('assert/strict');
+(async()=>{
+ const dom=new JSDOM('<!doctype html><dialog id="dialog" open><div id="version-list"></div></dialog>',{runScripts:'outside-only',url:'https://example.test'});
+ const w=dom.window;w.eval(fs.readFileSync('agent_service/static/version-compare.js','utf8'));
+ const old='a'.repeat(40),latest='b'.repeat(40),dialog=w.document.querySelector('#dialog');let current=true,requests=[],resolve;
+ const api=path=>{requests.push(path);return new Promise(r=>resolve=r)};
+ const versions=[{commit:latest,reason:'<img src=x onerror=alert(1)>'},{commit:old,reason:'旧版本'}];
+ w.nexusVersionCompare.mount({dialog,versions,projectId:'p_1',api,isCurrent:()=>current});
+ assert.equal(dialog.querySelectorAll('img').length,0);
+ const root=dialog.querySelector('[data-version-compare]'),button=root.querySelector('button');button.click();
+ assert(requests[0].includes('base='+old)&&requests[0].includes('target='+latest));
+ resolve({base:old,target:latest,files:[{path:'files/<script>.txt',status:'M'}]});await new Promise(r=>setTimeout(r,0));
+ assert.equal(root.querySelectorAll('script').length,0);root.querySelector('li button').click();
+ assert(requests[1].includes('path=files%2F%3Cscript%3E.txt'));
+ resolve({base:old,target:latest,file:{path:'files/<script>.txt',kind:'text',note:'逐行比较',diff:'-100\n+120\n'}});await new Promise(r=>setTimeout(r,0));
+ assert(root.textContent.includes('+120'));assert.equal(root.querySelectorAll('script').length,0);
+ button.click();current=false;resolve({base:old,target:latest,files:[{path:'stale project file',status:'M'}]});await new Promise(r=>setTimeout(r,0));
+ assert(!root.textContent.includes('stale project file'));
+ console.log('version comparison binds both commits, safely renders text and rejects stale responses');
+})().catch(e=>{console.error(e);process.exit(1)});

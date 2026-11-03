@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const root=path.resolve(__dirname,'../../agent_service/static');
 const dom=new JSDOM(fs.readFileSync(path.join(root,'index.html'),'utf8'),{url:'https://nexus.test/',runScripts:'outside-only'});
 const w=dom.window;let liveTimer=null,clock=Date.now();w.matchMedia=()=>({matches:false,addEventListener(){}});w.Date.now=()=>clock;w.setInterval=(fn,ms)=>{if(ms===1000)liveTimer=fn;return 0};
-w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testProgress={workPlan,progressMessage,elapsedBadge,updateElapsed,updateMessages,operationTrace,renderThread};');
+w.eval(fs.readFileSync(path.join(root,'app.js'),'utf8')+';window.testProgress={workPlan,progressMessage,elapsedBadge,updateElapsed,updateMessages,operationTrace,renderThread,officeSlides};');
 const view=w.document.createElement('div');
 view.innerHTML=w.testProgress.workPlan({task_plan:{steps:['读取资料','核对金额','输出报告'],completed_steps:[0]}});
 assert.equal(view.querySelectorAll('.work-plan li').length,3);
@@ -16,6 +16,19 @@ view.innerHTML=w.testProgress.workPlan({state:'agent',task_plan:{steps:['读取�
 assert.equal(view.querySelectorAll('.plan-active').length,1);assert(view.textContent.includes('Agent 正在处理'));assert(view.textContent.includes('已标记 1 / 3 步'));assert(view.textContent.includes('需要币种'));
 view.innerHTML=w.testProgress.workPlan({state:'done',task_plan:{steps:['读取资料','核对金额'],completed_steps:[0],current_step:1}});assert.equal(view.querySelectorAll('.plan-active').length,0,'terminal tasks cannot show an active step');
 view.innerHTML=w.testProgress.workPlan({state:'agent',task_plan:{steps:['读取资料','核对金额'],completed_steps:[0]}});assert.equal(view.querySelectorAll('.plan-active').length,0,'do not guess current step');
+const page={number:1,title:'<img src=x onerror=alert(1)>',lines:['华东 | 123.45'],omitted:false};
+const pending={state:'agent_tool',office_slide_progress:{phase:'building',total:2,pages:[page]}};
+view.innerHTML=w.testProgress.officeSlides(pending);
+assert.equal(view.querySelectorAll('.office-slide-page').length,1);
+assert.equal(view.querySelector('img'),null,'slide contents remain escaped');
+assert(view.textContent.includes('已构建 1 / 2 页')&&view.textContent.includes('华东 | 123.45'));
+assert(view.textContent.includes('非最终版式或财经核验'));
+assert(w.testProgress.progressMessage(pending).includes('1 / 2'));
+view.innerHTML=w.testProgress.officeSlides({state:'done',office_slide_progress:{phase:'building',total:2,pages:[page]}});
+assert(view.textContent.includes('生成未完成')&&!view.textContent.includes('已通过文件结构核验'));
+view.innerHTML=w.testProgress.officeSlides({state:'agent',office_slide_progress:{phase:'verified',total:1,pages:[page]}});
+assert(view.textContent.includes('已通过文件结构核验'));
+assert.equal(w.testProgress.officeSlides({office_slide_progress:{phase:'building',total:1,pages:[]}}),'');
 assert.equal(w.testProgress.progressMessage({agent_trace:[{tool:'inspect_source_tables',status:'started'}]}),'正在查看资料结构');
 assert.equal(w.testProgress.progressMessage({agent_trace:[{tool:'unknown_internal_name',status:'started'}]}),'正在处理工作步骤');
 view.innerHTML=w.testProgress.operationTrace({agent_trace:Array.from({length:9},()=>({tool:'read_tool_result',status:'done'}))});

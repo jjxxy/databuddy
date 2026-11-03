@@ -189,6 +189,10 @@ def test_scoped_share_identity_never_grants_owner_routes(client, monkeypatch):
     project = put('project', {'name': 'private owner project', 'created_at': now()}, 'p_' + uid())
     metadata = {'plan_sha256': 'a' * 64, 'handoff_sha256': 'b' * 64}
     monkeypatch.setattr(project_data, 'result_folder', lambda pid, rid: (None, metadata))
+    monkeypatch.setattr(project_data, 'ensure_candidate_bulk_allowed', lambda pid, rid: None)
+    from agent_service import jobs
+    monkeypatch.setattr(jobs, 'get_job', lambda rid: {'project_id': project['id'], 'kind': 'data_workflow', 'status': 'succeeded', 'target': 'wid'})
+    monkeypatch.setattr(project_data, 'owned', lambda pid, kind, wid: {'published_run': 'one-result'})
     monkeypatch.setattr(project_data, 'read_result', lambda pid, rid, offset, limit:
                         {'result_id': rid, 'rows': [{'amount': '1.23'}]})
     share = data_sharing.create_share(project['id'], 'one-result', ['recipient'], 'owner-a')

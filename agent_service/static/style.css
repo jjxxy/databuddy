@@ -175,3 +175,5 @@ body.workflow-expanded #workflow-panel nexus-flow-graph{min-height:55vh}
 .workflow-debug-progress>div{padding:9px 0;border-bottom:1px solid #e1e9e5}
 .workflow-debug-progress table{border-collapse:collapse;margin-top:8px;max-width:100%}
 .workflow-debug-progress th,.workflow-debug-progress td{padding:6px 9px;border:1px solid #d9e4de;text-align:left;white-space:nowrap}
+
+.office-slide-progress{margin:12px 0;padding:14px;border:1px solid #dce6e1;border-radius:12px;background:#f8fbf9}.office-slide-progress-heading{font-weight:650;color:#20473b}.office-slide-progress-heading small{font-weight:400;color:#667972}.office-slide-progress>p{font-size:12px;color:#667972;margin:8px 0}.office-slide-pages{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.office-slide-page{min-width:0;padding:14px;border:1px solid #dce6e1;border-radius:8px;background:white;overflow-wrap:anywhere}.office-slide-page-number{font-size:12px;color:#638574;margin-bottom:6px}.office-slide-page ul{padding-left:18px;margin:8px 0;font-size:13px;white-space:pre-wrap}.office-slide-page small{color:#6d7973}

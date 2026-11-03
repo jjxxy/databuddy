@@ -39,7 +39,7 @@ def test_registered_template_artifact_can_be_downloaded(tmp_path,monkeypatch):
     result=ppt_template.render(turn,'s1',1,sha,'经营汇报',[{'page':1,'shape_id':slide.shapes.title.shape_id,'text':'经营收入 118.15 元'}])
     path,record=office.artifact(pid,result['artifact_id'])
     assert Presentation(path).slides[0].shapes.title.text=='经营收入 118.15 元'
-    assert record['template_sha256']==sha and result['visual_validation'] is False
+    assert record['template_sha256']==sha and record['renderer']=='ppt-template-v3' and result['visual_validation'] is False
     assert template.read_bytes()==raw
     with pytest.raises(ValueError):office.artifact('other',result['artifact_id'])
     engine.dispose()
@@ -63,6 +63,49 @@ def test_template_fills_explicit_text_boxes_and_preserves_other_shapes(tmp_path,
     assert shapes[box.shape_id].text=='收入 118.15 元' and shapes[label.shape_id].text=='华东'
     assert shapes[untouched.shape_id].text=='不修改的说明' and path.read_bytes()==raw
     style=shapes[box.shape_id].text_frame.paragraphs[0].runs[0].font;assert style.bold and style.size==Pt(24)
+
+
+def test_replacement_removes_old_breaks_fields_and_paragraphs(tmp_path,monkeypatch):
+    """A replacement cannot silently keep stale financial text in the shape."""
+    from pptx.oxml.xmlchemy import OxmlElement
+    from pptx.util import Inches,Pt
+    path=tmp_path/'template.pptx';deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[6])
+    shape=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(6),Inches(2));frame=shape.text_frame
+    paragraph=frame.paragraphs[0];run=paragraph.add_run();run.text='旧收入 999 元';run.font.bold=True;run.font.size=Pt(24)
+    paragraph.add_line_break();paragraph.add_run().text='旧利润 888 元'
+    field=OxmlElement('a:fld');field.set('id','{A3616E26-1281-4E38-A101-D3E2D3370C98}');field.set('type','slidenum')
+    field_text=OxmlElement('a:t');field_text.text='旧字段 777';field.append(field_text);paragraph._p.append(field)
+    frame.add_paragraph().text='旧结论 666';deck.save(path)
+    raw=path.read_bytes();sha=hashlib.sha256(raw).hexdigest()
+    source={'id':'s1','project_id':'p1','name':'template.pptx','kind':'file','revision':1,'content_hash':sha}
+    monkeypatch.setattr(ppt_template.project_data,'owned',lambda *_:source)
+    monkeypatch.setattr(ppt_template.project_data,'source_path',lambda _:path)
+    text='新收入 118.15 元\n按不含税口径'
+    result=ppt_template.render_bytes('p1','s1',1,sha,[{'page':1,'shape_id':shape.shape_id,'text':text}])
+    changed=Presentation(io.BytesIO(result)).slides[0].shapes[0]
+    assert changed.text_frame.text==text
+    assert len(changed.text_frame.paragraphs)==1 and len(changed.text_frame.paragraphs[0].runs)==1
+    assert changed.text_frame.paragraphs[0].runs[0].font.bold and changed.text_frame.paragraphs[0].runs[0].font.size==Pt(24)
+    assert path.read_bytes()==raw
+
+
+def test_template_inspects_and_fills_nested_group_text(tmp_path,monkeypatch):
+    from pptx.util import Inches
+    path=tmp_path/'group-template.pptx';deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[6])
+    group=slide.shapes.add_group_shape();nested=group.shapes.add_group_shape()
+    target=nested.shapes.add_textbox(Inches(1),Inches(1),Inches(4),Inches(1));target.text='旧金额 10'
+    other=group.shapes.add_textbox(Inches(1),Inches(2),Inches(4),Inches(1));other.text='保留项目'
+    deck.save(path);raw=path.read_bytes();sha=hashlib.sha256(raw).hexdigest()
+    source={'id':'s1','project_id':'p1','name':'group-template.pptx','kind':'file','revision':1,'content_hash':sha}
+    monkeypatch.setattr(ppt_template.project_data,'owned',lambda *_:source)
+    monkeypatch.setattr(ppt_template.project_data,'source_path',lambda _:path)
+    items=ppt_template.inspect('p1','s1',1,sha)['slides'][0]['text_shapes']
+    item=next(i for i in items if i['text']=='旧金额 10')
+    assert item['group_path']==[group.shape_id,nested.shape_id] and item['coordinate_space']=='group'
+    result=ppt_template.render_bytes('p1','s1',1,sha,[{'page':1,'shape_id':target.shape_id,'text':'新金额 20'}])
+    shapes=Presentation(io.BytesIO(result)).slides[0].shapes[0].shapes
+    assert shapes[0].shapes[0].text=='新金额 20' and shapes[1].text=='保留项目'
+    assert path.read_bytes()==raw
 
 
 def test_template_tools_are_unavailable_to_scoped_delegation():

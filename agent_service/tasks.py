@@ -141,7 +141,12 @@ def verify(turn):
             try:
                 if obs.get('file_hashes') and all(hashlib.sha256(read_file(turn['project_id'],path).encode()).hexdigest()==digest for path,digest in obs['file_hashes'].items()):receipts.append({'kind':'execution','execution_id':obs['execution_id'],'input_sha256':obs['input_sha256']})
             except (ValueError,FileNotFoundError):pass
-        if (s['tool']=='query_sql' and isinstance(obs.get('rows'),list)) or (s['tool']=='ask_data_application' and (obs.get('mode')=='llm_sql' or obs.get('scope')=='entire_current_version')):
+        # A prefix is useful to inspect but cannot prove completion of a
+        # request for the query result. Historical rows without completeness
+        # metadata also need to be rerun rather than assumed complete.
+        complete_query=(obs.get('result_complete') is True and obs.get('truncated') is False and obs.get('completeness_scope')=='executed_sql_result' and isinstance(obs.get('rows'),list))
+        grounded_count=(obs.get('scope')=='entire_current_version')
+        if (s['tool']=='query_sql' and complete_query) or (s['tool']=='ask_data_application' and ((obs.get('mode')=='llm_sql' and complete_query) or grounded_count)):
             receipts.append({'kind':'query','tool':s['tool'],'sql':obs.get('sql') or s['arguments'].get('sql'),'run_id':(obs.get('result') or {}).get('run_id')})
         if s['tool']=='render_office_artifact' and obs.get('artifact_id'):
             from .office import artifact
@@ -196,7 +201,8 @@ def verify(turn):
         valid=(kind_effect=='publish' and p.get('published_run')==effect.get('run_id')) or (kind_effect=='schedule' and (p.get('cron')==effect.get('cron') or (p.get('pending_schedule') or {}).get('cron')==effect.get('cron'))) or (kind_effect=='pause' and not p.get('cron') and not p.get('pending_schedule'))
         if valid:receipts.append(effect)
     evidence=turn.get('data_evidence') or {}
-    if evidence.get('mode')=='llm_sql' or evidence.get('scope')=='entire_current_version':receipts.append({'kind':'query','sql':evidence.get('sql'),'run_id':evidence.get('run_id')})
+    if (evidence.get('mode')=='llm_sql' and evidence.get('result_complete') is True and evidence.get('truncated') is False and evidence.get('completeness_scope')=='executed_sql_result' and isinstance(evidence.get('rows'),list)) or evidence.get('scope')=='entire_current_version':
+        receipts.append({'kind':'query','sql':evidence.get('sql'),'run_id':evidence.get('run_id')})
     if set(contract.get('requirements',[kind])) & {'schedule','publish','pause'}:
         for s in done:
             mapping={'schedule_daily':'schedule','schedule_updates':'schedule','publish_result':'publish','pause_updates':'pause'}

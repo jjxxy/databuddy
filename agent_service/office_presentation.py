@@ -196,7 +196,7 @@ def _signed_bar(slide,geometry,index,section):
     shape.line.fill.background()
 
 
-def build(spec,path):
+def build(spec,path,*,on_slide=None):
     from pptx import Presentation
     from pptx.util import Inches,Pt
     from pptx.enum.text import MSO_ANCHOR,PP_ALIGN
@@ -213,6 +213,7 @@ def build(spec,path):
     _rect(cover,.82,1.05,.8,.05,'80C5A2')
     _text(cover,.82,.57,8,.35,'业务报告',14,'C8E5D5')
     _text(cover,.82,6.65,10,.3,'内容与业务口径请结合实际资料复核',11,'C8E5D5')
+    if on_slide:on_slide(1,len(pages)+1,cover)
     for page_no,page in enumerate(pages,2):
         section=spec.sections[page['section']];slide=deck.slides.add_slide(deck.slide_layouts[5]);_background(slide,'FFFFFF')
         _rect(slide,0,0,.12,7.5,'2A7960')
@@ -309,6 +310,7 @@ def build(spec,path):
         _rect(slide,.7,6.83,11.93,.012,'D8E5DF')
         _text(slide,.72,6.93,10.8,.25,'内容与业务口径请结合实际资料复核',10,'6A8077')
         _text(slide,12.0,6.93,.55,.25,str(page_no),10,'6A8077')
+        if on_slide:on_slide(page_no,len(pages)+1,slide)
     deck.save(path)
 
 
