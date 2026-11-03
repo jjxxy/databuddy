@@ -95,6 +95,8 @@ def test_shared_workspace_token_does_not_enable_scoped_sharing(configured,monkey
     monkeypatch.setenv('NEXUS_AUTH_MODE','token')
     monkeypatch.setattr(sharing,'verified_subject',lambda r:'recipient-a')
     with pytest.raises(ValueError,match='OIDC'):create(pid)
+    with pytest.raises(ValueError,match='OIDC'):sharing.list_shares(pid)
+    with pytest.raises(ValueError,match='OIDC'):sharing.revoke(pid,record['id'],'workspace-owner')
     with pytest.raises(HTTPException) as error:sharing.authorize(request('workspace-token'),record['id'])
     assert error.value.status_code==401
 
@@ -105,6 +107,26 @@ def test_changed_identity_configuration_does_not_regrant_existing_share(configur
     monkeypatch.setenv('OIDC_ISSUER','https://other.example.test')
     with pytest.raises(HTTPException) as error:sharing.authorize(request(),record['id'])
     assert error.value.status_code==403
+
+
+@pytest.mark.parametrize('field,replacement',[('OIDC_ISSUER','https://other.example.test'),('OIDC_AUDIENCE','other-audience')])
+def test_data_share_management_is_scoped_to_original_identity_domain(configured,monkeypatch,field,replacement):
+    import os
+    pid,_,_=configured;record=create(pid)
+    original=os.environ[field];monkeypatch.setenv(field,replacement)
+    assert sharing.list_shares(pid)==[]
+    with pytest.raises(KeyError):sharing.revoke(pid,record['id'],'workspace-owner')
+    assert get(sharing.KIND,record['id'])['state']=='active'
+    monkeypatch.setenv(field,original)
+    assert sharing.list_shares(pid)[0]['id']==record['id']
+    assert sharing.revoke(pid,record['id'],'workspace-owner')['state']=='revoked'
+
+
+def test_management_does_not_open_identity_incomplete_records(configured):
+    pid,_,_=configured;record=create(pid)
+    patch(sharing.KIND,record['id'],audience=None)
+    assert sharing.list_shares(pid)==[]
+    with pytest.raises(KeyError):sharing.revoke(pid,record['id'],'workspace-owner')
 
 
 def test_naive_or_malformed_share_expiration_fails_closed(configured,monkeypatch):

@@ -4,7 +4,7 @@ import json
 import pytest
 
 from agent_service import conversation, provider
-from agent_service.store import get, patch
+from agent_service.store import delete, get, now, patch, put, uid
 from test_model_plan_recovery import choice, model
 from test_opencode_agent_bridge import turn
 
@@ -15,11 +15,31 @@ def legacy_turn(turn, model, monkeypatch):
     monkeypatch.setattr(conversation, 'LLM_BASE', config['base_url'])
     monkeypatch.setattr(conversation, 'LLM_MODEL', config['model'])
     monkeypatch.setattr(conversation, 'LLM_KEY', config['api_key'])
+    # Other test modules may intentionally leave queued turns in the shared
+    # test database. This fixture tests the retry gate for this one turn; do
+    # not let unrelated projects consume its controlled provider responses.
+    real_all_items=conversation.all_items
+    monkeypatch.setattr(conversation,'all_items',lambda kind: [item for item in real_all_items(kind)
+        if isinstance(item,dict) and item.get('id')==turn['id']] if kind=='turn' else real_all_items(kind))
     # Exercise the actual legacy routing code while preserving tick's durable
     # retry gate and the real provider's HTTP status handling.
     monkeypatch.setattr(conversation, 'handle', conversation.legacy_handle)
     current=patch('turn',turn['id'],state='queued',text='请解释这项数据处理请求')
     return current, requests, responses
+
+
+def test_retry_fixture_is_isolated_from_unrelated_queued_test_data(legacy_turn):
+    turn,requests,responses=legacy_turn
+    pid='p_'+uid();tid='t_'+uid()
+    put('project',{'name':'unrelated queued fixture'},pid)
+    put('turn',{'project_id':pid,'state':'queued','created_at':now(),'text':'unrelated'},tid)
+    try:
+        responses.append(429)
+        conversation.tick()
+        assert len(requests)==1 and get('turn',turn['id'])['legacy_model_retry_count']==1
+        assert get('turn',tid)['state']=='queued'
+    finally:
+        delete('turn',tid);delete('project',pid)
 
 
 def test_429_is_retried_without_blocking_and_original_request_finishes(legacy_turn):

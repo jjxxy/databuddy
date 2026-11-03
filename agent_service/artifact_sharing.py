@@ -54,6 +54,13 @@ def _public(row):
     return result
 
 
+def _same_identity_domain(row):
+    # Administrative access to retained comments and share metadata must use
+    # the same identity domain as recipient access. The service data directory
+    # can outlive a change of issuer, audience, or authentication mode.
+    return identity._same_identity_domain(row)
+
+
 def create(pid,value,actor):
     value=ShareInput.model_validate(value)
     if value.confirm_content is not True:raise ValueError('请先核对分享文件和接收对象')
@@ -68,6 +75,7 @@ def create(pid,value,actor):
         try:old=get(KIND,ident)
         except KeyError:old=None
         if old:
+            if not _same_identity_domain(old):raise ValueError('请求编号属于不同身份域，请重新发起分享')
             if old.get('project_id')!=pid or old.get('owner_hash')!=owner or old.get('request_sha256') not in ([body_hash,legacy_hash] if not value.allow_comments and 'allow_comments' not in old else [body_hash]):
                 raise ValueError('请求编号已用于不同的分享')
             return _public(old)
@@ -97,13 +105,15 @@ def create(pid,value,actor):
 
 def list_shares(pid):
     from .store import all_items
+    identity._require_oidc()
     assert_project_live(pid)
-    rows=[row for row in all_items(KIND) if row.get('project_id')==pid]
+    rows=[row for row in all_items(KIND) if row.get('project_id')==pid and _same_identity_domain(row)]
     rows.sort(key=lambda x:(x.get('created_at',''),x.get('id','')),reverse=True)
     return {'items':[_public(row) for row in rows[:500]],'truncated':len(rows)>500}
 
 
 def revoke(pid,sid,actor='owner'):
+    identity._require_oidc()
     actor_hash=identity._actor(actor)
     with workspace.lock(pid),_project_lock(pid):
         assert_project_live(pid)
@@ -111,7 +121,7 @@ def revoke(pid,sid,actor='owner'):
             row=connection.execute(select(items.c.body).where(items.c.kind==KIND,items.c.id==sid).with_for_update()).first()
             if not row:raise KeyError(sid)
             record=json.loads(row[0])
-            if record.get('project_id')!=pid:raise KeyError(sid)
+            if record.get('project_id')!=pid or not _same_identity_domain(record):raise KeyError(sid)
             if record.get('state')!='revoked':
                 record.update(state='revoked',revoked_at=identity._utcnow().isoformat(),
                               revoked_by_hash=actor_hash,version=record.get('version',0)+1)
@@ -253,6 +263,7 @@ def list_comments(request,sid,offset=0,limit=50):
 
 def list_owner_comments(pid,sid,actor,offset=0,limit=50):
     if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise HTTPException(400,'评论分页参数无效')
+    identity._require_oidc(request_context=True)
     owner=identity._actor(actor)
     with workspace.lock(pid),_project_lock(pid):
         assert_project_live(pid)
@@ -260,7 +271,7 @@ def list_owner_comments(pid,sid,actor,offset=0,limit=50):
             row=connection.execute(select(items.c.body).where(items.c.kind==KIND,items.c.id==sid).with_for_update()).first()
             if not row:raise HTTPException(404,'分享不存在')
             record=json.loads(row[0])
-            if record.get('project_id')!=pid or not secrets.compare_digest(record.get('owner_hash',''),owner):raise HTTPException(404,'分享不存在')
+            if record.get('project_id')!=pid or not _same_identity_domain(record) or not secrets.compare_digest(record.get('owner_hash',''),owner):raise HTTPException(404,'分享不存在')
             if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
             comments=[_comment_public(item,record) for item in _comment_rows(connection,sid)]
             comments.sort(key=lambda x:(x['created_at'],x['id']))

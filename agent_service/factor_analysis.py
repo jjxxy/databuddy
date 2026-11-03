@@ -10,7 +10,7 @@ from .models import StrictModel
 from .data_workflows import NAME, TableSchema, decimal_value
 from .result_delivery import read_all_handoff
 from .config import MAX_ROWS
-from .interactive_analysis import _checked_grain, _as_dimension, MAX_ANALYSIS_BYTES, MAX_GROUPS
+from .interactive_analysis import ExploreFilter, _checked_grain, _as_dimension, _missing, MAX_ANALYSIS_BYTES, MAX_GROUPS
 
 
 class FactorRequest(StrictModel):
@@ -23,12 +23,14 @@ class FactorRequest(StrictModel):
     current_period: str = Field(pattern=r'^\d{4}-(?:0[1-9]|1[0-2])$')
     amount_unit: str = Field(min_length=1, max_length=80)
     group_by: list[str] = Field(default_factory=list, max_length=2)
+    filters: list[ExploreFilter] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode='after')
     def validate_fields(self):
         names=[self.quantity_before,self.quantity_after,self.price_before,self.price_after]
         if len(set(names))!=4:raise ValueError('数量及单价的四个字段必须不同')
         if len(set(self.group_by))!=len(self.group_by):raise ValueError('分组字段不能重复')
+        if len({f.column for f in self.filters})!=len(self.filters):raise ValueError('同一字段不能重复筛选')
         try:
             before=date.fromisoformat(self.baseline_period+'-01');after=date.fromisoformat(self.current_period+'-01')
         except ValueError:raise ValueError('月份必须是有效日历月份') from None
@@ -62,6 +64,17 @@ def evaluate(table, value):
         if name not in fields or fields[name].data_type not in ('text','date','boolean'):
             raise ValueError('分组仅支持已声明的文本、日期或布尔字段')
     _checked_grain(rows,schema)
+    input_rows=len(rows)
+    for f in value.filters:
+        col=fields.get(f.column)
+        if not col or col.data_type not in ('text','date','boolean'):
+            raise ValueError('筛选仅支持已声明的文本、日期或布尔字段')
+        if f.value is not None and ((col.data_type=='boolean' and type(f.value) is not bool) or (col.data_type!='boolean' and not isinstance(f.value,str))):
+            raise ValueError('筛选值与字段类型不一致')
+        if not _missing(f.value) and any(_missing(row.get(f.column)) for row in rows):
+            raise ValueError('筛选字段存在空值，无法判断是否属于所选范围；请先核对空值')
+    rows=[row for row in rows if all(_as_dimension(row.get(f.column),fields[f.column])==f.value for f in value.filters)]
+    if not rows:raise ValueError('筛选后没有数据，未将缺失结果当作零')
     groups={}
     with localcontext() as ctx:
         ctx.prec=120
@@ -85,7 +98,7 @@ def evaluate(table, value):
             item=groups[key]; delta=item['after']-item['before']
             if item['quantity_effect']+item['price_effect']!=delta:raise ValueError('因素分解未平衡，不能交付')
             result.append({'values':list(key),'count':item['count'],**{k:format(item[k],'f') for k in ('before','after','quantity_effect','price_effect')},'delta':format(delta,'f')})
-    return {'group_by':value.group_by,'groups':result,'total_rows':len(rows),'unit':value.amount_unit,
+    return {'group_by':value.group_by,'filters':[f.model_dump() for f in value.filters], 'groups':result,'total_rows':len(rows),'input_rows':input_rows,'unit':value.amount_unit,
             'baseline_period':value.baseline_period,'current_period':value.current_period,
             'columns':names,'formula':{'quantity_effect':'(本期数量-基准数量)×基准单价',
             'price_effect':'本期数量×(本期单价-基准单价)','delta':'本期数量×本期单价-基准数量×基准单价'},

@@ -7,7 +7,7 @@ import re
 from datetime import date
 from decimal import Decimal, localcontext
 from typing import Literal
-from pydantic import Field, model_validator
+from pydantic import Field, StrictBool, StrictStr, model_validator
 
 from .models import StrictModel
 from .data_workflows import NAME, TableSchema, decimal_value
@@ -22,7 +22,7 @@ MAX_GROUP_PAGE = 500
 
 class ExploreFilter(StrictModel):
     column: str = Field(pattern=NAME)
-    value: str | bool | None
+    value: StrictStr | StrictBool | None
 
     @model_validator(mode='after')
     def validate_value(self):

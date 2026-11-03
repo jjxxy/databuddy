@@ -99,3 +99,42 @@ def test_project_deletion_waits_for_factor_snapshot(monkeypatch):
         assert analysis.result(timeout=10)['groups'][0]['delta']=='22'
         removal.result(timeout=10)
     with pytest.raises(ValueError,match='回收站'):module.analyze(pid,job['id'],body)
+
+
+def test_filter_uses_exact_value_and_full_grain_and_discloses_input_range():
+    table=sample();body={**request(),'group_by':['branch'],'filters':[{'column':'branch','value':'东区'}]}
+    result=evaluate(table,body)
+    assert result['input_rows']==2 and result['total_rows']==1
+    assert result['filters']==[{'column':'branch','value':'东区'}]
+    assert result['groups'][0]['before']=='30.00' and result['groups'][0]['delta']=='18.00'
+    table['rows'][1]['branch']='东区'
+    with pytest.raises(ValueError,match='粒度重复'):evaluate(table,body)
+    table=sample();table['rows'][1]['branch']=None
+    with pytest.raises(ValueError,match='粒度存在空值'):evaluate(table,body)
+    table=sample();body['filters'][0]['value']='不存在'
+    with pytest.raises(ValueError,match='筛选后没有数据'):evaluate(table,body)
+
+
+def test_boolean_filter_is_strict_and_missing_never_silently_excluded():
+    table=sample();table['schema']['columns'].append({'name':'active','data_type':'boolean','meaning':'是否有效'})
+    table['rows'][0]['active']=True;table['rows'][1]['active']=False
+    body={**request(),'filters':[{'column':'active','value':True}]}
+    assert evaluate(table,body)['total_rows']==1
+    with pytest.raises(ValueError):evaluate(table,{**body,'filters':[{'column':'active','value':1}]})
+    with pytest.raises(ValueError,match='筛选值与字段类型'):evaluate(table,{**body,'filters':[{'column':'active','value':'true'}]})
+    with pytest.raises(ValueError,match='同一字段'):evaluate(table,{**body,'filters':body['filters']*2})
+    table['rows'][1]['active']=None
+    with pytest.raises(ValueError,match='筛选字段存在空值'):evaluate(table,body)
+
+
+def test_http_factor_filter_keeps_fixed_result_and_range():
+    from fastapi.testclient import TestClient
+    from agent_service.api import app
+    from agent_service.config import TOKEN
+    from agent_service import project_data as data
+    pid,job,sha=adopted_factor();data.publish_result(pid,job['id'],job['commit'])
+    body={**request(),'expected_handoff_sha256':sha,'filters':[{'column':'branch','value':'East'}]}
+    path=f'/api/projects/{pid}/data-results/{job["id"]}/factor-analysis'
+    response=TestClient(app).post(path,json=body,headers={'Authorization':'Bearer '+TOKEN})
+    assert response.status_code==200,response.text
+    assert response.json()['total_rows']==1 and response.json()['input_rows']==2 and response.json()['groups'][0]['delta']=='18'

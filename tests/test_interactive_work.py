@@ -95,10 +95,11 @@ def test_media_timeout_does_not_replay_billable_request(interactive,monkeypatch)
 
 
 def test_image_urls_and_truncated_png_are_not_successful_files(interactive,monkeypatch):
+    before={item['id'] for item in all_items('media_artifact')}
     monkeypatch.setattr(media,'_request',lambda *a,**k:b'{"data":[{"url":"http://127.0.0.1/secret"}]}')
     with pytest.raises(ValueError,match='有效PNG'):media.execute(interactive,'generate_image',{'prompt':'蓝色卡片'})
     with pytest.raises(ValueError):media.verify_image(png()[:25])
-    assert not all_items('media_artifact')
+    assert {item['id'] for item in all_items('media_artifact')}==before
 
 
 def test_media_transport_pins_dns_keeps_secret_on_fixed_endpoint_and_rejects_redirect(interactive,monkeypatch):

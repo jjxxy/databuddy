@@ -5,6 +5,7 @@ of the slide, a final artifact, or a financial/visual validation receipt.
 """
 from sqlalchemy import select, update
 from contextlib import contextmanager
+import re
 from . import store
 
 _MAX_PREVIEW_CHARS = 2000
@@ -27,14 +28,33 @@ def _slide_preview(number, slide):
         lines.append(value)
         size += len(value)
 
-    for shape in slide.shapes:
+    shapes=list(slide.shapes)
+    skip_next=False
+    for index,shape in enumerate(shapes):
+        if skip_next:
+            skip_next=False
+            continue
         if shape.has_table:
+            following=shapes[index+1] if index+1<len(shapes) else None
+            if (following is not None and following.has_text_frame
+                    and re.fullmatch(r'完整数据：\d+ 行 · 本页 \d+–\d+ 行 · 列组 \d+/\d+',following.text)):
+                # Put the real page scope before any preview rows so even a
+                # long table does not hide that this is only one portion.
+                add(following.text);skip_next=True
             for row in shape.table.rows:
                 add(' | '.join(cell.text for cell in row.cells))
         elif shape.has_text_frame and shape.name.startswith((
                 'nexus:text:', 'nexus:chart-title:', 'nexus:chart-unit:',
                 'nexus:chart-label:', 'nexus:chart-value:')):
-            add(shape.text)
+            # The chart's label and exact original value are created as
+            # adjacent, independently editable shapes. Only pair matching
+            # identifiers; never guess a value from a chart or another row.
+            suffix=shape.name.removeprefix('nexus:chart-label:') if shape.name.startswith('nexus:chart-label:') else None
+            following=shapes[index+1] if suffix is not None and index+1<len(shapes) else None
+            if following is not None and following.has_text_frame and following.name=='nexus:chart-value:'+suffix:
+                add(shape.text+'：'+following.text)
+                skip_next=True
+            else:add(shape.text)
     return {'number': number, 'title': title, 'lines': lines, 'omitted': omitted}
 
 

@@ -142,6 +142,13 @@ def test_batch_edits_multiple_sections_and_order_preserves_data():
             {'section':0,'field':'body','value':'核对后的收入'},
             {'section':1,'field':'bullet','bullet_index':0,'value':'已复核'}]}
     result=office_edit.edit_batch(pid,newitem['id'],'owner',body)
+    # Pre-upgrade clients omit the new optional structure fields. Replays of
+    # their already-stored request must keep the original payload identity.
+    canonical=office_edit.BatchEditInput.model_validate(body).model_dump()
+    canonical.pop('new_sections');canonical.pop('confirm_removed')
+    expected_hash=hashlib.sha256(json.dumps([pid,newitem['id'],'owner',canonical],ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    ident='oe_'+hashlib.sha256(json.dumps([pid,'owner',body['request_id']],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:40]
+    assert get('office_edit',ident)['payload_sha256']==expected_hash
     revised=office._load_spec(workspace.read_file(pid,result['draft_path']))
     assert [s.heading for s in revised.sections]==['总结','概况']
     assert revised.sections[1].body=='核对后的收入' and revised.sections[0].bullets==['已复核']
@@ -149,6 +156,7 @@ def test_batch_edits_multiple_sections_and_order_preserves_data():
     assert revised.sections[1].table==spec.sections[0].table and revised.sections[1].chart==spec.sections[0].chart
     assert workspace.read_file(pid,'reports/multi.json')==text
     assert office_edit.edit_batch(pid,newitem['id'],'owner',body)==result
+    assert office_edit.edit_batch(pid,newitem['id'],'owner',dict(body,new_sections=[],confirm_removed=False))==result
 
 
 def test_batch_rejects_bad_order_duplicate_changes_and_stale_version():
@@ -164,3 +172,61 @@ def test_batch_rejects_bad_order_duplicate_changes_and_stale_version():
     assert client.post(path,json=body).status_code==401
     response=client.post(path,headers={'Authorization':'Bearer '+TOKEN},json=body)
     assert response.status_code==200,response.text
+
+
+@pytest.mark.parametrize('kind',['presentation','document'])
+def test_batch_add_remove_requires_confirmation_preserves_original_and_retained_data(kind):
+    pid,item,source,old_bytes=sample(kind);info=office_edit.inspect(pid,item['id'])
+    body={'request_id':'batch_structure_12345678','expected_artifact_sha256':info['artifact_sha256'],
+        'expected_spec_sha256':info['spec_sha256'],'section_order':[1,0],
+        'new_sections':[{'heading':'补充说明','body':'新章节正文'}],'name':'调整章节',
+        'changes':[{'section':0,'field':'body','value':'已核对'}]}
+    result=office_edit.edit_batch(pid,item['id'],'owner',body)
+    spec=office._load_spec(workspace.read_file(pid,result['draft_path']))
+    assert [s.heading for s in spec.sections]==['补充说明','概况']
+    assert spec.sections[1].body=='已核对' and spec.sections[1].table==office._load_spec(source).sections[0].table
+    assert office_edit.edit_batch(pid,item['id'],'owner',body)==result
+    assert workspace.read_file(pid,'reports/source.json')==source
+    assert office.artifact(pid,get('workspace_artifact',item['id'])['private']['office_id'])[0].read_bytes()==old_bytes
+    remove={**body,'request_id':'remove_structure_123456','section_order':[1],'changes':[]}
+    with pytest.raises(ValueError,match='必须明确确认'):office_edit.edit_batch(pid,item['id'],'owner',remove)
+    remove['confirm_removed']=True
+    result=office_edit.edit_batch(pid,item['id'],'owner',remove)
+    revised=office._load_spec(workspace.read_file(pid,result['draft_path']))
+    assert len(revised.sections)==1 and revised.sections[0].heading=='补充说明'
+    assert '移除了所选章节' in result['notice']
+    assert office_edit.edit_batch(pid,item['id'],'owner',remove)==result
+
+
+def test_batch_structure_rejects_dropped_new_sections_and_ambiguous_edits():
+    from pydantic import ValidationError
+    pid,item,_,_=sample();info=office_edit.inspect(pid,item['id'])
+    body={'request_id':'batch_structure_12345678','expected_artifact_sha256':info['artifact_sha256'],
+        'expected_spec_sha256':info['spec_sha256'],'section_order':[0],
+        'new_sections':[{'heading':'新章节','body':'说明'}],'name':'调整章节','changes':[]}
+    with pytest.raises(ValueError,match='新增章节必须'):office_edit.edit_batch(pid,item['id'],'owner',body)
+    with pytest.raises(ValueError,match='章节顺序'):office_edit.edit_batch(pid,item['id'],'owner',{**body,'section_order':[0,1,1]})
+    with pytest.raises(ValidationError):office_edit.edit_batch(pid,item['id'],'owner',{**body,'new_sections':[{'heading':' ', 'body':'x'}]})
+    with pytest.raises(ValueError,match='不能同时修改和移除'):office_edit.edit_batch(pid,item['id'],'owner',
+        {**body,'section_order':[1],'confirm_removed':True,'changes':[{'section':0,'field':'body','value':'被移除'}]})
+
+
+def test_concurrent_structural_request_renders_once_and_reuses_receipt(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    pid,item,_,_=sample();info=office_edit.inspect(pid,item['id'])
+    body={'request_id':'concurrent_structure_123','expected_artifact_sha256':info['artifact_sha256'],
+          'expected_spec_sha256':info['spec_sha256'],'section_order':[1],
+          'new_sections':[{'heading':'代替章节','body':'已人工核对'}], 'confirm_removed':True,
+          'name':'新报告','changes':[]}
+    entered=threading.Event();release=threading.Event();original=office.render;calls=[]
+    def delayed(*args,**kwargs):
+        calls.append(1);entered.set();assert release.wait(5)
+        return original(*args,**kwargs)
+    monkeypatch.setattr(office,'render',delayed)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first=pool.submit(office_edit.edit_batch,pid,item['id'],'owner',body)
+        assert entered.wait(5)
+        second=pool.submit(office_edit.edit_batch,pid,item['id'],'owner',body)
+        release.set();one=first.result(timeout=10);two=second.result(timeout=10)
+    assert one==two and len(calls)==1

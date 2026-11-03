@@ -79,6 +79,33 @@ def test_preview_omits_whole_long_values_and_discloses_it():
     assert preview['lines']==[] and preview['omitted'] is True
 
 
+def test_progress_discloses_table_page_and_groups_and_pairs_chart_values(isolated_office):
+    turn,_=isolated_office;turn=start(turn,'step-ranges')
+    report={'kind':'presentation','title':'地区核对','sections':[{'heading':'明细',
+        'table':{'columns':['地区','指标一','指标二','指标三','指标四','指标五'],
+                 'rows':[[f'地区{i}',*[str(i*10+j) for j in range(5)]] for i in range(7)]},
+        'chart':{'title':'收入','unit':'元','points':[{'label':'华东','value':'123.45'},{'label':'华南','value':'5.60'}]}}]}
+    workspace.write_file(turn['project_id'],'scope.json',json.dumps(report,ensure_ascii=False))
+    office.render(turn,'scope.json','核对报告')
+    progress=store.get('turn',turn['id'])['office_slide_progress'];pages=progress['pages']
+    lines=[line for page in pages for line in page['lines']]
+    scopes=[line for line in lines if line.startswith('完整数据：')]
+    assert len(scopes)==4
+    assert '完整数据：7 行 · 本页 1–4 行 · 列组 1/2' in scopes
+    assert '完整数据：7 行 · 本页 5–7 行 · 列组 2/2' in scopes
+    assert '华东：123.45' in lines and '华南：5.60' in lines
+    assert progress['phase']=='verified'
+
+
+def test_chart_preview_never_pairs_unmatched_value():
+    from pptx import Presentation
+    from pptx.util import Inches
+    deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[5])
+    for name,value in [('nexus:chart-label:0:0','东'),('nexus:chart-value:0:1','9')]:
+        shape=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(2),Inches(1));shape.name=name;shape.text=value
+    assert office_slide_progress._slide_preview(1,slide)['lines']==['东','9']
+
+
 @pytest.mark.parametrize('mutation', [
     {'state':'done','outcome':'cancelled'},
     {'agent_trace':[{'id':'new-step','tool':'render_office_artifact','status':'started'}]},

@@ -45,6 +45,11 @@ def _require_oidc(request_context=False):
         raise
 
 
+def _same_identity_domain(record):
+    issuer=os.getenv('OIDC_ISSUER');audience=os.getenv('OIDC_AUDIENCE')
+    return bool(issuer and audience and record.get('issuer')==issuer and record.get('audience')==audience)
+
+
 def verified_subject(request):
     """Verify a recipient JWT without granting owner-workspace membership."""
     _require_oidc(request_context=True)
@@ -157,13 +162,15 @@ def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours,
 
 
 def list_shares(project_id):
+    _require_oidc()
     get('project', project_id)
-    records = [r for r in all_items(KIND) if r.get('project_id') == project_id]
+    records = [r for r in all_items(KIND) if r.get('project_id') == project_id and _same_identity_domain(r)]
     records.sort(key=lambda r: (r['created_at'], r['id']), reverse=True)
     return [_public(r) for r in records]
 
 
 def revoke(project_id, share_id, actor):
+    _require_oidc()
     get('project', project_id)
     actor_hash = _actor(actor)
     with transaction() as connection:
@@ -174,6 +181,8 @@ def revoke(project_id, share_id, actor):
         record = json.loads(row[0])
         if record.get('project_id') != project_id:
             raise ValueError('分享不属于当前项目')
+        if not _same_identity_domain(record):
+            raise KeyError(share_id)
         if record['state'] != 'revoked':
             record.update(state='revoked', revoked_at=_utcnow().isoformat(),
                           revoked_by_hash=actor_hash, version=record['version'] + 1)

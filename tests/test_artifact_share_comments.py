@@ -81,6 +81,38 @@ def test_publisher_can_review_retained_comments_but_other_actor_cannot(oidc):
     assert error.value.status_code==404
 
 
+@pytest.mark.parametrize('field,replacement',[('OIDC_ISSUER','https://other-id.example.test'),('OIDC_AUDIENCE','different-workspace')])
+def test_retained_comments_and_management_cannot_cross_identity_domains(oidc,monkeypatch,field,replacement):
+    from fastapi import HTTPException
+    from types import SimpleNamespace
+    pid=project();item=spec(pid);value=payload(item,allow_comments=True);share=sharing.create(pid,value,'owner')
+    request=SimpleNamespace();preview=sharing.preview(request,share['id'])
+    sharing.add_comment(request,share['id'],{'text':'私有反馈','request_id':'domain_comment_12345','expected_content_sha256':preview['sha256'],'expected_viewer_hash':preview['viewer_hash']})
+    assert sharing.list_owner_comments(pid,share['id'],'owner')['total']==1
+    original=__import__('os').environ[field];monkeypatch.setenv(field,replacement)
+    assert sharing.list_shares(pid)['items']==[]
+    with pytest.raises(HTTPException) as error:sharing.list_owner_comments(pid,share['id'],'owner')
+    assert error.value.status_code==404
+    with pytest.raises(KeyError):sharing.revoke(pid,share['id'],'owner')
+    with pytest.raises(ValueError,match='不同身份域'):sharing.create(pid,value,'owner')
+    assert get(sharing.KIND,share['id'])['state']=='active'
+    with pytest.raises(HTTPException) as error:sharing.preview(request,share['id'])
+    assert error.value.status_code==403
+    monkeypatch.setenv(field,original)
+    assert sharing.list_owner_comments(pid,share['id'],'owner')['total']==1
+    assert len(sharing.list_shares(pid)['items'])==1
+
+
+def test_legacy_share_without_complete_domain_does_not_expose_retained_comments(oidc):
+    from fastapi import HTTPException
+    pid=project();item=spec(pid);share=sharing.create(pid,payload(item,allow_comments=True),'owner')
+    patch(sharing.KIND,share['id'],audience=None)
+    assert sharing.list_shares(pid)['items']==[]
+    with pytest.raises(HTTPException) as error:sharing.list_owner_comments(pid,share['id'],'owner')
+    assert error.value.status_code==404
+    with pytest.raises(KeyError):sharing.revoke(pid,share['id'],'owner')
+
+
 def test_comment_routes_verify_real_signed_tokens(oidc,monkeypatch):
     import jwt
     from datetime import datetime,timedelta,timezone

@@ -57,12 +57,26 @@ class SectionChange(StrictModel):
         return self
 
 
+class NewSection(StrictModel):
+    heading: str = Field(max_length=300)
+    body: str = Field(default='', max_length=20000)
+
+    @model_validator(mode='after')
+    def valid_content(self):
+        if not self.heading.strip():raise ValueError('新增章节必须有标题')
+        if any(ord(ch)<32 and ch not in '\n\r\t' for ch in self.heading+self.body):
+            raise ValueError('文本含不支持的控制字符')
+        return self
+
+
 class BatchEditInput(StrictModel):
     request_id: str = Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
     expected_artifact_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     expected_spec_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     changes: list[SectionChange] = Field(default_factory=list, max_length=100)
     section_order: list[StrictInt] = Field(min_length=1, max_length=30)
+    new_sections: list[NewSection] = Field(default_factory=list, max_length=30)
+    confirm_removed: bool = Field(default=False, strict=True)
     name: str = Field(min_length=1, max_length=91, pattern=r'^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff _-]{0,90}$')
 
     @model_validator(mode='after')
@@ -103,7 +117,7 @@ def inspect(pid,aid):
                 'sections':[{'index':i,'heading':section.heading,'body':section.body,'bullets':section.bullets,
                              'contains_table':section.table is not None,'contains_chart':section.chart is not None}
                             for i,section in enumerate(spec.sections)],
-                'notice':'仅可修改章节标题、正文或已有要点；生成新文件，原成果和结构化表格、图表保持不变。内容与财务口径仍需核对。'}
+                'notice':'可修改文字、新增或移除章节并排序；移除章节时其表格和图表不会出现在新文件。原成果不变，内容与财务口径仍需核对。'}
 
 
 def edit(pid,aid,actor,value):
@@ -126,7 +140,12 @@ def _run_edit(pid,aid,actor,value):
 
 
 def _edit_locked(pid,aid,actor,value):
-    operation=value.model_dump();payload_hash=hashlib.sha256(json.dumps([pid,aid,actor,operation],ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    operation=value.model_dump()
+    # Keep retry identities of pre-existing batch requests unchanged.
+    if isinstance(value,BatchEditInput):
+        if not value.new_sections:operation.pop('new_sections')
+        if not value.confirm_removed:operation.pop('confirm_removed')
+    payload_hash=hashlib.sha256(json.dumps([pid,aid,actor,operation],ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     ident='oe_'+hashlib.sha256(json.dumps([pid,actor,value.request_id],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:40]
     draft='reports/office-edits/'+ident+'.json'
     with workspace.lock(pid),_project_lock(pid):
@@ -135,9 +154,17 @@ def _edit_locked(pid,aid,actor,value):
         if record['sha256']!=value.expected_artifact_sha256 or artifact['source_sha256']!=value.expected_spec_sha256:
             raise ValueError('成果或规格版本已变化，请重新打开')
         changes=value.changes if isinstance(value,BatchEditInput) else [value]
+        removed=[]
         if isinstance(value,BatchEditInput):
-            if sorted(value.section_order)!=list(range(len(spec.sections))):
-                raise ValueError('章节顺序必须包含所有原章节且不能重复')
+            original_count=len(spec.sections);order=value.section_order
+            if len(set(order))!=len(order) or any(i<0 or i>=original_count+len(value.new_sections) for i in order):
+                raise ValueError('章节顺序包含无效或重复位置')
+            if any(i not in order for i in range(original_count,original_count+len(value.new_sections))):
+                raise ValueError('新增章节必须出现在章节顺序中')
+            removed=[i for i in range(original_count) if i not in order]
+            if removed and not value.confirm_removed:raise ValueError('移除章节及其中的表格、图表前必须明确确认')
+            if not removed and value.confirm_removed:raise ValueError('没有需要移除的章节')
+            if any(change.section in removed for change in changes):raise ValueError('不能同时修改和移除同一章节')
         changed=False
         for change in changes:
             if change.section>=len(spec.sections):raise ValueError('所选章节不存在')
@@ -148,8 +175,10 @@ def _edit_locked(pid,aid,actor,value):
                     section.bullets[change.bullet_index]=change.value;changed=True
             elif getattr(section,change.field)!=change.value:
                 setattr(section,change.field,change.value);changed=True
-        if isinstance(value,BatchEditInput) and value.section_order!=list(range(len(spec.sections))):
-            spec.sections=[spec.sections[i] for i in value.section_order];changed=True
+        if isinstance(value,BatchEditInput):
+            combined=spec.sections+[office.Section(heading=s.heading,body=s.body) for s in value.new_sections]
+            if value.section_order!=list(range(len(spec.sections))) or value.new_sections:
+                spec.sections=[combined[i] for i in value.section_order];changed=True
         if not changed:raise ValueError('内容没有变化')
         # Revalidate all limits after modifying a Pydantic model in place.
         revised=office.Spec.model_validate(spec.model_dump(mode='json'))
@@ -211,7 +240,7 @@ def _edit_locked(pid,aid,actor,value):
         if current.get('payload_sha256')!=payload_hash:raise ValueError('编辑请求已变化')
         response={**result,'original_artifact_id':aid,'original_artifact_sha256':record['sha256'],
                   'draft_path':draft,'draft_commit':draft_commit,'work_commit':final_version['commit'],
-                  'notice':'已生成新文件；原文件、表格和图表未修改。修改的文字及财务内容仍需核对，未进行视觉验收。'}
+                  'notice':('已生成新文件；原文件未修改。新文件移除了所选章节及其中内容，保留章节的表格和图表未修改。修改的文字及财务内容仍需核对，未进行视觉验收。' if removed else '已生成新文件；原文件、表格和图表未修改。修改的文字及财务内容仍需核对，未进行视觉验收。')}
         put('office_edit',dict(current,status='completed',artifact_id=result['artifact_id'],
                                artifact_sha256=result['sha256'],draft_commit=draft_commit,
                                output_commit=final_version['commit'],result=response,completed_at=now()),ident)

@@ -1,4 +1,4 @@
-"""Build an explicit append or whole-row upsert candidate from adopted snapshots.
+"""Build explicit append, upsert or delete candidates from adopted snapshots.
 
 This is not source CDC: both inputs must already be processed, and the caller
 must establish that the supplied change is complete. Absent rows are never deleted.
@@ -24,8 +24,9 @@ class AppendInput(StrictModel):
     delta_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     request_id: str = Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
     confirm_append_only: bool = Field(strict=True)
-    mode: Literal['append','upsert'] = 'append'
+    mode: Literal['append','upsert','delete'] = 'append'
     confirm_replace: bool = Field(default=False,strict=True)
+    confirm_delete: bool = Field(default=False,strict=True)
     note: str = Field(min_length=4,max_length=500)
 
 
@@ -62,13 +63,21 @@ def _keys(rows,schema):
     return {key(row) for row in rows}
 
 
+def _normalized_rows(rows,schema):
+    """Use the execution engine's column coercions, including exact decimals."""
+    fields={c.name:c for c in schema.columns}
+    return {tuple(_coerce(row[n],fields[n]) for n in schema.grain):
+            tuple(_coerce(row[c.name],c) for c in schema.columns) for row in rows}
+
+
 def create(pid,actor,value):
     from . import workspace,project_data as data
     from .workspace_lifecycle import _project_lock,assert_project_live
     value=AppendInput.model_validate(value)
     if len(value.note.strip())<4:raise ValueError('请填写核对依据')
-    if value.mode=='append' and (not value.confirm_append_only or value.confirm_replace):raise ValueError('请确认这是完整的新增明细')
-    if value.mode=='upsert' and (not value.confirm_replace or value.confirm_append_only):raise ValueError('请明确确认新增及整行替换规则')
+    if value.mode=='append' and (not value.confirm_append_only or value.confirm_replace or value.confirm_delete):raise ValueError('请确认这是完整的新增明细')
+    if value.mode=='upsert' and (not value.confirm_replace or value.confirm_append_only or value.confirm_delete):raise ValueError('请明确确认新增及整行替换规则')
+    if value.mode=='delete' and (not value.confirm_delete or value.confirm_append_only or value.confirm_replace):raise ValueError('请明确确认删除清单及整行原值')
     if value.baseline_run_id==value.delta_run_id:raise ValueError('历史结果和新增结果不能相同')
     with workspace.lock(pid),_project_lock(pid):
         assert_project_live(pid)
@@ -86,7 +95,17 @@ def create(pid,actor,value):
             raise ValueError('业务粒度标准化后重复，不能安全匹配')
         replaced=len(history_keys & delta_keys);added=len(delta_keys-history_keys)
         if value.mode=='append' and replaced:raise ValueError('业务粒度重复，不能计算可能重复的金额')
-        total=bpage['total']+added
+        deleted=0
+        if value.mode=='delete':
+            if added:raise ValueError('删除清单存在历史结果中不存在的业务键，未执行删除')
+            # Require the complete adopted deletion row to agree with the
+            # frozen original, not just a key that may have been reused.
+            history_rows=_normalized_rows(bpage['rows'],bschema)
+            deletion_rows=_normalized_rows(dpage['rows'],dschema)
+            if any(history_rows[key]!=row for key,row in deletion_rows.items()):
+                raise ValueError('删除清单的原始明细与固定历史版本不一致，请核对后重试')
+            deleted=replaced;added=0;replaced=0
+        total=bpage['total']-deleted if value.mode=='delete' else bpage['total']+added
         if total>MAX_ROWS:raise ValueError('合并超过当前行数上限；未截断数据')
         if value.mode=='append':
             stage={'id':'combined','kind':'union_rows','description':'保留历史明细并追加已核对新增明细','inputs':['history','delta']}
@@ -100,11 +119,12 @@ def create(pid,actor,value):
             changed=','.join('d.'+quote(c.name) for c in bschema.columns)
             matching=' AND '.join('h.'+quote(k)+'=d.'+quote(k) for k in bschema.grain)
             sql=('SELECT '+columns+' FROM history h LEFT JOIN delta d ON '+matching+
-                 ' WHERE d.'+quote(bschema.grain[0])+' IS NULL UNION ALL SELECT '+changed+' FROM delta d'+
+                 ' WHERE d.'+quote(bschema.grain[0])+' IS NULL'+
+                 ('' if value.mode=='delete' else ' UNION ALL SELECT '+changed+' FROM delta d')+
                  ' ORDER BY '+','.join(quote(k) for k in bschema.grain))
-            stage={'id':'combined','kind':'sql','description':'按唯一业务键保留未变历史并整行替换变更明细，缺席不删除',
+            stage={'id':'combined','kind':'sql','description':('删除与明确清单逐行核对一致的历史记录' if value.mode=='delete' else '按唯一业务键保留未变历史并整行替换变更明细，缺席不删除'),
                    'inputs':['history','delta'],'sql':sql,'output_schema':bschema.model_dump()}
-            plan_name='新增及替换已核对明细'
+            plan_name='删除已核对的明确明细' if value.mode=='delete' else '新增及替换已核对明细'
         plan={'version':1,'plan':{'name':plan_name,'inputs':{'history':bschema.model_dump(),'delta':dschema.model_dump()},
               'stages':[stage],'output':'combined'},'bindings':{'history':{'result_id':value.baseline_run_id},'delta':{'result_id':value.delta_run_id}},
               'contract':{'version':1,'not_null':bschema.grain,'unique':[bschema.grain]}}
@@ -151,5 +171,5 @@ def create(pid,actor,value):
                 'baseline_run_id':value.baseline_run_id,'baseline_sha256':value.baseline_sha256,
                 'delta_run_id':value.delta_run_id,'delta_sha256':value.delta_sha256,
                 'baseline_rows':bpage['total'],'delta_rows':dpage['total'],'total_rows':total,
-                'added_rows':added,'replaced_rows':replaced,'mode':value.mode,'grain':bschema.grain,
-                'notice':('将选中的固定历史结果与变更结果按业务键新增或整行替换为待核对候选；变更缺席的历史行保留，不执行删除。输入可能已更新，本次不会自动切换版本。仍会完整写出结果，不是 CDC 或自动增量采集；变更范围及替换正确性由提交者确认。' if value.mode=='upsert' else '将选中的固定历史结果与新增结果追加为待核对候选；输入可能已更新，本次不会自动切换版本。仍会完整写出结果，不是 CDC 或自动增量采集。新增数据是否完整由提交者确认。')}
+                'added_rows':added,'replaced_rows':replaced,'deleted_rows':deleted,'mode':value.mode,'grain':bschema.grain,
+                'notice':(('删除清单覆盖全部历史记录，候选结果为空，请特别核对。' if total==0 else '')+'仅删除清单中明确列出且与固定历史版本整行一致的记录，生成待核对候选；未列出的记录保留。输入可能已更新，本次不会自动切换版本。仍会完整写出结果，不是 CDC；删除范围由提交者确认。' if value.mode=='delete' else '将选中的固定历史结果与变更结果按业务键新增或整行替换为待核对候选；变更缺席的历史行保留，不执行删除。输入可能已更新，本次不会自动切换版本。仍会完整写出结果，不是 CDC 或自动增量采集；变更范围及替换正确性由提交者确认。' if value.mode=='upsert' else '将选中的固定历史结果与新增结果追加为待核对候选；输入可能已更新，本次不会自动切换版本。仍会完整写出结果，不是 CDC 或自动增量采集。新增数据是否完整由提交者确认。')}

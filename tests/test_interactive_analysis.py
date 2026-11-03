@@ -52,6 +52,16 @@ def test_api_requires_auth_and_does_not_accept_extra_sql():
     assert response.status_code==200,response.text
     assert response.json()['groups']==[{'values':['East'],'count':2},{'values':['West'],'count':1}]
     assert client.post(path,json=req(sha,sql='select secret'),headers={'Authorization':'Bearer '+TOKEN}).status_code==422
+    assert client.post(path,json=req(sha,filters=[{'column':'office','value':1}]),headers={'Authorization':'Bearer '+TOKEN}).status_code==422
+
+
+def test_filter_rejects_numeric_and_other_implicit_coercion():
+    from agent_service.interactive_analysis import ExploreFilter
+    for raw in (0,1,1.0,[],{}):
+        with pytest.raises(ValueError):ExploreFilter.model_validate({'column':'office','value':raw})
+    for raw in ('1',True,False,None):
+        parsed=ExploreFilter.model_validate({'column':'office','value':raw}).value
+        assert type(parsed) is type(raw) and parsed==raw
 
 
 def test_missing_filter_values_and_period_are_not_silently_excluded():
