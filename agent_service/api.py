@@ -124,6 +124,13 @@ async def boundary(request:Request,call_next):
             response.headers['X-Content-Type-Options']='nosniff'
             response.headers['Referrer-Policy']='no-referrer'
             response.headers['Content-Security-Policy']="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+            # Only an explicitly configured and validated document server may
+            # host the isolated read-only viewer. Scripts remain same-origin.
+            from .onlyoffice_readonly import _config as office_config
+            try:office_origin=office_config()[0]
+            except HTTPException:office_origin=None
+            if office_origin:
+                response.headers['Content-Security-Policy'] += "; frame-src 'self' "+office_origin
             if request.url.path in ('/docx-frame.html', '/pptx-frame.html'):
                 response.headers['Content-Security-Policy']="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'; frame-ancestors 'self'"
             # HTML has a stable URL. Reusing it can load the old composer even
@@ -909,6 +916,8 @@ from .business_flow_debug import install as install_business_flow_debug
 install_business_flow_debug(app,auth)
 from .business_flow_checkpoint import install as install_business_flow_checkpoint
 install_business_flow_checkpoint(app,auth)
+from .onlyoffice_readonly import install as install_onlyoffice_readonly
+install_onlyoffice_readonly(app,auth)
 
 @app.get('/api/desktop/runtime',dependencies=[Depends(auth)])
 def desktop_runtime_status():

@@ -923,7 +923,7 @@ def publish(pid,flow_id,actor_id,run_id,expected_digest):
     return get_view(pid,flow_id,actor_id)
 
 
-def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_digest):
+def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_digest,parameter_values=None):
     from .config import TIMEZONE,DATA
     from .locks import FileLock
     if cron is not None and (not isinstance(cron,str) or len(cron.split())!=5 or not croniter.is_valid(cron)):
@@ -931,20 +931,33 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
     with workspace.lock(pid),FileLock(str(DATA/'scheduler.lock'),timeout=10):
         flow=_owned(pid,flow_id,actor_id)
         if flow.get('published_digest')!=expected_published_digest:raise ValueError('正式版本已变化，请重新查看再设置定时')
-        if flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending') and not flow.get('refresh_error') and not flow.get('schedule_resume_required'):
+        if parameter_values is None and flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending') and not flow.get('refresh_error') and not flow.get('schedule_resume_required'):
             return get_view(pid,flow_id,actor_id)
         if cron and not flow.get('published_run'):raise ValueError('请先确认正式版本，再设置定时运行')
         if cron:
             run=get_job(flow['published_run'])
             if run.get('target')!=flow_id or run.get('project_id')!=pid or run.get('status')!='succeeded':raise ValueError('正式运行记录不可用')
             payload=unseal(run['secret_flow_payload']);doc=_read_commit(pid,flow_id,flow['published_commit'],flow['published_digest'])
-            dynamic={node.inputs['source'].name for node in BusinessFlow.model_validate(doc).nodes
+            definition=BusinessFlow.model_validate(doc)
+            dynamic={node.inputs['source'].name for node in definition.nodes
                      if node.kind=='source_table' and not node.config.get('source_id') and node.inputs.get('source')}
             if not isinstance(source_bindings,dict) or not set(source_bindings)<=dynamic:raise ValueError('定时资料绑定不属于动态资料参数')
             for key,sid in source_bindings.items():
                 if not isinstance(sid,str):raise ValueError('定时资料标识无效')
                 source=get('source',sid);_source_pin(pid,sid,source.get('revision'),source.get('content_hash'))
-            schedule_inputs=seal(payload['inputs'])
+            inputs=dict(payload['inputs'])
+            if parameter_values is not None:
+                if not isinstance(parameter_values,dict) or set(parameter_values)!=set(definition.input_specs or {}):
+                    raise ValueError('请明确填写全部定时业务参数')
+                inputs.update(parameter_values)
+            # Validate against the frozen published definition before saving;
+            # decimals remain exact text and inputs never enter a public view.
+            from .business_flow_engine import _prepare
+            _prepare(doc,inputs,_handlers())
+            for key,sid in source_bindings.items():
+                source=get('source',sid)
+                inputs[key]={'source_id':sid,'revision':source['revision'],'content_hash':source['content_hash']}
+            schedule_inputs=seal(inputs)
             next_due=croniter(cron,datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
         else:schedule_inputs=None;next_due=None;source_bindings={}
         patch('business_flow',flow_id,cron=cron,next_due=next_due,schedule_inputs=schedule_inputs,
@@ -970,6 +983,21 @@ def _patch_schedule_if_current(flow, **updates):
         connection.execute(update(items).where(items.c.id==flow['id'],items.c.kind=='business_flow')
                            .values(body=json.dumps(current,ensure_ascii=False,default=str)))
         return True
+
+
+def schedule_parameters(pid,flow_id,actor_id):
+    """Explicit owner-only read; values are never included in general flow views."""
+    flow=_owned(pid,flow_id,actor_id)
+    if not flow.get('cron') or not flow.get('schedule_inputs') or not flow.get('published_digest'):
+        raise ValueError('当前流程没有已设置的定时参数')
+    doc=BusinessFlow.model_validate(_read_commit(pid,flow_id,flow['published_commit'],flow['published_digest']))
+    inputs=unseal(flow['schedule_inputs']);values={}
+    if not isinstance(inputs,dict):raise ValueError('定时参数记录无效')
+    for name,spec in (doc.input_specs or {}).items():
+        if name not in inputs:raise ValueError('定时参数记录不完整')
+        spec.validate_value(inputs[name]);values[name]=inputs[name]
+    return {'flow_id':flow_id,'published_digest':flow['published_digest'],'parameter_values':values,
+            'source_bindings':flow.get('schedule_source_bindings') or {}}
 
 
 def queue_due():
@@ -1123,6 +1151,7 @@ class ResolveInput(StrictModel):
 class ScheduleInput(StrictModel):
     cron:str|None=None
     source_bindings:dict[str,str]=Field(default_factory=dict,max_length=50)
+    parameter_values:dict|None=None
     expected_published_digest:str=Field(pattern=r'^[a-f0-9]{64}$')
 class PinInput(StrictModel):
     turn_id:str=Field(min_length=1,max_length=100)
@@ -1177,7 +1206,9 @@ def install(app,auth):
     @app.post('/api/projects/{pid}/business-flows/{fid}/publish',dependencies=[Depends(auth)])
     def adopt(pid:str,fid:str,value:PublishInput):return publish(pid,fid,current_actor(),value.run_id,value.expected_digest)
     @app.put('/api/projects/{pid}/business-flows/{fid}/schedule',dependencies=[Depends(auth)])
-    def schedule(pid:str,fid:str,value:ScheduleInput):return set_schedule(pid,fid,current_actor(),value.cron,value.source_bindings,value.expected_published_digest)
+    def schedule(pid:str,fid:str,value:ScheduleInput):return set_schedule(pid,fid,current_actor(),value.cron,value.source_bindings,value.expected_published_digest,value.parameter_values)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/schedule-parameters',dependencies=[Depends(auth)])
+    def schedule_values(pid:str,fid:str):return schedule_parameters(pid,fid,current_actor())
     @app.post('/api/projects/{pid}/business-flow-pins',dependencies=[Depends(auth)])
     def pin(pid:str,value:PinInput):
         from .workflow_model_skill import freeze_model,freeze_skill

@@ -4,10 +4,11 @@ window.createChatWorkflowPanel = function({container,api,getState,setDraft}) {
  const title=document.createElement('h3');title.textContent='本项目的业务流程与结果';
  const select=document.createElement('select');select.setAttribute('aria-label','选择本项目业务流程');
  const status=document.createElement('p');status.setAttribute('role','status');const listWarning=document.createElement('p');listWarning.setAttribute('role','status');
- const graph=document.createElement('div'),dataRun=document.createElement('div'),businessRun=document.createElement('div'),debugRun=document.createElement('div'),schedule=document.createElement('div'),result=document.createElement('div');
- root.append(title,select,listWarning,status,graph,dataRun,businessRun,debugRun,schedule,result);container.append(root);
+ const graph=document.createElement('div'),dataRun=document.createElement('div'),businessRun=document.createElement('div'),debugRun=document.createElement('div'),schedule=document.createElement('div'),businessSchedule=document.createElement('div'),result=document.createElement('div');
+ root.append(title,select,listWarning,status,graph,dataRun,businessRun,debugRun,schedule,businessSchedule,result);container.append(root);
  const resultView=window.createChatWorkflowResults?.({container:result,api,getState});
  window.createChatWorkflowSchedule?.({container:schedule,api,getState,onUpdated:()=>refresh(true)});
+ window.createChatBusinessSchedule?.({container:businessSchedule,api,getState,onUpdated:()=>refresh(true)});
  window.createChatBusinessWorkflowRun?.({container:businessRun,api,getState,onUpdated:()=>refresh(true)});
  window.createChatBusinessDebug?.({container:debugRun,api,getState});
  window.createChatDataWorkflowRun?.({container:dataRun,api,getState,onUpdated:()=>refresh(true)});

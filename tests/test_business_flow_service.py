@@ -64,6 +64,43 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert saved['candidate_commit'] and saved['published_run'] is None
     assert len(req('GET',base+'/business-flows')['items'])==1
     flow=base+'/business-flows/'+saved['id'];run_request=uid();body={'request_id':run_request,'expected_digest':saved['candidate_digest'],'inputs':{}}
+    # The same debugger must support an explicitly selected, version-pinned
+    # source input, not just files hard-coded in the workflow definition.
+    import copy
+    dynamic=copy.deepcopy(document);dynamic['inputs']=['selected_file'];dynamic['nodes'][0]['config']={};dynamic['nodes'][0]['inputs']={'source':{'source':'input','name':'selected_file'}}
+    other=req('POST',base+'/business-flows',json={'request_id':uid(),'turn_id':turn['id'],'document':dynamic});other_url=base+'/business-flows/'+other['id']
+    pin={'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash']}
+    selected=req('POST',other_url+'/debug-runs',json={'request_id':uid(),'expected_digest':other['candidate_digest'],'selected_nodes':['read','aggregate'],'inputs':{'selected_file':pin}})
+    assert process_once();assert req('GET',other_url+'/debug-runs/'+selected['run_id'])['status']=='succeeded'
+    assert req('GET',other_url+'/debug-runs/'+selected['run_id']+'/tables/aggregate')['rows'][0]['amount']=='18.00'
+    parameterized=copy.deepcopy(dynamic);parameterized['inputs'].append('region');parameterized['input_specs']={'region':{'type':'choice','label':'办事处','options':['东部','西部']}}
+    parameterized['nodes'][1]['inputs']['region_choice']={'source':'input','name':'region'}
+    parameterized['nodes'][1]['config']['parameter_bindings']={'region_choice':{'stage_id':'selected','condition_index':0}}
+    param_flow=req('POST',base+'/business-flows',json={'request_id':uid(),'turn_id':turn['id'],'document':parameterized});param_url=base+'/business-flows/'+param_flow['id']
+    param_body={'request_id':uid(),'expected_digest':param_flow['candidate_digest'],'selected_nodes':['read','aggregate'],'inputs':{'selected_file':pin,'region':'西部'}}
+    param_run=req('POST',param_url+'/debug-runs',json=param_body);assert req('POST',param_url+'/debug-runs',json=param_body)['run_id']==param_run['run_id']
+    assert process_once();assert req('GET',param_url+'/debug-runs/'+param_run['run_id'])['status']=='succeeded'
+    assert req('GET',param_url+'/debug-runs/'+param_run['run_id']+'/tables/aggregate')['rows'][0]['amount']=='4.00'
+    invalid=client.post(param_url+'/debug-runs',headers=h,json={**param_body,'request_id':uid(),'inputs':{'selected_file':pin,'region':'未声明'}});assert invalid.status_code==400
+    precise=copy.deepcopy(dynamic);precise['inputs'].append('threshold');precise['input_specs']={'threshold':{'type':'decimal','label':'金额下限'}}
+    precise['nodes'][1]['inputs']['limit']={'source':'input','name':'threshold'}
+    precise['nodes'][1]['config']['parameter_bindings']={'limit':{'stage_id':'selected','condition_index':0}}
+    precise['nodes'][1]['config']['plan']['stages'][0]['conditions']=[{'column':'c_2','operator':'gt','value':'0'}]
+    precise_flow=req('POST',base+'/business-flows',json={'request_id':uid(),'turn_id':turn['id'],'document':precise});precise_url=base+'/business-flows/'+precise_flow['id']
+    precise_body={'request_id':uid(),'expected_digest':precise_flow['candidate_digest'],'selected_nodes':['read','aggregate'],'inputs':{'selected_file':pin,'threshold':'8.999999999999'}}
+    precise_run=req('POST',precise_url+'/debug-runs',json=precise_body);assert process_once()
+    assert req('GET',precise_url+'/debug-runs/'+precise_run['run_id'])['status']=='succeeded'
+    assert req('GET',precise_url+'/debug-runs/'+precise_run['run_id']+'/tables/aggregate')['rows'][0]['amount']=='18.00'
+    numeric=client.post(precise_url+'/debug-runs',headers=h,json={**precise_body,'request_id':uid(),'inputs':{'selected_file':pin,'threshold':8.99}});assert numeric.status_code==400
+    from agent_service.store import patch
+    try:
+        patch('source',source['id'],revision=source['revision']+1)
+        stale=client.post(other_url+'/debug-runs',headers=h,json={'request_id':uid(),'expected_digest':other['candidate_digest'],'selected_nodes':['read'],'inputs':{'selected_file':pin}})
+        assert stale.status_code==400
+        patch('source',source['id'],revision=source['revision'],archived=True)
+        removed=client.post(other_url+'/debug-runs',headers=h,json={'request_id':uid(),'expected_digest':other['candidate_digest'],'selected_nodes':['read'],'inputs':{'selected_file':pin}})
+        assert removed.status_code==400
+    finally:patch('source',source['id'],revision=source['revision'],archived=False)
     debug={'request_id':uid(),'expected_digest':saved['candidate_digest'],'selected_nodes':['read','aggregate'],'inputs':{}}
     missing=client.post(flow+'/debug-runs',headers=h,json={**debug,'request_id':uid(),'selected_nodes':['aggregate']})
     assert missing.status_code==400

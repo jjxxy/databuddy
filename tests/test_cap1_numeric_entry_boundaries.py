@@ -195,20 +195,20 @@ def test_actual_http_probe_dbt_exact_filter_query_and_frozen_rerun_boundaries():
     assert {p['id'] for p in all_items('pipeline')}==before
     # Real archived Git plans bypass new generation validation; runner must
     # independently reject them before collecting sources or invoking dbt.
-    repo=Path(pipeline['repository']);plan_file=repo/'plan.json';plan=json.loads(plan_file.read_text())
+    repo=Path(pipeline['repository']);plan_file=repo/'plan.json';plan=json.loads(plan_file.read_text(encoding='utf-8'))
     assert plan['numeric_policy']==NUMERIC_POLICY
     prepared=repo/'dbt/models/prepared_objects.sql';business=repo/'dbt/models/business_objects.sql'
-    original_prepared=prepared.read_text();original_business=business.read_text()
+    original_prepared=prepared.read_text(encoding='utf-8');original_business=business.read_text(encoding='utf-8')
     for historical in ('divide','scientific_filter'):
         frozen=json.loads(json.dumps(plan));frozen.pop('numeric_policy',None)
         if historical=='divide':
             frozen['spec']['computations'][0]['operation']='divide'
-            prepared.write_text(original_prepared.replace(' - ',' / '))
-            business.write_text(original_business)
+            prepared.write_text(original_prepared.replace(' - ',' / '),encoding='utf-8')
+            business.write_text(original_business,encoding='utf-8')
         else:
-            prepared.write_text(original_prepared)
-            business.write_text(original_business.replace(fixed_filter_number('1e15'),'1E+15'))
-        plan_file.write_text(json.dumps(frozen));codegen.git(repo,'add','.')
+            prepared.write_text(original_prepared,encoding='utf-8')
+            business.write_text(original_business.replace(fixed_filter_number('1e15'),'1E+15'),encoding='utf-8')
+        plan_file.write_text(json.dumps(frozen),encoding='utf-8');codegen.git(repo,'add','.')
         codegen.git(repo,'commit','-m','Synthetic archived '+historical)
         patch('pipeline',pid,commit=codegen.git(repo,'rev-parse','HEAD'),spec=frozen['spec'])
         queued=client.post('/api/pipelines/'+pid+'/run',headers=headers);assert queued.status_code==200,queued.text

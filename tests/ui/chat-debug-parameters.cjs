@@ -1,0 +1,22 @@
+const {JSDOM}=require('jsdom'),fs=require('node:fs'),assert=require('node:assert/strict');
+const dom=new JSDOM('<main></main>',{url:'https://nexus.test/',runScripts:'outside-only'}),w=dom.window;
+const sleep=()=>new Promise(r=>setTimeout(r,10));
+(async()=>{
+ w.eval(fs.readFileSync('agent_service/static/chat-business-debug.js','utf8'));w.nexusSecureUUID=()=> 'request_1';let posts=[];
+ const fid='bf_'+'a'.repeat(40),sha='b'.repeat(64),commit='c'.repeat(40),state=()=>({projectId:'p1',viewEpoch:1,authSealed:false});
+ const defs=[['t','text','说明'],['i','integer','数量'],['n','decimal','金额'],['d','date','日期'],['b','boolean','启用'],['c','choice','地区']];
+ const specs=Object.fromEntries(defs.map(([id,type,label])=>[id,{type,label,options:type==='choice'?['东','西']:[]}]));
+ const refs=Object.fromEntries(defs.map(([id])=>[id,{source:'input',name:id}])),bindings=Object.fromEntries(defs.map(([id])=>[id,{}]));
+ const doc={input_specs:specs,nodes:[{id:'filter',kind:'table_workflow',title:'筛选',inputs:refs,config:{parameter_bindings:bindings}}]},detail={projectId:'p1',role:'candidate',flow:{id:fid,candidate_digest:sha,candidate_commit:commit,candidate_document:doc}};
+ const api=async(url,options)=>{if(options?.method==='POST'){posts.push(JSON.parse(JSON.stringify(options.body)));throw Error('outcome unknown')}throw Error('unexpected')};
+ let panel=w.createChatBusinessDebug({container:w.document.querySelector('main'),api,getState:state});w.dispatchEvent(new w.CustomEvent('nexus-chat-business-flow-selected',{detail}));
+ w.document.querySelector('input[type=checkbox]').checked=true;
+ for(const [label,value] of [['说明','确认'],['数量','2'],['金额','9007199254740.000001'],['日期','2026-10-31'],['启用','false'],['地区','东']])w.document.querySelector('[aria-label="'+label+'"]').value=value;
+ w.document.querySelector('[aria-label="数量"]').value='9007199254740992';[...w.document.querySelectorAll('button')].find(b=>b.textContent==='运行所选步骤').click();assert.equal(posts.length,0);assert.match(w.document.body.textContent,/填写选中步骤的参数/);w.document.querySelector('[aria-label="数量"]').value='2';
+ [...w.document.querySelectorAll('button')].find(b=>b.textContent==='运行所选步骤').click();for(let i=0;i<40&&!posts.length;i++)await sleep();
+ assert.deepEqual(posts[0].inputs,{t:'确认',i:2,n:'9007199254740.000001',d:'2026-10-31',b:false,c:'东'});
+ panel.dispose();panel=w.createChatBusinessDebug({container:w.document.querySelector('main'),api,getState:state});w.dispatchEvent(new w.CustomEvent('nexus-chat-business-flow-selected',{detail}));
+ assert.equal(w.document.querySelector('[aria-label="金额"]').value,'9007199254740.000001');assert(w.document.querySelector('[aria-label="金额"]').disabled);
+ [...w.document.querySelectorAll('button')].find(b=>b.textContent==='运行所选步骤').click();for(let i=0;i<40&&posts.length<2;i++)await sleep();assert.deepEqual(posts[1],posts[0]);
+ panel.dispose();console.log('Typed debug parameters retain exact decimals and survive idempotent retry');
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>dom.window.close());

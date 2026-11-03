@@ -45,6 +45,10 @@ def _check_scope(pid,doc,selected,inputs):
     if any(n.kind not in ALLOWED for n in nodes):raise ValueError('当前仅支持调试固定文件读取、表格加工及数据检查节点')
     required={ref.name for n in nodes for ref in n.inputs.values() if ref.source=='input'}
     if not isinstance(inputs,dict) or set(inputs)!=required:raise ValueError('调试输入与所选节点不一致')
+    # Validate declared parameters before queuing, so an invalid selection
+    # cannot appear to be an accepted runnable job. Decimal inputs remain text.
+    for name in required:
+        if name in (flow.input_specs or {}):flow.input_specs[name].validate_value(inputs[name])
     from .business_flow_data import SourcePin
     for node in nodes:
         if node.kind!='source_table':continue

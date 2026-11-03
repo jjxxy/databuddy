@@ -4,6 +4,8 @@
 
 停止服务：`systemctl stop atlas-onlyoffice-local-proxy.service`，再执行 `docker stop atlas-onlyoffice`。重启机器后需再次运行启动脚本以重新建立转发。内网隔离不是数据权限管理，也不代表产品接入已完成。
 
-服务健康不代表已经与 Atlas 集成。产品接入还必须完成：按项目和用户授权签发短期文件访问、配置签名 JWT、回调验证和版本保存、限制文档服务下载地址和网络访问、处理大文件和过期链接，并在真实服务上测试。不能将项目口令、永久文件地址或客户文件交给公共预览站点。未完成以上工作前不能对用户宣称可以在线编辑。
+服务健康不代表已经完成生产接入。Atlas 支持按项目和用户授权签发短期一次性只读文件链接，并将查看页面放在独立的 ONLYOFFICE 源；默认关闭，配置错误或服务不可用时回退原有显示。运营人员须为 Atlas 服务配置 `ATLAS_ONLYOFFICE_JWT_SECRET`（与文档服务一致）、`ATLAS_ONLYOFFICE_BROWSER_ORIGIN`（浏览器可访问的文档服务内网源）、`ATLAS_ONLYOFFICE_FILE_ORIGIN`（文档服务可访问的 Atlas 文件桥源）和 `ATLAS_ONLYOFFICE_SOURCE_IP`（Atlas 文件接口实际看到的文档服务或受控代理地址）。地址只允许管理员设置的内网 IP，文件桥必须只转发 ONLYOFFICE 文件接口，切勿转发工作区口令或公开到外网。Windows 与 WSL 需要额外配置受控桥接；启动本脚本本身不会配置桥或 Atlas 进程环境。文档服务与 Atlas 必须使用不同浏览器来源，避免隔离页面访问工作区凭据。
+
+当前仅支持只读显示，未实现编辑回调及版本保存；尚须在实际部署网络和权限配置下完成端到端验收。不能将项目口令、永久文件地址或客户文件交给公共预览站点，也不能将已打开文件视为财务核准。
 
 社区版文档：https://helpcenter.onlyoffice.com/docs/installation/docs-community-install-docker.aspx

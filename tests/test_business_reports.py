@@ -65,6 +65,22 @@ def test_zero_integer_business_grain_is_not_treated_as_missing():
     assert reports.evaluate(r,current)['assertions'][0]['value']=='9007199254840.000002'
 
 
+@pytest.mark.parametrize('kind,keys',[('decimal',('1.0','1.00')),('integer',('01','1'))])
+def test_numeric_business_grain_uses_value_not_text_spelling(kind,keys):
+    current=table();current['schema']['columns'][0].update(data_type=kind,unit='1')
+    current['rows'][0]['office'],current['rows'][1]['office']=keys
+    with pytest.raises(ValueError,match='粒度重复'):
+        reports.evaluate(recipe(current['schema']),current)
+
+
+@pytest.mark.parametrize('kind,key',[('integer','1.5'),('decimal',1.25),('decimal',True)])
+def test_invalid_numeric_business_grain_is_not_silently_accepted(kind,key):
+    current=table();current['schema']['columns'][0].update(data_type=kind,unit='1')
+    current['rows'][0]['office']=key
+    with pytest.raises(ValueError,match='粒度包含无效'):
+        reports.evaluate(recipe(current['schema']),current)
+
+
 def test_nonblank_grain_is_not_automatically_trimmed():
     current=table();current['rows'][0]['office']='A';current['rows'][1]['office']=' A '
     assert reports.evaluate(recipe(),current)['selected_rows']==2

@@ -43,7 +43,16 @@ def ingest(run_dir,code_dir):
         work=str((DATA/'dlt-work'/identity).resolve())
         pipelines_dir=work
     pipe=dlt.pipeline(pipeline_name=pipeline_name,pipelines_dir=pipelines_dir,destination=dest,dataset_name='raw')
-    pipe.run(resources)
+    load_info=pipe.run(resources)
+    if load_info is not None:
+        # dlt can report failed destination jobs in LoadInfo even when run()
+        # returns. Never treat a partially loaded financial source as complete.
+        from dlt.common.pipeline import DestinationHasFailedJobs
+        try:load_info.raise_on_failed_jobs()
+        except DestinationHasFailedJobs:
+            raise TaskError('数据采集未完整写入，请检查来源后重试；未发布不完整结果','DLT_LOAD_INCOMPLETE') from None
+    elif any(item['records'] for item in inputs):
+        raise TaskError('数据采集没有产生可核验的加载记录；未发布结果','DLT_LOAD_INCOMPLETE')
     with duckdb.connect(str(run_dir/'warehouse.duckdb')) as con:
         con.execute('create schema if not exists raw')
         previous=json.loads((run_dir/'previous_schema.json').read_text(encoding='utf-8')) if (run_dir/'previous_schema.json').exists() else {}

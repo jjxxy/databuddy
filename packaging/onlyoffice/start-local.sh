@@ -37,6 +37,9 @@ else
     -v atlas-onlyoffice-logs:/var/log/onlyoffice \
     "${ATLAS_ONLYOFFICE_IMAGE:-onlyoffice/documentserver@sha256:ca17889f10b11141cc6441836aebdd2835cf3e1b49681b2fd6e155c94b7850b3}" >/dev/null
 fi
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+docker cp "$script_dir/atlas-viewer.html" atlas-onlyoffice:/var/www/onlyoffice/documentserver/web-apps/apps/api/documents/atlas-viewer.html
+docker cp "$script_dir/atlas-viewer.js" atlas-onlyoffice:/var/www/onlyoffice/documentserver/web-apps/apps/api/documents/atlas-viewer.js
 address=$(docker inspect --format '{{with index .NetworkSettings.Networks "atlas-onlyoffice-private"}}{{.IPAddress}}{{end}}' atlas-onlyoffice)
 case "$address" in ''|*[!0-9.]*) echo '无法确定容器内网地址。' >&2; exit 1;; esac
 unit=atlas-onlyoffice-local-proxy

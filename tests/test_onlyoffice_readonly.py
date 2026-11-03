@@ -76,6 +76,8 @@ def test_real_project_file_handoff_is_authorized_and_single_use(monkeypatch, cle
     client = TestClient(app, client=('127.0.0.1', 1234))
     endpoint = f'/api/projects/{pid}/artifacts/{item["id"]}/onlyoffice-view'
     assert client.post(endpoint).status_code == 401
+    other=project()
+    assert client.post(f'/api/projects/{other}/artifacts/{item["id"]}/onlyoffice-view',headers={'Authorization':'Bearer fixture'}).status_code in (404,409)
     response = client.post(endpoint, headers={'Authorization':'Bearer fixture'})
     assert response.status_code == 200
     token = response.json()['config']['document']['url'].rsplit('/', 1)[-1]
@@ -85,3 +87,15 @@ def test_real_project_file_handoff_is_authorized_and_single_use(monkeypatch, cle
 
 
 from test_workspace_artifacts import clean
+
+
+def test_main_app_mounts_readonly_routes_and_limits_frame_origin(monkeypatch):
+    from fastapi.testclient import TestClient
+    from agent_service.api import app
+    client=TestClient(app)
+    assert client.post('/api/projects/p/artifacts/a/onlyoffice-view').status_code==401
+    policy=client.get('/').headers['content-security-policy']
+    assert "frame-src 'self' http://127.0.0.1:18080" in policy
+    assert "script-src 'self'" in policy and "script-src 'self' http://127.0.0.1:18080" not in policy
+    monkeypatch.delenv('ATLAS_ONLYOFFICE_JWT_SECRET')
+    assert "frame-src 'self' http://127.0.0.1:18080" not in client.get('/').headers['content-security-policy']

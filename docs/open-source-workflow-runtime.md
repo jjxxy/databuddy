@@ -1,0 +1,20 @@
+# 开源组件与业务工作流
+
+本项目复用现有开源组件，同时保留业务流程自己的版本、输入证据、权限和复核规则。组件本身不能证明财务口径正确。
+
+## 当前实际接入
+
+- **dlt**：`agent_service/runner.py` 将经项目连接器读取和校验的来源装入本次运行独立的 DuckDB。使用全量刷新并记录来源版本、字段和输入摘要；加载回执报告失败或非空输入缺少回执时，任务失败，不发布不完整结果。业务流程的所有来源并非都经过此路径。参见 [dlt 开源采集能力](https://dlthub.com/docs/hub/getting-started/oss-and-dlthub)。
+- **LangGraph**：`agent_service/agent.py` 和 `agent_service/planner.py` 用于 Agent 的图式处理。业务工作流使用 `business_flow_engine.py` 的受限流程格式和处理器，并非直接由 LangGraph 解释执行；不能将两个运行时混为一谈。
+- **croniter 和 Dagster**：业务工作流用 croniter 计算时区内的定时触发；`agent_service/dagster_defs.py` 可以定期调用共享入队器，worker 模式也可调用。Dagster 在这里触发队列，不代表每个业务节点都是 Dagster 原生节点。
+- **DuckDB 和 dbt**：现有数据管线使用 DuckDB 保存和查询采集结果，并使用 dbt 执行相应转换；具体业务工作流按其声明的处理器执行。
+
+## 本轮业务流程适配
+
+调试运行按已声明类型校验参数并固定资料版本；每日定时运行针对已采用的流程保存明确参数，按资料绑定选择运行时的当前版本。小数参数以文本传递以保留精度，定时设置显示服务时区。运行服务仍需部署并保持正常，定时请求不是浏览器在后台计时。
+
+## 后续接入时的边界
+
+可以评估 [dlt REST API 采集](https://dlthub.com/docs/dlt-ecosystem/verified-sources/rest_api/basic)处理分页，但需要先明确分页规则、记录范围、凭据与网络地址限制，并验证空页、重复页、漏页和失败重试；不能把自动分页或推断当作完整性证明。
+
+如考虑把业务图迁移到 LangGraph、Dagster 或 Temporal，应先验证已保存流程和运行记录的迁移、人工暂停恢复、外部操作幂等、并发租约和失败补偿。LangGraph 中断后的节点恢复与副作用位置有关；Temporal 对工作流代码的确定性和活动重试也有要求。参见 [LangGraph 的中断说明](https://docs.langchain.com/oss/python/langgraph/interrupts)和 [Temporal 工作流定义](https://docs.temporal.io/workflow-definition)。未经这些验证，不能声称整体迁移已经完成。

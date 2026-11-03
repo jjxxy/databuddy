@@ -139,11 +139,25 @@ def evaluate(recipe,table):
     if not schema.grain:
         if len(rows)>1:raise ValueError('多行结果缺少唯一业务粒度，无法排除重复汇总')
     else:
-        keys=[tuple(row.get(k) for k in schema.grain) for row in rows]
+        def grain_value(column,value):
+            if value is None or isinstance(value,str) and not value.strip():return None
+            if fields[column].data_type in ('decimal','integer'):
+                try:number=decimal_value(value)
+                except ValueError:raise ValueError('结果业务粒度包含无效数值，不能生成报告') from None
+                if fields[column].data_type=='integer' and number!=number.to_integral_value():
+                    raise ValueError('结果业务粒度包含无效整数，不能生成报告')
+                return number
+            return value
+        # Numeric identifiers compare by their declared value, so 1.0 and
+        # 1.00 cannot masquerade as two different business entities. Text
+        # identifiers remain exact and are never trimmed or guessed.
+        keys=[tuple(grain_value(k,row.get(k)) for k in schema.grain) for row in rows]
         # Blank identifiers are not evidence of a real business entity.
         # Treat a whitespace-only string as missing without normalizing or
         # altering valid values, and keep numeric zero as a valid key.
-        if any(any(v is None or isinstance(v,str) and not v.strip() for v in key) for key in keys) or len(set(keys))!=len(keys):
+        try:duplicate=len(set(keys))!=len(keys)
+        except TypeError:raise ValueError('结果业务粒度包含无效值，不能生成报告') from None
+        if any(any(v is None for v in key) for key in keys) or duplicate:
             raise ValueError('结果业务粒度重复或为空，不能生成可能重复计数的报告')
     if not set(recipe.filters)<=set(fields):raise ValueError('报告筛选字段不存在')
     if any(m.kind=='row_count' for m in recipe.metrics) and not recipe.period_column:

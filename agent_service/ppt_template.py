@@ -1,6 +1,6 @@
 """Bounded PPTX template text replacement; no inference or original overwrite.
 
-This helper deliberately supports only existing text placeholders. It does not
+This helper supports explicitly selected existing text shapes. It does not
 promise arbitrary PowerPoint editing or visual fidelity for complex objects.
 """
 import hashlib
@@ -65,16 +65,18 @@ def inspect(pid,source_id,revision,expected_sha256):
     if len(deck.slides)>120:raise ValueError('模板页数超过安全范围')
     slides=[];count=0;remaining=20000
     for number,slide in enumerate(deck.slides,1):
-        shapes=[]
+        shapes=[];text_shapes=[]
         for s in slide.shapes:
-            if not s.has_text_frame or not s.is_placeholder:continue
+            if not s.has_text_frame:continue
             count+=1
-            if count>200:raise ValueError('模板占位符超过安全范围，请拆分模板')
+            if count>200:raise ValueError('模板文本位置超过安全范围，请拆分模板')
             text=s.text;shown=text[:min(2000,remaining)];remaining-=len(shown)
-            shapes.append({'shape_id':s.shape_id,'name':s.name[:200],'text':shown,'text_truncated':len(shown)<len(text)})
-        slides.append({'page':number,'placeholders':shapes})
+            entry={'shape_id':s.shape_id,'name':s.name[:200],'text':shown,'text_truncated':len(shown)<len(text),
+                   'left':s.left,'top':s.top,'width':s.width,'height':s.height}
+            (shapes if s.is_placeholder else text_shapes).append(entry)
+        slides.append({'page':number,'placeholders':shapes,'text_shapes':text_shapes})
     return {'source_id':source_id,'revision':revision,'sha256':expected_sha256,'slides':slides,
-            'notice':'仅列出可填充的原有占位符；不自动推断数据或修改模板原件。'}
+            'notice':'列出原有占位符和文本形状；只修改明确指定的位置，不自动推断数据或修改模板原件。'}
 
 
 def render_bytes(pid,source_id,revision,expected_sha256,replacements):
@@ -86,9 +88,9 @@ def render_bytes(pid,source_id,revision,expected_sha256,replacements):
         page,shape_id,text=entry['page'],entry['shape_id'],entry['text']
         if type(page) is not int or not 1<=page<=len(deck.slides) or type(shape_id) is not int or not isinstance(text,str) or len(text)>1000 or any(ord(c)<32 and c not in '\n\t' for c in text):raise ValueError('填充内容或位置无效')
         key=(page,shape_id)
-        if key in seen:raise ValueError('同一占位符不能重复填充')
-        seen.add(key);matches=[s for s in deck.slides[page-1].shapes if s.shape_id==shape_id and s.has_text_frame and s.is_placeholder]
-        if len(matches)!=1:raise ValueError('模板占位符不存在或不允许修改')
+        if key in seen:raise ValueError('同一文本位置不能重复填充')
+        seen.add(key);matches=[s for s in deck.slides[page-1].shapes if s.shape_id==shape_id and s.has_text_frame]
+        if len(matches)!=1:raise ValueError('模板占位符或文本位置不存在或不允许修改')
         frame=matches[0].text_frame
         # Keep the first run's formatting; avoid flattening untouched shapes.
         paragraphs=frame.paragraphs
@@ -122,7 +124,7 @@ def render(turn,source_id,revision,expected_sha256,name,replacements):
     entries=[x.model_dump() for x in value.replacements];pid=turn['project_id']
     identity={'project_id':pid,'template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
               'spec_sha256':hashlib.sha256(json.dumps(entries,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
-              'renderer':'ppt-template-v1','name':name+'.pptx'}
+              'renderer':'ppt-template-v2','name':name+'.pptx'}
     digest=hashlib.sha256(json.dumps(identity,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
     aid='of_'+digest[:40];folder=office.DATA/'deliverables'/aid;file=folder/(name+'.pptx')
     identity['relative_path']=str(file.relative_to(office.DATA))
@@ -145,4 +147,4 @@ def render(turn,source_id,revision,expected_sha256,name,replacements):
             pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,build=build,save_pending=pending,save_committed=committed,before_publish=assert_owned)
         office._verify_structure(file,'pptx')
     return {'artifact_id':aid,'sha256':record['sha256'],'format':'pptx','template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
-            'visual_validation':False,'notice':'已填充指定占位符；版式和财务内容仍需人工核对。','download':{'label':name+'.pptx','url':'/api/projects/'+pid+'/deliverables/'+aid}}
+            'visual_validation':False,'notice':'已填充指定文本位置；版式和财务内容仍需人工核对。','download':{'label':name+'.pptx','url':'/api/projects/'+pid+'/deliverables/'+aid}}

@@ -45,6 +45,26 @@ def test_registered_template_artifact_can_be_downloaded(tmp_path,monkeypatch):
     engine.dispose()
 
 
+def test_template_fills_explicit_text_boxes_and_preserves_other_shapes(tmp_path,monkeypatch):
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Inches,Pt
+    path=tmp_path/'text-template.pptx';deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[6])
+    box=slide.shapes.add_textbox(Inches(1),Inches(1),Inches(6),Inches(1))
+    run=box.text_frame.paragraphs[0].add_run();run.text='示例标题';run.font.size=Pt(24);run.font.bold=True
+    label=slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,Inches(1),Inches(3),Inches(4),Inches(1));label.text='原有部门'
+    untouched=slide.shapes.add_textbox(Inches(1),Inches(5),Inches(5),Inches(1));untouched.text='不修改的说明'
+    deck.save(path);raw=path.read_bytes();sha=hashlib.sha256(raw).hexdigest()
+    source={'id':'s1','project_id':'p1','name':'template.pptx','kind':'file','revision':1,'content_hash':sha}
+    monkeypatch.setattr(ppt_template.project_data,'owned',lambda p,k,s:source if p=='p1' and s=='s1' else (_ for _ in ()).throw(ValueError('来源不属于项目')))
+    monkeypatch.setattr(ppt_template.project_data,'source_path',lambda _:path)
+    items=ppt_template.inspect('p1','s1',1,sha)['slides'][0]['text_shapes'];assert {x['shape_id'] for x in items}=={box.shape_id,label.shape_id,untouched.shape_id}
+    data=ppt_template.render_bytes('p1','s1',1,sha,[{'page':1,'shape_id':box.shape_id,'text':'收入 118.15 元'},{'page':1,'shape_id':label.shape_id,'text':'华东'}])
+    changed=Presentation(io.BytesIO(data));shapes={s.shape_id:s for s in changed.slides[0].shapes}
+    assert shapes[box.shape_id].text=='收入 118.15 元' and shapes[label.shape_id].text=='华东'
+    assert shapes[untouched.shape_id].text=='不修改的说明' and path.read_bytes()==raw
+    style=shapes[box.shape_id].text_frame.paragraphs[0].runs[0].font;assert style.bold and style.size==Pt(24)
+
+
 def test_template_tools_are_unavailable_to_scoped_delegation():
     from agent_service.agent_context import allowed
     tools={'inspect_pptx_template','render_pptx_template'}
