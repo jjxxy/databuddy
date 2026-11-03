@@ -58,7 +58,9 @@ def main(argv=None):
         if args.state_dir or not os.getenv('DATA_DIR'):os.environ['DATA_DIR'] = str(state / 'data')
         if args.state_dir or not os.getenv('DATABASE_URL'):
             os.environ['DATABASE_URL'] = 'sqlite:///' + str(Path(os.environ['DATA_DIR']).absolute() / 'metadata.sqlite')
-        os.environ.update(NEXUS_DESKTOP_MODE='1',NEXUS_API_HOST='127.0.0.1',PORT=str(args.port),PYTHONUTF8='1')
+        os.environ.update(NEXUS_DESKTOP_MODE='1',PORT=str(args.port),PYTHONUTF8='1')
+        # 默认仅环回；显式设置 NEXUS_API_HOST（如接入 ONLYOFFICE 文件桥时）则尊重覆盖
+        os.environ.setdefault('NEXUS_API_HOST','127.0.0.1')
         os.environ['PYTHONPATH'] = str(ROOT) + (os.pathsep + os.environ['PYTHONPATH'] if os.getenv('PYTHONPATH') else '')
         native=configure_opencode()
         model = Path(args.model_config).expanduser().absolute() if args.model_config else ROOT / 'llm.json'

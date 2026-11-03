@@ -100,7 +100,11 @@ def issue(pid, aid):
     config = {'document': {'fileType': kind, 'key': doc_key,
                            'title': meta['name'], 'url': bridge + '/api/onlyoffice/file/' + token,
                            'permissions': {'edit': False, 'review': False, 'comment': False}},
-              'documentType': document_types[kind], 'editorConfig': {'mode': 'view', 'lang': 'zh-CN'},
+              'documentType': document_types[kind],
+              'editorConfig': {'mode': 'view', 'lang': 'zh-CN',
+                               'user': {'id': hashlib.sha256(str(actor).encode()).hexdigest()[:24],
+                                        'name': '查看者'},
+                               'coEditing': {'mode': 'strict', 'change': False}},
               'width': '100%', 'height': '100%'}
     config['token'] = jwt.encode(config, secret, algorithm='HS256')
     return {'server_origin': server, 'config': config, 'expires_in': _ttl}
@@ -118,7 +122,7 @@ def _config_binding(server,bridge,allowed,secret):
     return hmac.new(secret.encode(),value,hashlib.sha256).hexdigest()
 
 
-def redeem(token, remote):
+def _validated(token, remote, consume):
     identity=_ticket_id(token)
     try:server,bridge,allowed,secret=_config()
     except HTTPException:raise HTTPException(404, '文件链接无效或已过期') from None
@@ -137,13 +141,27 @@ def redeem(token, remote):
                 raise ValueError()
         except (ValueError,TypeError,KeyError):
             raise HTTPException(404, '文件链接无效或已过期') from None
-        # Same transaction/row lock makes redemption one-time across replicas.
-        connection.execute(delete(items).where(items.c.id==identity,items.c.kind==_ticket_kind))
+        if consume:
+            # Same transaction/row lock makes redemption one-time across replicas.
+            connection.execute(delete(items).where(items.c.id==identity,items.c.kind==_ticket_kind))
+    return entry
+
+
+def _resolve(entry):
     with actor_scope(entry['actor']):
         path, meta = workspace_artifacts.file(entry['pid'], entry['aid'], entry['format'])
     if meta['download_sha256'] != entry['sha256']:
         raise HTTPException(409, '文件版本已变化，请重新打开')
     return path, meta
+
+
+def redeem(token, remote):
+    return _resolve(_validated(token, remote, True))
+
+
+def peek(token, remote):
+    """Validate a ticket without consuming it (used for HEAD capability probes)."""
+    return _resolve(_validated(token, remote, False))
 
 
 def install(app, auth):
@@ -161,10 +179,15 @@ def install(app, auth):
     def open_view(pid: str, aid: str):
         return checked(issue, pid, aid)
 
-    @app.get('/api/onlyoffice/file/{token}')
+    @app.api_route('/api/onlyoffice/file/{token}', methods=['GET', 'HEAD'])
     def fetch_file(token: str, request: Request):
         if not request.client:
             raise HTTPException(404, '文件链接无效或已过期')
-        path, meta = checked(redeem, token, request.client.host)
+        # The document server probes PDF sources with a byte-range GET (and
+        # HEAD) before downloading the whole file. Those probes must not
+        # consume the one-time ticket, or the following full GET fails.
+        probe = request.method == 'HEAD' or bool(request.headers.get('range'))
+        resolve = peek if probe else redeem
+        path, meta = checked(resolve, token, request.client.host)
         return FileResponse(path, filename=meta['name'], media_type='application/octet-stream',
                             headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})

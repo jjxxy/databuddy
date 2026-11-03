@@ -85,6 +85,11 @@ def test_real_project_file_handoff_is_authorized_and_single_use(monkeypatch, cle
     response = client.post(endpoint, headers={'Authorization':'Bearer fixture'})
     assert response.status_code == 200
     token = response.json()['config']['document']['url'].rsplit('/', 1)[-1]
+    # The document server probes PDF sources with HEAD and byte-range GETs;
+    # those probes must leave the ticket usable for the full download.
+    assert client.head('/api/onlyoffice/file/' + token).status_code == 200
+    partial = client.get('/api/onlyoffice/file/' + token, headers={'Range': 'bytes=0-15'})
+    assert partial.status_code == 206 and len(partial.content) == 16
     output = client.get('/api/onlyoffice/file/' + token)
     assert output.status_code == 200 and hashlib.sha256(output.content).hexdigest() == generated['sha256']
     assert client.get('/api/onlyoffice/file/' + token).status_code == 404

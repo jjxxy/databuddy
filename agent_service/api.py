@@ -1008,6 +1008,8 @@ from .business_flow_checkpoint import install as install_business_flow_checkpoin
 install_business_flow_checkpoint(app,auth)
 from .onlyoffice_readonly import install as install_onlyoffice_readonly
 install_onlyoffice_readonly(app,auth)
+from .onlyoffice_edit import install as install_onlyoffice_edit
+install_onlyoffice_edit(app,auth)
 
 @app.get('/api/desktop/runtime',dependencies=[Depends(auth)])
 def desktop_runtime_status():

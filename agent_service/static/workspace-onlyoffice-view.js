@@ -2,7 +2,7 @@
 /* The viewer is hosted on the isolated document-server origin, never the app origin. */
 window.nexusOnlyOfficeView=function({container,value,isCurrent}){
  const origin=new URL(value.server_origin);if(origin.origin!==value.server_origin||origin.origin===location.origin||!['http:','https:'].includes(origin.protocol))throw Error('办公服务地址无效');
- const frame=document.createElement('iframe');frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.setAttribute('referrerpolicy','no-referrer');frame.title='办公文件';frame.style.cssText='display:block;width:100%;height:70vh;min-height:360px;border:0;background:#fff';frame.src=origin.origin+'/web-apps/apps/api/documents/atlas-viewer.html';
+ const frame=document.createElement('iframe');frame.setAttribute('sandbox','allow-scripts allow-same-origin allow-downloads');frame.setAttribute('referrerpolicy','no-referrer');frame.title='办公文件';frame.style.cssText='display:block;width:100%;height:70vh;min-height:360px;border:0;background:#fff';frame.src=origin.origin+'/web-apps/apps/api/documents/atlas-viewer.html';
  let closed=false,timer,resolveReady;const ready=new Promise(resolve=>{resolveReady=resolve});
  function finish(ok){if(closed)return;clearTimeout(timer);resolveReady(ok)}
  function close(){if(closed)return;closed=true;clearTimeout(timer);window.removeEventListener('message',onMessage);frame.remove();resolveReady(false)}
