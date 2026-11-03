@@ -55,9 +55,11 @@ def test_historical_fact_download_and_safe_csv_candidate_remain_available(monkey
         historical.setattr(data,'source_interpretation_needs_review',lambda source,evidence:False)
         first=run(pid,wid);data.publish_result(pid,first['id'],first['commit'])
     assert get_job(first['id'])['status']=='succeeded'
-    assert data.result_download(pid,first['id'],'csv').is_file()
+    # This legacy fixture has no immutable version for the original document;
+    # its ancestor cannot be checked, so it must not take the historical fast path.
+    with pytest.raises(ValueError,match='语义'):data.result_download(pid,first['id'],'csv')
     item=next(x for x in assets.catalog(pid)['items'] if x['kind']=='result' and x['status']=='adopted')
-    assert item['semantic_status']=='requires_review' and item['downloads']
+    assert item['semantic_status']=='requires_review' and not item['downloads']
     page=assets.preview(pid,item['id']);assert page['total']==2
     x=next(column['name'] for column in page['columns'] if column['name']!=value)
     with pytest.raises(ValueError,match='语义'):assets.preview(pid,item['id'],chart_x=x,chart_y=value)

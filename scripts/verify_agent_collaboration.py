@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from decimal import Decimal
 import hashlib
@@ -33,6 +34,10 @@ from scripts.verify_quickstart import (FIXTURE_KEY,FIXTURE_MODEL,FIXTURE_OPERATO
 
 TOTAL=Decimal('300.000000000002')
 ROWS=40
+
+
+class ExternalReviewBlocked(RuntimeError):
+    """Full delivery still requires a safe adoption path."""
 
 
 def source_bytes():
@@ -156,7 +161,14 @@ class CollaborationFixture:
                     time.sleep(2)
                     steps=[action('project_context'),final()]
                 else:raise AssertionError('Unknown synthetic collaboration route')
-            return json.dumps(steps[min(self._step(context,body),len(steps)-1)],ensure_ascii=False)
+            selected=steps[min(self._step(context,body),len(steps)-1)]
+            if route is not None and route[1].get('review_gate') and selected.get('tool')=='read_data_workflow_result':
+                # An authenticated test reviewer records the review of the candidate
+                # before the model can try to hand it off. The model fixture
+                # may only wait; it cannot sign or approve the review.
+                gate=route[1]['review_gate'];gate['run_id']=selected['arguments']['run_id'];gate['ready'].set()
+                if not gate['approved'].wait(90):raise TimeoutError('Explicit external-data review not received')
+            return json.dumps(selected,ensure_ascii=False)
         finally:
             if child:
                 with self.lock:self.active_children-=1
@@ -253,6 +265,58 @@ class Node:
         return self.wait(completed,'parent Agent task',180)
 
 
+def reviewed_delegation(fixture,origin,target,*,source_id,parent_marker,remote_marker,peer_id,grant,expect_blocked=False):
+    """Run a simulated delegate; a separate authenticated reviewer must intervene.
+
+    The local model fixture only holds the model response; it cannot create a
+    review receipt. The authenticated test owner records through the public API after matching
+    a separately uploaded original. This is simulated acceptance, not evidence
+    that any real enterprise user reviewed a production dataset.
+    """
+    anchor=target.source(target.project_id)
+    gate={'ready':threading.Event(),'approved':threading.Event(),'run_id':None}
+    fixture.configure(remote_marker,kind='finance',review_gate=gate)
+    fixture.configure(parent_marker,kind='delegate',peer_id=peer_id,source_ids=[source_id],
+                      goal='请生成完整数据工作流，保留原子值与全部行。'+remote_marker)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future=executor.submit(origin.say,origin.project_id,
+            '请协作调用专业Agent并生成完整数据结果。'+parent_marker,[source_id])
+        try:
+            if not gate['ready'].wait(90):raise AssertionError('远端候选没有到达人工核对步骤')
+            rid=gate['run_id']
+            if not isinstance(rid,str) or rid=='not-yet-run':raise AssertionError('未获得真实候选运行标识')
+            path=f'/api/projects/{target.project_id}/data-results/{rid}'
+            before=target.client.get(path+'/download',params={'format':'handoff'})
+            assert before.status_code==400 and '事实业务语义尚未对齐' in str(before.json().get('detail','')),'未核对的远端资料必须由语义门禁拦截'
+            review=target.call('GET',path+'/external-alignment',params={'anchor_source_id':anchor})
+            names=[column['name'] for column in review['fields']]
+            assert set(names)=={'office','actual','budget'} and len(names)==3
+            confirmation={'anchor_source_id':anchor,'expected_preview_sha256':review['preview_sha256'],
+                'confirmed_fields':names,'note':'测试人员已核对原件、字段语义和方案',
+                'confirm_original':True,'confirm_plan':True}
+            with httpx.Client(base_url=target.url,headers={'Authorization':'Bearer '+grant['token']},
+                              trust_env=False,timeout=20) as machine:
+                rejected=machine.post(path+'/external-alignment/confirm',json=confirmation)
+                assert rejected.status_code in (401,403),'机器身份不得代替用户确认'
+            target.call('POST',path+'/external-alignment/confirm',json=confirmation)
+            after=target.client.get(path+'/download',params={'format':'handoff'})
+            blocked=(after.status_code==400 and '事实业务语义尚未对齐' in str(after.json().get('detail','')))
+            if blocked:
+                status=target.call('GET',path)
+                assert status.get('external_alignment_recorded') is True
+                assert status.get('external_alignment_confirmed') is False
+            if expect_blocked:
+                assert blocked,'外部来源确认后必须继续由语义门禁拦截'
+            elif blocked:
+                raise ExternalReviewBlocked('External data adoption remains blocked after recorded review')
+            else:
+                assert after.status_code==200
+            gate['approved'].set()
+            return future.result(timeout=180)
+        finally:
+            gate['approved'].set()
+
+
 @contextmanager
 def ambiguous_proxy(target_url):
     """Forward one real submit, then lose its reply without retrying it."""
@@ -347,11 +411,56 @@ def verify_shared_budget(ledger,parent,children):
         assert used==baseline+sum(item[counter] for item in per_turn.values()),'Shared usage was reset or lost'
         if expected[key] is not None:assert used<=expected[key],'Shared budget exceeded its explicit grant'
     for child in children:
-        child_limits=effective_limits(child)
+        if (child.get('collaboration_budget_inherited') and child.get('collaboration_parent_turn_id')
+                and not (child.get('gateway_client_id') or child.get('gateway_limits'))):
+            # effective_limits() normally resolves the parent from the current
+            # service database. This verifier is a separate process and must
+            # use the already-read parent receipt from the correct instance.
+            assert child['collaboration_parent_turn_id']==parent['id'],'Wrong inherited budget parent'
+            raw=(child.get('task_contract') or {}).get('budgets') or {}
+            child_limits={}
+            for key,parent_cap in effective_limits(parent).items():
+                cap=raw.get(key)
+                assert cap is None or type(cap) is int and cap>0,'Invalid child grant'
+                child_limits[key]=parent_cap if cap is None else min(cap,parent_cap) if parent_cap is not None else cap
+        else:
+            child_limits=effective_limits(child)
         for key,counter in counters.items():
             cap=child_limits[key]
             if cap is not None:assert per_turn[child['id']][counter]<=cap,'Child exceeded its delegated grant'
     return True
+
+
+def verify_blocked(folder):
+    """Exercise actual bidirectional processes and confirm the fail-closed gate.
+
+    This is a synthetic security regression, never a successful delivery claim.
+    """
+    nodes=[]
+    with local_model() as (base_fixture,endpoint):
+        fixture=CollaborationFixture(base_fixture)
+        a=Node(Path(folder)/'A',endpoint);nodes.append(a)
+        b=Node(Path(folder)/'B',endpoint);nodes.append(b)
+        try:
+            a.start();b.start();a.project_id=a.project('Synthetic A');b.project_id=b.project('Synthetic B')
+            source_a=a.source(a.project_id);grant_b=b.grant(b.project_id);peer_b=a.peer(a.project_id,b,grant_b)
+            first=reviewed_delegation(fixture,a,b,source_id=source_a,parent_marker='fixture-parent-outbound',
+                remote_marker='fixture-remote-finance',peer_id=peer_b['id'],grant=grant_b,expect_blocked=True)
+            tasks=a.call('GET',f'/api/projects/{a.project_id}/agent-tasks')['items']
+            first_task=next(t for t in tasks if t.get('parent_turn_id')==first['id'])
+            assert first_task['state']!='succeeded','受阻任务不能报告成功'
+            source_b=b.source(b.project_id);grant_a=a.grant(a.project_id);peer_a=b.peer(b.project_id,a,grant_a,transport='mcp')
+            second=reviewed_delegation(fixture,b,a,source_id=source_b,parent_marker='fixture-parent-reverse',
+                remote_marker='fixture-reverse-finance',peer_id=peer_a['id'],grant=grant_a,expect_blocked=True)
+            tasks=b.call('GET',f'/api/projects/{b.project_id}/agent-tasks')['items']
+            second_task=next(t for t in tasks if t.get('parent_turn_id')==second['id'])
+            assert second_task['state']!='succeeded','受阻任务不能报告成功'
+            return {'ok':True,'scope':'fail_closed_security_only','full_delivery':'blocked',
+                    'simulated_human_review':True,'real_model_evaluated':False,
+                    'checks':{'bidirectional_handoff_blocked':True,'machine_review_denied':True,
+                              'review_recorded_without_adoption':True}}
+        finally:
+            for node in reversed(nodes):node.close()
 
 
 def verify(folder,*,opencode_binary=None):
@@ -369,10 +478,8 @@ def verify(folder,*,opencode_binary=None):
             unauthorized_project=b.project('Unrelated existing project')
             source=a.source(a.project_id)
             grant_b=b.grant(b.project_id);peer_b=a.peer(a.project_id,b,grant_b)
-            fixture.configure('fixture-remote-finance',kind='finance')
-            fixture.configure('fixture-parent-outbound',kind='delegate',peer_id=peer_b['id'],source_ids=[source],
-                goal='请生成完整数据工作流，保留原子值与全部行。fixture-remote-finance')
-            parent=a.say(a.project_id,'请协作调用专业Agent并生成完整数据结果。fixture-parent-outbound',[source])
+            parent=reviewed_delegation(fixture,a,b,source_id=source,parent_marker='fixture-parent-outbound',
+                remote_marker='fixture-remote-finance',peer_id=peer_b['id'],grant=grant_b)
             tasks=a.call('GET',f'/api/projects/{a.project_id}/agent-tasks')
             tasks=tasks.get('items',[]) if isinstance(tasks,dict) else tasks
             task=next(t for t in tasks if t.get('parent_turn_id')==parent['id'])
@@ -388,7 +495,7 @@ def verify(folder,*,opencode_binary=None):
                 assert machine.get('/api/projects').status_code in (401,403)
                 assert machine.post('/api/agent/v1/tasks',json={'project_id':unauthorized_project,'request_id':'fixture-cross-project','goal':'拒绝未授权项目'}).status_code in (403,404)
             assert b.client.get('/api/agent/v1/tasks/'+task['remote_task_id']).status_code in (401,403)
-            checks.update(real_A_to_B=True,complete_40_row_handoff=True,exact_result_and_manifest=True,
+            checks.update(real_A_to_B=True,complete_40_row_handoff=True,exact_result_and_manifest=True,simulated_human_review_before_export=True,
                           service_token_not_business_token=True,cross_project_denied=True,source_bytes_exact=True)
             other_grant=b.grant(b.project_id,mode='chat')
             with httpx.Client(base_url=b.url,headers={'Authorization':'Bearer '+other_grant['token']},trust_env=False) as other:
@@ -398,10 +505,8 @@ def verify(folder,*,opencode_binary=None):
             # Reverse direction exercises the MCP Agent adapter, not a callback loop.
             grant_a=a.grant(a.project_id);peer_a=b.peer(b.project_id,a,grant_a,transport='mcp')
             source_b=b.source(b.project_id)
-            fixture.configure('fixture-reverse-finance',kind='finance')
-            fixture.configure('fixture-parent-reverse',kind='delegate',peer_id=peer_a['id'],source_ids=[source_b],
-                goal='请生成完整数据工作流，不截断。fixture-reverse-finance')
-            reverse=b.say(b.project_id,'请协作调用另一Agent并生成完整结果。fixture-parent-reverse',[source_b])
+            reverse=reviewed_delegation(fixture,b,a,source_id=source_b,parent_marker='fixture-parent-reverse',
+                remote_marker='fixture-reverse-finance',peer_id=peer_a['id'],grant=grant_a)
             reverse_tasks=b.call('GET',f'/api/projects/{b.project_id}/agent-tasks')
             reverse_tasks=reverse_tasks.get('items',[]) if isinstance(reverse_tasks,dict) else reverse_tasks
             reverse_task=next(t for t in reverse_tasks if t.get('parent_turn_id')==reverse['id'])
@@ -506,12 +611,13 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence-dir',type=Path,required=True)
     parser.add_argument('--opencode-binary',type=Path)
+    parser.add_argument('--verify-blocked',action='store_true',help='Verify fail-closed behavior only; not a delivery acceptance')
     options=parser.parse_args(argv)
     folder=options.evidence_dir.resolve()
     if folder.exists() and any(folder.iterdir()):parser.error('--evidence-dir must be empty')
     folder.mkdir(parents=True,exist_ok=True);folder.chmod(0o700)
     try:
-        result=verify(folder,opencode_binary=options.opencode_binary.resolve(strict=True) if options.opencode_binary else None)
+        result=verify_blocked(folder) if options.verify_blocked else verify(folder,opencode_binary=options.opencode_binary.resolve(strict=True) if options.opencode_binary else None)
         (folder/'verification.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         print(json.dumps(result,ensure_ascii=False));return 0
     except Exception as error:

@@ -179,7 +179,7 @@ function wbRenderTask() {
     wbState.editorDirty ? ['先保存本页的做法修改','保存后再运行；如果不需要这些修改，可以在“任务做法”中重新载入。'] :
     failure ? ['先检查这次未完成的地方',failure.next] :
     workflow.refresh_error ? ['检查自动更新提示','请查看下方的自动更新提示，并按具体原因处理；此前保留的结果仍可查看。'] :
-    result&&wbFactSemanticBlocked()?['先完成业务语义对齐','逐条事实的指标、单位、期间和可加性尚不能确认；当前结果仅供查看，不能采用或生成报告。'] :
+    result&&wbFactSemanticBlocked()?['结果仍需进一步核验','字段口径声明不会解除限制；此结果仅供查看，不能采用或生成报告，也不能批量下载。'] :
     changed ? ['做法已经调整，请重新运行','当前新结果来自之前的做法。运行最新任务后，再核对并采用新结果。'] :
     candidate ? ['核对这次新结果','查看完整明细与来源，确认后点击“采用此结果”，方便以后继续使用。'] :
     semanticReviewPending ? ['重新运行并核对业务口径','历史结果仍可查看；当前缺少有效的业务语义复核记录，不能作为已核验依据用于简报或下游加工。'] :
@@ -275,6 +275,94 @@ function wbSetBusy(value) { wbState.busy = value;wbRenderButtons();wbRenderSched
 function wbCurrentProject(){return !wbAuthClosed && new URLSearchParams(location.search).get('project')===wbProject;}
 function wbFactSemanticBlocked(){const reasons=wbState.result?.context?.semantic_review_reasons;return Array.isArray(reasons)&&reasons.includes('FACT_SEMANTIC_ALIGNMENT_REQUIRED');}
 function wbUnalignedFactCandidate(){return wbFactSemanticBlocked()&&wbState.result?.run_id===wbState.resultId&&wbRunId(wbState.workflow?.candidate_run)===wbState.resultId;}
+// Optional human alignment: only server-verified, exact current candidates can be confirmed.
+// A same-byte CSV submitted by the current authenticated subject is not proof of origin.
+const wbExternalAlignment={key:'',generation:0,busy:false,uncertain:false,preview:null,blobUrl:null};
+function wbExternalRelease(){if(wbExternalAlignment.blobUrl){URL.revokeObjectURL(wbExternalAlignment.blobUrl);wbExternalAlignment.blobUrl=null;}}
+function wbExternalKey(){const r=wbState.result;return wbCurrentProject()&&wbUnalignedFactCandidate()&&/^[a-f0-9]{64}$/.test(r?.manifest_sha256||'')&&/^[a-f0-9]{64}$/.test(r?.plan_sha256||'')?JSON.stringify([wbProject,wbState.workflowId,wbState.resultId,r.plan_sha256,r.manifest_sha256,wbState.token,r.external_alignment_recorded===true,r.external_alignment_recorded_details?.anchor_source_id,r.external_alignment_recorded_details?.preview_sha256]):'';}
+function wbSyncExternalAlignment(){
+ const key=wbExternalKey(),panel=wbEl('#external-alignment-panel');
+ if(key!==wbExternalAlignment.key){wbExternalRelease();wbExternalAlignment.key=key;wbExternalAlignment.generation++;wbExternalAlignment.preview=null;wbExternalAlignment.uncertain=false;wbExternalAlignment.busy=false;wbEl('#external-alignment-details').replaceChildren();wbEl('#external-alignment-status').textContent='';const select=wbEl('#external-alignment-anchor');select.replaceChildren();const option=wbNode('option','请选择当前认证账号提交的 CSV');option.value='';select.append(option);wbEl('#external-alignment-preview').disabled=true;wbEl('#external-alignment-sources').disabled=false;}
+ panel.hidden=!key;const recorded=!!key&&wbState.result?.external_alignment_recorded===true;for(const selector of ['#external-alignment-instructions','#external-alignment-anchor','#external-alignment-sources','#external-alignment-preview','label[for=external-alignment-anchor]'])wbEl(selector).hidden=recorded;if(recorded&&!wbEl('#external-alignment-details').hasChildNodes())wbExternalRecorded(key,wbExternalAlignment.generation);
+}
+function wbExternalRecorded(key,generation){
+ const body=wbEl('#external-alignment-details'),details=wbState.result?.external_alignment_recorded_details,run=wbState.resultId;
+ wbExternalStatus('账号声明已记录，仍需进一步核验；外部结果暂不能下载或采用。');
+ if(!/^[-A-Za-z0-9_]{1,64}$/.test(details?.anchor_source_id||'')||!/^[a-f0-9]{64}$/.test(details?.preview_sha256||'')){body.append(wbNode('p','当前核对记录缺少可核验的文件版本，无法创建新任务。'));return;}
+ body.append(wbNode('p','可以使用当前账号提交的文件创建并运行新的本地任务，结果仍需业务复核；它不证明外部来源或远端血缘。'));
+ const button=wbNode('button','用账号提交的文件创建并运行新任务'),result=wbNode('p','','muted');button.type='button';body.append(button,result);
+ button.onclick=async()=>{if(!wbExternalCurrent(key,generation)||wbExternalAlignment.busy||wbExternalAlignment.uncertain)return;wbExternalAlignment.busy=true;button.disabled=true;result.textContent='正在创建新任务…';
+  try{const receipt=await wbRequest(wbRoot()+'/data-results/'+wbEnc(run)+'/external-alignment/local-candidate',{method:'POST',body:{anchor_source_id:details.anchor_source_id,expected_preview_sha256:details.preview_sha256}});if(!wbExternalCurrent(key,generation))return;
+   if(!/^[-A-Za-z0-9_]{1,100}$/.test(receipt?.workflow_id||'')||!/^[-A-Za-z0-9_]{1,100}$/.test(receipt?.run_id||'')||!/^[a-f0-9]{64}$/.test(receipt?.plan_sha256||''))throw Error('任务回执不完整');
+   const params=new URLSearchParams({project:wbProject,workflow:receipt.workflow_id}),link=wbNode('a','打开新任务');link.href='/data-workbench.html?'+params;result.replaceChildren(wbNode('span','已取得新任务记录，请打开查看实际状态；结果仍需核对。 '),link);button.hidden=true;
+  }catch(error){if(wbExternalCurrent(key,generation)){wbExternalAlignment.uncertain=!(error.status>=400&&error.status<500);result.textContent=wbExternalAlignment.uncertain?'未确认新任务是否已提交，请刷新状态后查看；重复请求会复用同一任务。':error.message;}}
+  finally{if(wbExternalCurrent(key,generation)){wbExternalAlignment.busy=false;button.disabled=wbExternalAlignment.uncertain;}}
+ };
+}
+function wbExternalCurrent(key,generation){return !!key&&key===wbExternalAlignment.key&&generation===wbExternalAlignment.generation&&key===wbExternalKey();}
+function wbExternalStatus(message){wbEl('#external-alignment-status').textContent=message;}
+async function wbExternalSources(){
+ const key=wbExternalKey();if(!key||wbState.result?.external_alignment_recorded===true||wbExternalAlignment.busy)return;const generation=++wbExternalAlignment.generation;wbExternalRelease();wbExternalAlignment.preview=null;wbEl('#external-alignment-details').replaceChildren();wbEl('#external-alignment-preview').disabled=true;
+ wbExternalAlignment.busy=true;wbEl('#external-alignment-sources').disabled=true;wbExternalStatus('正在读取本项目文件…');
+ try{const sources=await wbRequest('/api/sources');if(!wbExternalCurrent(key,generation))return;
+  const select=wbEl('#external-alignment-anchor');select.replaceChildren();const blank=wbNode('option','请选择当前认证账号提交的 CSV');blank.value='';select.append(blank);
+  const valid=(Array.isArray(sources)?sources:[]).filter(x=>x?.project_id===wbProject&&x.kind==='file'&&x.status==='ready'&&!x.archived&&typeof x.id==='string'&&/^[-A-Za-z0-9_]{1,64}$/.test(x.id)&&typeof x.name==='string'&&/\.csv$/i.test(x.name));
+  for(const source of valid){const item=wbNode('option',source.name);item.value=source.id;select.append(item)}
+  wbExternalRelease();wbExternalAlignment.preview=null;wbEl('#external-alignment-details').replaceChildren();wbEl('#external-alignment-preview').disabled=true;
+  wbExternalStatus(valid.length?'请选择当前认证账号提交、可以核实的 CSV。':'本项目暂无已就绪的 CSV，请当前认证账号先在项目对话提交可核实的文件。');
+ }catch(error){if(wbExternalCurrent(key,generation))wbExternalStatus(error.message)}
+ finally{if(wbExternalCurrent(key,generation)){wbExternalAlignment.busy=false;wbEl('#external-alignment-sources').disabled=false}}
+}
+function wbExternalAnchorChanged(){wbExternalRelease();wbExternalAlignment.generation++;wbExternalAlignment.preview=null;wbExternalAlignment.uncertain=false;wbExternalAlignment.busy=false;wbEl('#external-alignment-details').replaceChildren();wbEl('#external-alignment-status').textContent='';wbEl('#external-alignment-sources').disabled=false;wbEl('#external-alignment-preview').disabled=!wbEl('#external-alignment-anchor').value;}
+async function wbExternalPreview(){
+ const key=wbExternalKey(),anchor=wbEl('#external-alignment-anchor').value,run=wbState.resultId;
+ if(!key||!anchor||wbState.result?.external_alignment_recorded===true||wbExternalAlignment.busy)return;const generation=++wbExternalAlignment.generation;wbExternalRelease();wbExternalAlignment.preview=null;wbEl('#external-alignment-details').replaceChildren();wbExternalAlignment.busy=true;wbEl('#external-alignment-preview').disabled=true;wbExternalStatus('正在核验提交文件、完整结果与冻结方案…');
+ try{const preview=await wbRequest(wbRoot()+'/data-results/'+wbEnc(run)+'/external-alignment?'+new URLSearchParams({anchor_source_id:anchor}));if(!wbExternalCurrent(key,generation))return;
+  const fields=preview?.fields,grain=preview?.grain,ids=Array.isArray(fields)?fields.map(f=>f?.name):[];
+  if(preview?.project_id!==wbProject||preview?.run_id!==run||preview?.anchor_source_id!==anchor||!Number.isSafeInteger(preview?.anchor_revision)||preview.anchor_revision<1||preview?.plan_sha256!==wbState.result?.plan_sha256||preview?.handoff_sha256!==wbState.result?.manifest_sha256||
+     !/^[a-f0-9]{64}$/.test(preview?.preview_sha256||'')||!/^[a-f0-9]{64}$/.test(preview?.source_sha256||'')||!Array.isArray(grain)||!grain.length||grain.some(x=>typeof x!=='string')||!Array.isArray(preview?.stage_summaries)||preview.stage_summaries.length!==1||preview.stage_summaries[0]?.kind!=='select'||!Array.isArray(preview.stage_summaries[0].columns)||!Array.isArray(fields)||!fields.length||fields.length>200||ids.some(x=>typeof x!=='string'||!/^[-A-Za-z0-9_]{1,64}$/.test(x))||new Set(ids).size!==ids.length||grain.some(x=>!ids.includes(x))||preview.stage_summaries[0].columns.length!==ids.length||preview.stage_summaries[0].columns.some((x,i)=>x!==ids[i])||fields.some(f=>typeof f.meaning!=='string'||!f.meaning.trim()||!['text','decimal','integer','boolean','date'].includes(f.data_type)||!['additive','non_additive','unknown'].includes(f.aggregation)||typeof f.nullable!=='boolean'))throw Error('核对依据不完整或版本已变化，请刷新后重新读取。');
+  wbExternalAlignment.preview=preview;wbExternalAlignment.uncertain=false;wbExternalRender(preview,key,generation);wbExternalStatus('请逐项核对；这还不是采用或发布结果。');
+ }catch(error){if(wbExternalCurrent(key,generation)){wbExternalAlignment.preview=null;wbEl('#external-alignment-details').replaceChildren();wbExternalStatus(error.message)}}
+ finally{if(wbExternalCurrent(key,generation)){wbExternalAlignment.busy=false;wbEl('#external-alignment-preview').disabled=!wbEl('#external-alignment-anchor').value}}
+}
+function wbExternalRender(preview,key,generation){
+ const body=wbEl('#external-alignment-details');body.replaceChildren();
+ body.append(wbDefinition(preview,[['当前认证账号提交的资料','anchor_source_id'],['提交文件版本','anchor_revision'],['外部资料','source_id'],['提交文件摘要','source_sha256'],['冻结加工方案摘要','plan_sha256'],['完整结果摘要','handoff_sha256'],['核对依据摘要','preview_sha256'],['数据粒度',v=>v.grain.length?v.grain.join('、'):'标量（无分组字段）']]));
+ body.append(wbNode('p','系统仅验证相同字节并记录认证账号的声明，无法证明文件原始性、独立来源、远端血缘或财务审批；共享令牌不能区分具体人员。','workbench-trust-notice'));
+ body.append(wbNode('p',typeof preview.notice==='string'?preview.notice:'此核对记录认证账号的声明；无法证明文件原始性、独立来源、远端血缘或财务审批。','workbench-trust-notice'));
+ const stage=preview.stage_summaries[0];body.append(wbNode('h3','本次处理步骤'),wbNode('p','读取 CSV 的所有记录，并按原顺序选取全部字段；本次不筛选、不汇总。'),wbDefinition(stage,[['步骤说明','description'],['读取输入','input'],['选取字段',v=>v.columns.join('、')]]));
+ const box=wbNode('div','','external-fields'),checks=[];box.append(wbNode('h3','逐字段核对（全部必选）'));
+ for(const field of preview.fields){const section=wbNode('section','','catalog-field');section.append(wbNode('h4',field.label||field.name));section.append(wbDefinition(field,[['字段标识','name'],['原始字段标识','original_name'],['原始字段名称','original_label'],['业务含义','meaning'],['类型',v=>({text:'文本',decimal:'小数',integer:'整数',boolean:'是/否',date:'日期'})[v.data_type]||v.data_type],['数值表达',v=>({native:'原始数值',percent_fraction:'比例（1 表示 100%）',percent_points:'百分数（100 表示 100%）'})[v.value_format]||v.value_format||'未声明'],['显示格式','number_format'],['单位',v=>v.unit||'未声明'],['期间',v=>v.period||'未声明'],['可加性',v=>({additive:'可相加',non_additive:'不可相加',unknown:'未确认'})[v.aggregation]||'未声明'],['允许空值',v=>v.nullable===true?'允许':v.nullable===false?'不允许':'未声明']]));const label=wbNode('label','','candidate-ack'),check=document.createElement('input');check.type='checkbox';check.dataset.externalField=field.name;label.append(check,wbNode('span','我已核对这个字段的含义、类型、单位、期间和可加性。'));checks.push(check);section.append(label);box.append(section)}body.append(box);
+ const makeAck=text=>{const label=wbNode('label','','candidate-ack'),check=document.createElement('input');check.type='checkbox';label.append(check,wbNode('span',text));body.append(label);return check};
+ const original=makeAck('我声明已提供并核对这份 CSV，确认其与本次资料及业务用途一致。');original.disabled=true;
+ const open=wbNode('button','读取并核验账号提交的文件');open.type='button';const openedStatus=wbNode('p','请先读取并打开当前认证账号提交的文件。','muted');body.append(open,openedStatus);
+ let opened=false;open.onclick=async()=>{if(!wbExternalCurrent(key,generation)||wbExternalAlignment.busy)return;opened=false;original.checked=false;original.disabled=true;ready();open.disabled=true;wbExternalRelease();openedStatus.textContent='正在核验文件版本和内容摘要…';
+  try{const query=new URLSearchParams({revision:String(preview.anchor_revision),expected_sha256:preview.source_sha256});const artifact=await wbRequest(wbRoot()+'/sources/'+wbEnc(preview.anchor_source_id)+'/artifact?'+query);if(!wbExternalCurrent(key,generation))return;
+   if(artifact?.kind!=='source'||artifact.sha256!==preview.source_sha256||!/^[-A-Za-z0-9_]{1,100}$/.test(artifact.id||'')||!Array.isArray(artifact.source_refs)||!artifact.source_refs.some(ref=>ref.source_id===preview.anchor_source_id&&ref.revision===preview.anchor_revision))throw Error('文件版本不一致');
+   const target=new URL(artifact.download_url,location.origin),expected=wbRoot()+'/artifacts/'+wbEnc(artifact.id)+'/download';if(target.origin!==location.origin||target.pathname!==expected||target.search||target.hash)throw Error('文件地址不一致');
+   const response=await wbRequest(target.pathname,{binary:true}),blob=await response.blob();if(!wbExternalCurrent(key,generation))return;if(!window.crypto?.subtle)throw Error('浏览器无法核验文件，请使用 HTTPS 或本机安全地址打开工作空间');
+   const hash=Array.from(new Uint8Array(await window.crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))).map(b=>b.toString(16).padStart(2,'0')).join('');if(!wbExternalCurrent(key,generation))return;if(hash!==preview.source_sha256)throw Error('文件摘要不一致');
+   wbExternalAlignment.blobUrl=URL.createObjectURL(blob);const link=wbNode('a','打开或下载已核验文件');link.href=wbExternalAlignment.blobUrl;link.target='_blank';link.rel='noopener noreferrer';link.onclick=()=>{if(!wbExternalCurrent(key,generation))return false;opened=true;original.disabled=false;ready()};openedStatus.replaceChildren(wbNode('span','文件摘要已核验，请打开或下载后逐项对照。 '),link);
+  }catch(error){if(wbExternalCurrent(key,generation))openedStatus.textContent='文件未能核验：'+error.message}
+  finally{if(wbExternalCurrent(key,generation))open.disabled=false;}
+ };
+ const plan=makeAck('我已核对数据粒度、完整处理步骤和结果范围，确认符合本次业务用途。');
+ const label=wbNode('label','核对依据（至少四个字）');label.htmlFor='external-alignment-note';const note=document.createElement('textarea');note.id='external-alignment-note';note.maxLength=500;note.rows=3;body.append(label,note);
+ const button=wbNode('button','确认这些资料与业务口径');button.type='button';button.disabled=true;body.append(button);
+ const ready=()=>{button.disabled=wbExternalAlignment.busy||wbExternalAlignment.uncertain||!wbExternalCurrent(key,generation)||!opened||!original.checked||!plan.checked||checks.some(c=>!c.checked)||note.value.trim().length<4||note.value.length>500};
+ for(const c of [...checks,original,plan])c.onchange=ready;note.oninput=ready;
+ button.onclick=async()=>{ready();if(button.disabled)return;wbExternalAlignment.busy=true;ready();wbExternalStatus('正在记录人工核对…');
+  try{const receipt=await wbRequest(wbRoot()+'/data-results/'+wbEnc(preview.run_id)+'/external-alignment/confirm',{method:'POST',body:{anchor_source_id:preview.anchor_source_id,expected_preview_sha256:preview.preview_sha256,confirmed_fields:preview.fields.map(f=>f.name),note:note.value.trim(),confirm_original:true,confirm_plan:true}});if(!wbExternalCurrent(key,generation))return;
+   if(receipt?.run_id!==preview.run_id||receipt?.confirmed!==true||receipt?.preview_sha256!==preview.preview_sha256)throw Error('核对回执不完整');
+   try{await wbLoadWorkflow(wbState.workflowId,{preserveEditor:true,keepOffset:true});if(!wbCurrentProject()||wbState.resultId!==preview.run_id)return;if(wbState.result?.external_alignment_recorded!==true)throw Error('尚未确认当前核对状态');wbNotice('账号声明已记录，仍需进一步核验；暂不能下载或采用。');}
+   catch(error){wbExternalAlignment.uncertain=true;wbExternalStatus('已提交核对，但最新状态未确认；请刷新后查看，不要重复提交。');}
+  }catch(error){if(wbExternalCurrent(key,generation)){wbExternalAlignment.uncertain=!(error.status>=400&&error.status<500);wbExternalStatus(wbExternalAlignment.uncertain?'未确认核对是否保存，请刷新后查看，不要重复提交。':error.message)}}
+  finally{if(wbExternalCurrent(key,generation)){wbExternalAlignment.busy=false;ready()}}
+ };
+}
+wbEl('#external-alignment-sources').onclick=wbExternalSources;
+wbEl('#external-alignment-anchor').onchange=wbExternalAnchorChanged;
+wbEl('#external-alignment-preview').onclick=wbExternalPreview;
 function wbSingleKey(){const r=wbState.result;return wbCurrentProject()&&wbUnalignedFactCandidate()&&/^[a-f0-9]{64}$/.test(r?.manifest_sha256||'')&&/^[a-f0-9]{64}$/.test(r?.plan_sha256||'')?JSON.stringify([wbProject,wbState.workflowId,wbState.resultId,r.plan_sha256,r.manifest_sha256]):'';}
 function wbSingleRelease(){if(wbSingle.blobUrl){URL.revokeObjectURL(wbSingle.blobUrl);wbSingle.blobUrl=null;}}
 function wbSyncSingleFact(){
@@ -446,7 +534,7 @@ function wbRenderResult() {
   wbEl('#workbench-schedule-note').textContent = workflow?.schedule_uncertain_run ? '上次自动运行状态不确定，请先核对外部回执。' : workflow?.schedule_resume_required ? '已记录核对；可在任务页面重新设置定时。' : workflow?.refresh_error ? '自动更新需要检查：' + workflow.refresh_error : workflow?.cron ?
     (nextDue ? '下次：' + nextDue : '按已保存的时间安排执行') + (workflow.watch_sources ? '；同时跟踪已接入的来源版本' : '') :
     workflow?.watch_sources ? '跟踪已接入的来源版本变化' : '可在任务页面设置定时执行';
-  wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();wbSyncSingleFact();
+  wbEl('#workbench-candidate').hidden = !candidate;wbSyncSourceReview();wbSyncSingleFact();wbSyncExternalAlignment();
   const head = wbEl('#workbench-table-head'), body = wbEl('#workbench-table-body');head.replaceChildren();body.replaceChildren();
   const schema = result?.schema || [];
   if (schema.length) {
@@ -816,7 +904,7 @@ for (const button of document.querySelectorAll('[data-tab]')) button.addEventLis
   if (target) {event.preventDefault();target.focus();wbTab(target.dataset.tab);}
 });
 window.addEventListener('beforeunload',event => {if (wbState.editorDirty) {event.preventDefault();event.returnValue = '';}});
-window.addEventListener('pagehide', () => {clearTimeout(wbState.pollTimer);wbVisual.generation++;wbClearVisualBlobs();wbSingle.generation++;wbSingleRelease();});
+window.addEventListener('pagehide', () => {clearTimeout(wbState.pollTimer);wbVisual.generation++;wbClearVisualBlobs();wbSingle.generation++;wbSingleRelease();wbExternalAlignment.generation++;wbExternalRelease();});
 const workbenchReady = wbInitialize().catch(error => wbNotice(error.message,true));
 
 
@@ -1205,7 +1293,7 @@ function wbRenderSingleFact(preview,key,generation){
       const target=new URL(artifact.download_url,location.origin),expected=wbRoot()+'/artifacts/'+wbEnc(artifact.id)+'/download';
       if(target.origin!==location.origin||target.pathname!==expected||target.search||target.hash)throw Error('原件地址不一致');
       const response=await wbRequest(target.pathname,{binary:true}),blob=await response.blob();if(!current())return;
-      if(!window.crypto?.subtle)throw Error('浏览器无法核验原件');
+      if(!window.crypto?.subtle)throw Error('浏览器无法核验原件，请使用 HTTPS 或本机安全地址打开工作空间');
       const hash=Array.from(new Uint8Array(await window.crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))).map(b=>b.toString(16).padStart(2,'0')).join('');
       if(!current())return;if(hash!==original.sha256)throw Error('原件摘要不一致');
       const visual=Number.isSafeInteger(original.page)&&original.page>=1;

@@ -601,7 +601,7 @@ def _reusable_workflow_run(pid,wid,doc,frozen,turn_id):
     return None
 
 
-def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None,expected_draft_sha256=None):
+def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority=None,originating_turn_id=None,expected_draft_sha256=None,expected_source_versions=None,local_alignment_candidate=None):
     if authority and authority['project_id']!=pid:raise ValueError('加工任务不属于原调用授权项目')
     w=owned(pid,'data_workflow',wid)
     if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs'):
@@ -618,6 +618,11 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
     ids=[b.source_id for b in doc.bindings.values() if b.source_id]
     frozen=snapshot(ids)
     if any(s.get('project_id')!=pid for s in frozen.values()):raise ValueError('输入来源跨项目')
+    if expected_source_versions is not None:
+        if (set(frozen)!=set(expected_source_versions) or any(
+                (source.get('revision'),source.get('content_hash'))!=expected_source_versions[sid]
+                for sid,source in frozen.items())):
+            raise ValueError('输入资料版本已变化，请重新核对后运行')
     if not authority and not use_published:
         reused=_reusable_workflow_run(pid,wid,doc,frozen,originating_turn_id)
         if reused:return reused
@@ -630,6 +635,7 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
                                     if use_published and is_scheduler_key('data_workflow',wid,scheduled_key) else None),
                'workflow_refresh_published':bool(use_published),
                'manual_candidate_only':expected_draft_sha256 is not None,
+               **({'local_alignment_candidate':local_alignment_candidate} if local_alignment_candidate else {}),
                'runtime_snapshot':{'timeout_seconds':doc.plan.budget.timeout_seconds,'processing_fingerprint':processing_fingerprint()},
                'source_revisions':{sid:s.get('revision',1) for sid,s in frozen.items()}})
     if queued.get('project_id')!=pid or queued.get('kind')!='data_workflow':raise ValueError('已有不同项目的加工任务，请核对权限')
@@ -1007,8 +1013,16 @@ def read_result(pid,rid,offset=0,limit=100):
     page['context']=context
     confirmed=(plan_valid and semantic_required and meta.get('requires_semantic_review') is True and semantic_context
                and _semantic_review_receipt_valid(pid,rid,run,meta,page['context']))
+    from .external_alignment import receipt_details
+    alignment=receipt_details(pid,rid)
     return dict(page,run_id=rid,workflow_id=meta['workflow_id'],plan_sha256=meta['plan_sha256'],data_as_of=meta['created_at'],
-                semantic_review_confirmed=bool(confirmed))
+                semantic_review_confirmed=bool(confirmed),external_alignment_confirmed=False,
+                external_alignment_recorded=bool(alignment),external_alignment_recorded_details=alignment)
+
+
+def _external_alignment_valid(pid,rid):
+    from .external_alignment import receipt_valid
+    return receipt_valid(pid,rid)
 
 
 def _schedule_blocks_auto_adoption(run,workflow):
@@ -1119,6 +1133,10 @@ def execute_job(run,folder):
                     # Text is a storage representation, not permission to erase
                     # a source-declared unit before a later normalization step.
                     if unit and unit!=c.get('unit'):fail_input('INPUT_UNIT_MISMATCH','输入单位与原表明确标识不一致，需要显式转换或重新核对',{'column':c['name']})
+            if run.get('local_alignment_candidate'):
+                proof.update(requires_source_review=True,requires_semantic_review=True,
+                    semantic_review_reasons=sorted(set(proof.get('semantic_review_reasons',[])) |
+                        {'LOCAL_SUBMITTED_SOURCE_REVIEW_REQUIRED','LOCAL_DECLARED_SEMANTICS_REVIEW_REQUIRED'}))
             inputs[alias]=rows;evidence[alias]=proof;provenance[alias]=prov
         reviewed_stages=_reviewed_reclassification_stages(pid,doc)
         def on_stage(receipt):
@@ -1217,6 +1235,8 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
     before_review=get_job(rid)
     snapshot_hash=digest(before_review.get('source_snapshot',{}))
     page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
+    if 'FACT_SEMANTIC_ALIGNMENT_REQUIRED' in (page['context'].get('semantic_review_reasons') or []):
+        raise ValueError('事实业务语义对齐尚未完成，不能发布结果')
     needs_review=meta.get('requires_source_review') is True or page['context'].get('requires_source_review') is True
     needs_semantic_review=meta.get('requires_semantic_review') is True or page['context'].get('requires_semantic_review') is True
     if needs_review:
@@ -1426,12 +1446,28 @@ def ensure_candidate_bulk_allowed(pid,rid):
     if root.get('project_id')!=pid or root.get('kind')!='data_workflow':
         raise ValueError('结果不属于当前项目')
     if root.get('status') not in ('validated','succeeded'):raise ValueError('候选结果尚未完成验证')
+    # Preserve historical adopted exports only after validating their complete
+    # direct-source bindings; never shortcut an external source or ancestor.
     try:parent=owned(pid,'data_workflow',root['target'])
     except KeyError:parent=None
     if parent and parent.get('published_run')==rid and root.get('status')=='succeeded':
         folder,meta=result_folder(pid,rid)
-        read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
-        return
+        page=read_handoff(folder/'handoff',limit=1,expected_manifest_sha256=meta['handoff_sha256'])
+        raw=root.get('workflow_document');snap=root.get('source_snapshot');ctx=page.get('context')
+        if not isinstance(raw,dict) or digest(raw)!=meta['plan_sha256'] or not isinstance(snap,dict) or not isinstance(ctx,dict):
+            raise ValueError('历史来源证据不完整，不能下载')
+        document=WorkflowDocument.model_validate(raw);proofs=ctx.get('input_evidence')
+        if not isinstance(proofs,dict):raise ValueError('历史来源证据不完整，不能下载')
+        direct=True
+        for alias,binding in document.bindings.items():
+            if not binding.source_id:direct=False;continue
+            source=snap.get(binding.source_id);proof=proofs.get(alias)
+            if (not isinstance(source,dict) or source.get('id')!=binding.source_id or source.get('project_id')!=pid
+                    or not isinstance(proof,dict) or proof.get('source_id')!=binding.source_id
+                    or source.get('kind')=='file' and source.get('content_hash')!=proof.get('content_hash')):
+                raise ValueError('历史来源证据不完整，不能下载')
+            if not _historical_source_has_no_external_ancestor(pid,source):direct=False
+        if direct and 'FACT_SEMANTIC_ALIGNMENT_REQUIRED' not in (ctx.get('semantic_review_reasons') or []):return
     stack=[(rid,None)];seen={}
     while stack:
         current,expected=stack.pop()
@@ -1470,6 +1506,39 @@ def ensure_candidate_bulk_allowed(pid,rid):
                         or not isinstance(checksum,str) or not re.fullmatch(r'[a-f0-9]{64}',checksum)):
                     raise ValueError('候选上游结果依据不完整，不能下载完整结果')
                 stack.append((binding.result_id,checksum))
+
+
+def _historical_source_has_no_external_ancestor(pid,source):
+    """Conservatively identify old direct local results, never missing ancestry."""
+    versions={}
+    for version in all_items('source_version'):
+        versions.setdefault((version.get('source_id'),version.get('revision')),[]).append(version)
+    seen=set();current=source
+    for _ in range(512):
+        if not isinstance(current,dict) or current.get('project_id')!=pid:return False
+        if any(k in current for k in ('origin_agent_handoff','external_provenance')):return False
+        if current.get('semantic_alignment_required') is True and not (current.get('fact_review_id') or current.get('visual_fact_review_id')):return False
+        sid=current.get('origin_source_id');rev=current.get('origin_source_revision')
+        if sid is None and rev is None:return True
+        if sid and rev is None and (current.get('fact_review_id') or current.get('visual_fact_review_id')):
+            try:
+                if current.get('fact_review_id'):
+                    from .fact_service import _owned as read_review
+                    review_id=current['fact_review_id']
+                else:
+                    from .visual_fact_service import _owned as read_review
+                    review_id=current['visual_fact_review_id']
+                record,payload=read_review(pid,review_id)
+                if record.get('status')!='approved' or record.get('output_source_id')!=current.get('id') or payload.get('source_id')!=sid:return False
+                rev=payload.get('source_revision')
+                candidates=versions.get((sid,rev),[])
+                if len(candidates)!=1 or candidates[0].get('content_hash')!=payload.get('source_file_sha256'):return False
+            except Exception:return False
+        if not isinstance(sid,str) or not sid or type(rev) is not int or rev<1 or (sid,rev) in seen:return False
+        seen.add((sid,rev));matches=versions.get((sid,rev),[])
+        if len(matches)!=1:return False
+        current=matches[0]
+    return False
 
 
 def export_result(pid,rid,precision_policy='text_exact',*,format='xlsx',expected_handoff_sha256=None):

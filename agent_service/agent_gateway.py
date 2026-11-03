@@ -243,7 +243,8 @@ def submit_task(client,value,*,protocol='rest'):
                 source_ids=list(value.source_ids);result_ids=[];manifest=None
                 if value.input_bundle is not None:
                     from .agent_handoff import import_bundle
-                    imported=import_bundle(value.project_id,value.input_bundle,scope_id='gateway:'+c['id'],request_id=identity)
+                    imported=import_bundle(value.project_id,value.input_bundle,scope_id='gateway:'+c['id'],request_id=identity,
+                                           gateway_grant={'client_id':c['id'],'revision':c['revision']})
                     source_ids=list(dict.fromkeys(source_ids+imported.get('source_ids',[])))
                     result_ids=imported.get('result_ids',[]);manifest=imported.get('manifest_sha256')
                 if len(source_ids)>20:raise GatewayError(400,'source_limit','附件总数超过20份')

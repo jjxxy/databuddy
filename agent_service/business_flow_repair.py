@@ -16,6 +16,7 @@ _RULES={
     'DECIMAL_PRECISION':('ask_business_rule','核对小数精度和舍入规则；缺少依据时询问。'),
     'SOURCE_VERSION_CHANGED':('confirm_source','核对原资料及已固定版本；不要静默替换为新版本。'),
     'BYTE_BUDGET':('inspect_capacity','检查容量与完整数据范围；不能截断结果冒充完整交付。'),
+    'API_SNAPSHOT_CAPACITY':('inspect_capacity','API 完整采集快照超过当前 2 MiB 安全容量；先核对资料范围和一致性，不能截断结果冒充完整交付，也不能盲目重试。'),
     'ROW_BUDGET':('inspect_capacity','检查数据量和执行容量；不能截断结果冒充完整交付。'),
     'CHECK_REQUIRED_FAILED':('inspect_source_and_plan','检查失败字段的来源和缺失范围；只有已确认规则允许时才能补值，不能猜测财务数据。'),
     'CHECK_UNIQUE_FAILED':('inspect_source_and_plan','检查组合键、重复行和业务粒度；不得擅自删除重复记录。'),

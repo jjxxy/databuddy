@@ -249,7 +249,7 @@ def build_input(turn,source_ids=None,result_ids=None):
     return _bundle(items)
 
 
-def import_bundle(pid,bundle,*,scope_id,request_id):
+def import_bundle(pid,bundle,*,scope_id,request_id,gateway_grant=None):
     """Import only explicit full inputs; imported results remain unapproved facts."""
     from .actor_context import current_actor
     from .sources import revision
@@ -257,6 +257,16 @@ def import_bundle(pid,bundle,*,scope_id,request_id):
     from .jobs import save
     get('project',pid)
     if not isinstance(scope_id,str) or not 1<=len(scope_id)<=250 or not isinstance(request_id,str) or not 1<=len(request_id)<=250:raise HandoffError('交接请求范围无效')
+    # Freeze the authenticated gateway grant inside the encrypted source receipt.
+    if gateway_grant is not None:
+        from .agent_gateway import _fresh
+        if not isinstance(gateway_grant,dict) or set(gateway_grant)!={'client_id','revision'}:
+            raise HandoffError('交接调用方授权无效')
+        try:client=_fresh(gateway_grant['client_id'])
+        except (KeyError,ValueError):raise HandoffError('交接调用方不可用') from None
+        if (client.get('revision')!=gateway_grant['revision'] or client.get('actor_id')!=current_actor()
+                or pid not in client.get('project_ids',[]) or scope_id!='gateway:'+client['id']):
+            raise HandoffError('交接调用方授权已变化')
     decoded,total=_decode(bundle)
     if any(item['kind']=='artifact' for item,_ in decoded):raise HandoffError('普通成果不能自动冒充来源或已核对结果，请明确选择资料导入')
     key='ahi_'+_digest(_json([pid,current_actor(),scope_id,request_id]))[:48]
@@ -286,7 +296,7 @@ def import_bundle(pid,bundle,*,scope_id,request_id):
                     source=put('source',{'project_id':pid,'name':item['name'],'kind':'file','bytes':len(raw),'content_hash':item['sha256'],
                         'status':'queued','created_at':now(),'origin_agent_handoff':bundle['manifest_sha256'],'skip_model_planning':True,
                         'external_provenance':item['source_version'],'requires_semantic_review':True,'semantic_alignment_required':True,
-                        'secret_config':seal({'stored_name':stored,'agent_handoff':{'scope':scope_id,'manifest_sha256':bundle['manifest_sha256'],'source_version':item['source_version']}})},sid)
+                        'secret_config':seal({'stored_name':stored,'agent_handoff':{'scope':scope_id,'manifest_sha256':bundle['manifest_sha256'],'source_version':item['source_version'],**({'gateway_grant':gateway_grant} if gateway_grant is not None else {})}})},sid)
                     source=revision(source)
                 if source.get('project_id')!=pid or source.get('content_hash')!=item['sha256']:raise HandoffError('交接来源与已有回执不一致')
                 enqueue('probe',sid);source_ids.append(sid)

@@ -126,7 +126,7 @@ def run(context,config,inputs):
             payload={'scope':scope,'source_id':cfg.source_id,'revision':cfg.revision,'config_sha256':cfg.config_sha256,
                      'content_hash':content_hash,'rows':rows,'fields':fields,'evidence':evidence,'collected_at':now()}
             payload['snapshot_sha256']=_snapshot_digest(payload)
-            if len(_bytes(payload))>2*1024*1024:raise ValueError('API 快照超过本次安全容量，未采集截断数据')
+            if len(_bytes(payload))>2*1024*1024:raise FlowStepError('API_SNAPSHOT_CAPACITY','API 采集数据超过当前单次快照的 2 MiB 安全容量，未生成或发布截断结果；请调整资料范围或使用经核对的分批方案。')
             put('flow_api_snapshot',{'project_id':scope['project_id'],'actor_id':scope['actor_id'],'status':'complete','secret_payload':seal(payload)},ident)
     return _compact_table(context,{'kind':'api_capture_v1','snapshot_id':ident,'capture_node_id':scope['node_id'],'source_id':cfg.source_id,'revision':cfg.revision,'config_sha256':cfg.config_sha256,
         'content_hash':payload['content_hash'],'snapshot_sha256':payload['snapshot_sha256'],'rows':payload['rows'],'fields':payload['fields'],'complete':True,

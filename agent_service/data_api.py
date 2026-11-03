@@ -32,6 +32,16 @@ class AdoptInput(StrictModel):
 class SingleFactConfirmation(StrictModel):
     expected_preview_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
     confirm_original_value:bool=Field(strict=True)
+class ExternalAlignmentConfirmation(StrictModel):
+    anchor_source_id:str=Field(min_length=1,max_length=64)
+    expected_preview_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    confirmed_fields:list[str]=Field(min_length=1,max_length=200)
+    note:str=Field(min_length=4,max_length=500)
+    confirm_original:bool=Field(strict=True)
+    confirm_plan:bool=Field(strict=True)
+class ExternalLocalCandidate(StrictModel):
+    anchor_source_id:str=Field(min_length=1,max_length=64)
+    expected_preview_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
 class SingleFactCandidate(StrictModel):
     kind:Literal['text','visual']
     fact_review_id:str=Field(min_length=1,max_length=64)
@@ -195,7 +205,29 @@ def install(app,auth):
         return data.schedule(pid,wid,value.cron,value.watch_sources,value.expected_published_sha256)
 
     @app.get('/api/projects/{pid}/data-results/{rid}',dependencies=dependencies)
-    def data_result(pid:str,rid:str,offset:int=0,limit:int=100):return data.read_result(pid,rid,offset,limit)
+    def data_result(pid:str,rid:str,request:Request,offset:int=0,limit:int=100):
+        from .actor_context import actor_from_identity,actor_scope
+        with actor_scope(actor_from_identity(getattr(request.state,'identity',{}))):return data.read_result(pid,rid,offset,limit)
+
+    @app.get('/api/projects/{pid}/data-results/{rid}/external-alignment',dependencies=dependencies)
+    def external_alignment_preview(pid:str,rid:str,anchor_source_id:str,request:Request):
+        from .actor_context import actor_from_identity,actor_scope
+        from .external_alignment import preview
+        with actor_scope(actor_from_identity(getattr(request.state,'identity',{}))):
+            return preview(pid,rid,anchor_source_id)
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/external-alignment/confirm',dependencies=dependencies)
+    def external_alignment_confirm(pid:str,rid:str,value:ExternalAlignmentConfirmation,request:Request):
+        from .actor_context import actor_from_identity
+        from .external_alignment import confirm
+        return confirm(pid,rid,value,actor_from_identity(getattr(request.state,'identity',{})))
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/external-alignment/local-candidate',dependencies=dependencies)
+    def external_alignment_local_candidate(pid:str,rid:str,value:ExternalLocalCandidate,request:Request):
+        from .actor_context import actor_from_identity
+        from .external_alignment import local_candidate
+        return local_candidate(pid,rid,value.anchor_source_id,value.expected_preview_sha256,
+                               actor_from_identity(getattr(request.state,'identity',{})))
 
     @app.get('/api/projects/{pid}/data-results/{rid}/single-fact-review',dependencies=dependencies)
     def single_fact_preview(pid:str,rid:str):

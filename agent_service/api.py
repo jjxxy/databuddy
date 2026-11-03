@@ -645,7 +645,7 @@ def message(project_id:str,value:TurnInput):
     return submit(project_id,value)
 
 @app.post('/api/projects/{project_id}/attachments',dependencies=[Depends(auth)])
-async def attachment(project_id:str,file:UploadFile=File(...),request_id:str=Form(...),local_processing:bool=Form(False)):
+async def attachment(project_id:str,request:Request,file:UploadFile=File(...),request_id:str=Form(...),local_processing:bool=Form(False)):
     from .conversation import stable
     from .locks import FileLock
     import re
@@ -659,7 +659,10 @@ async def attachment(project_id:str,file:UploadFile=File(...),request_id:str=For
             source=get('source',sid)
             if source.get('content_hash')!=info['content_hash']:raise HTTPException(409,'同一上传标识不能更换文件')
         except KeyError:
-            source=put('source',{'name':info['name'],'kind':'file','secret_config':seal({'stored_name':info['stored_name']}),'content_hash':info['content_hash'],'bytes':info['bytes'],'goal':'','created_at':now(),'status':'queued','project_id':project_id,**({'skip_model_planning':True} if local_processing else {})},sid)
+            from .actor_context import actor_from_identity
+            uploader=actor_from_identity(getattr(request.state,'identity',{}))
+            upload_proof={'version':1,'project_id':project_id,'source_id':sid,'actor_id':uploader,'content_sha256':info['content_hash'],'request_id':request_id}
+            source=put('source',{'name':info['name'],'kind':'file','secret_config':seal({'stored_name':info['stored_name'],'user_upload_proof':upload_proof}),'content_hash':info['content_hash'],'bytes':info['bytes'],'goal':'','created_at':now(),'status':'queued','project_id':project_id,**({'skip_model_planning':True} if local_processing else {})},sid)
             revision(source)
         finally:
             from .store import unseal
@@ -732,13 +735,19 @@ def new_session(project_id:str,value:SessionInput):
 
 @app.get('/api/projects/{project_id}/versions',dependencies=[Depends(auth)])
 def project_versions(project_id:str,limit:int=100):
-    from .workspace import history
-    return history(project_id,max(1,min(limit,200)))
+    from . import workspace
+    from .workspace_lifecycle import assert_project_live
+    with workspace.lock(project_id):
+        assert_project_live(project_id)
+        return workspace.history(project_id,max(1,min(limit,200)))
 
 @app.get('/api/projects/{project_id}/files',dependencies=[Depends(auth)])
 def project_files(project_id:str):
-    from .workspace import list_files
-    return list_files(project_id)
+    from . import workspace
+    from .workspace_lifecycle import assert_project_live
+    with workspace.lock(project_id):
+        assert_project_live(project_id)
+        return workspace.list_files(project_id)
 
 @app.get('/api/projects/{project_id}/assets',dependencies=[Depends(auth)])
 def project_assets(project_id:str,offset:int=0,limit:int=20,asset_type:str='all'):
@@ -755,25 +764,82 @@ def application_metric(project_id:str,application_id:str):
     from .metric_registry import current
     return current(project_id,application_id)
 
+class _SnapshotResponse(StreamingResponse):
+    """Close the private download snapshot even if the client disconnects."""
+    def __init__(self, snapshot, *, filename, size):
+        from urllib.parse import quote
+        self.snapshot=snapshot
+        def chunks():
+            while True:
+                chunk=snapshot.read(64*1024)
+                if not chunk:break
+                yield chunk
+        super().__init__(chunks(),media_type='application/octet-stream',headers={
+            'Content-Disposition':"attachment; filename*=utf-8''"+quote(filename,safe=''),
+            'Content-Length':str(size),
+        })
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope,receive,send)
+        finally:
+            self.snapshot.close()
+
 @app.get('/api/projects/{project_id}/file',dependencies=[Depends(auth)])
 def project_file(project_id:str,path:str,commit:str|None=None):
-    from .workspace import path_for
-    target=path_for(project_id,path)
-    if commit:
-        from .workspace import resolve,folder,git_content
-        known=resolve(project_id,commit)
-        try:content=git_content(folder(project_id),known['commit'],'files/'+path)
-        except Exception:raise HTTPException(404,'该版本里没有此文件')
-        return StreamingResponse(iter([content]),media_type='application/octet-stream')
-    if not target.is_file():raise HTTPException(404,'文件不存在')
-    return FileResponse(target,filename=target.name,media_type='application/octet-stream')
+    from . import workspace
+    from .workspace_lifecycle import assert_project_live
+    from .platform_files import open_regular_read
+    import subprocess
+    import tempfile
+    # Copy while holding the restore lock; never defer opening the workspace
+    # path until response streaming. Large downloads use anonymous disk storage.
+    snapshot=tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b')
+    try:
+        with workspace.lock(project_id):
+            assert_project_live(project_id)
+            target=workspace.path_for(project_id,path)
+            if commit:
+                known=workspace.resolve(project_id,commit)
+                try:
+                    subprocess.run([executable('git'),'-C',str(workspace.folder(project_id)),
+                                    'show',known['commit']+':files/'+path],stdout=snapshot,
+                                   stderr=subprocess.PIPE,check=True,timeout=30)
+                except subprocess.CalledProcessError:
+                    raise HTTPException(404,'该版本里没有此文件') from None
+                size=snapshot.tell()
+            else:
+                try:
+                    with os.fdopen(open_regular_read(target),'rb') as stream:
+                        before=os.fstat(stream.fileno())
+                        size=0
+                        while True:
+                            chunk=stream.read(64*1024)
+                            if not chunk:break
+                            size+=len(chunk)
+                            snapshot.write(chunk)
+                        after=os.fstat(stream.fileno())
+                        if size!=before.st_size or (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns):
+                            raise HTTPException(409,'项目文件在读取期间发生变化，请重试')
+                except (FileNotFoundError,NotADirectoryError):
+                    raise HTTPException(404,'文件不存在') from None
+            filename=target.name
+            snapshot.seek(0)
+        return _SnapshotResponse(snapshot,filename=filename,size=size)
+    except BaseException:
+        snapshot.close()
+        raise
 
 @app.get('/api/projects/{project_id}/repository.zip',dependencies=[Depends(auth)])
 def project_repository(project_id:str):
-    from .workspace import folder,history
+    from . import workspace
+    from .workspace_lifecycle import assert_project_live
     import subprocess
-    if not history(project_id,1):raise HTTPException(409,'项目还没有版本')
-    archive=subprocess.run([executable('git'),'-C',str(folder(project_id)),'archive','--format=zip','HEAD'],capture_output=True,check=True,timeout=30).stdout
+    # Bind the current repository HEAD and archive to one restore epoch.
+    with workspace.lock(project_id):
+        assert_project_live(project_id)
+        if not workspace.history(project_id,1):raise HTTPException(409,'项目还没有版本')
+        archive=subprocess.run([executable('git'),'-C',str(workspace.folder(project_id)),'archive','--format=zip','HEAD'],capture_output=True,check=True,timeout=30).stdout
     return StreamingResponse(iter([archive]),media_type='application/zip',headers={'Content-Disposition':'attachment; filename="project-repository.zip"'})
 
 @app.get('/api/projects/{project_id}/applications',dependencies=[Depends(auth)])

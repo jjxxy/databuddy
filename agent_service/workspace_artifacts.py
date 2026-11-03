@@ -289,10 +289,10 @@ def catalog(pid,kind='',offset=0,limit=40):
                 _,meta=project_data.result_folder(pid,run['id'])
                 status='adopted' if parent.get('published_run')==run['id'] else 'candidate' if parent.get('candidate_run')==run['id'] else 'needs_review' if run.get('external_agent_import') else 'historical'
                 downloads=['xlsx','csv','handoff'];blocked=None;warning=None
-                if run.get('status')=='validated':
+                if run.get('status') in ('validated','succeeded'):
                     try:project_data.ensure_candidate_bulk_allowed(pid,run['id'])
                     except ValueError as error:downloads=[];blocked=str(error)
-                elif run.get('status')=='succeeded':
+                if run.get('status')=='succeeded':
                     try:project_data.require_safe_numeric_lineage(pid,run['id'])
                     except ValueError:warning='历史结果的来源或业务语义无法完整核对，不能据此认定财务口径已确认。'
                 add('result',run['id'],parent.get('name') or '完整加工结果 '+run['id'][:12],meta['handoff_sha256'],format='data',version=meta['plan_sha256'],
