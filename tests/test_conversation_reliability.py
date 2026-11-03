@@ -1,5 +1,5 @@
 """Conversation focus, interrupts, safe retries and evidence use real storage/Git."""
-import json,threading
+import hashlib,json,threading
 from pathlib import Path
 import httpx,pytest,duckdb
 from fastapi.testclient import TestClient
@@ -13,7 +13,8 @@ client=TestClient(app);H={'Authorization':'Bearer '+TOKEN}
 
 @pytest.fixture
 def project(request):
-    pid=create_project(ProjectInput(name='对话可靠性',request_id='reliability-'+request.node.name))['id']
+    request_key=hashlib.sha256(request.node.nodeid.encode()).hexdigest()[:24]
+    pid=create_project(ProjectInput(name='对话可靠性',request_id='reliability-'+request_key))['id']
     yield pid
     for t in all_items('turn'):
         if t['project_id']==pid and t['state'] not in ('done','failed'):patch('turn',t['id'],state='done')
@@ -140,14 +141,44 @@ def test_structured_connection_preserves_goal_without_exposing_credentials(proje
     assert 'example.com' not in json.dumps(public)
 
 
-def test_new_connection_leaves_previous_app_focus(project):
+@pytest.mark.parametrize('has_credentials',[False,True])
+@pytest.mark.parametrize('model_configured',[False,True])
+def test_new_connection_leaves_previous_app_focus(project,monkeypatch,has_credentials,model_configured):
+    monkeypatch.setattr(provider,'status',lambda:{'configured':model_configured})
     application=fake_app(project,'connection-focus','旧应用')
     body={'name':'新的API','kind':'api','config':{'url':'https://example.com/data'},'goal':'按客户汇总'}
+    if has_credentials:body['config']['headers']={'Authorization':'Bearer private-fixture-token'}
     tid=send(project,json.dumps(body),'connection-from-app',application_id=application['id'])
     handle(get('turn',tid));turn=get('turn',tid)
     assert turn['state']=='waiting_source' and turn['application_id'] is None
+    assert turn['workflow_goal']=='按客户汇总' and turn['secret_text'] is None
+    source=get('source',turn['source_id'])
+    from agent_service.store import unseal
+    assert source['status']=='queued' and unseal(source['secret_config'])==body['config']
+    assert 'private-fixture-token' not in json.dumps(turn,ensure_ascii=False)
     from agent_service.conversation import session_application
     assert session_application(project,default_session(project)) is None
+
+
+@pytest.mark.parametrize('scope',['chat','gateway','collaboration'])
+@pytest.mark.parametrize('has_credentials',[False,True])
+def test_structured_connection_does_not_bypass_nonhuman_or_chat_boundary(project,monkeypatch,scope,has_credentials):
+    from agent_service import conversation,agent_gateway,agent_team
+    monkeypatch.setattr(provider,'status',lambda:{'configured':True})
+    monkeypatch.setattr(agent_gateway,'assert_turn_allowed',lambda turn:None)
+    monkeypatch.setattr(agent_team,'assert_turn_allowed',lambda turn:None)
+    advanced=[]
+    monkeypatch.setattr(agent,'advance',lambda turn:advanced.append(turn['id']))
+    def forbidden(*args,**kwargs):raise AssertionError('connector setup crossed its authorization boundary')
+    monkeypatch.setattr(conversation,'connect',forbidden)
+    body={'name':'新的API','kind':'api','config':{'url':'https://example.com/data'},'goal':'按客户汇总'}
+    if has_credentials:body['config']['headers']={'Authorization':'Bearer private-fixture-token'}
+    tid=send(project,json.dumps(body),'connection-boundary',interaction_mode='chat' if scope=='chat' else 'work')
+    if scope=='gateway':patch('turn',tid,gateway_client_id='test-gateway')
+    elif scope=='collaboration':patch('turn',tid,collaboration_parent_turn_id='test-parent')
+    handle(get('turn',tid))
+    assert advanced==[tid]
+    assert not [s for s in all_items('source') if s.get('project_id')==project]
 
 
 @pytest.mark.parametrize(('text','cron'),[

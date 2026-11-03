@@ -1,15 +1,22 @@
 """Conversation tools create drafts; they never publish or impersonate actors."""
 import pytest
 from agent_service import business_flow_tools as tools
-from agent_service.store import put,get,uid
+from agent_service.store import put,get,delete,now,uid
 from agent_service.actor_context import actor_scope
 
 
-def test_agent_create_uses_stable_server_step_and_marks_only_draft(monkeypatch):
-    from agent_service import business_flows
-    pid='p_'+uid();tid='t_'+uid();step='step_'+uid();fid='bf_'+'a'*40
-    put('turn',{'project_id':pid,'actor_id':'owner','state':'agent_tool',
+@pytest.fixture
+def step_turn():
+    pid='p_'+uid();tid='t_'+uid();step='step_'+uid()
+    put('turn',{'project_id':pid,'actor_id':'owner','state':'agent_tool','created_at':now(),
                 'agent_trace':[{'id':step,'status':'started'}]},tid)
+    try:yield pid,tid
+    finally:delete('turn',tid)
+
+
+def test_agent_create_uses_stable_server_step_and_marks_only_draft(monkeypatch,step_turn):
+    from agent_service import business_flows
+    pid,tid=step_turn;fid='bf_'+'a'*40
     calls=[]
     def create(project,actor,turn,document,request_id):
         calls.append((project,actor,turn,document,request_id))

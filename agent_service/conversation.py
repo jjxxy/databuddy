@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import re
+import time
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -831,12 +832,18 @@ def result_card(pipeline_id, candidate=False):
             'pipeline_id': pipeline_id, 'run_id': m['run_id'], 'commit': m['commit'][:12]}
 
 
+def _structured_connection(text):
+    """Recognize explicit connector JSON without treating arbitrary JSON as a command."""
+    try:body=json.loads(text)
+    except (ValueError,TypeError):return None
+    return body if isinstance(body,dict) and body.get('kind') in ('api','database') else None
+
+
 def connect(turn, text):
     """Structured credentials are encrypted at rest and never reach a model."""
     from .models import SourceInput
-    try: body = json.loads(text)
-    except (ValueError, TypeError): return False
-    if not isinstance(body, dict) or body.get('kind') not in ('api', 'database'): return False
+    body=_structured_connection(text)
+    if body is None:return False
     # Record the deterministic source id first, so a retry cannot add a second connection.
     sid = stable('s_', turn['id'])
     try: source = get('source', sid)
@@ -906,6 +913,12 @@ def legacy_handle(turn):
     from .models import ScheduleInput, AskInput
     project = get('project', turn['project_id'])
     text = turn.get('work_request') or turn.get('workflow_goal') or (unseal(turn['secret_text']) if turn.get('secret_text') else turn['text'])
+    if turn['state']=='queued' and _structured_connection(text) is not None:
+        try:connect(turn,text)
+        except (ValueError,TypeError):
+            # Do not echo malformed config or clear the existing project focus.
+            finish(turn,'连接配置无效，请检查 API 地址或数据库配置及只读确认。凭据不会发送给模型。',outcome='needs_input')
+        return
     if turn.get('application_id') and not turn.get('agent_pending'):
         target=owned('pipeline',turn['application_id'],turn['project_id'])
         title=(target.get('application_spec') or {}).get('title',target['name'])
@@ -1148,10 +1161,8 @@ def handle(turn):
         finish(get('turn',turn['id']),'检索到以下公司材料（这是检索结果，尚未核验原文）：\n'+'\n'.join(r['title'] for r in result['results']) if refs else '本次检索未返回材料；这不代表公司没有相关发文，可以更换关键词或核对权限。',outcome='answered');return
     raw=unseal(turn['secret_text']) if turn.get('secret_text') else turn['text']
     pending_here=project.get('pending_connection') and project.get('pending_connection_session',default_session(project['id']))==turn.get('session_id',default_session(project['id']))
-    if turn.get('interaction_mode','work')=='work' and turn['state']=='queued' and (redact(raw)!=raw or pending_here):
-        # A new connection leaves the previous application's focus; credentials
-        # are handled before binding an app or invoking a model.
-        turn=patch('turn',turn['id'],application_id=None)
+    if turn.get('interaction_mode','work')=='work' and turn['state']=='queued' and (redact(raw)!=raw or pending_here or _structured_connection(raw) is not None):
+        # Validate before changing focus, binding an app or invoking a model.
         legacy_handle(turn);return
     if re.fullmatch(r'(?:查看|看看)?(?:项目状态|需要关注的事项|有哪些需要关注|定时运行情况|应用运行情况|我的应用)[。？?\s]*',turn['text']):
         from .experience import health_answer
@@ -1255,6 +1266,51 @@ def handle(turn):
     legacy_handle(turn)
 
 
+# A corrupt pending turn must not crash the global worker or allow a later turn
+# in the same project to run ahead of an unknown operation. Do not modify or
+# retry the corrupt record automatically: its side effects may be uncertain.
+_last_invalid_turn_warning=0.0
+
+
+def _warn_invalid_turn(pid,ident):
+    """Log at most once per minute, regardless of corrupt-record count."""
+    global _last_invalid_turn_warning
+    current=time.monotonic()
+    if current-_last_invalid_turn_warning<60:return
+    _last_invalid_turn_warning=current
+    safe_pid=pid if isinstance(pid,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}',pid) else 'unknown'
+    safe_id=ident if isinstance(ident,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}',ident) else 'unknown'
+    logger.warning('Invalid pending conversation record; affected project is paused (project=%s, turn=%s); further warnings rate limited',safe_pid,safe_id)
+
+
+def _turn_time(value):
+    if not isinstance(value,str) or not value:return None
+    try:
+        parsed=datetime.fromisoformat(value.replace('Z','+00:00'))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:return None
+        return parsed.astimezone(timezone.utc)
+    except (ValueError,OverflowError):return None
+
+
+def _pending_turns(records):
+    valid=[];blocked=set()
+    for turn in records:
+        if not isinstance(turn,dict):
+            blocked.add(None);_warn_invalid_turn(None,None);continue
+        pid=turn.get('project_id');ident=turn.get('id');state=turn.get('state');created=_turn_time(turn.get('created_at'))
+        if (isinstance(state,str) and state in TERMINAL) or turn.get('collaboration_parent_turn_id'):continue
+        pid_ok=isinstance(pid,str) and bool(re.fullmatch(r'[A-Za-z0-9_-]{1,64}',pid))
+        problem=(not pid_ok or not isinstance(ident,str) or not ident
+                 or not isinstance(state,str) or not state or created is None)
+        if problem:
+            # With no identifiable project it is impossible to prove FIFO for
+            # any of them, so stop globally until the damaged record is repaired.
+            blocked.add(pid if pid_ok else None);_warn_invalid_turn(pid,ident);continue
+        valid.append((created,ident,turn))
+    valid.sort(key=lambda t:(t[0],t[1]))
+    return [t[2] for t in valid],blocked
+
+
 def tick():
     """Per-project FIFO across replicas. Failure transitions retain project ownership."""
     from .maintenance import guard
@@ -1265,26 +1321,31 @@ def tick():
         with guard():
             recover()
             for completed in all_items('turn'):
-                if completed['state'] in TERMINAL and completed.get('before_version') and not completed.get('work_version'):
+                if not isinstance(completed,dict):continue
+                pid=completed.get('project_id');state=completed.get('state')
+                if (isinstance(state,str) and state in TERMINAL and completed.get('id') and isinstance(pid,str)
+                        and re.fullmatch(r'[A-Za-z0-9_-]{1,64}',pid)
+                        and completed.get('before_version') and not completed.get('work_version')):
                     try:
                         with FileLock(str(DATA/('chat-'+completed['project_id']+'.lock')),timeout=0):finalize(get('turn',completed['id']))
                     except Timeout:pass
-            turns=sorted((t for t in all_items('turn') if t['state'] not in TERMINAL and not t.get('collaboration_parent_turn_id') and t['state']!='waiting_agent_tasks'),key=lambda t:(t['created_at'],t['id']))
+            turns,blocked=_pending_turns(all_items('turn'))
             seen=set()
             # A fixed prefix can contain only busy/retrying projects and starve
             # every newer project indefinitely. Visit each distinct project;
             # seen and the per-project lock still enforce one FIFO owner.
             for turn in turns:
                 pid=turn['project_id']
-                if pid in seen:continue
+                if pid in seen or None in blocked or pid in blocked or turn['state']=='waiting_agent_tasks':continue
                 seen.add(pid)
                 if turn.get('model_retry_at',0) and turn['model_retry_at']>__import__('time').time():continue
                 try:
                     with FileLock(str(DATA/('chat-'+pid+'.lock')),timeout=0):
                         current=get('turn',turn['id'])
-                        if current['state'] in TERMINAL:continue
-                        pending=sorted((t for t in all_items('turn') if t['project_id']==pid and t['state'] not in TERMINAL and not t.get('collaboration_parent_turn_id')),key=lambda t:(t['created_at'],t['id']))
-                        if not pending or pending[0]['id']!=turn['id']:continue
+                        if isinstance(current,dict) and isinstance(current.get('state'),str) and current['state'] in TERMINAL:continue
+                        pending,blocked_now=_pending_turns(all_items('turn'))
+                        pending=[t for t in pending if t['project_id']==pid]
+                        if None in blocked_now or pid in blocked_now or not pending or pending[0]['id']!=turn['id']:continue
                         try:
                             from .tasks import ensure
                             from .provider import task_scope
