@@ -418,6 +418,16 @@ _FAILURE_MESSAGES={
  'INPUT_SCHEMA_MISMATCH':'输入字段与冻结计划不一致，请修改方案后重新运行',
  'INPUT_PERCENTAGE_FORMAT_MISMATCH':'输入百分比的数值类型或value_format与来源已明确的表示不一致',
  'INPUT_UNIT_MISMATCH':'输入单位与原表明确标识不一致，需要显式转换或重新核对',
+ 'LOCALIZED_VALUE_INVALID':'原始文本与明确的数值或日期解析规则不一致，请核对来源及转换规则',
+ 'LOCALIZED_MISSING_VALUE':'来源存在缺失文本，未自动转换为零，请核对缺失处理规则',
+ 'LOCALIZED_PERCENT_SIGN_REQUIRED':'百分比文本缺少明确的百分号，不能推断比例含义',
+ 'LOCALIZED_PRECISION':'来源数值超出精度范围，不能截断或四舍五入后当作原值',
+ 'FORMULA_CACHE_UNSUPPORTED':'公式缓存结果不受支持，请在兼容表格软件中核对并重新保存',
+ 'FORMULA_CACHE_MISSING':'公式缺少保存的计算结果，请在兼容表格软件中重算并保存',
+ 'CELL_VALUE_ERROR':'表格单元格存在错误或不受支持的数值，请核对原始资料',
+ 'NON_ADDITIVE':'该字段未声明可加性，不能直接汇总；请核对业务口径',
+ 'UNMAPPED_VALUE':'存在未映射的业务值，不能自动补充映射；请核对映射表',
+ 'LOOKUP_CARDINALITY':'业务键未能唯一匹配，不能安全关联；请核对关联键及映射范围',
  'UPSTREAM_SEMANTICS_MISMATCH':'下游输入必须保留已验证上游的含义、粒度、单位、期间和表示，不能直接重标',
  'MISSING_COLUMN':'Operation references missing or duplicate columns',
  'SCHEMA_MISMATCH':'输入行字段与冻结方案声明不一致，未自动删除或补齐',
@@ -493,11 +503,11 @@ def workflow_run_diagnostic(pid,wid,rid=None,*,draft_sha256=None):
     stage=raw.get('stage_id');stage=stage if isinstance(stage,str) and re.fullmatch(r'(?:input:)?[A-Za-z][A-Za-z0-9_]{0,63}',stage) else None
     details=_safe_failure_details(raw.get('details'))
     if stage and stage.startswith('input:'):details['input_alias']=stage[6:]
-    # The fenced run already stores the precise, executor-controlled failure
-    # message (e.g. "文本与声明的日期格式不一致"). Prefer it over the static
-    # code summary, otherwise the agent only sees a generic prompt and cannot
-    # locate the offending column/value to repair the draft.
-    message=raw.get('message') or _FAILURE_MESSAGES.get(code,'数据加工未通过验证；请核对输入、字段声明和处理规则，未返回未验证结果')
+    # Error messages may include source values, SQL, connection strings or
+    # attacker-controlled text, including in old persisted runs. Only a
+    # fixed, code-specific explanation and constrained details may reach the
+    # model; never trust a persisted message as an authorization boundary.
+    message=_FAILURE_MESSAGES.get(code,'数据加工未通过验证；请核对输入、字段声明和处理规则，未返回未验证结果')
     failure={'stage_id':stage,'code':code,'message':message}
     if details:failure['details']=details
     alias=details.get('input_alias');path='bindings.'+alias+'.options.percentage_columns' if alias else 'bindings.<输入别名>.options.percentage_columns'

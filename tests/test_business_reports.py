@@ -101,6 +101,46 @@ def test_null_numeric_and_no_selected_period_are_not_silently_zero():
     with pytest.raises(ValueError,match='没有数据'):reports.evaluate(r,table())
 
 
+@pytest.mark.parametrize('missing',[None,'','  '])
+def test_missing_filter_dimension_never_silently_reduces_brief(missing):
+    current=table();current['schema']['columns'].append({'name':'region','data_type':'text','meaning':'区域'})
+    current['rows'][0]['region']='北区';current['rows'][1]['region']=missing
+    r=recipe(current['schema']);r['filters']={'office':'东区','region':'北区'}
+    # The missing region belongs to a row another filter would exclude. The
+    # complete scope must still be checked before applying either condition.
+    with pytest.raises(ValueError,match='筛选字段存在缺失值'):reports.evaluate(r,current)
+
+
+def test_numeric_filter_is_exact_by_declared_value_and_never_float():
+    current=table();current['rows'][0]['actual']='100.000000000001';current['rows'][1]['actual']='100.000000000002'
+    r=recipe(current['schema']);r['filters']={'actual':'100.0000000000010'}
+    assert reports.evaluate(r,current)['selected_rows']==1
+    current['rows'][1]['actual']=100.0
+    with pytest.raises(ValueError,match='筛选字段存在类型不一致'):reports.evaluate(r,current)
+
+
+def test_boolean_filter_requires_explicit_true_false_and_checks_all_rows():
+    current=table();current['schema']['columns'].append({'name':'settled','data_type':'boolean','meaning':'已结算'})
+    current['rows'][0]['settled']=True;current['rows'][1]['settled']=False
+    r=recipe(current['schema']);r['filters']={'settled':'false'}
+    assert reports.evaluate(r,current)['selected_rows']==1
+    r['filters']={'settled':'1'}
+    with pytest.raises(ValueError,match='筛选值与字段声明'):reports.evaluate(r,current)
+    r['filters']={'settled':'true'};current['rows'][1]['settled']=1
+    with pytest.raises(ValueError,match='筛选字段存在类型不一致'):reports.evaluate(r,current)
+
+
+def test_invalid_integer_metric_and_calendar_month_are_rejected():
+    current=table();current['schema']['columns'][1]['data_type']='integer';current['rows'][0]['actual']='1.5'
+    with pytest.raises(ValueError,match='整数数值字段'):reports.evaluate(recipe(current['schema']),current)
+    r=recipe();r['period']='0000-01'
+    with pytest.raises(ValueError,match='有效的日历月份'):reports.evaluate(r,table())
+    current=table();current['schema']['columns'].append({'name':'month','data_type':'text','meaning':'会计期间'})
+    current['rows'][0]['month']='2026-09';current['rows'][1]['month']='0000-01'
+    r=recipe(current['schema']);r['period_column']='month'
+    with pytest.raises(ValueError,match='期间.*无法确定'):reports.evaluate(r,current)
+
+
 def test_zero_baseline_and_explicit_non_terminating_ratio_policy():
     current=table();current['rows']=[{'office':'东区','actual':'1','budget':'0'}];current['total']=1
     r=recipe();r['metrics']=r['metrics'][1:]
@@ -223,6 +263,16 @@ def test_recipe_paths_and_raw_unsupported_fields_fail_before_write():
     pid,rid=real_result();r=recipe();r['expected_schema_sha256']=reports.inspect_result(pid,rid)['schema_sha256']
     with pytest.raises(ValueError,match='只能操作'):reports.render(pid,rid,r,recipe_path='../escape.json')
     with pytest.raises(ValueError):reports.render(pid,rid,{**r,'invented_summary':'revenue doubled due to management'})
+
+
+def test_real_fixed_result_numeric_filter_uses_declared_precision():
+    pid,rid=real_result();info=reports.inspect_result(pid,rid)
+    r=recipe();r['expected_schema_sha256']=info['schema_sha256'];r['filters']={'actual':'100.0000010'}
+    value=reports.render(pid,rid,r)
+    assert value['assertions'][0]['value']=='100.000001'
+    manifest=json.loads(reports.report_file(pid,value['id'],'manifest').read_text(encoding='utf-8'))
+    assert manifest['evaluation']['input_rows']==2 and manifest['evaluation']['selected_rows']==1
+    assert manifest['evaluation']['assertions'][0]['filters']=={'actual':'100.0000010'}
 
 
 def test_sql_result_requires_genuine_server_adoption_before_brief():

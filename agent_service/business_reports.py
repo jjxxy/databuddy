@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import date
 from decimal import Decimal, ROUND_HALF_EVEN, localcontext
 from pathlib import Path
 from typing import Literal
@@ -21,7 +22,7 @@ from pydantic import Field, model_validator
 
 from . import workspace
 from .config import DATA, MAX_ROWS
-from .data_workflows import NAME, TableSchema, decimal_value, digest
+from .data_workflows import NAME, TableSchema, decimal_value, digest, _coerce
 from .models import StrictModel
 from .store import all_items, get, now, put
 
@@ -67,6 +68,8 @@ class ReportRecipe(StrictModel):
             raise ValueError('筛选字段编号无效')
         if self.period_column in self.filters:
             raise ValueError('期间由period指定，不可在筛选中重复覆盖')
+        try:date.fromisoformat(self.period+'-01')
+        except ValueError:raise ValueError('报告期间必须是有效的日历月份') from None
         return self
 
 
@@ -169,13 +172,34 @@ def evaluate(recipe,table):
         # Unknown/malformed periods cannot be safely classified as belonging
         # to some other month. Silently excluding them can understate the
         # selected period while making an apparently complete report.
-        if any(not isinstance(r.get(recipe.period_column),str)
-               or not re.fullmatch(r'\d{4}-(?:0[1-9]|1[0-2])',r[recipe.period_column]) for r in rows):
+        def valid_month(raw):
+            if not isinstance(raw,str) or not re.fullmatch(r'\d{4}-(?:0[1-9]|1[0-2])',raw):return False
+            try:date.fromisoformat(raw+'-01');return True
+            except ValueError:return False
+        if any(not valid_month(r.get(recipe.period_column)) for r in rows):
             raise ValueError('存在缺失或格式不明确的期间，无法确定是否属于报告范围，请先核对')
         rows=[r for r in rows if r[recipe.period_column]==recipe.period]
-    if any(any(key not in r or r[key] is None for key in recipe.filters) for r in rows):
-        raise ValueError('筛选字段存在缺失值，无法确定是否属于报告范围，请先核对')
-    rows=[r for r in rows if all(r.get(k)==v for k,v in recipe.filters.items())]
+    # Validate *every* selected-period row for every filter before narrowing
+    # the set. Otherwise a missing/ill-typed value in a row excluded by a
+    # different filter could silently produce a falsely complete brief.
+    typed_filters={}
+    for key,raw in recipe.filters.items():
+        if not raw.strip():raise ValueError('筛选值不能为空或空白，请先明确筛选范围')
+        col=fields[key]
+        try:
+            if col.data_type=='boolean':
+                if raw not in ('true','false'):raise ValueError('布尔筛选值必须是 true 或 false')
+                typed_filters[key]=raw=='true'
+            else:typed_filters[key]=_coerce(raw,col)
+        except ValueError:raise ValueError('筛选值与字段声明的类型不一致，请先核对') from None
+    for row in rows:
+        for key in typed_filters:
+            raw=row.get(key)
+            if raw is None or isinstance(raw,str) and not raw.strip():
+                raise ValueError('筛选字段存在缺失值，无法确定是否属于报告范围，请先核对')
+            try:_coerce(raw,fields[key])
+            except ValueError:raise ValueError('筛选字段存在类型不一致的值，无法确定报告范围') from None
+    rows=[row for row in rows if all(_coerce(row[k],fields[k])==v for k,v in typed_filters.items())]
     if not rows:raise ValueError('报告期间和筛选范围没有数据，未把缺失数据当作0')
 
     def number(column,reduction):
@@ -191,6 +215,8 @@ def evaluate(recipe,table):
         with localcontext() as context:
             context.prec=120
             values=[decimal_value(r[column]) for r in rows]
+            if f.data_type=='integer' and any(v!=v.to_integral_value() for v in values):
+                raise ValueError('整数数值字段存在非整数值，不能生成报告')
             return sum(values,Decimal(0)) if reduction=='sum' else values[0]
 
     assertions=[]

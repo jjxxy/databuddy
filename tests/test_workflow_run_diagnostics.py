@@ -47,6 +47,11 @@ def task(pid):
     value=put('turn',{'project_id':pid,'text':'请汇总加工全部输入并运行方案，先生成候选，不要发布。',
         'interaction_mode':'work','state':'agent','created_at':now()},'t_'+uid())
     tasks.ensure(value)
+    # Multi-stage work must use the actual planning tool before running a workflow.
+    plan=agent.validate_step(get('turn',value['id']),{'kind':'tool','tool':'set_task_plan',
+        'arguments':{'steps':['运行数据工作流','核对失败结果']}})
+    agent._execute_node({'turn_id':value['id'],'step':plan.model_dump()})
+    assert get('turn',value['id']).get('task_plan'),json.dumps(get('turn',value['id']),ensure_ascii=False)
     return get('turn',value['id'])
 
 

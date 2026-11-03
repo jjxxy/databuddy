@@ -241,7 +241,7 @@ _STATIC = frozenset(('index.html', 'app.js', 'style.css', 'icon.svg', 'manifest.
     'local-data.html', 'local-data.js', 'local-data.css', 'work-runtime.js', 'interactive-work.js',
     'data-app.html', 'data-app.js', 'data-app.css', 'data-workbench.html', 'data-workbench.js', 'data-workbench.css',
     'share-management.js', 'share-management.css', 'analysis-explore.js', 'analysis-explore.css', 'factor-analysis.js', 'append-results.js', 'gap-analysis.js', 'gap-analysis.css',
-    'project-template-entry.js', 'project-templates.html', 'project-templates.js', 'project-templates.css', 'office-edit.html', 'office-edit.js', 'artifact-share-entry.js', 'artifact-shares.html', 'artifact-shares.js', 'organization-templates.js',
+    'project-template-entry.js', 'project-templates.html', 'project-templates.js', 'project-templates.css', 'office-edit.html', 'office-edit.js', 'office-change-review.js', 'artifact-share-entry.js', 'artifact-shares.html', 'artifact-shares.js', 'organization-templates.js',
     'chat-business-schedule.js', 'chat-business-debug.js', 'version-compare.js',
     'workflow-overview.css', 'workflow-overview.js', 'workspace-docx-preview.js',
     'workspace-html-view.js', 'workspace-onlyoffice-view.js', 'workspace-pptx-preview.js',

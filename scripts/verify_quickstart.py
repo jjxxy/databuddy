@@ -104,6 +104,12 @@ class ModelFixture:
             {'kind': 'tool', 'tool': 'read_file', 'arguments': {'path': path}},
             {'kind': 'final', 'answer': '说明文件已保存并读取核对。数据加工由后续明确操作执行。'},
             ]
+        # The work agent may require a plan before its tools run. The
+        # synthetic provider must follow that same
+        # contract; otherwise this verifier only tests the guard blocking it.
+        if (context['mode']=='work' and any(action.get('kind')=='tool' for action in actions)
+                and not any(action.get('tool')=='set_task_plan' for action in actions)):
+            actions=[{'kind':'tool','tool':'set_task_plan','arguments':{'steps':['核对已有资料','执行并核验交付'],'current_step':0}}]+actions
         # Direct Nexus WorkStudio calls rebuild completed_steps; OpenCode native sessions
         # append their tool calls to the original immutable prompt context.
         native_steps = sum(1 for message in messages for call in message.get('tool_calls', [])
@@ -444,7 +450,11 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                     for name,actual_value,budget_value in [('East','100.000000000001','100'),('West','200.000000000001','200')]:
                         assert Decimal(offices[name]['actual'])==Decimal(actual_value)
                         assert Decimal(offices[name]['budget'])==Decimal(budget_value)
-                call('POST', root + '/data-results/' + job + '/publish', json={'expected_plan_sha256': result['commit']})
+                # The synthetic operator explicitly reviews this exact result
+                # before adoption, matching the real source/semantic guards.
+                call('POST', root + '/data-results/' + job + '/publish', json={
+                    'expected_plan_sha256': result['commit'], 'expected_handoff_sha256': page['manifest_sha256'],
+                    'confirm_source_review': True, 'confirm_semantic_review': True})
                 excel = response('GET', root + '/data-results/' + job + '/download', params={'format': 'xlsx'}).content
                 from openpyxl import load_workbook
                 book = load_workbook(io.BytesIO(excel), read_only=True, data_only=False)
@@ -521,7 +531,12 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                         constraint='不要将期末余额求和。金额单位为元。' if index==0 else '本轮只记录合成验收进度。'
                         scripted(root,marker,[final_step('第'+str(index)+'轮合成验收进度已记录。')],
                             text=constraint+'上下文连续验收第'+str(index)+'轮。'+marker,mode='chat')
-                    compact=call('GET',root+'/context')
+                    # A short conversation stays uncompressed by default. This
+                    # synthetic test explicitly asks for a checkpoint so it
+                    # can exercise original-record recovery without forcing a
+                    # fixed-turn automatic compression policy.
+                    assert call('GET',root+'/context')['compression']['active'] is False
+                    compact=call('POST',root+'/context/compact',json={})
                     assert compact['summary_id'] and compact['compression']['active']
                     assert compact['compression']['method']=='extractive_work_index_v1'
                     assert compact['compression']['covered_older_turns']>=3 and compact['compression']['originals_retained']
@@ -570,7 +585,7 @@ def verify(folder: Path, *, opencode_binary: Path | None = None, workspace_featu
                 if workspace_features:
                     assert any(item['id']==skill['id'] for item in call('GET','/api/extensions',params={'project_id':project['id']})['skills'])
                     assert any(item['id']==memory['id'] for item in call('GET',root+'/memories')['items'])
-                    assert call('GET',root+'/context')['compression']['active']
+                    assert call('GET',root+'/context')['compression']['active'] is False
                     recalled=next(value for request,value in fixture.observed_contexts.items() if 'quickstart-fixture-check' in request)
                     assert any(item['content']==quote for item in recalled['memory_context']['items'])
                     marker='fixture-v18-memory-forget'

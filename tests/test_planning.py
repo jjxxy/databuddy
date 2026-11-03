@@ -25,6 +25,9 @@ def test_model_uses_schema_not_rows_and_rejects_invalid_plan(monkeypatch):
     assert get('source',source['id'])['planner_mode']=='llm'
     assert '业务对象命名为订单' in json.dumps(requests,ensure_ascii=False)
     invalid[0]=True
+    # The successful probe updated the source revision. A new probe must use
+    # the current stored snapshot, not an earlier stale object.
+    source=get('source',source['id'])
     planning.planner.invoke({'source':source})
     result=get('source',source['id'])
     assert result['planner_mode']=='rules' and result['warning']

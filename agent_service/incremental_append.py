@@ -7,6 +7,7 @@ as a new candidate, not silently published or automatically scheduled.
 """
 import hashlib
 import json
+import os
 from typing import Literal
 from pydantic import Field
 
@@ -27,17 +28,33 @@ class AppendInput(StrictModel):
     mode: Literal['append','upsert','delete'] = 'append'
     confirm_replace: bool = Field(default=False,strict=True)
     confirm_delete: bool = Field(default=False,strict=True)
+    expected_identity: str | None = Field(default=None,pattern=r'^[a-f0-9]{64}$')
     note: str = Field(min_length=4,max_length=500)
 
 
-def _verified(pid,rid,checksum):
+def identity_fingerprint(identity):
+    """Bind a pending browser request to its verified principal and identity domain."""
+    if not isinstance(identity,dict) or identity.get('authenticated') is not True:
+        raise ValueError('缺少已验证的使用者身份')
+    if identity.get('mode')=='token':parts=['token']
+    elif identity.get('mode')=='oidc':
+        issuer=identity.get('issuer') or os.getenv('OIDC_ISSUER','')
+        audience=os.getenv('OIDC_AUDIENCE','');subject=identity.get('subject')
+        if not issuer or not audience or not isinstance(subject,str) or not subject:
+            raise ValueError('身份域配置不完整，无法核对请求')
+        parts=['oidc',issuer,audience,subject]
+    else:raise ValueError('无法核对请求身份')
+    return hashlib.sha256(json.dumps(parts,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+
+
+def _verified(pid,rid,checksum,*,require_adopted=True):
     from . import project_data as data
     from .jobs import get_job
     run=get_job(rid)
     if run.get('project_id')!=pid or run.get('kind')!='data_workflow' or run.get('status')!='succeeded':
         raise ValueError('仅能使用当前项目已采用的正式结果')
     parent=data.owned(pid,'data_workflow',run['target'])
-    if parent.get('published_run')!=rid:raise ValueError('输入结果已不是当前正式版本，请刷新')
+    if require_adopted and parent.get('published_run')!=rid:raise ValueError('输入结果已不是当前正式版本，请刷新')
     folder,meta=data.result_folder(pid,rid)
     if meta['handoff_sha256']!=checksum:raise ValueError('输入结果版本已变化，请刷新')
     data.ensure_candidate_bulk_allowed(pid,rid)
@@ -51,6 +68,16 @@ def _verified(pid,rid,checksum):
     schema=TableSchema.model_validate(page.get('context',{}).get('output_semantics') or page['schema'])
     if not schema.grain:raise ValueError('追加合并要求明确且非空的业务唯一粒度')
     return run,meta,page,schema
+
+
+def _existing_job(key):
+    """Read an already admitted queue receipt; never enqueue during recovery."""
+    from sqlalchemy import select
+    from .jobs import jobs, render
+    from .store import engine
+    with engine.connect() as connection:
+        row=connection.execute(select(jobs).where(jobs.c.dedup_key==key)).mappings().first()
+    return render(row) if row else None
 
 
 def _keys(rows,schema):
@@ -70,7 +97,7 @@ def _normalized_rows(rows,schema):
             tuple(_coerce(row[c.name],c) for c in schema.columns) for row in rows}
 
 
-def create(pid,actor,value):
+def create(pid,actor,value,*,identity_scope=None):
     from . import workspace,project_data as data
     from .workspace_lifecycle import _project_lock,assert_project_live
     value=AppendInput.model_validate(value)
@@ -79,10 +106,33 @@ def create(pid,actor,value):
     if value.mode=='upsert' and (not value.confirm_replace or value.confirm_append_only or value.confirm_delete):raise ValueError('请明确确认新增及整行替换规则')
     if value.mode=='delete' and (not value.confirm_delete or value.confirm_append_only or value.confirm_replace):raise ValueError('请明确确认删除清单及整行原值')
     if value.baseline_run_id==value.delta_run_id:raise ValueError('历史结果和新增结果不能相同')
+    pair=[pid,actor,value.baseline_run_id,value.baseline_sha256,value.delta_run_id,value.delta_sha256]
+    if value.mode!='append':pair.append(value.mode)
+    # OIDC actors are issuer+subject, so audience must also be part of the
+    # deduplication domain. Old unbound OIDC records fail closed on recovery.
+    if identity_scope and identity_scope.get('mode')=='oidc':pair.append(identity_scope)
+    ident=hashlib.sha256(json.dumps(pair,separators=(',',':')).encode()).hexdigest()
+    request_key='ar_'+hashlib.sha256(json.dumps([pid,actor,value.request_id],separators=(',',':')).encode()).hexdigest()[:40]
+    from .store import get,put,seal,unseal
     with workspace.lock(pid),_project_lock(pid):
         assert_project_live(pid)
-        base,bmeta,bpage,bschema=_verified(pid,value.baseline_run_id,value.baseline_sha256)
-        delta,dmeta,dpage,dschema=_verified(pid,value.delta_run_id,value.delta_sha256)
+        try:previous=get('append_request',request_key)
+        except KeyError:previous=None
+        if previous is not None:
+            try:old_request=unseal(previous['sealed'])
+            except Exception:raise ValueError('追加请求记录无法核验') from None
+            if previous.get('project_id')!=pid or old_request!={'pair':pair,'note':value.note.strip()}:
+                raise ValueError('请求编号已用于不同版本或核对依据')
+        # A matching prior request record is not proof that a job was admitted.
+        # Only an actual queue row permits reading the pinned historical inputs
+        # after the official pointer changes; no new job is admitted in this path.
+        existing=_existing_job('append_'+ident) if previous is not None else None
+        if existing:
+            base,bmeta,bpage,bschema=_verified(pid,value.baseline_run_id,value.baseline_sha256,require_adopted=False)
+            delta,dmeta,dpage,dschema=_verified(pid,value.delta_run_id,value.delta_sha256,require_adopted=False)
+        else:
+            base,bmeta,bpage,bschema=_verified(pid,value.baseline_run_id,value.baseline_sha256)
+            delta,dmeta,dpage,dschema=_verified(pid,value.delta_run_id,value.delta_sha256)
         # source_ref denotes lineage, not business semantics; all other
         # declarations, including units, period, labels and grain, must match.
         bshape=bschema.model_dump();dshape=dschema.model_dump()
@@ -131,43 +181,57 @@ def create(pid,actor,value):
         document=data.WorkflowDocument.model_validate(plan);plan_hash=digest(document.model_dump())
         # One immutable request identity: repeating is safe; reusing its ID
         # with different versions, scope or attestation is rejected.
-        pair=[pid,actor,value.baseline_run_id,value.baseline_sha256,value.delta_run_id,value.delta_sha256]
-        if value.mode!='append':pair.append(value.mode)
-        ident=hashlib.sha256(json.dumps(pair,separators=(',',':')).encode()).hexdigest()
-        request_key='ar_'+hashlib.sha256(json.dumps([pid,actor,value.request_id],separators=(',',':')).encode()).hexdigest()[:40]
         path='workflows/append-'+ident[:40]+'.json'
         attestation={'version':1,'baseline_run_id':value.baseline_run_id,'baseline_sha256':value.baseline_sha256,
                      'delta_run_id':value.delta_run_id,'delta_sha256':value.delta_sha256,'actor':actor,'note':value.note.strip()}
         if value.mode!='append':attestation['mode']=value.mode
-        from .store import get,put,seal,unseal
-        try:previous=get('append_request',request_key)
-        except KeyError:previous=None
-        if previous is not None:
-            try:old_request=unseal(previous['sealed'])
-            except Exception:raise ValueError('追加请求记录无法核验') from None
-            if (previous.get('project_id')!=pid or old_request!={'pair':pair,'note':value.note.strip()}):
-                raise ValueError('请求编号已用于不同版本或核对依据')
-        else:put('append_request',{'project_id':pid,'sealed':seal({'pair':pair,'note':value.note.strip()})},request_key)
+        if previous is None:put('append_request',{'project_id':pid,'sealed':seal({'pair':pair,'note':value.note.strip()})},request_key)
         # Bind the attestation to a separate workspace file so changes are
         # versioned and the original facts are not inserted into the plan.
         receipt_path='workflows/append-'+ident[:40]+'.review.json'
         for filename,body in ((path,document.model_dump()),(receipt_path,attestation)):
             serialized=json.dumps(body,ensure_ascii=False,indent=2)
             try:old=workspace.read_file(pid,filename)
-            except FileNotFoundError:workspace.write_file(pid,filename,serialized)
+            except FileNotFoundError:
+                if existing:raise ValueError('原候选做法或核对依据不可用，请核对项目历史') from None
+                workspace.write_file(pid,filename,serialized)
             else:
                 try:matching=digest(json.loads(old))==digest(body)
                 except (ValueError,TypeError):matching=False
                 if not matching:raise ValueError('请求编号已用于不同版本或核对依据')
-        workflow=data.register(pid,path)
-        if workflow['draft_sha256']!=plan_hash:raise ValueError('追加方案已变化，请重新核对')
-        # Fixed result IDs and hashes remain part of the input evidence. Never
-        # reuse a key for another run/version, even after an interrupted call.
-        job=data._enqueue_workflow(pid,workflow['workflow_id'],scheduled_key='append_'+ident,
-                                   expected_draft_sha256=plan_hash)
-        version=workspace._checkpoint(pid,None,'建立追加明细做法')
-        return {'workflow_id':workflow['workflow_id'],'run_id':job['id'],'status':job['status'],
-                'plan_sha256':plan_hash,'workspace_version':version['commit'],
+        workflow_id='wf_'+hashlib.sha256((pid+':'+path).encode()).hexdigest()[:40]
+        version=None
+        if existing:
+            # Compare the actual admitted job and both immutable input bindings.
+            # Never register or enqueue a replacement while recovering a receipt.
+            try:workflow=data.owned(pid,'data_workflow',workflow_id)
+            except KeyError:raise ValueError('原候选任务不存在，请核对项目历史') from None
+            if (workflow.get('path')!=path or existing.get('project_id')!=pid or existing.get('kind')!='data_workflow'
+                or existing.get('target')!=workflow_id or existing.get('scheduled_key')!='append_'+ident
+                or existing.get('commit')!=plan_hash or digest(existing.get('workflow_document'))!=plan_hash
+                or existing.get('workspace_visibility_revision')!=int(get('project',pid).get('context_visibility_revision',0))):
+                raise ValueError('原候选任务或固定版本无法核验')
+            if previous.get('sealed_version'):
+                try:sealed_version=unseal(previous['sealed_version'])
+                except Exception:raise ValueError('原候选版本记录无法核验') from None
+                if (not isinstance(sealed_version,dict) or sealed_version.get('request_key')!=request_key
+                    or sealed_version.get('project_id')!=pid or sealed_version.get('run_id')!=existing['id']
+                    or sealed_version.get('plan_sha256')!=plan_hash or not isinstance(sealed_version.get('commit'),str)):
+                    raise ValueError('原候选版本记录无法核验')
+                version=sealed_version['commit']
+            job=existing
+        else:
+            workflow=data.register(pid,path)
+            if workflow['draft_sha256']!=plan_hash:raise ValueError('追加方案已变化，请重新核对')
+            # Fixed result IDs and hashes remain part of the input evidence.
+            job=data._enqueue_workflow(pid,workflow_id,scheduled_key='append_'+ident,
+                                       expected_draft_sha256=plan_hash)
+            if job.get('scheduled_key')!='append_'+ident:raise ValueError('已有其他运行任务，请核对任务记录')
+            version=workspace._checkpoint(pid,None,'建立追加明细做法')['commit']
+            previous=get('append_request',request_key)
+            put('append_request',dict(previous,sealed_version=seal({'request_key':request_key,'project_id':pid,'run_id':job['id'],'plan_sha256':plan_hash,'commit':version})),request_key)
+        return {'workflow_id':workflow_id,'run_id':job['id'],'status':job['status'],
+                'plan_sha256':plan_hash,'workspace_version':version,
                 'baseline_run_id':value.baseline_run_id,'baseline_sha256':value.baseline_sha256,
                 'delta_run_id':value.delta_run_id,'delta_sha256':value.delta_sha256,
                 'baseline_rows':bpage['total'],'delta_rows':dpage['total'],'total_rows':total,

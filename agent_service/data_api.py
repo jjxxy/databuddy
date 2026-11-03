@@ -218,11 +218,31 @@ def install(app,auth):
         from .actor_context import actor_from_identity,actor_scope
         with actor_scope(actor_from_identity(getattr(request.state,'identity',{}))):return data.read_result(pid,rid,offset,limit)
 
+    @app.get('/api/projects/{pid}/data-append-identity',dependencies=dependencies)
+    def append_identity(pid:str,request:Request):
+        from .incremental_append import identity_fingerprint
+        from .workspace_lifecycle import assert_project_live
+        assert_project_live(pid)
+        return {'fingerprint':identity_fingerprint(getattr(request.state,'identity',{}))}
+
     @app.post('/api/projects/{pid}/data-append-candidates',dependencies=dependencies)
     def append_candidate(pid:str,value:AppendInput,request:Request):
         from .actor_context import actor_from_identity
-        from .incremental_append import create
-        return create(pid,actor_from_identity(getattr(request.state,'identity',{})),value)
+        from .incremental_append import create,identity_fingerprint
+        import os
+        import secrets
+        identity=getattr(request.state,'identity',{})
+        fingerprint=identity_fingerprint(identity)
+        if ((identity.get('mode')=='oidc' and value.expected_identity is None)
+            or (value.expected_identity is not None and not secrets.compare_digest(value.expected_identity,fingerprint))):
+            raise HTTPException(409,'页面版本过期或账号、身份域已变化，请重新打开工作台并核对')
+        scope=None
+        if identity.get('mode')=='oidc':
+            issuer=identity.get('issuer') or os.getenv('OIDC_ISSUER','')
+            audience=os.getenv('OIDC_AUDIENCE','')
+            if not issuer or not audience:raise ValueError('身份域配置不完整，无法核对请求')
+            scope={'mode':'oidc','issuer':issuer,'audience':audience}
+        return create(pid,actor_from_identity(identity),value,identity_scope=scope)
 
     @app.post('/api/projects/{pid}/data-results/{rid}/explore',dependencies=dependencies)
     def explore_result(pid:str,rid:str,value:ExploreRequest):

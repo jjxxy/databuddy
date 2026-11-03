@@ -590,6 +590,7 @@ function wbRenderResult() {
   wbRenderSources();wbRenderStages();wbRenderFields();wbRenderTask();wbRenderButtons();
   const activeProject=wbProject,activeWorkflow=wbState.workflowId,activeRun=wbState.resultId,activeToken=wbState.token,activeHash=wbState.result?.manifest_sha256;
   const analysisScope={project:activeProject,workflow:wbState.workflow,result:wbState.result,resultId:activeRun,request:wbRequest,
+    recoveryScope:activeWorkflow,isRecoveryCurrent:()=>wbCurrentProject()&&!wbAuthClosed&&wbProject===activeProject&&wbState.token===activeToken&&wbState.workflowId===activeWorkflow,onIdentityChanged:()=>wbChangeAuthentication(),
     isCurrent:()=>wbCurrentProject()&&!wbAuthClosed&&wbProject===activeProject&&wbState.token===activeToken&&wbState.workflowId===activeWorkflow&&wbState.resultId===activeRun&&wbRunId(wbState.workflow?.published_run)===activeRun&&wbState.result?.manifest_sha256===activeHash};
   window.nexusExplore?.sync(analysisScope);window.nexusFactorAnalysis?.sync(analysisScope);window.nexusGapAnalysis?.sync(analysisScope);window.nexusAppendResults?.sync(analysisScope);window.nexusShareUI?.sync(analysisScope);
 }

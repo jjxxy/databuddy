@@ -24,6 +24,11 @@ def task(pid):
     value=put('turn',{'project_id':pid,'text':'请创建加工方案文件并登记，先不要运行或发布。',
         'interaction_mode':'work','state':'agent','created_at':now()},'t_'+uid())
     tasks.ensure(value)
+    # Multi-stage work now requires a real plan before invoking write tools.
+    plan=agent.validate_step(get('turn',value['id']),{'kind':'tool','tool':'set_task_plan',
+        'arguments':{'steps':['登记加工方案','核对登记结果']}})
+    agent._execute_node({'turn_id':value['id'],'step':plan.model_dump()})
+    assert get('turn',value['id']).get('task_plan'),json.dumps(get('turn',value['id']),ensure_ascii=False)
     return get('turn',value['id'])
 
 

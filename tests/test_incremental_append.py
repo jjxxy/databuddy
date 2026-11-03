@@ -324,7 +324,7 @@ def test_delete_null_and_empty_text_are_distinct_in_entire_row_comparison(monkey
     assert response.status_code==400 and '原始明细' in response.text
 
 
-def test_uncertain_retry_after_new_formal_version_requires_manual_candidate_check():
+def test_uncertain_retry_after_new_formal_version_recovers_original_candidate():
     from agent_service import incremental_append as module
     pid=project();base,bs=adopted(pid,'id,amount\nA,10\nB,20\n','workflows/delete-version-base.json')
     deletion,ds=adopted(pid,'id,amount\nA,10\n','workflows/delete-version-list.json')
@@ -334,7 +334,118 @@ def test_uncertain_retry_after_new_formal_version_requires_manual_candidate_chec
     first=module.create(pid,'owner',body)
     old=get_job(base);new=run(pid,old['target'],expected_draft_sha256=old['commit'])
     data.publish_result(pid,new['id'],new['commit'])
-    with pytest.raises(ValueError,match='不是当前正式版本'):
-        module.create(pid,'owner',body)
+    recovered=module.create(pid,'owner',body)
+    assert recovered['run_id']==first['run_id'] and recovered['plan_sha256']==first['plan_sha256']
+    assert recovered['workspace_version']==first['workspace_version']
+    assert recovered['baseline_run_id']==base and recovered['deleted_rows']==1
     still=get_job(first['run_id']);assert still['project_id']==pid
     assert still['workflow_document']['bindings']['history']['result_id']==base
+
+
+def test_retry_without_actual_job_never_admits_old_inputs(monkeypatch):
+    from agent_service import incremental_append as module
+    pid,body=case();original=data._enqueue_workflow
+    monkeypatch.setattr(data,'_enqueue_workflow',lambda *a,**k: (_ for _ in ()).throw(RuntimeError('lost before admission')))
+    with pytest.raises(RuntimeError,match='before admission'):module.create(pid,'owner',body)
+    monkeypatch.setattr(data,'_enqueue_workflow',original)
+    old=get_job(body['baseline_run_id']);new=run(pid,old['target'],expected_draft_sha256=old['commit'])
+    data.publish_result(pid,new['id'],new['commit'])
+    with pytest.raises(ValueError,match='不是当前正式版本'):module.create(pid,'owner',body)
+
+
+def test_recovery_after_admission_before_checkpoint_has_no_invented_version(monkeypatch):
+    from agent_service import incremental_append as module,workspace
+    pid,body=case();original=workspace._checkpoint
+    monkeypatch.setattr(workspace,'_checkpoint',lambda *a,**k: (_ for _ in ()).throw(RuntimeError('checkpoint interrupted')))
+    with pytest.raises(RuntimeError,match='checkpoint interrupted'):module.create(pid,'owner',body)
+    monkeypatch.setattr(workspace,'_checkpoint',original)
+    old=get_job(body['baseline_run_id']);new=run(pid,old['target'],expected_draft_sha256=old['commit'])
+    data.publish_result(pid,new['id'],new['commit'])
+    result=module.create(pid,'owner',body)
+    assert result['workspace_version'] is None and result['baseline_run_id']==body['baseline_run_id']
+    assert get_job(result['run_id'])['scheduled_key'].startswith('append_')
+
+
+def test_recovery_rejects_wrong_actor_scope_tampered_job_and_deleted_project(monkeypatch):
+    from agent_service import incremental_append as module,workspace_lifecycle as lifecycle
+    pid,body=case();scope={'mode':'oidc','issuer':'https://issuer.test','audience':'app-one'}
+    first=module.create(pid,'actor',body,identity_scope=scope)
+    old=get_job(body['baseline_run_id']);new=run(pid,old['target'],expected_draft_sha256=old['commit']);data.publish_result(pid,new['id'],new['commit'])
+    with pytest.raises(ValueError,match='请求编号'):module.create(pid,'actor',body,identity_scope={**scope,'audience':'app-two'})
+    with pytest.raises(ValueError,match='不是当前正式版本'):module.create(pid,'other-actor',body,identity_scope=scope)
+    original=module._existing_job
+    def altered(key):
+        job=original(key);return {**job,'commit':'f'*64}
+    monkeypatch.setattr(module,'_existing_job',altered)
+    with pytest.raises(ValueError,match='无法核验'):module.create(pid,'actor',body,identity_scope=scope)
+    monkeypatch.setattr(module,'_existing_job',original)
+    lifecycle.delete_project(pid)
+    with pytest.raises(ValueError,match='回收站'):module.create(pid,'actor',body,identity_scope=scope)
+    lifecycle.restore_project(pid)
+    with pytest.raises(ValueError,match='无法核验'):module.create(pid,'actor',body,identity_scope=scope)
+    assert first['run_id']
+
+
+def test_recovery_rejects_changed_inputs_or_receipt_files():
+    from agent_service import incremental_append as module,workspace
+    pid,body=case();first=module.create(pid,'owner',body)
+    old=get_job(body['baseline_run_id']);new=run(pid,old['target'],expected_draft_sha256=old['commit']);data.publish_result(pid,new['id'],new['commit'])
+    with pytest.raises(ValueError,match='请求编号'):module.create(pid,'owner',{**body,'note':'不同的核对依据'})
+    workflow=data.owned(pid,'data_workflow',first['workflow_id'])
+    original=workspace.read_file(pid,workflow['path'])
+    try:
+        workspace.write_file(pid,workflow['path'],'{}')
+        with pytest.raises(ValueError,match='请求编号'):module.create(pid,'owner',body)
+    finally:workspace.write_file(pid,workflow['path'],original)
+
+
+def test_recovery_rejects_a_valid_sealed_version_from_another_request():
+    import hashlib,json
+    from agent_service import incremental_append as module
+    from agent_service.store import get,patch
+    pid,body=case();module.create(pid,'owner',body)
+    other={**body,'request_id':'other-request-for-same-input'};module.create(pid,'owner',other)
+    def key(request_id):return 'ar_'+hashlib.sha256(json.dumps([pid,'owner',request_id],separators=(',',':')).encode()).hexdigest()[:40]
+    one=key(body['request_id']);two=key(other['request_id'])
+    patch('append_request',one,sealed_version=get('append_request',two)['sealed_version'])
+    with pytest.raises(ValueError,match='版本记录无法核验'):module.create(pid,'owner',body)
+
+
+def test_recovery_detects_changed_handoff_bytes():
+    from agent_service import incremental_append as module
+    pid,body=case();module.create(pid,'owner',body)
+    root=data.result_folder(pid,body['baseline_run_id'])[0]/'handoff'/'rows.jsonl';original=root.read_bytes()
+    try:
+        root.write_bytes(original+b' ')
+        with pytest.raises((ValueError,OSError)):module.create(pid,'owner',body)
+    finally:root.write_bytes(original)
+
+
+def test_oidc_signed_retry_cannot_switch_subject_or_audience(monkeypatch):
+    import json,jwt
+    from datetime import datetime,timedelta,timezone
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from agent_service import identity
+    from agent_service.jobs import list_jobs
+    pid,body=case()
+    for key,value in {'NEXUS_AUTH_MODE':'oidc','OIDC_ISSUER':'https://id.example.test','OIDC_AUDIENCE':'nexus',
+        'OIDC_JWKS_URL':'https://id.example.test/keys','OIDC_ALLOWED_SUBJECTS':'owner,other',
+        'REQUIRE_SINGLE_OIDC_SUBJECT':'0'}.items():monkeypatch.setenv(key,value)
+    private=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+    jwk=json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()));jwk.update(kid='k',alg='RS256',use='sig',key_ops=['verify'])
+    monkeypatch.setattr(identity,'keys',lambda refresh=False:[jwk])
+    def headers(subject,aud='nexus'):
+        token=jwt.encode({'sub':subject,'iss':'https://id.example.test','aud':aud,'exp':datetime.now(timezone.utc)+timedelta(minutes=2)},private,algorithm='RS256',headers={'kid':'k'})
+        return {'Authorization':'Bearer '+token}
+    client=TestClient(app);prefix=f'/api/projects/{pid}'
+    initial=client.get(prefix+'/data-append-identity',headers=headers('owner'));assert initial.status_code==200,initial.text
+    body['expected_identity']=initial.json()['fingerprint']
+    assert client.post(prefix+'/data-append-candidates',json={**body,'expected_identity':None},headers=headers('owner')).status_code==409
+    first=client.post(prefix+'/data-append-candidates',json=body,headers=headers('owner'));assert first.status_code==200,first.text
+    before={job['id'] for job in list_jobs(limit=10000)}
+    assert client.post(prefix+'/data-append-candidates',json=body,headers=headers('other')).status_code==409
+    monkeypatch.setenv('OIDC_AUDIENCE','another-domain')
+    assert client.post(prefix+'/data-append-candidates',json=body,headers=headers('owner','another-domain')).status_code==409
+    assert {job['id'] for job in list_jobs(limit=10000)}==before
+    monkeypatch.setenv('OIDC_AUDIENCE','nexus')
+    assert client.post(prefix+'/data-append-candidates',json=body,headers=headers('owner')).json()['run_id']==first.json()['run_id']

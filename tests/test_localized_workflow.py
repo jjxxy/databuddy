@@ -91,7 +91,11 @@ def test_real_csv_normalize_aggregate_failed_refresh_keeps_published_result():
     assert receipts[0]['lineage']['rules'][0]['currency'] == 'CNY'
     assert 'original_text_columns_retained' in receipts[0]['checks']['localized_parsing']
     assert meta['requires_semantic_review'] is True
-    data.publish_result(pid, run['id'], run['commit'])
+    # A semantic review must bind to the exact handoff; no implicit approval.
+    with pytest.raises(ValueError, match='业务语义'):
+        data.publish_result(pid, run['id'], run['commit'])
+    data.publish_result(pid, run['id'], run['commit'], semantic_review_actor='owner',
+                        review_handoff_sha256=meta['handoff_sha256'])
     bad = raw_rows(); bad[0]['amount_text'] = '1,23'
     save_source(pid, bad, source['id'])
     queued = data.enqueue_workflow(pid, wid, use_published=True)

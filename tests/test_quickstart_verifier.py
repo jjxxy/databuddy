@@ -108,6 +108,8 @@ def test_fixture_recovers_nexus_context_and_session_step_from_opencode_messages(
         'messages':[{'role':'system','content':'synthetic harness'},
             {'role':'user','content':[{'type':'text','text':'Nexus WorkStudio task:\n'+json.dumps(context)}]},
             {'role':'assistant','tool_calls':[{'function':{'name':'nexus_step'}}]},
+            {'role':'tool','content':'{"state":"agent"}'},
+            {'role':'assistant','tool_calls':[{'function':{'name':'nexus_step'}}]},
             {'role':'tool','content':'{"state":"agent"}'}],
         'tools':[{'type':'function','function':{'name':'nexus_step'}}]})
     value=json.loads(message['tool_calls'][0]['function']['arguments'])
