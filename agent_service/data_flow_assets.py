@@ -54,7 +54,25 @@ _STAGE_HELPERS={
 }
 
 
-def _index(nodes,groups):
+def _display_groups(nodes):
+    # For a short pipeline, preparation, a query and a calculation belong to
+    # one business task even though they use different engine operations.
+    # For larger plans keep meaningful families of operations navigable.
+    stages = [n for n in nodes if n['kind'] not in ('source', 'output')]
+    phases = {'source': ('input', '读取来源资料'), 'output': ('output', '交付结果')}
+    for stage in stages:
+        kind = stage['kind']
+        phase = ('process', '整理与加工数据')
+        if len(stages) > 6:
+            if kind in ('lookup', 'lookup_multi', 'lookup_effective', 'union_rows'):
+                phase = ('join', '关联与合并资料')
+            elif kind in ('compute', 'aggregate', 'fx_convert'):
+                phase = ('calculate', '计算与汇总指标')
+        phases[kind] = phase
+    return overview_groups(nodes, phases)
+
+
+def _index(nodes,groups,display_groups=None):
     labels={'overview.json':'业务流程概览','dag.json':'详细流程与依赖','io.json':'输入资料与结果引用'}
     for node in nodes:
         labels[node['path']]=node['title']+' · 节点规则'
@@ -62,18 +80,19 @@ def _index(nodes,groups):
             labels[path]=node['title']+' · 查询原文' if path.endswith('.sql') else '实现函数 · '+path.split('/')[-1]
         if node.get('handler_path'):labels[node['handler_path']]='登记时的 Python 实现 · '+node['handler_path'].split('/')[-1]
     languages={'py':'python','sql':'sql','json':'json'}
-    return {'groups':groups,'nodes':nodes,'files':[{'path':path,'label':label,'language':languages[path.rsplit('.',1)[1]]}
+    return {'groups':groups,'display_groups':groups if display_groups is None else display_groups,
+            'nodes':nodes,'files':[{'path':path,'label':label,'language':languages[path.rsplit('.',1)[1]]}
                                                 for path,label in labels.items()]}
 
 
 def _parts(doc, include_handlers, pid=None):
-    nodes=[];contents={};phases={}
+    nodes=[];contents={}
 
     def file(path,content):
         contents[path]=content
         return path
 
-    def node(ident,title,kind,phase,deps,definition,handler,helpers=(),sql=None):
+    def node(ident,title,kind,deps,definition,handler,helpers=(),sql=None):
         # Prefix + case-sensitive digest keeps valid workflow IDs such as CON, A and a distinct on Windows.
         stem='n_'+ident[:24]+'_'+_sha(ident)[:16]
         node_dir='nodes/'+stem+'/'
@@ -88,22 +107,19 @@ def _parts(doc, include_handlers, pid=None):
                 related.append(file(_implementation_path(fn),_source(fn)))
         if related:entry['paths']=related
         nodes.append(entry)
-        phases[kind]=(phase,phase)
 
     for ident,schema in sorted(doc.plan.inputs.items()):
         binding=doc.bindings[ident]
-        node(ident,schema.meaning,'source','读取来源资料',[],{'schema':schema.model_dump(),'binding':binding.model_dump()},
+        node(ident,schema.meaning,'source',[],{'schema':schema.model_dump(),'binding':binding.model_dump()},
              data.read_input,_input_helpers(pid,binding) if include_handlers else ())
     for stage in doc.plan.stages:
-        phase=('关联与合并资料' if stage.kind in ('lookup','lookup_multi','lookup_effective','union_rows') else
-               '计算与汇总指标' if stage.kind in ('compute','aggregate','fx_convert','sql') else '整理明细与口径')
         handler={'sql':engine._sql,'aggregate':engine._aggregate}.get(stage.kind,engine._operate)
-        node(stage.id,stage.description,stage.kind,phase,engine.dependencies_for(stage),stage.model_dump(),handler,
+        node(stage.id,stage.description,stage.kind,engine.dependencies_for(stage),stage.model_dump(),handler,
              _STAGE_HELPERS.get(stage.kind,(engine._columns,)),getattr(stage,'sql',None))
-    node('__overview_result__','交付已选定的结果','output','交付结果',[doc.plan.output],
+    node('__overview_result__','交付已选定的结果','output',[doc.plan.output],
          {'output':doc.plan.output,'contract':doc.contract,'reviewed_mapping_ids':doc.reviewed_mapping_ids},
          result_delivery.write_handoff,(result_delivery.verify_handoff,result_delivery._pack))
-    groups=overview_groups(nodes,phases)
+    groups=_display_groups(nodes)
     file('dag.json',_json({'version':1,'nodes':nodes,'output':doc.plan.output,'budget':doc.plan.budget.model_dump()}))
     file('overview.json',_json({'version':1,'groups':groups}))
     file('io.json',_json({'inputs':{k:v.model_dump(exclude_none=True) for k,v in doc.bindings.items()},
@@ -140,7 +156,10 @@ def _snapshot(pid,wid,expected,commit=None):
         def read(path):
             if path not in hashes:raise ValueError('文件不属于该流程版本')
             return workspace.git_content(repo,commit,prefix+path).decode('utf-8')
-        index=_index(json.loads(read('dag.json'))['nodes'],json.loads(read('overview.json'))['groups'])
+        nodes=json.loads(read('dag.json'))['nodes']
+        # Historical overview.json is immutable. Project the current display
+        # grouping from exactly that revision's verified execution DAG.
+        index=_index(nodes,json.loads(read('overview.json'))['groups'],_display_groups(nodes))
     else:
         if commit:raise HTTPException(409,'当前版本没有可核验的 Git 节点文件')
         index,derived=_parts(doc,False)

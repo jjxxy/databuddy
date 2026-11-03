@@ -71,6 +71,32 @@ def test_replayed_message_cannot_switch_flow_or_session():
         conversation.submit(pid,conversation.TurnInput(text='调整第二步',request_id=rid,session_id=sid,workflow_context=ref(a)))
 
 
+def test_selected_nested_stage_is_scoped_to_its_parent_and_frozen_on_retry(monkeypatch):
+    from agent_service import business_flows
+    pid=project()
+    ref={'kind':'business','id':'bf_'+'a'*40,'digest':'b'*64,'node_id':'orders','stage_id':'sort'}
+    def table(node_id, stages):
+        return {'id':node_id,'kind':'table_workflow','title':node_id,'config':{'plan':{'stages':stages}}}
+    nodes=[table('orders',[{'id':'sort','description':'按订单号排序'}]),
+           table('refunds',[{'id':'sort','description':'按退款号排序'},{'id':'clean','description':'清洗退款明细'}])]
+    monkeypatch.setattr(business_flows,'get_view',lambda *args:{'candidate_digest':ref['digest'],'candidate_document':{'nodes':nodes}})
+    def send(selection,request_id):
+        return conversation.submit(pid,conversation.TurnInput(text='改这一步',request_id=request_id,workflow_context=selection))
+    request=uid()
+    turn=send(ref,request)
+    selected=get('turn',turn['id'])['selected_workflow']
+    assert (selected['node_id'],selected['stage_id'],selected['stage_title'])==('orders','sort','按订单号排序')
+    assert send(ref,request)['id']==turn['id']
+    with pytest.raises(conversation.WorkflowContextConflict,match='不能更换'):
+        send({**ref,'node_id':'refunds'},request)
+    with pytest.raises(conversation.WorkflowContextConflict,match='不能更换'):
+        send({key:value for key,value in ref.items() if key!='stage_id'},request)
+    with pytest.raises(conversation.WorkflowContextConflict,match='没有这一步'):
+        send({**ref,'stage_id':'clean'},uid())
+    with pytest.raises(ValueError,match='必须指定'):
+        send({key:value for key,value in ref.items() if key!='node_id'},uid())
+
+
 def test_wrong_workflow_kind_rejected():
     with pytest.raises(ValueError):
         conversation.TurnInput(text='修改',request_id=uid(),workflow_context={'kind':'business','id':'wf_'+'a'*40,'digest':'b'*64})

@@ -26,6 +26,8 @@ def test_data_code_round_trip_and_restore():
     assert view['storage']=='git' and view['flow_id']==wid
     groups=view['groups'];references=[ref for group in groups for ref in group['nodeIds']]
     assert references==['orders','complete_rows','SelectOrders','__overview_result__']
+    assert groups == view['display_groups']
+    assert groups[1]['nodeIds'] == ['complete_rows','SelectOrders']
     definition=next(n for n in view['nodes'] if n['id']=='SelectOrders')
     def content(path):
         return client.get(base+'/code-asset',params={**params,'commit':view['commit'],'path':path},headers=headers)
@@ -46,6 +48,24 @@ def test_data_code_round_trip_and_restore():
     assert saved['records']==215
     workspace.restore(pid,view['commit'],'restore-data-flow-code')
     assert content(definition['paths'][0]).json()['content']==stage['sql']
+
+
+def test_historical_type_based_groups_are_projected_without_changing_the_saved_overview(monkeypatch):
+    pid=project();s=source(pid);doc=document(s['id'])
+    doc['plan']['stages'].append({'id':'sort_rows','kind':'sql','description':'按编号整理明细',
+        'inputs':['complete_rows'],'sql':'SELECT * FROM complete_rows ORDER BY id',
+        'output_schema':doc['plan']['inputs']['orders']})
+    doc['plan']['output']='sort_rows'
+    phases={kind:(kind,kind) for kind in ('source','select','sql','output')}
+    with monkeypatch.context() as old:
+        old.setattr(data_flow_assets,'_display_groups',lambda nodes:data_flow_assets.overview_groups(nodes,phases))
+        wid=registered(pid,doc)
+    sha=data.inspect_workflow(pid,wid)['draft_sha256']
+    manifest=data_flow_assets.get_assets(pid,wid,sha)
+    assert len(manifest['groups'])==4
+    assert [g['nodeIds'] for g in manifest['display_groups']]==[['orders'],['complete_rows','sort_rows'],['__overview_result__']]
+    frozen=data_flow_assets.get_assets(pid,wid,sha,manifest['commit'],'overview.json')
+    assert json.loads(frozen['content'])['groups']==manifest['groups']
 
 
 def test_selected_chat_updates_same_project_code_and_rejects_stale_edit():

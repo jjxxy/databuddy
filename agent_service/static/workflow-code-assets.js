@@ -1,7 +1,7 @@
 'use strict';
 
 /* Open only files listed in the manifest of the selected project workflow version. */
-window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest, commit, expectedNodes, api, isCurrent}) {
+window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest, commit, expectedNodes, plan, api, isCurrent}) {
   const encode = encodeURIComponent;
   const endpoint = '/projects/' + encode(projectId) + (kind === 'data' ? '/data-workflows/' : '/business-flows/') + encode(flowId);
   const query = new URLSearchParams({expected_digest: digest});
@@ -18,22 +18,58 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
       !/^(?:[\w-]+\/)*[\w-]+\.(?:json|sql|py)$/.test(file.path))) throw Error('流程文件路径无效');
   const files = new Map(manifest.files.map(file => [file.path, file]));
   const nodes = new Map(manifest.nodes.map(node => [node.id, node]));
-  const groupIds = new Set(manifest.groups.map(group => group.id));
-  const covered = new Set();
   const invalidFile = node => !files.has(node.path) || (node.handler_path && !files.has(node.handler_path)) ||
     (node.paths != null && (!Array.isArray(node.paths) || node.paths.some(path => !files.has(path))));
+  function validGroups(groups) {
+    if (!Array.isArray(groups)) return false;
+    const groupIds = new Set(groups.map(group => group.id)), covered = new Set();
+    if (groupIds.size !== groups.length) return false;
+    for (const group of groups) {
+      if (!Array.isArray(group.deps) || !Array.isArray(group.nodeIds) || !group.nodeIds.length ||
+          group.deps.some(id => !groupIds.has(id) || id === group.id)) return false;
+      for (const id of group.nodeIds) {
+        if (!nodes.has(id) || covered.has(id)) return false;
+        covered.add(id);
+      }
+    }
+    return covered.size === nodes.size;
+  }
   if (nodes.size !== expectedNodes.length || nodes.size !== manifest.nodes.length ||
       expectedNodes.some(id => !nodes.has(id)) || files.size !== manifest.files.length ||
-      manifest.nodes.some(invalidFile) ||
-      groupIds.size !== manifest.groups.length || manifest.groups.some(group => {
-        if (!Array.isArray(group.deps) || !Array.isArray(group.nodeIds) || !group.nodeIds.length ||
-            group.deps.some(id => !groupIds.has(id) || id === group.id)) return true;
-        for (const id of group.nodeIds) {
-          if (!nodes.has(id) || covered.has(id)) return true;
-          covered.add(id);
-        }
-        return false;
-      }) || covered.size !== nodes.size) throw Error('流程文件与步骤不匹配');
+      manifest.nodes.some(invalidFile) || !validGroups(manifest.groups) ||
+      (manifest.display_groups != null && !validGroups(manifest.display_groups))) throw Error('流程文件与步骤不匹配');
+  if (manifest.detail_nodes != null) {
+    const stages = new Set((plan?.nodes || []).filter(node => node.kind === 'table_workflow')
+      .flatMap(node => (node.config?.plan?.stages || []).map(stage => node.id + ':' + stage.id)));
+    if (!Array.isArray(manifest.detail_nodes) || stages.size !== manifest.detail_nodes.length) throw Error('加工步骤文件不匹配');
+    for (const stage of manifest.detail_nodes) {
+      const owner = nodes.get(stage.owner_id), paths = new Set(owner?.paths || []);
+      if (stage.id !== stage.owner_id + ':' + stage.stage_id || !stages.delete(stage.id) || !owner ||
+          invalidFile(stage) || !paths.has(stage.path) || (stage.paths || []).some(path => !paths.has(path))) throw Error('加工步骤文件不匹配');
+      nodes.set(stage.id, stage);
+    }
+  } else if (kind === 'business' && globalThis.crypto?.subtle && typeof TextEncoder !== 'undefined') {
+    // Older indexes store the real stage files under the parent. Reconstruct
+    // their original versioned filenames and accept only exact manifest hits.
+    const encoder = new TextEncoder();
+    const tables = (plan?.nodes || []).filter(node => node.kind === 'table_workflow');
+    await Promise.all(tables.flatMap(table => {
+      const owner = nodes.get(table.id);
+      if (!owner || !owner.path.endsWith('/rule.json')) return [];
+      const paths = new Set(owner.paths || []);
+      const runtime = [...paths].filter(path => path.startsWith('runtime/tables/') && path.endsWith('.py'));
+      const folder = owner.path.slice(0, -'rule.json'.length) + 'stages/s_';
+      return table.config.plan.stages.map(async rule => {
+        const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(rule.id)));
+        const suffix = Array.from(hash.subarray(0, 8), byte => byte.toString(16).padStart(2, '0')).join('');
+        const base = folder + rule.id.slice(0, 8) + '_' + suffix;
+        if (!paths.has(base + '.json')) return;
+        const related = rule.kind === 'sql' && paths.has(base + '.sql') ? [base + '.sql', ...runtime] : runtime;
+        nodes.set(table.id + ':' + rule.id, {path:base + '.json', paths:related});
+      });
+    }));
+
+  }
 
   function fileList(container, entries, expandedFiles = [], initialFile = null) {
     const doc = container.ownerDocument;
@@ -104,7 +140,7 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
 
   function showNode(container, id) {
     const node = nodes.get(id);
-    if (!node) return;
+    if (!node) return false;
     const heading = container.ownerDocument.createElement('h6');
     heading.textContent = '节点源码与规则';
     container.append(heading);
@@ -119,6 +155,7 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
     }
     const expandedFiles = entries.length <= 6 ? entries.map(file => file.path) : [initialFile.path];
     fileList(container, entries, expandedFiles, initialFile);
+    return true;
   }
 
   function showProject(container) {
@@ -132,7 +169,9 @@ window.loadWorkflowCodeAssets = async function ({kind, projectId, flowId, digest
     fileList(disclosure, files.values());
     container.append(disclosure);
   }
-  return {groups: manifest.groups, showNode, showProject};
+  return {groups: manifest.display_groups ?? manifest.groups,
+    usePlanGroups: kind === 'data' && manifest.display_groups == null,
+    supportsStageContext: Array.isArray(manifest.detail_nodes), showNode, showProject};
 };
 
 window.renderWorkflowNodeIO = function (container, id, {kind, workflow, plan, projectId, flowId, run, version, isCurrent}) {

@@ -308,7 +308,7 @@ def planning_context(turn, *, native=None):
           'completed_steps':agent_context.trace_context(turn,public_observation,preserve_full=True),
           'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':_compact_model_schema(response_schema(Step))}
     if turn.get('selected_workflow'):
-        info['selected_workflow']={**turn['selected_workflow'],'usage':'这是用户当前界面选中的流程，仅在用户指代当前流程且未指定其他目标时作为辅助上下文；新建或明确指定其他流程的要求优先。用户说“改这一步”时，按已验证的 node_id 定位节点；没有选中节点且指代不清时，先澄清。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
+        info['selected_workflow']={**turn['selected_workflow'],'usage':'用户指代当前流程时按此版本定位，明确指定其他目标时以用户为准。用户说“改这一步”时按 node_id 定位；同时有 stage_id 时定位到该节点 config.plan.stages 中的指定加工步骤。指代不清先澄清。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
     active_names={tool['name'] for tool in tools}
     if active_names & {'company_search_status','search_company_documents','read_company_document'} or turn.get('knowledge_refs') or turn.get('knowledge_read_refs'):
         info.update(company_search=company_search.status(pid),company_candidates=company_search.candidates_for_model(turn),company_evidence=company_search.for_model(turn))

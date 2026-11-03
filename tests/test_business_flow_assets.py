@@ -126,10 +126,14 @@ def test_multifile_nodes_save_nested_sql_and_presentation_renderer(monkeypatch):
     from test_project_data import row_schema
     pid, tid, first_doc, initial = saved_flow()
     fid = initial['id']
-    sql = 'select id, office, amount, note from orders order by id'
+    sql = 'select id, office, amount, note from selected order by id'
     plan = {'name': '销售明细', 'inputs': {'orders': row_schema()}, 'stages': [
-        {'id': 'ordered', 'kind': 'sql', 'description': '按业务编号排序', 'inputs': ['orders'],
-         'sql': sql, 'output_schema': row_schema()}], 'output': 'ordered'}
+        {'id': 'selected', 'kind': 'select', 'description': '选取结账所需字段', 'input': 'orders',
+         'columns': ['id', 'office', 'amount', 'note']},
+        {'id': 'ordered', 'kind': 'sql', 'description': '按业务编号排序', 'inputs': ['selected'],
+         'sql': sql, 'output_schema': row_schema()},
+        {'id': 'parallel', 'kind': 'sql', 'description': '另查原始明细', 'inputs': ['orders'],
+         'sql': 'select * from orders', 'output_schema': row_schema()}], 'output': 'ordered'}
     doc = {'name': '编制汇报', 'nodes': [first_doc['nodes'][0],
            {'id': 'calculate', 'kind': 'table_workflow', 'title': '整理销售明细', 'depends_on': ['CON'],
             'inputs': {'orders': {'source': 'node', 'name': 'CON'}}, 'config': {'plan': plan}},
@@ -145,11 +149,24 @@ def test_multifile_nodes_save_nested_sql_and_presentation_renderer(monkeypatch):
     monkeypatch.setattr(assets, 'handler_sources', no_local_snapshot)
     index = assets.view(*args)
     by_id = {n['id']: n for n in index['nodes']}
-    sql_path = next(p for p in by_id['calculate']['paths'] if p.endswith('.sql'))
-    stage_path = sql_path[:-4] + '.json'
+    ordered, parallel = index['detail_nodes'][1:]
+    assert index['detail_output_ids'] == {'calculate': 'calculate:ordered'}
+    assert [(s['id'], s['depends_on']) for s in index['detail_nodes']] == [
+        ('calculate:selected', ['CON']), ('calculate:ordered', ['calculate:selected']),
+        ('calculate:parallel', ['CON'])]
+    assert ordered['owner_id'] == 'calculate' and ordered['stage_id'] == 'ordered'
+    sql_path = next(p for p in ordered['paths'] if p.endswith('.sql'))
+    stage_path = ordered['path']
     assert '/stages/' in sql_path and stage_path in by_id['calculate']['paths']
+    assert sql_path not in parallel['paths'] and stage_path not in parallel['paths']
+    assert 'runtime/tables/data_workflows.py' in ordered['paths']
     assert assets.view(*args, sql_path)['content'] == sql
-    assert json.loads(assets.view(*args, stage_path)['content']) == plan['stages'][0]
+    assert json.loads(assets.view(*args, stage_path)['content']) == plan['stages'][1]
+    # The exact same mappings can be recovered for a pre-source-snapshot
+    # revision, but no shared Python files may be attributed to it.
+    vintage, _ = assets._definitions(saved['candidate_document'], stored=False)
+    assert vintage['detail_output_ids'] == index['detail_output_ids']
+    assert vintage['detail_nodes'][1]['paths'] == [sql_path]
     assert 'runtime/materials/office_presentation.py' in by_id['slides']['paths']
     assert 'runtime/materials/office_presentation.py' not in by_id['calculate']['paths']
     assert assets.view(*args, 'runtime/materials/office_presentation.py')['content'] == inspect.getsource(office_presentation)

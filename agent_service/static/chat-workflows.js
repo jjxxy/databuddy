@@ -19,7 +19,7 @@ window.createChatWorkflowPanel = function({container,api,getState,setDraft}) {
  const stateOk=(pid,epoch)=>{const s=getState();return !s.authSealed&&s.projectId===pid&&s.viewEpoch===epoch};
  function event(workflow){clearNode();selectedWorkflow=null;window.dispatchEvent(new CustomEvent('nexus-chat-business-flow-selected',{detail:{projectId:project,flow:null}}));window.dispatchEvent(new CustomEvent('nexus-chat-workflow-selected',{detail:{projectId:project,workflow}}))}
  function clear(){setExpanded(false);expandedButton=null;generation++;selection++;items=[];project='';lastFetch=0;loading=false;listSignature='';pendingOpen=null;root.hidden=true;select.replaceChildren();graph.replaceChildren();status.textContent='';listWarning.textContent='';event(null)}
- function clearNode(){if(selectedWorkflow)delete selectedWorkflow.node_id;nodeStatus.textContent='';nodeStatus.hidden=true}
+ function clearNode(){if(selectedWorkflow){delete selectedWorkflow.node_id;delete selectedWorkflow.stage_id}nodeStatus.textContent='';nodeStatus.hidden=true}
  const nodeStatus=document.createElement('p');nodeStatus.hidden=true;nodeStatus.setAttribute('role','status');status.after(nodeStatus);
  function overview(options,renderDetail){
   if(typeof window.renderWorkflowOverview!=='function'){renderDetail(graph);return}
@@ -38,25 +38,33 @@ window.createChatWorkflowPanel = function({container,api,getState,setDraft}) {
    let assets=null,assetError=false;
    if(window.loadWorkflowCodeAssets&&plan){
     const expectedNodes=isData?[...Object.keys(plan.inputs||{}),...(plan.stages||[]).map(node=>node.id),...(typeof plan.output==='string'?['__overview_result__']:[])]:plan.nodes.map(node=>node.id);
-    try {assets=await window.loadWorkflowCodeAssets({kind:current.kind,projectId:pid,flowId:current.id,...version,expectedNodes,api,isCurrent})}
+    try {assets=await window.loadWorkflowCodeAssets({kind:current.kind,projectId:pid,flowId:current.id,...version,expectedNodes,plan,api,isCurrent})}
     catch(_){assetError=true}
     if(!isCurrent())return;
    }
    const options={kind:current.kind,workflow:isData?value:null,plan,version,run:value.latest_run||null,projectId:pid,flowId:current.id,isCurrent,assets,assetError};
-   const editableNodes=new Map();
+   const editableNodes=new Map(),editableStages=new Map();
    if(isData){
     for(const [id,schema] of Object.entries(plan?.inputs||{}))editableNodes.set(id,schema.meaning||id);
     for(const node of plan?.stages||[])editableNodes.set(node.id,node.description||node.id);
-   }else for(const node of plan?.nodes||[])editableNodes.set(node.id,node.title||node.id);
-   options.selectNode=(id,anchor)=>{
+   }else for(const node of plan?.nodes||[]){
+    editableNodes.set(node.id,node.title||node.id);
+    if(node.kind==='table_workflow')editableStages.set(node.id,new Map((node.config?.plan?.stages||[]).map(stage=>[stage.id,stage.description||stage.id])));
+   }
+   options.selectNode=(id,anchor,stageId)=>{
     if(!isCurrent()||!selectedWorkflow||!graph.contains(anchor))return;
     clearNode();
-    if(!editableNodes.has(id))return;
+    if(!editableNodes.has(id)||(stageId&&!editableStages.get(id)?.has(stageId)))return;
     selectedWorkflow.node_id=id;
-    nodeStatus.textContent='当前对话所指步骤：'+editableNodes.get(id);
+    if(stageId&&assets?.supportsStageContext!==false)selectedWorkflow.stage_id=stageId;
+    nodeStatus.textContent='当前对话所指步骤：'+editableNodes.get(id)
+     +(selectedWorkflow.stage_id?' › '+editableStages.get(id).get(stageId):stageId?'（当前服务版本仅支持定位到此加工环节）':'');
     nodeStatus.hidden=false;
    };
-   const openNode=(container,id)=>{options.selectNode(id,container);options.showNode(container,id)};
+   const openNode=(container,id,stage)=>{
+    if(stage){options.selectNode(stage.owner_id,container,stage.stage_id);window.showWorkflowStage(container,stage,assets);return}
+    options.selectNode(id,container);options.showNode(container,id)
+   };
    options.showNode=(container,id)=>{
     assets?.showNode(container,id);
     window.renderWorkflowNodeIO?.(container,id,options);
@@ -68,7 +76,7 @@ window.createChatWorkflowPanel = function({container,api,getState,setDraft}) {
    }else{
     status.textContent='展示保存的业务流程；步骤完成不等于业务结果已核对。';
     overview(options,target=>{
-     window.NexusBusinessFlowView.render(target,{plan,version,run:options.run,onNode:openNode});
+     window.NexusBusinessFlowView.render(target,{plan,version,run:options.run,assets,onNode:openNode});
      const label=target.querySelector('.flow-version');
      if(label&&role==='candidate')label.textContent='当前方案';
      const notices=target.querySelector('.flow-notices');
@@ -94,5 +102,5 @@ window.createChatWorkflowPanel = function({container,api,getState,setDraft}) {
  function openRequested(){const request=pendingOpen;if(!request||loading)return;if(!stateOk(request.project,request.epoch)||project!==request.project){pendingOpen=null;return}const item=items.find(x=>x.id===request.id);pendingOpen=null;if(!item){status.textContent='这项流程暂时无法读取，请稍后再试。';root.hidden=false;return}select.value=item.key;void open(item.key);root.scrollIntoView?.({block:'nearest'})}
  select.addEventListener('change',()=>void open(select.value));
  window.addEventListener('nexus-open-chat-flow',event=>{const id=event.detail?.id,s=getState();if(!/^(?:bf|wf)_[a-f0-9]{40}$/.test(id||'')||!s.projectId||s.authSealed)return;pendingOpen={id,project:s.projectId,epoch:s.viewEpoch};if(loading)return;void refresh(true).then(openRequested)});
- return {refresh,clear,getSelectedWorkflow(){const v=selectedWorkflow,s=getState();const dock=root.closest('#workspace-artifacts-panel'),workflowHost=root.closest('#workflow-panel');return v&&(!dock||!dock.hidden)&&(!workflowHost||!workflowHost.hidden)&&stateOk(v.project,v.epoch)&&!s.navigating&&!s.sending?{kind:v.kind,id:v.id,digest:v.digest,...(v.node_id?{node_id:v.node_id}:{})}:null}};
+ return {refresh,clear,getSelectedWorkflow(){const v=selectedWorkflow,s=getState();const dock=root.closest('#workspace-artifacts-panel'),workflowHost=root.closest('#workflow-panel');return v&&(!dock||!dock.hidden)&&(!workflowHost||!workflowHost.hidden)&&stateOk(v.project,v.epoch)&&!s.navigating&&!s.sending?{kind:v.kind,id:v.id,digest:v.digest,...(v.node_id?{node_id:v.node_id}:{}),...(v.stage_id?{stage_id:v.stage_id}:{})}:null}};
 };

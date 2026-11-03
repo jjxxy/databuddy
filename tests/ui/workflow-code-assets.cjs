@@ -41,7 +41,7 @@ async function run() {
         {workflow_id:id, draft_sha256:digest, document:{plan,bindings:{sales:{source_id:'file1'}}}};
       assert.equal(u.searchParams.get('expected_digest'), digest);
       const m = manifest(id);
-      if (action === 'code-assets') return m;
+      if (action === 'code-assets') return id === data ? {...m, display_groups:m.groups} : m;
       assert.equal(action, 'code-asset');
       assert.equal(u.searchParams.get('commit'), m.commit);
       const path = u.searchParams.get('path');
@@ -134,7 +134,99 @@ async function run() {
     panel.querySelector('.workflow-overview-graph button').click();
     panel.querySelector('.workflow-group-graph button').click();await tick();
     assert.match(panel.querySelector('.workflow-step-files pre').textContent,/nodes\/sales\.json/);
+    await verifyNestedStages(w, panel);
     console.log('project chat drilldown passed for both DAG engines, exact file contents, version rejection, stale reads and derived history');
   } finally {dom.window.close()}
 }
+async function verifyNestedStages(w, panel) {
+  const plan = {nodes:[
+    {id:'load',title:'订单',kind:'source_table',depends_on:[]},
+    {id:'approve',title:'确认口径',kind:'human_review',depends_on:['load']},
+    {id:'process',title:'清洗与汇总',kind:'table_workflow',depends_on:['load','approve'],inputs:{orders:{source:'node',name:'load'}},
+      config:{plan:{inputs:{orders:{}},stages:[
+        {id:'valid',description:'筛选有效订单',kind:'filter',input:'orders'},
+        {id:'sort',description:'订单排序',kind:'sql',inputs:['valid'],sql:'select * from valid order by id'}
+      ],output:'sort'}}},
+    {id:'report',title:'出具报告',kind:'html_report',depends_on:['process']}
+  ]};
+  const identity={flow_id:'f',digest:'d',commit:'a'.repeat(40),storage:'git'}, reads=[];
+  const runtime='runtime/tables/engine.py';
+  const detail_nodes=plan.nodes[2].config.plan.stages.map(rule=>({
+    id:'process:'+rule.id,owner_id:'process',stage_id:rule.id,path:'nodes/process/'+rule.id+'.json',
+    paths:rule.kind==='sql'?[runtime,'nodes/process/sort.sql']:[runtime]
+  }));
+  const nodes=plan.nodes.map(({id})=>({id,path:'nodes/'+id+'.json'}));
+  nodes[2].paths=detail_nodes.flatMap(n=>[n.path,...n.paths]);
+  const files=[...new Set(nodes.flatMap(n=>[n.path,...(n.paths||[])]))].map(path=>({path}));
+  const groups=nodes.map(n=>({id:'g_'+n.id,label:n.id,nodeIds:[n.id],deps:[]}));
+  const api=async url=>{
+    if(url.includes('/code-assets?'))return {...identity,nodes,groups,files,detail_nodes};
+    const source=new URL(url,'https://app.test').searchParams.get('path');
+    reads.push(source);return {...identity,path:source,content:'selected '+source};
+  };
+  const assets=await w.loadWorkflowCodeAssets({kind:'business',projectId:'p',flowId:'f',plan,digest:identity.digest,
+    commit:identity.commit,api,expectedNodes:nodes.map(n=>n.id),isCurrent:()=>true});
+  assert.equal(assets.supportsStageContext,true);
+  let graph,click,target;
+  w.NexusFlowGraph={mount(host,items,select){graph=items;click=select}};
+  const renderGroup=()=>w.renderWorkflowGroupDetail(panel,{kind:'business',ids:['process'],plan,assets,
+    version:identity,flowId:'f',run:{id:'r',flow_id:'f',plan_digest:identity.digest,commit:identity.commit,status:'succeeded',
+      steps:[{node_id:'process',status:'succeeded',table_available:true}]},isCurrent:()=>true,
+    selectNode:(owner,_section,stage)=>{target=[owner,stage]}});
+  w.renderWorkflowOverview(panel,{kind:'business',plan,assets});
+  assert.equal(graph.find(g=>g.nodeIds.includes('process')).caption,'2 个步骤');
+  renderGroup();
+  assert.deepEqual(Array.from(graph,node=>[node.id,Array.from(node.deps)]),[['process:valid',[]],['process:sort',['process:valid']]]);
+  assert.equal(reads.length,0);
+  assert(!graph.some(n=>n.caption.includes('已完成')));
+  click('process:sort');await new Promise(resolve=>setTimeout(resolve,0));
+  assert.deepEqual(target,['process','sort']);
+  assert.deepEqual(reads,['nodes/process/sort.sql']);
+  assert.match(panel.querySelector('pre').textContent,/sort\.sql/);
+  assert(panel.querySelector('button[title="runtime/tables/engine.py"]'));
+  assert(!panel.querySelector('button[title="nodes/process/valid.json"]'));
+  assert.match(panel.querySelector('.workflow-step-files > details').textContent,/所属加工节点/);
+  click('process:valid');await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(reads.at(-1),'nodes/process/valid.json');
+  assert(!panel.querySelector('button[title="nodes/process/sort.sql"]'));
+  w.NexusBusinessFlowView.render(panel,{plan,onNode:(_detail,id,stage)=>{target=[id,stage?.owner_id]}});
+  assert.deepEqual(Array.from(graph,node=>[node.id,Array.from(node.deps)]),[
+    ['load',[]],['approve',['load']],['process:valid',['load','approve']],['process:sort',['process:valid']],['report',['process:sort']]
+  ]);
+  click('process:valid');assert.deepEqual(target,['process:valid','process']);
+  // Metadata can be absent on older servers: use the saved rule, never another step's runtime.
+  w.renderWorkflowGroupDetail(panel,{kind:'business',ids:['process'],plan,isCurrent:()=>true});
+  click('process:sort');assert.equal(panel.querySelector('pre').textContent,'select * from valid order by id');
+  assert.equal(reads.length,2);
+  const crypto=require('node:crypto');
+  Object.defineProperty(w.crypto,'subtle',{value:crypto.webcrypto.subtle});
+  w.TextEncoder=TextEncoder;
+  const base=id=>'nodes/old/stages/s_'+id.slice(0,8)+'_'+crypto.createHash('sha256').update(id).digest('hex').slice(0,16);
+  nodes[2].path='nodes/old/rule.json';
+  nodes[2].paths=[base('valid')+'.json',base('sort')+'.json',base('sort')+'.sql',runtime];
+  const legacyFiles=[...new Set(nodes.flatMap(n=>[n.path,...(n.paths||[])]))].map(path=>({path}));
+  const legacy=await w.loadWorkflowCodeAssets({kind:'business',projectId:'p',flowId:'f',plan,digest:identity.digest,
+    commit:identity.commit,expectedNodes:nodes.map(n=>n.id),isCurrent:()=>true,
+    api:url=>url.includes('/code-assets?')?{...identity,nodes,files:legacyFiles,groups}:api(url)});
+  assert.equal(legacy.supportsStageContext,false);
+  w.renderWorkflowGroupDetail(panel,{kind:'business',ids:['process'],plan,assets:legacy,isCurrent:()=>true});
+  click('process:sort');await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(reads.at(-1),base('sort')+'.sql');
+  assert(panel.querySelector('button[title="runtime/tables/engine.py"]'));
+  assert(!panel.querySelector('button[title="'+base('valid')+'.json"]'));
+  const oldData={inputs:{orders:{meaning:'订单'}},stages:[
+    {id:'selected',kind:'select',input:'orders'},{id:'sorted',kind:'sql',inputs:['selected']}
+  ],output:'sorted'};
+  const ids=['orders','selected','sorted','__overview_result__'];
+  const oldIndex={...identity,nodes:ids.map(id=>({id,path:id+'.json'})),files:ids.map(id=>({path:id+'.json'})),
+    groups:ids.map(id=>({id:'g'+id,nodeIds:[id],deps:[]}))};
+  const oldAssets=await w.loadWorkflowCodeAssets({kind:'data',projectId:'p',flowId:'f',plan:oldData,digest:identity.digest,
+    commit:identity.commit,expectedNodes:ids,isCurrent:()=>true,api:()=>oldIndex});
+  w.renderWorkflowOverview(panel,{kind:'data',workflow:{document:{plan:oldData}},assets:oldAssets});
+  assert.deepEqual(Array.from(graph,g=>Array.from(g.nodeIds)),[['orders'],['selected','sorted'],['__overview_result__']]);
+  assert.equal(graph[1].label,'整理与加工数据');assert.equal(graph[1].caption,'2 个步骤');
+  assert(panel.querySelector('.workflow-project-files button[title="sorted.json"]'));
+
+}
+
 run().catch(err => {console.error(err);process.exitCode=1});

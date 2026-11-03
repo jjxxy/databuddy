@@ -42,11 +42,14 @@ class SelectedWorkflow(StrictModel):
     id: str = Field(pattern=r'^(?:wf_|bf_)[a-f0-9]{40}$')
     digest: str = Field(pattern=r'^[a-f0-9]{64}$')
     node_id: str | None = Field(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
+    stage_id: str | None = Field(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
 
     @model_validator(mode='after')
     def matching_kind(self):
         if not self.id.startswith('wf_' if self.kind=='data' else 'bf_'):
             raise ValueError('流程类型与标识不一致')
+        if self.stage_id and (self.kind != 'business' or not self.node_id):
+            raise ValueError('加工步骤必须指定所属业务流程节点')
         return self
 
 
@@ -391,11 +394,19 @@ def _validate_selected_workflow(project_id,actor_id,value):
             plan=result['document']['plan']
             names={ident:schema['meaning'] for ident,schema in plan['inputs'].items()}
             names.update({node['id']:node['description'] for node in plan['stages']})
+            title=names.get(value.node_id)
         else:
-            names={node['id']:node['title'] for node in result['candidate_document']['nodes']}
-        if value.node_id not in names:
+            owner=next((node for node in result['candidate_document']['nodes'] if node['id']==value.node_id),None)
+            title=owner['title'] if owner else None
+            if owner and value.stage_id:
+                stages=owner['config']['plan']['stages'] if owner['kind']=='table_workflow' else []
+                stage=next((step for step in stages if step['id']==value.stage_id),None)
+                if stage is None:
+                    raise WorkflowContextConflict('所选业务节点中没有这一步加工，请重新选择后发送')
+                ref['stage_title']=stage['description'][:200]
+        if title is None:
             raise WorkflowContextConflict('当前流程版本没有所选节点，请重新选择后发送')
-        ref['node_title']=names[value.node_id][:200]
+        ref['node_title']=title[:200]
     return dict(ref,name=str(result.get('name') or '业务流程')[:100])
 
 
@@ -403,7 +414,7 @@ def _check_workflow_replay(previous,project_id,session_id,selection):
     if previous.get('session_id',default_session(project_id))!=session_id:
         raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
     stored=previous.get('selected_workflow')
-    identity={k:stored[k] for k in ('kind','id','digest','node_id') if stored.get(k) is not None} if stored else None
+    identity={k:stored[k] for k in ('kind','id','digest','node_id','stage_id') if stored.get(k) is not None} if stored else None
     if identity!=(selection.model_dump(exclude_none=True) if selection else None):
         raise WorkflowContextConflict('同一消息编号不能更换所选流程或节点，请重新发送')
 
