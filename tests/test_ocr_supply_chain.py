@@ -8,10 +8,10 @@ ROOT=Path(__file__).resolve().parents[1]
 
 def test_ocr_wheel_lock_exactly_matches_official_inventory():
     inventory=json.loads((ROOT/'vendor/metadata/ocr-wheel-inventory.json').read_text(encoding='utf-8'))
-    assert inventory['upstream_hash_verified'] is True and len(inventory['wheels'])==21
+    assert inventory['upstream_hash_verified'] is True and len(inventory['wheels'])==22
     expected={f"{x['name'].lower().replace('_','-')}=={x['version']} --hash=sha256:{x['sha256']}" for x in inventory['wheels']}
     lock={line.lower().replace('_','-') for line in (ROOT/'requirements-ocr-windows.lock').read_text(encoding='utf-8').splitlines() if line.strip()}
-    assert lock==expected and len(expected)==21
+    assert lock==expected and len(expected)==len(inventory['wheels'])==22
     assert all(x['origin'].startswith('https://files.pythonhosted.org/') and x['wheel'].endswith('.whl') for x in inventory['wheels'])
 
 

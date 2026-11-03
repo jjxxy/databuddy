@@ -7,7 +7,7 @@ import hashlib, json, os, re, secrets, tempfile
 from datetime import timedelta
 from pathlib import Path
 from typing import Literal
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, Response
 from pydantic import Field
 from sqlalchemy import select, update
 from .models import StrictModel
@@ -28,9 +28,17 @@ class ShareInput(StrictModel):
     allowed_subjects:list[str]=Field(min_length=1,max_length=100)
     expires_hours:int=Field(default=168,strict=True,ge=1,le=720)
     allow_download:bool=Field(default=False,strict=True)
+    allow_comments:bool=Field(default=False,strict=True)
     confirm_content:bool=Field(strict=True)
     request_id:str=Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
     expected_owner_subject:str|None=Field(default=None,min_length=1,max_length=2000)
+
+
+class CommentInput(StrictModel):
+    text:str=Field(min_length=1,max_length=2000)
+    request_id:str=Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
+    expected_content_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
+    expected_viewer_hash:str=Field(pattern=r'^[a-f0-9]{64}$')
 
 
 def _subject_list(value):
@@ -40,8 +48,10 @@ def _subject_list(value):
 
 
 def _public(row):
-    return {key:row[key] for key in ('id','artifact_id','artifact_sha256','format','name','content_sha256','content_bytes',
+    result={key:row[key] for key in ('id','artifact_id','artifact_sha256','format','name','content_sha256','content_bytes',
         'state','created_at','expires_at','allowed_subject_count','allow_download')}
+    result['allow_comments']=row.get('allow_comments') is True
+    return result
 
 
 def create(pid,value,actor):
@@ -51,12 +61,14 @@ def create(pid,value,actor):
     owner=identity._actor(actor)
     ident='as_'+identity._hash(json.dumps([pid,owner,value.request_id],separators=(',',':')))[:40]
     body=value.model_dump();body.pop('request_id');body_hash=identity._hash(json.dumps(body,ensure_ascii=False,sort_keys=True,separators=(',',':')))
+    legacy_body=dict(body);legacy_body.pop('allow_comments',None)
+    legacy_hash=identity._hash(json.dumps(legacy_body,ensure_ascii=False,sort_keys=True,separators=(',',':')))
     with workspace.lock(pid),_project_lock(pid):
         assert_project_live(pid)
         try:old=get(KIND,ident)
         except KeyError:old=None
         if old:
-            if old.get('project_id')!=pid or old.get('owner_hash')!=owner or old.get('request_sha256')!=body_hash:
+            if old.get('project_id')!=pid or old.get('owner_hash')!=owner or old.get('request_sha256') not in ([body_hash,legacy_hash] if not value.allow_comments and 'allow_comments' not in old else [body_hash]):
                 raise ValueError('请求编号已用于不同的分享')
             return _public(old)
         rec=artifacts._record(pid,value.artifact_id)
@@ -79,7 +91,7 @@ def create(pid,value,actor):
              'expires_at':(created+timedelta(hours=value.expires_hours)).isoformat(),'owner_hash':owner,
              'issuer':issuer,'audience':os.environ['OIDC_AUDIENCE'],
              'allowed_subject_hashes':[identity._subject_hash(s,issuer) for s in value.allowed_subjects],
-             'allowed_subject_count':len(value.allowed_subjects),'allow_download':value.allow_download,'request_sha256':body_hash}
+             'allowed_subject_count':len(value.allowed_subjects),'allow_download':value.allow_download,'allow_comments':value.allow_comments,'request_sha256':body_hash}
         return _public(put(KIND,row,ident))
 
 
@@ -118,7 +130,7 @@ def _check(row,subject):
     except (ValueError,TypeError,KeyError):raise HTTPException(403,'分享已失效或当前账号无权访问') from None
 
 
-def _capture(request,sid,*,download=False):
+def _capture(request,sid,*,download=False,materialize=None):
     identity._require_oidc(request_context=True);subject=identity.verified_subject(request)
     try:first=get(KIND,sid)
     except KeyError:raise HTTPException(404,'分享不存在') from None
@@ -148,10 +160,16 @@ def _capture(request,sid,*,download=False):
                             digest.update(chunk);snapshot.write(chunk)
                     if size!=record['content_bytes'] or not secrets.compare_digest(digest.hexdigest(),record['content_sha256']):raise ValueError('changed')
                     snapshot.seek(0)
+                    record['_viewer_hash']=identity._hash(json.dumps(['artifact-share-viewer',sid,record['issuer'],subject],ensure_ascii=False,separators=(',',':')))
+                    value=materialize(record,connection,subject) if materialize else None
                     _check(record,subject);assert_project_live(pid)
+                    if identity.verified_subject(request)!=subject:raise HTTPException(401,'身份凭据已变化')
                     if hasattr(request,'state'):
                         request.state.identity={'authenticated':True,'mode':'oidc','subject':subject,
                                                 'scope':'shared_artifact_recipient'}
+                    if materialize:
+                        snapshot.close()
+                        return value
                     return snapshot,record
                 except BaseException:snapshot.close();raise
             except (KeyError,ValueError,OSError) as e:raise HTTPException(410,'固定成果已变化或不可读取') from None
@@ -163,6 +181,7 @@ def preview(request,sid,offset=0,limit=50):
     try:
         fmt=record['format'];raw=snapshot.read()
         common={'name':record['name'],'format':fmt,'sha256':record['content_sha256'],'allow_download':record['allow_download'],
+                'allow_comments':record.get('allow_comments') is True,'viewer_hash':record['_viewer_hash'],
                 'notice':'仅为固定文件的安全预览，不构成财务审批；已查看或下载的内容无法撤回。'}
         if fmt in ('html','htm','md'):
             try:text=raw.decode('utf-8-sig')
@@ -192,6 +211,115 @@ def preview(request,sid,offset=0,limit=50):
     finally:snapshot.close()
 
 
+
+COMMENT_KIND='artifact_share_comment'
+MAX_COMMENTS_PER_SHARE=1000
+
+
+def _comment_prefix(sid):return 'ac_'+identity._hash(sid)[:20]+'_'
+
+
+def _comment_rows(connection,sid):
+    prefix=_comment_prefix(sid);pattern=prefix.replace('_',r'\_')+'%'
+    rows=connection.execute(select(items.c.body).where(items.c.kind==COMMENT_KIND,items.c.id.like(pattern,escape='\\')).limit(MAX_COMMENTS_PER_SHARE+1)).all()
+    if len(rows)>MAX_COMMENTS_PER_SHARE:raise HTTPException(409,'评论超过容量，未返回不完整记录')
+    try:return [json.loads(row[0]) for row in rows]
+    except (ValueError,TypeError):raise HTTPException(409,'评论记录完整性校验失败') from None
+
+
+def _comment_public(item,record):
+    from .store import unseal
+    try:
+        payload=unseal(item['sealed'])
+        if (not isinstance(payload,dict) or payload.get('id')!=item.get('id') or payload.get('share_id')!=record['id']
+            or payload.get('content_sha256')!=record['content_sha256'] or not isinstance(payload.get('author'),str)
+            or not isinstance(payload.get('text'),str) or not isinstance(payload.get('created_at'),str)):
+            raise ValueError('inconsistent comment')
+        return {k:payload[k] for k in ('id','author','text','created_at','content_sha256')}
+    except Exception:raise HTTPException(409,'评论记录完整性校验失败') from None
+
+
+def list_comments(request,sid,offset=0,limit=50):
+    if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise HTTPException(400,'评论分页参数无效')
+    def capture(record,connection,subject):
+        if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
+        rows=[_comment_public(item,record) for item in _comment_rows(connection,sid)]
+        rows.sort(key=lambda x:(x['created_at'],x['id']))
+        return {'items':rows[offset:offset+limit],'offset':offset,'total':len(rows),'has_more':offset+limit<len(rows),
+                'content_sha256':record['content_sha256'],'viewer_hash':record['_viewer_hash'],
+                'notice':'评论对获准访问此分享的账号可见，仅供交流，不构成财务审批。'}
+    return _capture(request,sid,materialize=capture)
+
+
+def list_owner_comments(pid,sid,actor,offset=0,limit=50):
+    if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:raise HTTPException(400,'评论分页参数无效')
+    owner=identity._actor(actor)
+    with workspace.lock(pid),_project_lock(pid):
+        assert_project_live(pid)
+        with transaction() as connection:
+            row=connection.execute(select(items.c.body).where(items.c.kind==KIND,items.c.id==sid).with_for_update()).first()
+            if not row:raise HTTPException(404,'分享不存在')
+            record=json.loads(row[0])
+            if record.get('project_id')!=pid or not secrets.compare_digest(record.get('owner_hash',''),owner):raise HTTPException(404,'分享不存在')
+            if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
+            comments=[_comment_public(item,record) for item in _comment_rows(connection,sid)]
+            comments.sort(key=lambda x:(x['created_at'],x['id']))
+            return {'items':comments[offset:offset+limit],'offset':offset,'total':len(comments),'has_more':offset+limit<len(comments),
+                    'content_sha256':record['content_sha256'],'notice':'历史评论仅供交流，不构成财务审批。撤销后分享者仍可查看留存记录。'}
+
+
+def add_comment(request,sid,value):
+    from .store import cipher,seal,unseal,now
+    from .actor_context import actor_from_identity
+    from . import audit
+    value=CommentInput.model_validate(value);content=value.text.strip()
+    if not content or any(ord(c)<32 and c not in '\n\r\t' for c in content):raise HTTPException(400,'评论内容须为1至2000字的普通文本')
+    cipher()
+    def capture(record,connection,subject):
+        if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
+        if record['content_sha256']!=value.expected_content_sha256 or not secrets.compare_digest(record['_viewer_hash'],value.expected_viewer_hash):
+            raise HTTPException(409,'成果版本或登录账号已变化，未提交评论')
+        actor=actor_from_identity({'authenticated':True,'mode':'oidc','subject':subject,'issuer':record['issuer']})
+        ident=_comment_prefix(sid)+identity._hash(json.dumps([sid,actor,value.request_id],separators=(',',':')))[:44]
+        existing=connection.execute(select(items.c.body).where(items.c.id==ident,items.c.kind==COMMENT_KIND)).first()
+        if existing:
+            try:item=json.loads(existing[0]);payload=unseal(item['sealed'])
+            except Exception:raise HTTPException(409,'评论记录完整性校验失败') from None
+            if (payload.get('share_id')!=sid or payload.get('actor')!=actor or payload.get('content_sha256')!=value.expected_content_sha256 or payload.get('text')!=content):
+                raise HTTPException(409,'请求编号已用于不同评论')
+            return _comment_public(item,record)
+        if len(_comment_rows(connection,sid))>=MAX_COMMENTS_PER_SHARE:raise HTTPException(409,'评论数量达到当前服务容量')
+        stamp=now();author='用户 '+identity._hash(sid+'\x00'+actor)[:12]
+        payload={'id':ident,'share_id':sid,'content_sha256':record['content_sha256'],'actor':actor,'author':author,'text':content,'created_at':stamp}
+        item={'id':ident,'project_id':record['project_id'],'share_id':sid,'sealed':seal(payload)}
+        connection.execute(items.insert().values(id=ident,kind=COMMENT_KIND,body=json.dumps(item,ensure_ascii=False)))
+        sentinel=connection.execute(select(items.c.id).where(items.c.id=='audit-lock',items.c.kind=='system').with_for_update()).first()
+        if not sentinel:raise HTTPException(503,'审计服务不可用，评论未写入')
+        previous=connection.execute(select(audit.events.c.event_hash).order_by(audit.events.c.sequence.desc()).limit(1)).first()
+        previous=previous[0] if previous else '0'*64;action='artifact_share.comment.created'
+        details={'share_id':sid,'comment_id':ident,'author':author,'content_sha256':record['content_sha256']}
+        body=json.dumps(details,ensure_ascii=False,sort_keys=True,default=str)
+        signature=audit.digest(stamp,action,ident,body,previous)
+        connection.execute(audit.events.insert().values(created=stamp,action=action,subject=ident,body=body,previous_hash=previous,event_hash=signature))
+        return _comment_public(item,record)
+    return _capture(request,sid,materialize=capture)
+
+
+def _same_origin(request):
+    from urllib.parse import urlsplit
+    from .activity import public_origin
+    origin=request.headers.get('origin');site=request.headers.get('sec-fetch-site')
+    if site and site not in ('same-origin','none'):raise HTTPException(403,'评论需要同源请求')
+    if origin:
+        try:
+            parsed=urlsplit(origin);expected=urlsplit(public_origin() or (request.url.scheme+'://'+request.headers.get('host','')))
+            valid=(parsed.scheme in ('http','https') and parsed.hostname and not parsed.username and not parsed.password
+                   and parsed.path in ('','/') and not parsed.query and not parsed.fragment and expected.scheme==parsed.scheme
+                   and expected.hostname and expected.hostname.lower()==parsed.hostname.lower()
+                   and (expected.port or (443 if expected.scheme=='https' else 80))==(parsed.port or (443 if parsed.scheme=='https' else 80)))
+        except ValueError:valid=False
+        if not valid:raise HTTPException(403,'评论需要同源请求')
+
 def install(app,auth):
     from .actor_context import actor_from_identity
     from .api import _SnapshotResponse
@@ -206,8 +334,20 @@ def install(app,auth):
     def listing(pid:str):return list_shares(pid)
     @app.delete('/api/projects/{pid}/artifact-shares/{sid}',dependencies=deps)
     def remove(pid:str,sid:str,request:Request):return revoke(pid,sid,actor_from_identity(getattr(request.state,'identity',{})))
+    @app.get('/api/projects/{pid}/artifact-shares/{sid}/comments',dependencies=deps)
+    def owner_comments(pid:str,sid:str,request:Request,response:Response,offset:int=0,limit:int=50):
+        response.headers['Cache-Control']='private, no-store'
+        return list_owner_comments(pid,sid,actor_from_identity(getattr(request.state,'identity',{})),offset,limit)
     @app.get('/api/shared-artifacts/{sid}')
     def read(sid:str,request:Request,offset:int=0,limit:int=50):return preview(request,sid,offset,limit)
+    @app.get('/api/shared-artifacts/{sid}/comments')
+    def comments(sid:str,request:Request,response:Response,offset:int=0,limit:int=50):
+        response.headers['Cache-Control']='private, no-store'
+        return list_comments(request,sid,offset,limit)
+    @app.post('/api/shared-artifacts/{sid}/comments')
+    def comment(sid:str,value:CommentInput,request:Request,response:Response):
+        _same_origin(request);response.headers['Cache-Control']='private, no-store'
+        return add_comment(request,sid,value)
     @app.get('/api/shared-artifacts/{sid}/download')
     def download(sid:str,request:Request):
         snap,row=_capture(request,sid,download=True)

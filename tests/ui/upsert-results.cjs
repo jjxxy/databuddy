@@ -1,0 +1,11 @@
+const {JSDOM}=require('jsdom');const fs=require('fs'),assert=require('assert/strict');
+(async()=>{
+ const d=new JSDOM('<section id="data-append-panel" hidden></section>',{runScripts:'outside-only',url:'https://fixture.test'}),w=d.window;
+ w.nexusSecureUUID=()=> '11111111-1111-4111-8111-111111111111';w.eval(fs.readFileSync('agent_service/static/append-results.js','utf8'));
+ const sha='a'.repeat(64),dsha='b'.repeat(64),calls=[];let fail=true;
+ const request=async(path,options)=>{calls.push([path,options]);if(path.endsWith('/data-workflows'))return {items:[{name:'变更',published_run:'delta'}]};if(path.includes('/data-results/delta'))return {run_id:'delta',manifest_sha256:dsha};if(fail){fail=false;throw Error('network');}return {workflow_id:'wf_'+'c'.repeat(40),run_id:'run',status:'queued',baseline_run_id:'base',baseline_sha256:sha,delta_run_id:'delta',delta_sha256:dsha,baseline_rows:3,delta_rows:2,added_rows:1,replaced_rows:1,total_rows:4,mode:'upsert'}};
+ const panel=d.window.document.querySelector('#data-append-panel');w.nexusAppendResults.sync({project:'p',workflow:{published_run:'base'},result:{run_id:'base',manifest_sha256:sha},resultId:'base',request,isCurrent:()=>true});
+ await new Promise(r=>setTimeout(r,0));const [target,mode]=panel.querySelectorAll('select');target.value='delta';mode.value='upsert';mode.dispatchEvent(new w.Event('change'));assert(panel.textContent.includes('整行替换'));const confirm=panel.querySelector('input');assert(!confirm.checked);confirm.checked=true;panel.querySelector('textarea').value='已核对变更范围';panel.querySelector('button').click();await new Promise(r=>setTimeout(r,0));assert(panel.textContent.includes('没有确认提交结果'));assert(mode.disabled);
+ const first=calls.at(-1)[1].body;assert.equal(first.mode,'upsert');assert.equal(first.confirm_append_only,false);assert.equal(first.confirm_replace,true);panel.querySelector('button').click();await new Promise(r=>setTimeout(r,0));assert.deepEqual(calls.at(-1)[1].body,first);assert(panel.textContent.includes('预计新增 1 条、整行替换 1 条'));assert(panel.textContent.includes('未出现的历史行保留'));
+ console.log('upsert displays row replacement semantics and reuses the frozen request');
+})().catch(e=>{console.error(e);process.exit(1)});

@@ -129,3 +129,38 @@ def test_same_request_is_serialized_and_returns_same_completion(monkeypatch):
         second=pool.submit(office_edit.edit,pid,item['id'],'owner',body)
         release.set();one=first.result(timeout=10);two=second.result(timeout=10)
     assert one==two and len(calls)==1
+
+
+def test_batch_edits_multiple_sections_and_order_preserves_data():
+    pid,item,source,_=sample();spec=office._load_spec(source)
+    spec.sections.append(office.Section(heading='总结',body='原总结',bullets=['原要点'],table=office.SectionTable(columns=['指标'],rows=[['20']])))
+    text=spec.model_dump_json();workspace.write_file(pid,'reports/multi.json',text)
+    made=office.render({'project_id':pid,'text':'生成','interaction_mode':'work'},'reports/multi.json','多章节')
+    newitem=next(x for x in workspace_artifacts.catalog(pid)['items'] if x['kind']=='office' and x['sha256']==made['sha256'])
+    info=office_edit.inspect(pid,newitem['id']);body={'request_id':'batch_edit_request_12345','expected_artifact_sha256':info['artifact_sha256'],
+        'expected_spec_sha256':info['spec_sha256'],'section_order':[1,0],'name':'新报告','changes':[
+            {'section':0,'field':'body','value':'核对后的收入'},
+            {'section':1,'field':'bullet','bullet_index':0,'value':'已复核'}]}
+    result=office_edit.edit_batch(pid,newitem['id'],'owner',body)
+    revised=office._load_spec(workspace.read_file(pid,result['draft_path']))
+    assert [s.heading for s in revised.sections]==['总结','概况']
+    assert revised.sections[1].body=='核对后的收入' and revised.sections[0].bullets==['已复核']
+    assert revised.sections[0].table==spec.sections[1].table
+    assert revised.sections[1].table==spec.sections[0].table and revised.sections[1].chart==spec.sections[0].chart
+    assert workspace.read_file(pid,'reports/multi.json')==text
+    assert office_edit.edit_batch(pid,newitem['id'],'owner',body)==result
+
+
+def test_batch_rejects_bad_order_duplicate_changes_and_stale_version():
+    from pydantic import ValidationError
+    pid,item,_,_=sample();info=office_edit.inspect(pid,item['id']);body={'request_id':'batch_edit_request_12345',
+        'expected_artifact_sha256':info['artifact_sha256'],'expected_spec_sha256':info['spec_sha256'],
+        'section_order':[0],'name':'新报告','changes':[{'section':0,'field':'body','value':'新内容'}]}
+    with pytest.raises(ValueError,match='章节顺序'):office_edit.edit_batch(pid,item['id'],'owner',dict(body,section_order=[0,0]))
+    with pytest.raises(ValidationError):office_edit.edit_batch(pid,item['id'],'owner',dict(body,section_order=[False]))
+    with pytest.raises(ValidationError):office_edit.edit_batch(pid,item['id'],'owner',dict(body,changes=body['changes']*2))
+    with pytest.raises(ValueError,match='版本'):office_edit.edit_batch(pid,item['id'],'owner',dict(body,expected_spec_sha256='0'*64))
+    client=TestClient(app);path=f'/api/projects/{pid}/artifacts/{item["id"]}/office-edit/batch'
+    assert client.post(path,json=body).status_code==401
+    response=client.post(path,headers={'Authorization':'Bearer '+TOKEN},json=body)
+    assert response.status_code==200,response.text

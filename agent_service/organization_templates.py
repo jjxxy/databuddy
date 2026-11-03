@@ -42,6 +42,14 @@ def _enabled():
         raise ValueError('实例模板库仅在多主体 OIDC 服务中启用；独立个人工作空间及共享口令不能代表组织权限')
 
 
+def _identity_scope():
+    # A data directory may later be reused with another issuer or audience.
+    # Publishing to one identity domain must never expose a snapshot to another.
+    issuer=os.getenv('OIDC_ISSUER','');audience=os.getenv('OIDC_AUDIENCE','')
+    if not issuer or not audience:raise ValueError('OIDC身份域配置不完整')
+    return hashlib.sha256(json.dumps([issuer,audience],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+
+
 def _lock():return FileLock(str(DATA/'organization-template-catalog.lock'),timeout=10)
 
 
@@ -80,6 +88,7 @@ def _store(raw,digest):
 def _record(ident,*,active=True):
     if not isinstance(ident,str) or not re.fullmatch(r'ot_[a-f0-9]{40}',ident):raise KeyError(ident)
     item=get(KIND,ident)
+    if item.get('identity_scope')!=_identity_scope():raise KeyError(ident)
     if active and item.get('state')!='active':raise KeyError(ident)
     return item
 
@@ -91,7 +100,7 @@ def _public(item):
 def list_catalog():
     _enabled()
     with _lock():
-        entries=[x for x in all_items(KIND) if x.get('state')=='active']
+        entries=[x for x in all_items(KIND) if x.get('state')=='active' and x.get('identity_scope')==_identity_scope()]
         entries.sort(key=lambda x:(x.get('created_at',''),x.get('id','')),reverse=True)
         return {'items':[_public(x) for x in entries[:500]],'truncated':len(entries)>500,
                 'scope':'authorized_users_of_this_instance','notice':'管理员发布的固定模板；不保证财务内容或版式正确。独立工作空间不共享此清单。'}
@@ -118,7 +127,8 @@ def publish(value,actor):
     _enabled();value=Publish.model_validate(value);title=value.title.strip()
     if not title or any(ord(c)<32 for c in title):raise ValueError('模板名称无效')
     if value.confirm_full_document is not True:raise ValueError('发布前须确认完整模板包含的文字、隐藏对象和备注可共享')
-    key=json.dumps([value.source_project_id,value.source_id,value.revision,value.sha256],separators=(',',':'))
+    scope=_identity_scope()
+    key=json.dumps([scope,value.source_project_id,value.source_id,value.revision,value.sha256],separators=(',',':'))
     ident='ot_'+hashlib.sha256(key.encode()).hexdigest()[:40]
     cipher()
     with workspace.lock(value.source_project_id),_project_lock(value.source_project_id),_lock():
@@ -135,7 +145,7 @@ def publish(value,actor):
                 if old.get('title')!=title:raise ValueError('此固定版本已登记，请使用现有模板名称')
                 return _public(old)
             item={'id':ident,'title':title,'state':'active','version':1,'sha256':value.sha256,
-                  'source_revision':value.revision,'created_at':now()}
+                  'source_revision':value.revision,'created_at':now(),'identity_scope':scope}
             c.execute(store.items.insert().values(id=ident,kind=KIND,body=store._encode(KIND,item,c)))
             _append_audit(c,'organization_template.published',ident,{'actor':actor,'sha256':value.sha256,'source_revision':value.revision})
             assert_owned()
@@ -150,6 +160,7 @@ def withdraw(ident,version,actor):
         row=c.execute(select(store.items.c.body).where(store.items.c.id==ident,store.items.c.kind==KIND).with_for_update()).first()
         if not row:raise KeyError(ident)
         item=json.loads(row[0])
+        if item.get('identity_scope')!=_identity_scope():raise KeyError(ident)
         if item.get('state')!='active' or item.get('version')!=version:raise ValueError('模板状态已变化，请刷新')
         item.update(state='withdrawn',version=version+1,withdrawn_at=now())
         c.execute(update(store.items).where(store.items.c.id==ident).values(body=store._encode(KIND,item,c)))

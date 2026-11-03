@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from typing import Literal
 
 from fastapi import Depends, HTTPException, Request
-from pydantic import Field, model_validator
+from pydantic import Field, StrictInt, model_validator
 
 from . import office, workspace, workspace_artifacts
 from .actor_context import actor_from_identity
@@ -38,6 +38,38 @@ class EditInput(StrictModel):
         if self.field == 'heading' and len(self.value)>300:raise ValueError('标题最多300字')
         if self.field == 'bullet' and len(self.value)>2000:raise ValueError('要点最多2000字')
         if any(ord(ch)<32 and ch not in '\n\r\t' for ch in self.value):raise ValueError('文本含不支持的控制字符')
+        return self
+
+
+class SectionChange(StrictModel):
+    section: int = Field(strict=True, ge=0, le=29)
+    field: Literal['heading', 'body', 'bullet']
+    bullet_index: int | None = Field(default=None, strict=True, ge=0, le=29)
+    value: str = Field(max_length=20000)
+
+    @model_validator(mode='after')
+    def valid_change(self):
+        if (self.field == 'bullet') != (self.bullet_index is not None):
+            raise ValueError('要点编辑必须指定一个现有要点')
+        if self.field == 'heading' and len(self.value)>300:raise ValueError('标题最多300字')
+        if self.field == 'bullet' and len(self.value)>2000:raise ValueError('要点最多2000字')
+        if any(ord(ch)<32 and ch not in '\n\r\t' for ch in self.value):raise ValueError('文本含不支持的控制字符')
+        return self
+
+
+class BatchEditInput(StrictModel):
+    request_id: str = Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
+    expected_artifact_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    expected_spec_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+    changes: list[SectionChange] = Field(default_factory=list, max_length=100)
+    section_order: list[StrictInt] = Field(min_length=1, max_length=30)
+    name: str = Field(min_length=1, max_length=91, pattern=r'^[A-Za-z0-9\u4e00-\u9fff][A-Za-z0-9\u4e00-\u9fff _-]{0,90}$')
+
+    @model_validator(mode='after')
+    def valid_batch(self):
+        keys=[(c.section,c.field,c.bullet_index) for c in self.changes]
+        if len(set(keys))!=len(keys):raise ValueError('不能重复修改同一位置')
+        if any(type(i) is not int for i in self.section_order):raise ValueError('章节顺序无效')
         return self
 
 
@@ -76,6 +108,15 @@ def inspect(pid,aid):
 
 def edit(pid,aid,actor,value):
     value=EditInput.model_validate(value)
+    return _run_edit(pid,aid,actor,value)
+
+
+def edit_batch(pid,aid,actor,value):
+    value=BatchEditInput.model_validate(value)
+    return _run_edit(pid,aid,actor,value)
+
+
+def _run_edit(pid,aid,actor,value):
     key=hashlib.sha256(json.dumps([pid,actor,value.request_id],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
     try:
         with FileLock(str(DATA/('office-edit-'+key+'.lock')),timeout=10):
@@ -93,15 +134,23 @@ def _edit_locked(pid,aid,actor,value):
         record,artifact,spec=_source(pid,aid)
         if record['sha256']!=value.expected_artifact_sha256 or artifact['source_sha256']!=value.expected_spec_sha256:
             raise ValueError('成果或规格版本已变化，请重新打开')
-        if value.section>=len(spec.sections):raise ValueError('所选章节不存在')
-        section=spec.sections[value.section]
-        if value.field=='bullet':
-            if value.bullet_index>=len(section.bullets):raise ValueError('所选要点不存在')
-            if section.bullets[value.bullet_index]==value.value:raise ValueError('内容没有变化')
-            section.bullets[value.bullet_index]=value.value
-        else:
-            if getattr(section,value.field)==value.value:raise ValueError('内容没有变化')
-            setattr(section,value.field,value.value)
+        changes=value.changes if isinstance(value,BatchEditInput) else [value]
+        if isinstance(value,BatchEditInput):
+            if sorted(value.section_order)!=list(range(len(spec.sections))):
+                raise ValueError('章节顺序必须包含所有原章节且不能重复')
+        changed=False
+        for change in changes:
+            if change.section>=len(spec.sections):raise ValueError('所选章节不存在')
+            section=spec.sections[change.section]
+            if change.field=='bullet':
+                if change.bullet_index>=len(section.bullets):raise ValueError('所选要点不存在')
+                if section.bullets[change.bullet_index]!=change.value:
+                    section.bullets[change.bullet_index]=change.value;changed=True
+            elif getattr(section,change.field)!=change.value:
+                setattr(section,change.field,change.value);changed=True
+        if isinstance(value,BatchEditInput) and value.section_order!=list(range(len(spec.sections))):
+            spec.sections=[spec.sections[i] for i in value.section_order];changed=True
+        if not changed:raise ValueError('内容没有变化')
         # Revalidate all limits after modifying a Pydantic model in place.
         revised=office.Spec.model_validate(spec.model_dump(mode='json'))
         content=json.dumps(revised.model_dump(mode='json'),ensure_ascii=False,indent=2)+'\n'
@@ -173,6 +222,12 @@ def install(app,auth):
     @app.get('/api/projects/{pid}/artifacts/{aid}/office-edit',dependencies=[Depends(auth)])
     def inspect_office_edit(pid:str,aid:str):
         try:return inspect(pid,aid)
+        except KeyError:raise HTTPException(404,'成果不存在或不属于当前项目') from None
+        except (ValueError,OSError) as error:raise HTTPException(409,str(error)[:500]) from None
+
+    @app.post('/api/projects/{pid}/artifacts/{aid}/office-edit/batch',dependencies=[Depends(auth)])
+    def apply_batch_office_edit(pid:str,aid:str,value:BatchEditInput,request:Request):
+        try:return edit_batch(pid,aid,actor_from_identity(getattr(request.state,'identity',{})),value)
         except KeyError:raise HTTPException(404,'成果不存在或不属于当前项目') from None
         except (ValueError,OSError) as error:raise HTTPException(409,str(error)[:500]) from None
 

@@ -4,6 +4,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         metadata: [sqlite, postgres]
     services:
@@ -41,7 +42,7 @@ jobs:
         run: python scripts/verify_agent_protocol.py --opencode-binary /tmp/opencode-verified/node_modules/.bin/opencode
       - name: Tests against SQLite
         if: matrix.metadata == 'sqlite'
-        run: python -m pytest tests -q
+        run: python scripts/run_ci_pytest.py
       - name: Conversation API and worker acceptance
         if: matrix.metadata == 'sqlite'
         run: python scripts/verify_conversation_service.py
@@ -58,7 +59,7 @@ jobs:
         if: matrix.metadata == 'postgres'
         env:
           DATABASE_URL: postgresql+psycopg2://nexus:ci_only_disposable_password@localhost:5432/nexus
-        run: python -m pytest tests -q
+        run: python scripts/run_ci_pytest.py
   image:
     runs-on: ubuntu-latest
     steps:

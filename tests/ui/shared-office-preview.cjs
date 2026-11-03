@@ -1,0 +1,17 @@
+'use strict';
+const {JSDOM}=require('jsdom'),fs=require('fs'),assert=require('assert/strict'),{webcrypto,createHash}=require('crypto');
+const delay=()=>new Promise(r=>setTimeout(r,15));
+const script=fs.readFileSync('agent_service/static/shared-office-preview.js','utf8');
+const d=new JSDOM('<main id="target"></main>',{url:'https://example.test/shared-artifact.html',runScripts:'outside-only'}),w=d.window;
+Object.defineProperty(w.crypto,'subtle',{value:webcrypto.subtle});
+const raw=Uint8Array.from([1,2,3,4]);const sha=createHash('sha256').update(raw).digest('hex');let calls=0,renders=0,closes=0;
+w.fetch=async(url,options)=>{assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');if(url.endsWith('/download')){calls++;return {ok:true,headers:{get:()=>String(raw.length)},arrayBuffer:async()=>raw.buffer.slice(0)}}return {ok:true,json:async()=>({sha256:sha,viewer_hash:'b'.repeat(64),allow_download:true})}};
+w.nexusPptxPreview=({container,blob,isCurrent})=>{renders++;assert.equal(blob.size,raw.length);assert(isCurrent());container.textContent='visual';return {ready:Promise.resolve(true),close(){closes++}}};w.eval(script);
+(async()=>{const container=w.document.querySelector('main'),id='as_'+('a'.repeat(40)),base={format:'pptx',sha256:sha,viewer_hash:'b'.repeat(64)};
+ assert.equal(w.nexusSharedOfficePreview({container,id,data:{...base,allow_download:false}}),null);assert.equal(calls,0);
+ const handle=w.nexusSharedOfficePreview({container,id,data:{...base,allow_download:true},isCurrent:()=>true});assert(handle);container.querySelector('button').click();await delay();assert.equal(calls,1);assert.equal(renders,1);assert(container.textContent.includes('visual'));handle.close();assert.equal(closes,1);assert.equal(container.children.length,0);
+ let badInvalid=0;const bad=w.nexusSharedOfficePreview({container,id,data:{...base,sha256:'0'.repeat(64),allow_download:true},isCurrent:()=>true,onUnauthorized:()=>badInvalid++});container.querySelector('button').click();await delay();assert.equal(renders,1);assert.equal(badInvalid,1);bad.close();
+ let invalidated=0;w.fetch=async(url)=>url.endsWith('/download')?{ok:true,headers:{get:()=>String(raw.length)},arrayBuffer:async()=>raw.buffer.slice(0)}:{ok:true,json:async()=>({sha256:sha,viewer_hash:'c'.repeat(64),allow_download:true})};const switched=w.nexusSharedOfficePreview({container,id,data:{...base,allow_download:true},isCurrent:()=>true,onUnauthorized:()=>invalidated++});container.querySelector('button').click();await delay();assert.equal(invalidated,1);assert.equal(renders,1);switched.close();
+ let resolve,lateInvalid=0;w.fetch=()=>new Promise(r=>{resolve=r});let live=true;const late=w.nexusSharedOfficePreview({container,id,data:{...base,allow_download:true},isCurrent:()=>live,onUnauthorized:()=>lateInvalid++});container.querySelector('button').click();live=false;late.close();resolve({ok:false,status:403});await delay();assert.equal(lateInvalid,0);assert.equal(renders,1);assert.equal(container.children.length,0);
+ console.log('shared Office visual preview requires download permission, verifies pinned bytes, and rejects stale responses');
+})().catch(e=>{console.error(e);process.exit(1)});

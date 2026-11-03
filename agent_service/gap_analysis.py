@@ -11,7 +11,7 @@ from .models import StrictModel
 from .data_workflows import NAME, TableSchema, decimal_value
 from .result_delivery import read_all_handoff
 from .config import MAX_ROWS
-from .interactive_analysis import _checked_grain, _as_dimension, MAX_ANALYSIS_BYTES, MAX_GROUPS
+from .interactive_analysis import ExploreFilter, _checked_grain, _as_dimension, _missing, MAX_ANALYSIS_BYTES, MAX_GROUPS
 
 
 class GapRequest(StrictModel):
@@ -21,13 +21,30 @@ class GapRequest(StrictModel):
     baseline_period: str = Field(pattern=r'^\d{4}-(?:0[1-9]|1[0-2])$')
     current_period: str = Field(pattern=r'^\d{4}-(?:0[1-9]|1[0-2])$')
     group_by: list[str] = Field(default_factory=list, max_length=2)
+    filters: list[ExploreFilter] = Field(default_factory=list, max_length=10)
     ratio_decimals: int = Field(ge=0, le=8, strict=True)
     rounding: Literal['half_even'] = 'half_even'
+
+    @model_validator(mode='before')
+    @classmethod
+    def strict_filter_values(cls, value):
+        # ExploreFilter also serves older endpoints and its bool union otherwise
+        # coerces JSON 0/1 into booleans. A finance slice must match the exact
+        # value the caller submitted, never silently change its type.
+        if isinstance(value,dict):
+            filters=value.get('filters')
+            for item in filters if isinstance(filters,list) else []:
+                if isinstance(item,dict) and 'value' in item:
+                    raw=item['value']
+                    if raw is not None and type(raw) not in (str,bool):
+                        raise ValueError('筛选值必须是文本、布尔值或空值，不能隐式转换')
+        return value
 
     @model_validator(mode='after')
     def validate_input(self):
         if self.baseline_column == self.current_column:raise ValueError('比较的两个字段必须不同')
         if len(set(self.group_by)) != len(self.group_by):raise ValueError('分组字段不能重复')
+        if len({f.column for f in self.filters}) != len(self.filters):raise ValueError('同一字段不能重复筛选')
         try:
             date.fromisoformat(self.baseline_period+'-01');date.fromisoformat(self.current_period+'-01')
         except ValueError:raise ValueError('月份必须是有效日历月份') from None
@@ -53,6 +70,16 @@ def evaluate(table, value):
         if column not in fields or fields[column].data_type not in ('text','date','boolean'):
             raise ValueError('分组仅支持已声明的文本、日期或布尔字段')
     _checked_grain(rows,schema)
+    total_rows=len(rows)
+    for f in value.filters:
+        col=fields.get(f.column)
+        if not col or col.data_type not in ('text','date','boolean'):raise ValueError('筛选仅支持已声明的文本、日期或布尔字段')
+        if f.value is not None and ((col.data_type=='boolean' and type(f.value) is not bool) or (col.data_type!='boolean' and not isinstance(f.value,str))):
+            raise ValueError('筛选值与字段类型不一致')
+        if not _missing(f.value) and any(_missing(r.get(f.column)) for r in rows):
+            raise ValueError('筛选字段存在空值，无法判断是否属于所选范围；请先核对空值')
+    rows=[r for r in rows if all(_as_dimension(r.get(f.column),fields[f.column])==f.value for f in value.filters)]
+    if not rows:raise ValueError('筛选后没有数据，未将缺失结果当作零')
     groups={}
     with localcontext() as ctx:
         ctx.prec=120
@@ -80,13 +107,13 @@ def evaluate(table, value):
                            'ratio_interpretation_warning':'基准为负，变化率按约定公式计算，其正负不代表改善或恶化，请结合业务口径解读。' if item['baseline']<0 else None,
                            'chart_direction':'increase' if delta>0 else 'decrease' if delta<0 else 'equal',
                            'chart_basis_points':magnitude})
-    return {'group_by':value.group_by,'groups':result,'total_rows':len(rows),'unit':before.unit,
+    return {'group_by':value.group_by,'filters':[f.model_dump() for f in value.filters], 'groups':result,'total_rows':len(rows),'input_rows':total_rows,'unit':before.unit,
             'baseline_column':value.baseline_column,'current_column':value.current_column,
             'baseline_period':value.baseline_period,'current_period':value.current_period,
             'ratio_decimals':value.ratio_decimals,'rounding':'half_even',
             'formulas':{'delta':'本期或实际值－基准值','relative_percent':'（本期或实际值－基准值）÷基准值×100%'},
             'chart_notice':'条形长度为相对本次最大绝对差额的近似比例；准确数值以表格为准。',
-            'notice':'按固定版本的完整数据计算；本功能仅支持全表或分组，不支持按筛选字段或月份字段切片，版本更新后请刷新。单位相同不证明业务口径相同，请核对两个字段的含义和范围。差额只是算术比较，不证明业务原因、原始资料完整或财务审批。'}
+            'notice':'按固定版本完整数据中符合筛选条件的记录计算；版本更新后请刷新。单位相同不证明业务口径相同，请核对两个字段的含义和范围。差额只是算术比较，不证明业务原因、原始资料完整或财务审批。'}
 
 
 def analyze(pid,rid,value):

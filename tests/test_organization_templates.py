@@ -21,6 +21,7 @@ def isolated_jobs_and_catalog(monkeypatch):
     monkeypatch.setattr(identity,'mode',lambda:'oidc');monkeypatch.setattr(identity,'validate_config',lambda:None)
     monkeypatch.setattr(identity,'principal',lambda request:{'authenticated':True,'mode':'oidc','subject':'fixture','scope':'owner_workspace'})
     monkeypatch.setenv('NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT','0');monkeypatch.delenv('ATLAS_REQUIRE_SINGLE_OIDC_SUBJECT',raising=False)
+    monkeypatch.setenv('OIDC_ISSUER','https://issuer.example.test');monkeypatch.setenv('OIDC_AUDIENCE','finance-service')
     yield
     with engine.begin() as c:
         q=jobs.delete()
@@ -131,3 +132,28 @@ def test_published_snapshot_survives_source_project_trash_until_withdrawn():
     org.withdraw(entry['id'],entry['version'],actor)
     assert org.list_catalog()['items']==[]
     with pytest.raises(KeyError):org.copy_to_project(target,entry['id'],value,actor)
+
+
+def test_catalog_is_pinned_to_identity_issuer_and_audience(monkeypatch):
+    from agent_service.store import put
+    client,pid,source,request,shape,raw=fixture();actor='u_'+'9'*64
+    original=org.publish(request,actor)
+    value={'version':1,'sha256':original['sha256'],'request_id':'scope_copy_request_123456'}
+    for env,new in [('OIDC_ISSUER','https://other.example.test'),('OIDC_AUDIENCE','other-service')]:
+        with monkeypatch.context() as changed:
+            changed.setenv(env,new)
+            assert org.list_catalog()['items']==[]
+            with pytest.raises(KeyError):org.copy_to_project(pid,original['id'],value,actor)
+            with pytest.raises(KeyError):org.withdraw(original['id'],1,actor)
+            # Same snapshot can be deliberately published as a distinct record.
+            other=org.publish(request,actor)
+            assert other['id']!=original['id']
+            assert [e['id'] for e in org.list_catalog()['items']]==[other['id']]
+    assert [e['id'] for e in org.list_catalog()['items']]==[original['id']]
+    # Legacy records without a scope cannot accidentally become public.
+    legacy={**get(org.KIND,original['id']),'id':'ot_'+'a'*40}
+    legacy.pop('identity_scope')
+    put(org.KIND,legacy,legacy['id'])
+    assert [e['id'] for e in org.list_catalog()['items']]==[original['id']]
+    with pytest.raises(KeyError):org.copy_to_project(pid,legacy['id'],value,actor)
+    with pytest.raises(KeyError):org.withdraw(legacy['id'],1,actor)

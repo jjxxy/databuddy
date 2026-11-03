@@ -110,3 +110,29 @@ def test_negative_baseline_is_mathematical_only_with_explicit_warning():
     assert result['delta']=='5' and result['relative_percent']=='-50.00'
     assert '不代表改善或恶化' in result['ratio_interpretation_warning']
     assert '单位相同不证明业务口径相同' in value['notice']
+
+
+def test_filters_are_exact_pinned_and_grain_is_checked_before_filtering():
+    pid,job,body=fixture();data.publish_result(pid,job['id'],job['commit'])
+    filtered=analyze(pid,job['id'],{**body,'filters':[{'column':'branch','value':'East'}]})
+    assert filtered['input_rows']==3 and filtered['total_rows']==1
+    assert filtered['filters']==[{'column':'branch','value':'East'}]
+    assert filtered['groups'][0]['delta']=='0.000000000001'
+    with pytest.raises(ValueError,match='筛选后没有数据'):analyze(pid,job['id'],{**body,'filters':[{'column':'branch','value':'east'}]})
+    with pytest.raises(ValueError,match='筛选值与字段类型'):analyze(pid,job['id'],{**body,'filters':[{'column':'branch','value':True}]})
+    schema={'columns':[column('id'),column('branch'),column('base','decimal','CNY','additive')|{'period':'2026-09'},column('actual','decimal','CNY','additive')|{'period':'2026-09'}],'grain':['id'],'meaning':'per entity'}
+    table={'schema':schema,'rows':[{'id':'A','branch':'East','base':'1','actual':'2'},{'id':'A','branch':'West','base':'2','actual':'3'}], 'total':2,'complete_result_available':True}
+    with pytest.raises(ValueError,match='粒度重复'):evaluate(table,{**body,'group_by':[],'filters':[{'column':'branch','value':'East'}]})
+    table['rows'][1]['id']='B';table['rows'][1]['branch']=None
+    with pytest.raises(ValueError,match='筛选字段存在空值'):evaluate(table,{**body,'group_by':[],'filters':[{'column':'branch','value':'East'}]})
+
+
+
+def test_boolean_filters_do_not_coerce_numeric_request_values():
+    schema={'columns':[column('id'),column('active','boolean'),column('base','decimal','CNY','additive')|{'period':'2026-09'},column('actual','decimal','CNY','additive')|{'period':'2026-09'}],'grain':['id'],'meaning':'per entity'}
+    table={'schema':schema,'rows':[{'id':'A','active':True,'base':'1','actual':'2'},{'id':'B','active':False,'base':'2','actual':'3'}], 'total':2,'complete_result_available':True}
+    body={'expected_handoff_sha256':'a'*64,'baseline_column':'base','current_column':'actual','baseline_period':'2026-09','current_period':'2026-09','ratio_decimals':2,'filters':[{'column':'active','value':True}]}
+    assert evaluate(table,body)['total_rows']==1
+    with pytest.raises(ValueError):evaluate(table,{**body,'filters':None})
+    for invalid in (0,1,1.0):
+        with pytest.raises(ValueError,match='不能隐式转换'):evaluate(table,{**body,'filters':[{'column':'active','value':invalid}]})
