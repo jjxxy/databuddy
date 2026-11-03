@@ -221,7 +221,7 @@ def create(pid,actor,value,*,identity_scope=None):
                 version=sealed_version['commit']
             job=existing
         else:
-            workflow=data.register(pid,path)
+            workflow=data._register(pid,path)
             if workflow['draft_sha256']!=plan_hash:raise ValueError('追加方案已变化，请重新核对')
             # Fixed result IDs and hashes remain part of the input evidence.
             job=data._enqueue_workflow(pid,workflow_id,scheduled_key='append_'+ident,

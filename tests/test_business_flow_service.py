@@ -166,6 +166,7 @@ def test_confirmed_flow_git_job_and_actual_html(monkeypatch):
     assert process_once();status=req('GET',flow+'/runs/'+run['run_id']);assert status['status']=='succeeded',status
     assert status['plan_digest']==saved['candidate_digest'] and status['commit']==saved['candidate_commit']
     assert len(status['steps'])==6 and len(status['artifacts'])==1
+    assert status['steps'][-1]['node_id']=='report' and status['steps'][-1]['artifact']==status['artifacts'][0]
     assert status['steps'][1]['table_available']
     page=req('GET',flow+'/runs/'+run['run_id']+'/tables/aggregate?offset=0&limit=1')
     assert page['total']==1 and page['next_offset'] is None and page['rows'][0]['amount']=='18.00'

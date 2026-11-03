@@ -33,6 +33,32 @@ def test_selected_flow_is_project_scoped_versioned_and_preserves_text():
         conversation.submit(pid,conversation.TurnInput(text=text,request_id=uid(),workflow_context=ref))
 
 
+def test_selected_node_is_checked_and_replayed_as_part_of_workflow_identity():
+    import json
+    from agent_service import agent
+    pid=project();s=source(pid);wid=registered(pid,document(s['id']))
+    digest=project_data.inspect_workflow(pid,wid)['draft_sha256']
+    base={'kind':'data','id':wid,'digest':digest}
+    rid=uid()
+    def submit(ref,request_id=rid):
+        return conversation.submit(pid,conversation.TurnInput(text='改这一步',request_id=request_id,workflow_context=ref))
+    ref={**base,'node_id':'complete_rows'}
+    turn=submit(ref)
+    stored=get('turn',turn['id'])
+    assert stored['selected_workflow']['node_title']=='Preserve every declared detail row'
+    messages,_=agent.planning_context(stored,native=False)
+    assert json.loads(messages[1]['content'])['selected_workflow']['node_id']=='complete_rows'
+    assert submit(ref)['id']==turn['id']
+    for changed in (base, {**base,'node_id':'orders'}):
+        with pytest.raises(conversation.WorkflowContextConflict,match='不能更换'):
+            submit(changed)
+    with pytest.raises(conversation.WorkflowContextConflict,match='没有所选节点'):
+        submit({**base,'node_id':'other_stage'},uid())
+    for invalid in ('__overview_result__','../orders.py'):
+        with pytest.raises(ValueError):
+            submit({**base,'node_id':invalid},uid())
+
+
 def test_replayed_message_cannot_switch_flow_or_session():
     pid=project();s=source(pid);a=registered(pid,document(s['id']),'workflows/a.json');b=registered(pid,document(s['id']),'workflows/b.json')
     ref=lambda wid:{'kind':'data','id':wid,'digest':project_data.inspect_workflow(pid,wid)['draft_sha256']}
@@ -66,6 +92,7 @@ def test_pending_view_preserves_selected_flow_and_conflict_is_definitive():
     pid=project();s=source(pid);doc=document(s['id']);wid=registered(pid,doc)
     ref={'kind':'data','id':wid,'digest':project_data.inspect_workflow(pid,wid)['draft_sha256']}
     cid=conversation.default_session(pid);device='d_'+('a'*24)+uid()[:8];activity.register(device)
+    ref['node_id']='complete_rows'
     pending={'session_id':cid,'request_id':uid(),'text':'请改第二步','workflow_context':ref}
     activity.save_view(device,activity.ViewInput(project_id=pid,session_id=cid,pending=pending))
     assert activity.read_view(device,pid,cid)['pending']==pending

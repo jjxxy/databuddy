@@ -388,12 +388,63 @@ def load_document(pid,path):
     return doc
 
 
-def register(pid,path):
+def register(pid,path,turn_id=None):
+    with workspace.lock(pid):
+        result=_register(pid,path)
+        workspace._checkpoint(pid,turn_id,'保存数据流程与节点代码')
+        return result
+
+
+def edit_document(pid,wid,expected,document,*,turn_id=None,text=None):
+    """Save the registered definition, its node files and its Git revision together."""
+    from fastapi import HTTPException
+    with workspace.lock(pid):
+        record=owned(pid,'data_workflow',wid)
+        if record.get('archived'):raise ValueError('流程不可用')
+        path=record['path']
+        previous=workspace.read_file(pid,path)
+        before=digest(WorkflowDocument.model_validate_json(previous).model_dump())
+        after=digest(document.model_dump())
+        content=text if text is not None else json.dumps(document.model_dump(),ensure_ascii=False,indent=2)
+        if before!=expected and (turn_id is None or content!=previous):
+            raise HTTPException(409,'方案已变化，请重新读取并核对后保存')
+        if content!=previous:workspace.write_file(pid,path,content)
+        try:
+            result=_register(pid,path)
+        except Exception:
+            if content!=previous and (before==after or owned(pid,'data_workflow',wid).get('draft_sha256')!=after):
+                workspace.write_file(pid,path,previous)
+            raise
+        workspace._checkpoint(pid,turn_id,'修改数据流程与节点代码')
+        return result
+
+
+def write_chat_file(pid,path,content,turn):
+    """Use the selected version when a chat edits its registered workflow definition."""
+    selected=(turn or {}).get('selected_workflow') or {}
+    if selected.get('kind')=='data':
+        wid=selected['id'];record=owned(pid,'data_workflow',wid)
+        if workspace.path_for(pid,path)==workspace.path_for(pid,record['path']):
+            stored=get('turn',turn['id'])
+            prior=stored.get('data_workflow_edit') or {}
+            expected=prior['digest'] if prior.get('id')==wid else selected['digest']
+            doc=WorkflowDocument.model_validate_json(content)
+            result=edit_document(pid,wid,expected,doc,turn_id=turn['id'],text=content)
+            patch('turn',turn['id'],data_workflow_edit={'id':wid,'digest':result['draft_sha256']})
+            return {'path':path,'bytes':len(content.encode()),'workflow_id':wid,'name':doc.plan.name,'digest':result['draft_sha256']}
+    return workspace.write_file(pid,path,content)
+
+
+def _register(pid,path):
+    from .data_flow_assets import save
     doc=load_document(pid,path);wid='wf_'+hashlib.sha256((pid+':'+path).encode()).hexdigest()[:40]
     try:value=owned(pid,'data_workflow',wid)
     except KeyError:value={'project_id':pid,'path':path,'created_at':now(),'published_run':None,'active_document':None,'cron':None,'watch_sources':False}
-    value.update(name=doc.plan.name,draft_sha256=digest(doc.model_dump()),updated_at=now())
-    put('data_workflow',value,wid)
+    hashes=save(pid,wid,doc)
+    sha=digest(doc.model_dump())
+    if value.get('draft_sha256')!=sha or value.get('code_asset_hashes')!=hashes:
+        value.update(name=doc.plan.name,draft_sha256=sha,code_asset_hashes=hashes,updated_at=now())
+        put('data_workflow',value,wid)
     return inspect_workflow(pid,wid)
 
 

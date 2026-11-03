@@ -36,7 +36,7 @@ def guide():
     return {'schema':_compact(WorkflowDocument.model_json_schema()),'example':example,
             'scope':'agent_authoring_reference; examples_are_not_user_data_or_approved_semantics',
             'instructions':[
-                '由Agent编写workflows/*.json，用户只需描述业务目标；先查项目已有流程再新建。',
+                '先查项目已有流程再新建。用户要求修改做法时编辑该流程已登记的定义并重新登记。系统从同一版本生成概览、节点代码和输入输出引用；只问数或查看结果不修改流程。不要另写一份概览或覆盖生成目录。',
                 '例子中的来源、字段、期间、币种、条件和唯一键全部需要替换为实际证据，不能当默认口径。',
                 '先检查页签和候选区域，边界明确后才读取；预览不可用作全量输入。',
                 '跨法人、账簿、客户、币种或期间关联时，可用 lookup_multi 的 keys 指定多组 left/right 字段；逐项确认业务键完整及右表唯一，不能假设已核对。',

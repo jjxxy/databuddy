@@ -41,6 +41,7 @@ class SelectedWorkflow(StrictModel):
     kind: Literal['data','business']
     id: str = Field(pattern=r'^(?:wf_|bf_)[a-f0-9]{40}$')
     digest: str = Field(pattern=r'^[a-f0-9]{64}$')
+    node_id: str | None = Field(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_]{0,63}$')
 
     @model_validator(mode='after')
     def matching_kind(self):
@@ -375,7 +376,7 @@ class WorkflowContextConflict(ValueError):
 
 def _validate_selected_workflow(project_id,actor_id,value):
     if value is None:return None
-    ref=value.model_dump()
+    ref=value.model_dump(exclude_none=True)
     if ref['kind']=='data':
         from .project_data import inspect_workflow
         result=inspect_workflow(project_id,ref['id'])
@@ -385,7 +386,26 @@ def _validate_selected_workflow(project_id,actor_id,value):
         result=get_view(project_id,ref['id'],actor_id)
         actual=result.get('candidate_digest')
     if actual!=ref['digest']:raise WorkflowContextConflict('所选流程已变化，请等待流程更新后重新发送；输入已保留')
+    if value.node_id:
+        if value.kind=='data':
+            plan=result['document']['plan']
+            names={ident:schema['meaning'] for ident,schema in plan['inputs'].items()}
+            names.update({node['id']:node['description'] for node in plan['stages']})
+        else:
+            names={node['id']:node['title'] for node in result['candidate_document']['nodes']}
+        if value.node_id not in names:
+            raise WorkflowContextConflict('当前流程版本没有所选节点，请重新选择后发送')
+        ref['node_title']=names[value.node_id][:200]
     return dict(ref,name=str(result.get('name') or '业务流程')[:100])
+
+
+def _check_workflow_replay(previous,project_id,session_id,selection):
+    if previous.get('session_id',default_session(project_id))!=session_id:
+        raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
+    stored=previous.get('selected_workflow')
+    identity={k:stored[k] for k in ('kind','id','digest','node_id') if stored.get(k) is not None} if stored else None
+    if identity!=(selection.model_dump(exclude_none=True) if selection else None):
+        raise WorkflowContextConflict('同一消息编号不能更换所选流程或节点，请重新发送')
 
 
 def submit(project_id, value, *, trusted_fields=None):
@@ -401,12 +421,7 @@ def submit(project_id, value, *, trusted_fields=None):
     session_id=check_session(project_id,value.session_id or default_session(project_id))
     try:
         previous=get('turn',tid)
-        previous_ref=previous.get('selected_workflow')
-        requested_ref=value.workflow_context.model_dump() if value.workflow_context else None
-        if previous.get('session_id',default_session(project_id))!=session_id:
-            raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
-        if ( {k:previous_ref[k] for k in ('kind','id','digest')} if previous_ref else None)!=requested_ref:
-            raise WorkflowContextConflict('同一消息编号不能更换所选流程，请重新发送')
+        _check_workflow_replay(previous,project_id,session_id,value.workflow_context)
         return public_turn(previous)
     except KeyError:pass
     resume_target=None
@@ -453,12 +468,8 @@ def submit(project_id, value, *, trusted_fields=None):
             raise LifecycleConflict('工作空间已被删除或恢复，请刷新后重新确认这项需求')
         check_session(project_id,session_id)
         try:
-            previous=get('turn',tid);previous_ref=previous.get('selected_workflow')
-            requested_ref=value.workflow_context.model_dump() if value.workflow_context else None
-            if previous.get('session_id',default_session(project_id))!=session_id:
-                raise WorkflowContextConflict('同一消息编号不能用于其他对话，请重新发送')
-            if ({k:previous_ref[k] for k in ('kind','id','digest')} if previous_ref else None)!=requested_ref:
-                raise WorkflowContextConflict('同一消息编号不能更换所选流程，请重新发送')
+            previous=get('turn',tid)
+            _check_workflow_replay(previous,project_id,session_id,value.workflow_context)
             return public_turn(previous)
         except KeyError: pass
         if resume_target:

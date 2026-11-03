@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import assert from 'node:assert/strict';
 import path from 'node:path';
 import os from 'node:os';
 import {fileURLToPath} from 'node:url';
@@ -52,7 +53,7 @@ try{
    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(value)});
   }
   const file=path.join(root,p==='/'?'index.html':p.slice(1));
-  if(!file.startsWith(root+'/')||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
+  if(!file.startsWith(root+path.sep)||!fs.existsSync(file))return route.fulfill({status:404,body:'Not found'});
   const type=file.endsWith('.html')?'text/html':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'application/octet-stream';
   return route.fulfill({status:200,contentType:type,body:fs.readFileSync(file),headers:{'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"}});
  });
@@ -71,11 +72,32 @@ try{
  await page.waitForFunction(()=>document.querySelector('.artifact-rendition img')?.alt.includes('第2页'));
  await page.screenshot({path:path.join(evidenceDir,'desktop-rendered-preview.png')});
  const desktopOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+ const widths=[];
+ for(const width of [1101,1440,1920,2545]){
+  await page.setViewportSize({width,height:1000});
+  const chat=await page.locator('#main').boundingBox(),result=await page.locator('#workspace-artifacts-panel').boundingBox();
+  assert(chat.width>=350&&chat.x+chat.width<=result.x+1,'chat must remain usable beside the result');
+  assert(result.width>chat.width&&Math.abs(result.x+result.width-width)<1,'visual result should take the remaining viewport');
+  if(width>=1920)assert(result.width>1000,'large displays should have a large document canvas');
+  await page.locator('#message').fill('继续核对这份报告');
+  widths.push({viewport:width,chat:Math.round(chat.width),result:Math.round(result.width)});
+ }
+ await page.screenshot({path:path.join(evidenceDir,'wide-conversation-and-result.png')});
+ await page.click('#artifact-preview-close');
+ const listWidth=(await page.locator('#workspace-artifacts-panel').boundingBox()).width;
+ assert(listWidth<widths.at(-1).result,'collapse the document to restore the compact results list');
+ await page.click('[data-preview-artifact="'+aid+'"]');
+ await page.waitForSelector('.artifact-rendition img[src^="blob:"]');
+ await page.setViewportSize({width:1024,height:768});
+ assert.equal((await page.locator('#workspace-artifacts-panel').boundingBox()).width,1024,'large tablet results should fill their modal');
  await page.setViewportSize({width:390,height:844});
  await page.screenshot({path:path.join(evidenceDir,'mobile-rendered-preview.png')});
  const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
  if(desktopOverflow||mobileOverflow)throw Error('Horizontal page overflow');
  await page.click('#workspace-artifacts-close');await page.setViewportSize({width:1440,height:1000});
+ assert.equal(await page.locator('#workspace-artifacts-panel').isVisible(),false);
+ assert.equal(Math.round((await page.locator('#main').boundingBox()).width+(await page.locator('#sidebar').boundingBox()).width),1440,'closing the panel releases all of its width');
+ console.log(JSON.stringify({result_layout:widths,collapsed_list_width:listWidth}));
  await page.click('#workspace-settings');await page.click('#cloud-browser');
  await page.waitForFunction(()=>document.querySelector('[data-browser-image]')?.naturalWidth>0);
  await page.screenshot({path:path.join(evidenceDir,'desktop-browser-handoff.png')});

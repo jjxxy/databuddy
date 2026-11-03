@@ -147,7 +147,7 @@ def execute(turn,name,args):
     if name=='read_source_table':
         if not provider.settings().get('share_data'):raise ValueError('需要启用模型读取项目内容，才能读取表格行值或公式证据')
         return data.preview_source(pid,args)
-    if name=='register_data_workflow':return data.register(pid,args['path'])
+    if name=='register_data_workflow':return data.register(pid,args['path'],turn_id=turn['id'])
     if name=='inspect_data_workflow':return data.inspect_workflow(pid,args['workflow_id'])
     if name=='run_data_workflow':
         from .intents import require

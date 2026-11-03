@@ -26,7 +26,7 @@ from .store import get,put,patch,all_items,seal,unseal,now,uid
 from .business_flow_engine import BusinessFlow,digest,run as run_engine
 from .actor_context import current_actor,actor_scope
 from .workspace_lifecycle import assert_project_live,assert_turn_live
-from . import workspace
+from . import workspace, business_flow_assets
 from .jobs import enqueue,get_job,fenced_update,heartbeat,list_jobs
 
 
@@ -108,7 +108,7 @@ def _lock_path(fid):return 'business-flows/'+fid+'.lock.json'
 def _entry_path(fid):return 'business-flows/'+fid+'.py'
 
 
-def _runtime_lock(document):
+def _runtime_lock(document, *, handler_sources=None):
     """Conservative runtime pin; a changed handler cannot silently rerun."""
     kinds={n['kind'] for n in document['nodes']}
     names={'business_flow_engine.py','business_flows.py','workflow_model_skill.py','schedule_parameters.py',
@@ -128,10 +128,13 @@ def _runtime_lock(document):
     for package in ('duckdb','dlt','dbt-core','dbt-duckdb','openpyxl','python-pptx','python-docx'):
         try:packages[package]=importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:packages[package]=None
-    return {'version':1,'python':'.'.join(map(str,sys.version_info[:3])),
+    handlers=_handlers()
+    if handler_sources is None:
+        handler_sources=business_flow_assets.handler_sources(kinds,handlers)
+    return {'version':1,'code_assets':business_flow_assets.handler_lock(handler_sources),'python':'.'.join(map(str,sys.version_info[:3])),
             'modules':modules,'packages':packages,
-            'handlers':{key:{'version':_handlers()[key].version,'deterministic':_handlers()[key].deterministic,
-                             'replay_safe':_handlers()[key].replay_safe} for key in sorted(kinds)}}
+            'handlers':{key:{'version':handlers[key].version,'deterministic':handlers[key].deterministic,
+                             'replay_safe':handlers[key].replay_safe} for key in sorted(kinds)}}
 
 
 def _entry(pid,fid,sha):
@@ -169,19 +172,22 @@ def _entry(pid,fid,sha):
 
 def _write_version_files(pid,fid,document):
     sha=digest(document)
-    workspace.write_file(pid,_path(fid),json.dumps(document,ensure_ascii=False,sort_keys=True,indent=2))
-    workspace.write_file(pid,_lock_path(fid),json.dumps(_runtime_lock(document),ensure_ascii=False,sort_keys=True,indent=2))
-    workspace.write_file(pid,_entry_path(fid),_entry(pid,fid,sha))
+    sources=business_flow_assets.handler_sources({n['kind'] for n in document['nodes']},_handlers())
+    locked=_runtime_lock(document,handler_sources=sources)
+    workspace.write_flow_assets(pid,'business-flows/'+fid,business_flow_assets.version_files(document,sources),
+        siblings={'.json':json.dumps(document,ensure_ascii=False,sort_keys=True,indent=2),
+                  '.lock.json':json.dumps(locked,ensure_ascii=False,sort_keys=True,indent=2),'.py':_entry(pid,fid,sha)})
 
 
-def _read_commit(pid,fid,commit,expected):
+def _read_commit(pid,fid,commit,expected,*,include_assets=False):
     if not isinstance(commit,str) or not re.fullmatch(r'[a-f0-9]{40}',commit):raise ValueError('流程项目版本不可用')
     try:raw=workspace.git_content(workspace.folder(pid),commit,'files/'+_path(fid))
     except Exception:raise ValueError('该项目版本缺少业务流程定义') from None
     try:doc=BusinessFlow.model_validate(json.loads(raw)).model_dump(mode='json')
     except Exception:raise ValueError('该项目版本的流程定义无效') from None
     if digest(doc)!=expected:raise ValueError('流程定义与版本摘要不一致')
-    return doc
+    assets=business_flow_assets.load_version(pid,fid,commit,doc)
+    return (doc,assets) if include_assets else doc
 
 
 def create(pid,actor_id,turn_id,document,request_id):
@@ -582,12 +588,17 @@ def get_run(pid,flow_id,run_id,actor_id=None):
                 _aggregate_contribution(job,item['node_id'],output)
                 steps[-1]['contribution_available']=True
             except (KeyError,TypeError,ValueError):steps[-1]['contribution_available']=False
-        if isinstance(output,dict) and isinstance(output.get('artifact_id'),str):
+        if (item.get('status')=='succeeded' and item.get('kind') in ('office_document','html_report')
+                and isinstance(output,dict) and isinstance(output.get('artifact_id'),str)):
             from .workspace_artifacts import _record,_public
             # An artifact link is returned only if separately authorized and present.
             try:
                 artifact=_public(_record(pid,output['artifact_id']))
-                artifacts.append({k:artifact.get(k) for k in ('id','name','preview_url','download_url')})
+                if (artifact.get('sha256')==output.get('sha256') and artifact.get('origin_turn_id')==job['flow_turn_id']
+                        and digest(output,2*1024*1024)==item.get('output_sha256')):
+                    linked={k:artifact.get(k) for k in ('id','name','preview_url','download_url')}
+                    steps[-1]['artifact']=linked
+                    artifacts.append(linked)
             except Exception:pass
     status='unknown' if _uncertain(job,state) else job['status']
     messages={'BUSINESS_RUNTIME_CHANGED':'流程执行器或依赖已变化，请重新验证并生成候选版本',
@@ -1273,6 +1284,12 @@ def install(app,auth):
 
     @app.get('/api/projects/{pid}/business-flows/{fid}',dependencies=[Depends(auth)])
     def detail(pid:str,fid:str):return get_view(pid,fid)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/code-assets',dependencies=[Depends(auth)])
+    def code_assets(pid:str,fid:str,expected_digest:str,commit:str):
+        return business_flow_assets.view(pid,fid,current_actor(),expected_digest,commit)
+    @app.get('/api/projects/{pid}/business-flows/{fid}/code-asset',dependencies=[Depends(auth)])
+    def code_asset(pid:str,fid:str,expected_digest:str,commit:str,path:str):
+        return business_flow_assets.view(pid,fid,current_actor(),expected_digest,commit,path)
     @app.get('/api/projects/{pid}/business-flows/{fid}/input-sources',dependencies=[Depends(auth)])
     def source_options(pid:str,fid:str,use_published:bool=False):return input_sources(pid,fid,use_published=use_published)
     @app.get('/api/projects/{pid}/business-flows/{fid}/storage',dependencies=[Depends(auth)])

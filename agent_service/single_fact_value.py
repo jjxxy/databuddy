@@ -58,7 +58,7 @@ def create_candidate(pid,kind,review_id,expected_fact_sha256,expected_original_r
             try:existing_document=data.WorkflowDocument.model_validate_json(existing)
             except ValueError:raise ValueError('单事实候选方案路径已有其他内容，未覆盖') from None
             if digest(existing_document.model_dump())!=plan_sha:raise ValueError('单事实候选方案已被修改，未覆盖')
-        wid=data.register(pid,path)['workflow_id']
+        wid=data._register(pid,path)['workflow_id']
         key='single_value_'+digest([pid,wid,plan_sha,identity])
         if retry_run_id:
             previous=get_job(retry_run_id)

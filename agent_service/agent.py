@@ -240,7 +240,8 @@ def context(pid):
             'analyses':[{k:p.get(k) for k in ('id','name','source_id','spec','published_run','candidate_run','cron')} for p in all_items('pipeline') if p.get('project_id')==pid and not p.get('archived')],
             'applications':__import__('agent_service.applications',fromlist=['catalog']).catalog(pid),
             'data_workflows':__import__('agent_service.workflow_guidance',fromlist=['catalog']).catalog(pid),
-            'files':workspace.list_files(pid),'timezone':__import__('agent_service.config',fromlist=['TIMEZONE']).TIMEZONE,'model_can_read_data':provider.settings().get('share_data',False)}
+            'files':[item for item in workspace.list_files(pid) if not workspace.generated_flow_file(item['path'])],
+            'timezone':__import__('agent_service.config',fromlist=['TIMEZONE']).TIMEZONE,'model_can_read_data':provider.settings().get('share_data',False)}
 
 
 def public_observation(value):
@@ -307,7 +308,7 @@ def planning_context(turn, *, native=None):
           'completed_steps':agent_context.trace_context(turn,public_observation,preserve_full=True),
           'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':_compact_model_schema(response_schema(Step))}
     if turn.get('selected_workflow'):
-        info['selected_workflow']={**turn['selected_workflow'],'usage':'这是用户当前界面选中的流程，仅在用户指代当前流程且未指定其他目标时作为辅助上下文；新建或明确指定其他流程的要求优先。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
+        info['selected_workflow']={**turn['selected_workflow'],'usage':'这是用户当前界面选中的流程，仅在用户指代当前流程且未指定其他目标时作为辅助上下文；新建或明确指定其他流程的要求优先。用户说“改这一步”时，按已验证的 node_id 定位节点；没有选中节点且指代不清时，先澄清。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
     active_names={tool['name'] for tool in tools}
     if active_names & {'company_search_status','search_company_documents','read_company_document'} or turn.get('knowledge_refs') or turn.get('knowledge_read_refs'):
         info.update(company_search=company_search.status(pid),company_candidates=company_search.candidates_for_model(turn),company_evidence=company_search.for_model(turn))
@@ -940,12 +941,10 @@ def execute(turn,step):
         if not provider.settings().get('share_data'):raise ValueError('模型项目内容读取尚未启用，请部署管理员在后台配置')
         text=workspace.read_file(pid,args['path']);start=args['offset'];end=start+args['limit']
         return {'path':args['path'],'content':text[start:end],'sha256':__import__('hashlib').sha256(text.encode()).hexdigest(),'next_offset':end if len(text)>end else None}
-    if name=='write_file':return workspace.write_file(pid,args['path'],args['content'])
-    if name=='delete_file':
-        if os.getenv('NEXUS_LOCAL_WORKSPACE'):
-            from .local_workspace import delete_project_file
-            return delete_project_file(pid,args['path'])
-        path=workspace.path_for(pid,args['path']);existed=path.exists();path.unlink(missing_ok=True);return {'deleted':args['path'],'already_absent':not existed}
+    if name=='write_file':
+        from .project_data import write_chat_file
+        return write_chat_file(pid,args['path'],args['content'],turn)
+    if name=='delete_file':return workspace.delete_file(pid,args['path'])
     if name=='versions':return {'versions':workspace.history(pid,50)}
     if name=='view_result':
         p=target_pipeline(turn,args);card=result_card(p['id'],bool(p.get('candidate_run')))

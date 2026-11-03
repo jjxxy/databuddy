@@ -4,7 +4,7 @@ Raw inputs, connector credentials, conversation transcripts and runtime warehous
 never enter this repository. They are immutable/versioned objects referenced by
 checkpoints. Restores retain newer versions and conversations and are journalled.
 """
-import hashlib,json,re,shutil,subprocess
+import hashlib,json,os,re,shutil,subprocess
 from pathlib import Path
 from datetime import datetime,timezone
 from zoneinfo import ZoneInfo
@@ -16,7 +16,7 @@ from .store import get,put,patch,all_items,now,seal,unseal,transaction,items,uid
 from .codegen import git
 from .jobs import ACTIVE,jobs,get_job
 from .audit import record
-from .platform_files import assert_plain_path,fsync_directory,open_regular_read,atomic_replace,create_regular_exclusive
+from .platform_files import native_path,assert_plain_path,fsync_directory,open_regular_read,atomic_replace,create_regular_exclusive
 from .process_control import executable
 
 PROJECT_KEYS=('name','source_id','pipeline_id')
@@ -29,12 +29,14 @@ def folder(pid):
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',pid):raise ValueError('项目标识无效')
     if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import project_folder
-        return project_folder(pid)
-    return DATA/'workspaces'/pid
+        return native_path(project_folder(pid))
+    return native_path(DATA/'workspaces'/pid)
 
 def path_for(pid,name):
     root=folder(pid);p=Path(name)
     if not name or len(name)>200 or p.is_absolute() or '\\' in name or any(x.startswith('.') or x in ('..','pipelines','project-state.json') for x in p.parts):raise ValueError('只能操作项目内普通文件，不能修改内部目录')
+    if any(':' in part or part.rstrip(' .')!=part or re.fullmatch(r'(?i)(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?',part) for part in p.parts):
+        raise ValueError('项目文件名不能包含设备名称、数据流或歧义字符')
     if p.suffix.lower() not in ('.md','.txt','.csv','.json','.yaml','.yml','.sql','.py',
                                 '.js','.mjs','.cjs','.jsx','.ts','.tsx','.html','.htm','.css','.svg','.toml','.sh','.r','.ipynb'):
         raise ValueError('只支持可版本化的文本和代码文件')
@@ -43,20 +45,41 @@ def path_for(pid,name):
     assert_plain_path(out)
     return out
 
-def write_file(pid,name,content):
-    from .locks import assert_owned
-    assert_owned()
+def generated_flow_file(name):
+    parts=[part.rstrip(' .') for part in Path(name).as_posix().casefold().split('/')]
+    return len(parts)>=2 and bool(_FLOW_DIR.fullmatch('/'.join(parts[:2])))
+
+
+def _editable(name):
+    if generated_flow_file(name) or re.fullmatch(r'business-flows/bf_[a-f0-9]{40}(?:\.lock\.json|\.json|\.py)',Path(name).as_posix().casefold()):
+        raise ValueError('此文件随流程版本生成，请通过对话修改对应流程')
+
+
+_FLOW_DIR=re.compile(r'(?:data-flows/wf_|business-flows/bf_)[a-f0-9]{40}')
+
+
+def _validate_text(content):
     if not isinstance(content,str) or len(content.encode())>256*1024:raise ValueError('单个文件不能超过256KB')
     if re.search(r'(?i)(?:postgres(?:ql)?|mysql)(?:\+\w+)?://[^\s]*:|\bsk-[A-Za-z0-9_-]{12,}|(?:password|api_key|authorization|connection_string)["\x27]?\s*[:=]',content):raise ValueError('连接凭证不能写入项目代码仓')
-    target=path_for(pid,name)
+
+
+def write_file(pid,name,content):
+    _editable(name);_validate_text(content)
     files=list_files(pid)
-    if sum(f['bytes'] for f in files)+len(content.encode())>8*1024*1024:raise ValueError('项目文本工作区超过8MB限制')
+    if sum(f['bytes'] for f in files if f['path']!=name)+len(content.encode())>8*1024*1024:raise ValueError('项目文本工作区超过8MB限制')
+    return _write_text(pid,name,content)
+
+
+def _write_text(pid,name,content):
+    from .locks import assert_owned
+    assert_owned()
+    target=path_for(pid,name)
     if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
         from .local_workspace import write_project_file
         return write_project_file(pid,name,content)
     target.parent.mkdir(parents=True,exist_ok=True)
     import os
-    tmp=target.with_name('.'+target.name+'.'+uid()+'.tmp')
+    tmp=target.with_name('.'+uid()+'.tmp')
     try:
         with os.fdopen(create_regular_exclusive(tmp),'w',encoding='utf-8',newline='\n') as f:
             f.write(content);f.flush();os.fsync(f.fileno())
@@ -64,6 +87,61 @@ def write_file(pid,name,content):
         fsync_directory(target.parent)
     finally:tmp.unlink(missing_ok=True)
     return {'path':name,'bytes':len(content.encode())}
+
+
+def _delete_text(pid,name):
+    from .locks import assert_owned
+    assert_owned()
+    if __import__('os').getenv('NEXUS_LOCAL_WORKSPACE'):
+        from .local_workspace import delete_project_file
+        return delete_project_file(pid,name)
+    path=path_for(pid,name)
+    existed=path.exists();path.unlink(missing_ok=True)
+    return {'deleted':name,'already_absent':not existed}
+
+
+def delete_file(pid,name):
+    _editable(name)
+    return _delete_text(pid,name)
+
+
+def write_flow_assets(pid,prefix,files,*,siblings=None):
+    """Replace one generated file set. Callers serialize registration and checkpoints."""
+    if not _FLOW_DIR.fullmatch(prefix) or not files:raise ValueError('流程文件目录无效')
+    directory=prefix+'/'
+    wanted={}
+    for rel,value in files.items():
+        if not re.fullmatch(r'(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+\.(?:json|py|sql)',rel):
+            raise ValueError('流程代码文件名无效')
+        path=directory+rel;path_for(pid,path)
+        content=value.decode('utf-8') if isinstance(value,bytes) else value
+        _validate_text(content);wanted[path]=content
+    adjacent=set()
+    if siblings:
+        if not prefix.startswith('business-flows/bf_') or set(siblings)!={'.json','.lock.json','.py'}:
+            raise ValueError('流程入口文件无效')
+        for suffix,content in siblings.items():
+            path=prefix+suffix;path_for(pid,path);_validate_text(content)
+            adjacent.add(path);wanted[path]=content
+    if len({path.casefold() for path in wanted})!=len(wanted):raise ValueError('流程文件名冲突')
+    entries=list_files(pid)
+    outside=lambda p:not p.startswith(directory) and p not in adjacent
+    external_bytes=sum(f['bytes'] for f in entries if outside(f['path']))
+    if external_bytes+sum(len(content.encode()) for content in wanted.values())>8*1024*1024:
+        raise ValueError('项目文本工作区超过8MB限制')
+    previous={f['path']:read_file(pid,f['path']) for f in entries if not outside(f['path'])}
+    changed=[]
+    try:
+        for path,content in wanted.items():
+            if previous.get(path)!=content:
+                changed.append(path);_write_text(pid,path,content)
+        for path in previous.keys()-wanted.keys():
+            changed.append(path);_delete_text(pid,path)
+    except Exception:
+        for path in reversed(changed):
+            if path in previous:_write_text(pid,path,previous[path])
+            elif path_for(pid,path).exists():_delete_text(pid,path)
+        raise
 
 def read_file(pid,name):
     path=path_for(pid,name)
@@ -83,7 +161,27 @@ def list_files(pid):
     return [{'path':p.relative_to(root).as_posix(),'bytes':p.stat().st_size} for p in sorted(root.rglob('*')) if p.is_file() and not p.is_symlink()]
 
 def git_content(repo,ref,name):
-    return subprocess.run([executable('git'),'-C',str(repo),'show',ref+':'+name],capture_output=True,check=True,timeout=30).stdout
+    return subprocess.run([executable('git'),'-C',str(repo),'cat-file','blob',ref+':'+name],capture_output=True,check=True,timeout=30).stdout
+
+
+def flow_blob(text):
+    raw=text.encode('utf-8')
+    return hashlib.sha1(b'blob '+str(len(raw)).encode('ascii')+b'\0'+raw).hexdigest()
+
+
+def verify_flow_tree(repo,prefix,commit,expected):
+    tree=git(repo,'ls-tree','-r','--full-tree',commit,'--',prefix)
+    if expected is None:
+        if tree:raise ValueError('流程代码目录缺少对应的版本锁')
+        return
+    actual={}
+    for line in tree.splitlines():
+        metadata,path=line.split('\t',1)
+        mode,kind,oid=metadata.split()
+        if mode!='100644' or kind!='blob' or not path.startswith(prefix):
+            raise ValueError('流程代码目录包含无效文件')
+        actual[path[len(prefix):]]=oid
+    if actual!=expected:raise ValueError('项目节点代码或业务流程图与固定版本不一致')
 
 
 def state(pid):
@@ -101,7 +199,12 @@ def lock(pid):return FileLock(str(DATA/('workspace-'+pid+'.lock')),timeout=10)
 def _init(pid):
     repo=folder(pid);repo.mkdir(parents=True,exist_ok=True)
     if not (repo/'.git').exists():
-        git(repo,'init','-b','main');git(repo,'config','user.name','Nexus WorkStudio Project Agent');git(repo,'config','user.email','agent@localhost')
+        git(repo,'-c','core.longpaths=true','init','-b','main');git(repo,'config','user.name','Nexus WorkStudio Project Agent');git(repo,'config','user.email','agent@localhost')
+    if os.name=='nt':
+        # This is the managed project repository, including ones created by
+        # older releases. config --default also works when the key is absent.
+        if git(repo,'config','--local','--type=bool','--default=false','--get','core.longpaths')!='true':
+            git(repo,'config','--local','core.longpaths','true')
     return repo
 
 def _mirror(repo,snapshot):
@@ -320,7 +423,7 @@ def _apply_restore(journal):
     repo=_init(pid)
     files=repo/'files'
     if files.exists():shutil.rmtree(files)
-    names=git(repo,'ls-tree','-r','--name-only',target['commit']).splitlines()
+    names=git(repo,'ls-tree','-r','--name-only','-z',target['commit']).split('\0')
     for name in names:
         if not name.startswith('files/'):continue
         out=path_for(pid,name[6:]);out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(git_content(repo,target['commit'],name))

@@ -22,10 +22,35 @@ def _absolute(path):
     return value.absolute()
 
 
+def native_path(path):
+    """Use the same absolute disk/UNC path at every Win32 I/O boundary.
+
+    The explicit namespace works even when the machine-wide long-path switch
+    is disabled. Never turn a user-supplied device name into a file path.
+    """
+    if os.name != 'nt':
+        return Path(path)
+    value = _absolute(path)
+    name = str(value)
+    if name.startswith('\\\\?\\'):
+        suffix = name[4:]
+        drive = suffix[:1].isascii() and suffix[:1].isalpha() and suffix[1:3] == ':\\'
+        parts = suffix.split('\\', 3)
+        unc = len(parts) >= 3 and parts[0].upper() == 'UNC' and all(
+            component not in ('', '.', '..', '?') for component in parts[1:3])
+        if drive or unc:
+            return value
+        raise OSError(errno.EINVAL, 'Expected a disk or UNC file path')
+    if name.startswith('\\\\.\\'):
+        raise OSError(errno.EINVAL, 'Device paths are not allowed')
+    return Path('\\\\?\\UNC\\' + name[2:] if name.startswith('\\\\') else '\\\\?\\' + name)
+
+
 def assert_plain_path(path, *, missing_ok=True):
     """Reject symbolic links and Windows junctions in every existing component."""
     value = _absolute(path)
-    chain = [*reversed(value.parents), value]
+    native = native_path(value)
+    chain = [*reversed(native.parents), native]
     for component in chain:
         try:
             info = component.lstat()
@@ -74,9 +99,7 @@ if os.name == 'nt':
         # OPEN_REPARSE_POINT inspects the link itself, not its target. Directory
         # ancestors are also held without SHARE_DELETE until the leaf is open.
         flags = 0x00200000 | (0x02000000 if directory else 0)
-        value = str(path)
-        if not value.startswith('\\\\?\\'):
-            value = '\\\\?\\UNC\\' + value[2:] if value.startswith('\\\\') else '\\\\?\\' + value
+        value = str(native_path(path))
         handle = _kernel.CreateFileW(value, access, 0x1 | 0x2, None,
                                      disposition, flags, None)
         if handle == _INVALID:
@@ -147,7 +170,7 @@ def atomic_replace(source, destination):
         with _parents(source), _parents(destination):
             assert_plain_path(source, missing_ok=False)
             assert_plain_path(destination)
-            os.replace(source, destination)
+            os.replace(native_path(source), native_path(destination))
     else:
         os.replace(source, destination)
 
@@ -235,7 +258,7 @@ def private_directory(path):
     """
     value = _absolute(path)
     assert_plain_path(value)
-    value.mkdir(parents=True, exist_ok=True, mode=0o700)
+    native_path(value).mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name != 'nt':
         value.chmod(0o700)
         return

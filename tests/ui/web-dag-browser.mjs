@@ -30,6 +30,17 @@ try{
  assert.equal(await page.locator('#two .react-flow__node').filter({hasText:'读取订单'}).locator('button').getAttribute('aria-pressed'),'true');
  await page.locator('#one .react-flow__node').filter({hasText:'订单资料'}).click();await page.evaluate(()=>window.finishSource([{id:'s_1',name:'已核对订单',project_id:'p1'}]));await page.waitForFunction(()=>document.querySelector('#one .workflow-graph-detail')?.textContent.includes('已核对订单'));assert.match(await page.locator('#one').innerText(),/与已采用版本不同/);assert.match(await page.locator('#two').innerText(),/尚未选择对应运行/);
  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(200);const small=await page.locator('#one nexus-flow-graph').boundingBox();assert(small.width<=390&&small.height>=240);assert(await page.locator('#one .react-flow__controls-zoomin').isVisible());await page.locator('#one .react-flow__controls-zoomin').click();
+ await page.evaluate(()=>{
+  const host=document.querySelector('#three'),node=(id,title,depends_on)=>({id,title,depends_on});
+  const plan={nodes:[node('load','读取资料',[]),node('sum','汇总收入',['load']),node('publish','发布结果',['sum'])]};
+  const assets={showNode(section,id){const b=document.createElement('button');b.textContent=id+'.json';b.className='file-target';const box=document.createElement('div');box.className='workflow-file-links';box.append(b);section.append(box)}};
+  window.renderWorkflowGroupDetail(host,{kind:'business',ids:['load','sum'],plan,assets});
+ });
+ await page.waitForSelector('#three .workflow-group-graph .react-flow__edge',{state:'attached'});
+ assert.equal(await page.locator('#three .workflow-group-graph .react-flow__node').count(),2);
+ await page.locator('#three .workflow-group-graph .react-flow__node').filter({hasText:'汇总收入'}).locator('button').click();
+ assert.equal(await page.evaluate(()=>document.activeElement.textContent),'sum.json');
+ assert.equal(await page.locator('#three .file-target').count(),2);
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log(JSON.stringify({react_flow_both_diagrams:true,browser_nodes_and_edges:true,node_business_explanations:true,version_state_preserved:true,no_network_requests:true,source_update_refreshes_selected_detail:true,mobile_controls_available:true,hidden_tab_reveals_graph:true}));
 }finally{await browser.close()}

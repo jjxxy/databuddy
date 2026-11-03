@@ -459,7 +459,8 @@ def edit_file(pid,value,turn=None):
     if start<0 or before.find(value.old_text,start+1)>=0:raise ValueError('待替换片段必须在当前文件中唯一出现，请缩小并重新核对')
     result=before.replace(value.old_text,value.new_text,1)
     if effect_id:put('agent_effect',{'project_id':pid,'path':value.path,'bytes':len(result.encode()),'before_sha256':digest,'after_sha256':hashlib.sha256(result.encode()).hexdigest()},effect_id)
-    receipt=workspace.write_file(pid,value.path,result)
+    from .project_data import write_chat_file
+    receipt=write_chat_file(pid,value.path,result,turn)
     return dict(receipt,before_sha256=digest,after_sha256=hashlib.sha256(result.encode()).hexdigest())
 
 def repetition(turn,step):

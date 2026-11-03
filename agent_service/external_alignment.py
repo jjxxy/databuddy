@@ -162,7 +162,7 @@ def local_candidate(pid,rid,anchor_source_id,expected,actor):
             else:
                 if digest(data.WorkflowDocument.model_validate_json(existing).model_dump())!=plan_hash:
                     raise ValueError('本地候选方案已变化，请重新核对')
-            wid=data.register(pid,path)['workflow_id']
+            wid=data._register(pid,path)['workflow_id']
             key='local_review_'+digest([pid,rid,expected,actor])
             job=data._enqueue_workflow(pid,wid,scheduled_key=key,expected_draft_sha256=plan_hash,
                 expected_source_versions={anchor_source_id:(reviewed['anchor_revision'],reviewed['source_sha256'])},

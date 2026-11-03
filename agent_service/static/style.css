@@ -142,8 +142,31 @@
 .flow-edit-handoff{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;margin:0 0 8px;border:1px solid #d6dfed;border-radius:10px;background:#f5f8fc;color:#34445a;font-size:13px;line-height:1.5}.flow-edit-handoff button{flex:none}
 @media(max-width:600px){.flow-edit-handoff{align-items:flex-start;flex-direction:column}}
 
-/* Conversation stays visible beside the optional workflow or result panel. */
-@media(min-width:1101px){.workspace-artifacts-panel{width:min(720px,46vw)}.artifacts-open #main{margin-right:min(720px,46vw)}}
+/* Give documents, tables and DAGs the available canvas. A list of results or
+   a text snippet keeps the compact drawer. Derive this from mounted content so
+   closing a file or switching projects cannot leave a stale layout mode. */
+body.artifacts-open:not(.workflow-expanded):has(
+ #workflow-panel:not([hidden]),
+ #artifact-preview:not([hidden]) #artifact-preview-body :is(iframe, canvas, table, .artifact-chart, .artifact-image)
+){
+ --results-width:var(--focused-results-width,100vw);
+}
+@media(min-width:1101px){
+ body{
+  --navigation-width:248px;
+  --focused-results-width:calc(100vw - var(--navigation-width) - clamp(358px,30vw,680px));
+  --results-width:min(720px,46vw);
+ }
+ .shell{grid-template-columns:var(--navigation-width) minmax(0,1fr)}
+ .workspace-artifacts-panel{width:var(--results-width)}
+ .artifacts-open #main{margin-right:var(--results-width)}
+}
+@media(max-width:1100px){
+ .workspace-artifacts-panel{width:var(--results-width,min(680px,100vw))}
+}
+@container nexus-workbench (max-width:680px){
+ .artifacts-open :is(.messages,.composer-wrap,.topbar){padding-inline:16px}
+}
 #workflow-panel{min-width:0}#workflow-panel .chat-workflows-host{max-width:none;margin:0;padding:16px 0 0}#workflow-panel .chat-workflows{border:0;padding:0}#artifact-content{min-width:0}
 
 /* Expand the flow into the viewport while keeping the live project chat usable. */

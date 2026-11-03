@@ -1,1 +1,13 @@
 .workflow-overview-notice,.workflow-overview-note,.workflow-overview-warning{font-size:13px;line-height:1.55;color:#52625a;margin:8px 0}.workflow-overview-warning{color:#a33}.workflow-overview-graph{width:100%;min-width:0}.workflow-overview-graph nexus-flow-graph{height:var(--workflow-overview-height,230px);min-height:180px}.workflow-overview-detail{margin:10px 0;border:1px solid #cbd7d0;border-radius:7px;background:white;padding:7px 12px;cursor:pointer}
+
+.workflow-project-files{padding:10px 12px;margin:12px 0;border:1px solid #dbe4df;border-radius:8px;font-size:13px}
+.workflow-project-files summary{cursor:pointer;color:#264d41;padding:4px}
+.workflow-file-links{display:grid;gap:4px;min-width:0}
+.workflow-file-links details{padding-left:12px;border-left:1px solid #dbe4df}
+.workflow-file-links button{display:block;max-width:100%;border:0;border-radius:4px;background:transparent;color:#235f4f;text-align:left;overflow-wrap:anywhere;padding:5px 7px;font:inherit;cursor:pointer}
+.workflow-file-links button:hover,.workflow-file-links button:focus-visible{background:#edf5f1}
+.workflow-file-viewer{min-width:0;overflow-wrap:anywhere;font-size:13px}
+.workflow-file-viewer:not(:empty){margin:10px 0}
+.workflow-file-viewer pre{max-height:24rem;overflow:auto;white-space:pre;background:#f5f7f6;border:1px solid #dbe4df;border-radius:6px;margin:.5rem 0;padding:12px;font:12px/1.6 ui-monospace,Consolas,monospace}
+.workflow-step-files h5,.workflow-step-files h6{margin:8px 0 4px}
+.workflow-step-files{padding:12px 0;border-bottom:1px solid #dbe4df}

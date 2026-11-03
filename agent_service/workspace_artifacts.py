@@ -234,6 +234,9 @@ def catalog(pid,kind='',offset=0,limit=40):
         item=_register(pid,*args,**kwargs)
         if item:items.append(item)
     for file in workspace.list_files(pid):
+        # Flow implementation files are discoverable from their exact version
+        # and node; keep them out of the user's list of business deliverables.
+        if workspace.generated_flow_file(file['path']):continue
         try:
             from .agent_handoff import _atomic_bytes,_read_bytes
             original=workspace.path_for(pid,file['path']);content=_read_bytes(original,256*1024);content.decode('utf-8');digest=_hash(content)

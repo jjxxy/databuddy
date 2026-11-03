@@ -34,7 +34,7 @@ def project(monkeypatch):
             if source.get('secret_config'):
                 raw=unseal(source['secret_config'])
                 if raw.get('stored_name'):(DATA/'uploads'/raw['stored_name']).unlink(missing_ok=True)
-    for kind in ('turn','conversation','source','source_version','browser_view','browser_device'):
+    for kind in ('turn','conversation','source','source_version','browser_view','browser_device','data_workflow','checkpoint'):
         for record in all_items(kind):
             if record.get('project_id')==pid:delete(kind,record['id'])
     delete('project',pid)

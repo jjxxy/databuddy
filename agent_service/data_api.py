@@ -158,8 +158,17 @@ def install(app,auth):
 
     @app.post('/api/projects/{pid}/data-workflows',dependencies=dependencies)
     def register_workflow(pid:str,value:data.RegisterWorkflow):
-        receipt=data.register(pid,value.path);workspace.checkpoint(pid,reason='保存数据加工方案')
-        return receipt
+        return data.register(pid,value.path)
+
+    @app.get('/api/projects/{pid}/data-workflows/{wid}/code-assets',dependencies=dependencies)
+    def data_code_assets(pid:str,wid:str,expected_digest:str,commit:str|None=None):
+        from .data_flow_assets import get_assets
+        return get_assets(pid,wid,expected_digest,commit)
+
+    @app.get('/api/projects/{pid}/data-workflows/{wid}/code-asset',dependencies=dependencies)
+    def data_code_file(pid:str,wid:str,expected_digest:str,path:str,commit:str|None=None):
+        from .data_flow_assets import get_assets
+        return get_assets(pid,wid,expected_digest,commit,path)
 
     @app.get('/api/projects/{pid}/data-workflows/{wid}/download',dependencies=dependencies)
     def download_workflow(pid:str,wid:str,expected_digest:str):
@@ -180,20 +189,7 @@ def install(app,auth):
 
     @app.put('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
     def edit_workflow(pid:str,wid:str,value:EditWorkflow):
-        with workspace.lock(pid):
-            w=data.owned(pid,'data_workflow',wid);current=data.load_document(pid,w['path'])
-            if data.digest(current.model_dump())!=value.expected_sha256:raise HTTPException(409,'方案已变化，请重新读取并核对后保存')
-            if set(value.document.bindings)!=set(value.document.plan.inputs):raise ValueError('输入绑定与方案不一致')
-            for binding in value.document.bindings.values():
-                if bool(binding.source_id)==bool(binding.result_id):raise ValueError('输入绑定必须唯一')
-                if binding.source_id:data.owned(pid,'source',binding.source_id)
-                else:data.result_folder(pid,binding.result_id)
-            if value.document.contract:
-                from .data_contracts import validate
-                validate(value.document.contract)
-            workspace.write_file(pid,w['path'],json.dumps(value.document.model_dump(),ensure_ascii=False,indent=2))
-            receipt=data.register(pid,w['path']);workspace._checkpoint(pid,None,'修改数据加工方案')
-        return receipt
+        return data.edit_document(pid,wid,value.expected_sha256,value.document)
 
     @app.post('/api/projects/{pid}/data-workflows/{wid}/run',dependencies=dependencies)
     def run_workflow(pid:str,wid:str):

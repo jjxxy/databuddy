@@ -25,7 +25,7 @@
   return KIND_LABELS[item.kind]||'其他工作步骤';
  }
  function elapsed(start,end){const a=Date.parse(start),b=end?Date.parse(end):Date.now();if(!Number.isFinite(a)||!Number.isFinite(b)||b<a)return '';const seconds=Math.floor((b-a)/1000);return seconds>=3600?Math.floor(seconds/3600)+'小时'+Math.floor(seconds%3600/60)+'分'+seconds%60+'秒':seconds>=60?Math.floor(seconds/60)+'分'+seconds%60+'秒':seconds+'秒'}
- function graph(document,plan,receipts,matching){
+ function graph(document,plan,receipts,matching,onNode){
   const wrap=node(document,'section',null,'flow-graph');wrap.append(node(document,'h3','业务处理流程'));
   const items=new Map(),nodes=[],issues=[],definitions=new Map(plan.nodes.filter(v=>v&&typeof v.id==='string').map(v=>[v.id,v]));
   for(const entry of plan.nodes){if(!entry||typeof entry.id!=='string'||items.has(entry.id)){issues.push('流程步骤编号缺失或重复，不能完整展示。');continue;}const item={id:entry.id,label:text(entry.title,text(entry.name,kindLabel(entry,definitions))),kindLabel:kindLabel(entry,definitions),description:text(entry.description,'暂无业务说明，请查看完整规则。'),deps:Array.isArray(entry.depends_on)?[...new Set(entry.depends_on.filter(v=>typeof v==='string'))]:[],rank:null};items.set(item.id,item);nodes.push(item);}
@@ -42,11 +42,11 @@
   const svg=el('svg',{viewBox:`0 0 ${width} ${height}`,width,height,role:'group','aria-label':'当前版本的业务步骤和依赖'}),defs=el('defs'),arrow=el('marker',{id:'business-flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'});arrow.append(el('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#53615b'}));defs.append(arrow);svg.append(defs);
   for(const item of nodes)for(const id of item.deps){const from=items.get(id);if(!from)continue;const x1=from.x+w,y1=from.y+h/2,x2=item.x,y2=item.y+h/2,mid=(x1+x2)/2;svg.append(el('path',{d:`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`,fill:'none',stroke:'#53615b','stroke-width':1.5,'marker-end':'url(#business-flow-arrow)'}));}
   const detail=node(document,'div','选择节点可查看业务说明。','flow-graph-detail');detail.setAttribute('aria-live','polite');
-  for(const item of nodes){const receipt=matching?receipts.get(item.id):null,state=receipt?(STATE_LABELS[receipt.status]||'状态未知'):matching?'本次未记录':'尚未选择对应运行';const g=el('g',{role:'button',tabindex:0,'aria-label':item.label+'：查看说明'});g.append(el('rect',{x:item.x,y:item.y,width:w,height:h,rx:7,fill:'#fff',stroke:'#303a35'}));const heading=el('text',{x:item.x+12,y:item.y+24,'font-size':14,'font-weight':600,fill:'#1d2a24'});heading.textContent=item.label.length>13?item.label.slice(0,13)+'…':item.label;g.append(heading);const status=el('text',{x:item.x+12,y:item.y+49,'font-size':12,fill:'#59655f'});status.textContent=state;g.append(status);function show(){detail.replaceChildren();detail.append(node(document,'strong',item.label),node(document,'p',item.kindLabel),node(document,'p',item.description),node(document,'p',state));appendFailure(document,detail,receipt);}g.addEventListener('click',show);g.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();show();}});svg.append(g)}
+  for(const item of nodes){const receipt=matching?receipts.get(item.id):null,state=receipt?(STATE_LABELS[receipt.status]||'状态未知'):matching?'本次未记录':'尚未选择对应运行';const g=el('g',{role:'button',tabindex:0,'aria-label':item.label+'：查看说明'});g.append(el('rect',{x:item.x,y:item.y,width:w,height:h,rx:7,fill:'#fff',stroke:'#303a35'}));const heading=el('text',{x:item.x+12,y:item.y+24,'font-size':14,'font-weight':600,fill:'#1d2a24'});heading.textContent=item.label.length>13?item.label.slice(0,13)+'…':item.label;g.append(heading);const status=el('text',{x:item.x+12,y:item.y+49,'font-size':12,fill:'#59655f'});status.textContent=state;g.append(status);function show(){detail.replaceChildren();detail.append(node(document,'strong',item.label),node(document,'p',item.kindLabel),node(document,'p',item.description),node(document,'p',state));appendFailure(document,detail,receipt);onNode?.(detail,item.id);}g.addEventListener('click',show);g.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();show();}});svg.append(g)}
   scroll.append(svg);wrap.append(scroll,detail);
   if(root.NexusFlowGraph){
    for(const item of nodes){const receipt=matching?receipts.get(item.id):null;item.caption=receipt?(STATE_LABELS[receipt.status]||'状态未知'):matching?'本次未记录':'尚未选择对应运行';}
-   scroll.replaceChildren();root.NexusFlowGraph.mount(scroll,nodes,id=>{const item=items.get(id);if(!item)return;detail.replaceChildren();detail.append(node(document,'strong',item.label),node(document,'p',item.kindLabel),node(document,'p',item.description),node(document,'p',item.caption));appendFailure(document,detail,matching?receipts.get(id):null);});
+   scroll.replaceChildren();root.NexusFlowGraph.mount(scroll,nodes,id=>{const item=items.get(id);if(!item)return;detail.replaceChildren();detail.append(node(document,'strong',item.label),node(document,'p',item.kindLabel),node(document,'p',item.description),node(document,'p',item.caption));appendFailure(document,detail,matching?receipts.get(id):null);onNode?.(detail,item.id);});
   }
   return wrap;
  }
@@ -74,7 +74,7 @@
   const sameRun=matching;
   const byId=new Map();if(sameRun)for(const receipt of receipts){const id=receipt?.node_id||receipt?.id;if(typeof id==='string'&&!byId.has(id))byId.set(id,receipt)}
   const ids=new Map(),definitions=new Map();for(const item of plan.nodes){if(item&&typeof item.id==='string'){ids.set(item.id,text(item.title,text(item.name,item.id)));definitions.set(item.id,item)}}
-  container.append(graph(document,plan,byId,sameRun));
+  container.append(graph(document,plan,byId,sameRun,options.onNode));
   const list=node(document,'ol',null,'flow-step-list');
   for(const item of plan.nodes){
    if(!item||typeof item.id!=='string')continue;

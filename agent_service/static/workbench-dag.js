@@ -72,7 +72,7 @@ window.renderBusinessWorkflowGraph = function (container, workflow, context = nu
   const detail=document.createElement('div');detail.className='workflow-graph-detail';detail.setAttribute('aria-live','polite');detail.textContent='选择流程节点，可以查看这一步的业务说明。';
   for (const node of nodes) {
     const group=create('g',{role:'button',tabindex:'0','aria-label':node.label+'：查看说明'}),rect=create('rect',{x:node.x,y:node.y,width:boxWidth,height:boxHeight,rx:'7',fill:'#fff',stroke:'#303a35','stroke-width':'1.2'});
-    function showDetail(){detail.replaceChildren();const heading=document.createElement('strong');heading.textContent=node.label;const body=document.createElement('p');body.textContent=node.description||'请查看完整规则。';detail.append(heading,body);}
+    function showDetail(){detail.replaceChildren();const heading=document.createElement('strong');heading.textContent=node.label;const body=document.createElement('p');body.textContent=node.description||'请查看完整规则。';detail.append(heading,body);context?.onNode?.(detail,node.type==='result'?'__overview_result__':node.id);}
     group.addEventListener('click',showDetail);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();showDetail();}});
     const title=create('title');title.textContent=node.label+(node.description?'：'+node.description:'');group.append(title,rect);
     const label=create('text',{x:node.x+12,y:node.y+25,'font-size':'14','font-weight':'600',fill:'#1d2a24'});label.textContent=node.label.length>13?node.label.slice(0,13)+'…':node.label;group.append(label);
@@ -81,7 +81,7 @@ window.renderBusinessWorkflowGraph = function (container, workflow, context = nu
   scroller.append(svg);container.append(scroller,detail);
   if(window.NexusFlowGraph){
     let selected=null;
-    const show=id=>{selected=id;const item=lookup.get(id)||nodes.find(value=>value.id===id);if(!item)return;detail.replaceChildren();const heading=document.createElement('strong');heading.textContent=item.label;const body=document.createElement('p');body.textContent=item.description||'请查看完整规则。';detail.append(heading,body)};
+    const show=id=>{selected=id;const item=lookup.get(id)||nodes.find(value=>value.id===id);if(!item)return;detail.replaceChildren();const heading=document.createElement('strong');heading.textContent=item.label;const body=document.createElement('p');body.textContent=item.description||'请查看完整规则。';detail.append(heading,body);context?.onNode?.(detail,item.type==='result'?'__overview_result__':item.id)};
     for(const item of nodes)item.caption=item.description;
     scroller.replaceChildren();const controller=window.NexusFlowGraph.mount(scroller,nodes,show);
     for(const item of nodes){const prior=item.paint;item.paint=()=>{prior();item.caption=item.description;controller.update();if(selected===item.id)show(item.id)}}

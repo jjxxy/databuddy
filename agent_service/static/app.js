@@ -137,7 +137,7 @@ function workflowRefs(turn){
  const found=[];const seen=new Set();function add(id,name){if(!/^(?:bf|wf)_[a-f0-9]{40}$/.test(id||'')||seen.has(id))return;seen.add(id);found.push({id,name:typeof name==='string'&&name.trim()?name:'业务流程'});}
  add(turn?.business_flow?.id,turn?.business_flow?.name);
  const trace=Array.isArray(turn?.agent_trace)?turn.agent_trace:[];const start=turn?.resumed_from&&Number.isInteger(turn.inherited_step_count)?Math.max(0,Math.min(trace.length,turn.inherited_step_count)):0;
- for(const step of trace.slice(start)){const obs=step?.observation;if(step?.tool==='register_data_workflow'&&step.status==='done'&&obs&&typeof obs==='object'&&!obs.error&&obs.executed!==false)add(obs.workflow_id,obs.name);}
+ for(const step of trace.slice(start)){const obs=step?.observation;if(['register_data_workflow','write_file','edit_file'].includes(step?.tool)&&step.status==='done'&&obs&&typeof obs==='object'&&!obs.error&&obs.executed!==false)add(obs.workflow_id,obs.name);}
  return found;
 }
 function businessFlowCard(turn){if(!projectId)return '';return workflowRefs(turn).map(value=>`<div class="business-flow-card"><strong>${esc(value.name)}</strong><span>查看当前流程</span><button type="button" class="inline-action" data-chat-flow="${esc(value.id)}">查看流程</button><button type="button" class="inline-action" data-download-flow="${esc(value.id)}">下载当前流程</button></div>`).join('')}
