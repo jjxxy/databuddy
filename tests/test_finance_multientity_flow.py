@@ -6,10 +6,10 @@ from agent_service.business_flow_data import source_table, table_workflow, valid
 from agent_service.business_flow_engine import Handler, run
 from agent_service.config import TOKEN
 from agent_service.execution import process_once
-from agent_service.store import get, uid
+from agent_service.store import delete, get, uid
 
 
-def test_uploaded_multientity_mapping_preserves_keys_values_and_evidence():
+def test_uploaded_multientity_mapping_preserves_keys_values_and_evidence(request):
     client=TestClient(app);headers={'Authorization':'Bearer '+TOKEN}
     def req(method,path,**kwargs):
         response=client.request(method,path,headers=headers,**kwargs)
@@ -30,6 +30,8 @@ def test_uploaded_multientity_mapping_preserves_keys_values_and_evidence():
     mapping=upload('mapping.csv','法人,客户,期间,归属\nA,C1,2026-01,东区\nB,C1,2026-01,南区\nA,C1,2026-02,西区\n')
     turn=req('POST',base+'/messages',json={'text':'按法人客户期间核对归属','request_id':uid(),
                                            'source_ids':[sales['id'],mapping['id']]})
+    # This test exercises the flow directly rather than executing the turn.
+    request.addfinalizer(lambda:delete('turn',turn['id']))
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     def col(name,kind='text',**extra):return {'name':name,'data_type':kind,'meaning':name,**extra}
     def tab(columns):return {'meaning':'已上传资料','grain':['nexus_row'],

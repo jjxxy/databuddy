@@ -10,7 +10,17 @@ from agent_service.business_flow_engine import BusinessFlow,Handler,run
 from agent_service.business_flow_data import source_table,table_workflow,validate_source,validate_table
 
 
-def test_parameter_changes_exact_sum_without_changing_formula_or_schema():
+@pytest.fixture
+def created_turns():
+    """Remove only test-owned messages so a later global worker cannot run them."""
+    from agent_service.store import delete
+    ids=[]
+    try:yield ids
+    finally:
+        for turn_id in ids:delete('turn',turn_id)
+
+
+def test_parameter_changes_exact_sum_without_changing_formula_or_schema(created_turns):
     client=TestClient(app);headers={'Authorization':'Bearer '+TOKEN}
     def req(method,path,**kw):
         r=client.request(method,path,headers=headers,**kw);assert r.status_code==200,r.text;return r.json()
@@ -21,6 +31,7 @@ def test_parameter_changes_exact_sum_without_changing_formula_or_schema():
         assert process_once()
     s=get('source',s['id']);assert s['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处生成汇总报告','request_id':uid(),'source_id':s['id']})
+    created_turns.append(turn['id'])
     context={'project_id':pid,'actor_id':'owner','turn_id':turn['id'],'run_id':uid()}
     plan={'version':1,'name':'收入','inputs':{'table':{'meaning':'明细','grain':['nexus_row'],'columns':[
         {'name':'nexus_row','data_type':'text','meaning':'行号'}, {'name':'c_1','data_type':'text','meaning':'办事处'},

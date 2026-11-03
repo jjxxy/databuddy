@@ -6,6 +6,7 @@ explicit. Passing this case is not evidence of general financial accuracy.
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import json
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -15,6 +16,16 @@ from agent_service.config import TOKEN
 from agent_service.execution import process_once, queue_due
 from agent_service.jobs import get_job
 from agent_service.store import get, patch, uid
+
+
+@pytest.fixture
+def created_turns():
+    """Remove only the messages created by the current acceptance test."""
+    from agent_service.store import delete
+    ids=[]
+    try:yield ids
+    finally:
+        for turn_id in ids:delete('turn',turn_id)
 
 
 def test_revenue_refund_two_sources_candidate_release_schedule_and_rollback():
@@ -245,7 +256,7 @@ def test_agent_proposal_requires_explicit_approval_before_code_or_run(monkeypatc
     assert json.loads(git(project_repo,'show',version+':'+path))['rules']==json.loads(git(pipeline['repository'],'show',commit+':plan.json'))['spec']
 
 
-def test_agent_two_source_proposal_runs_confirmed_join(monkeypatch):
+def test_agent_two_source_proposal_runs_confirmed_join(monkeypatch,created_turns):
     """An approved cross-source request uses the actual Agent confirmation path."""
     from agent_service import agent, provider
     from agent_service.conversation import tick
@@ -266,7 +277,7 @@ def test_agent_two_source_proposal_runs_confirmed_join(monkeypatch):
     refund=upload('refund.csv','订单号,退款\nA,10.10\nB,2.00\n')
     turn=request('POST',root+'/messages',json={'text':'按办事处汇总收入并扣除退款',
                  'request_id':uid(),'source_ids':[income['id'],refund['id']]})
-    tid=turn['id']; session=get('turn',tid)['session_id']
+    tid=turn['id'];created_turns.append(tid);session=get('turn',tid)['session_id']
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'https://fixture.invalid/v1','model':'fixture','share_data':True})
     spec=dict(income['proposed_spec'],primary_key='c_1',group_by='c_2',amount_field='m_net',
         computations=[{'name':'m_net','label':'净收入','operation':'subtract','left_field':'c_3','right_field':'j1_c_2'}],

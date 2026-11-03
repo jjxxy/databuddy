@@ -177,6 +177,18 @@ def test_real_agent_search_read_build_cites_and_versions_evidence(fixture,monkey
     tid=response.json()['id']
     for _ in range(15):
         tick();t=get('turn',tid)
+        if t['state'] in ('done','failed'):break
+    t=get('turn',tid)
+    assert t['state']=='done' and t['outcome']=='needs_input'
+    proposal=get('business_proposal',t['business_proposal_id'])
+    assert proposal['state']=='pending'
+    assert not [p for p in all_items('pipeline') if p.get('project_id')==pid]
+    decision=client.post(f"/api/projects/{pid}/business-proposals/{proposal['id']}/decision",headers=H,
+        json={'digest':proposal['digest'],'session_id':t['session_id'],'approve':True})
+    assert decision.status_code==200,decision.text
+    assert decision.json()['state']=='approved'
+    for _ in range(15):
+        tick();t=get('turn',tid)
         if t['state']=='waiting_run':assert process_once()
         if t['state'] in ('done','failed'):break
     t=get('turn',tid)

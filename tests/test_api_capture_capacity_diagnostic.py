@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 
 from agent_service import business_flows,provider
 from agent_service.execution import process_once
-from agent_service.store import get,put,seal,uid,now,unseal
+from agent_service.store import all_items,delete,get,put,seal,uid,now,unseal
 from test_project_data import project
 
 
@@ -22,6 +22,7 @@ def test_large_api_capture_reports_capacity_and_does_not_publish(monkeypatch):
             self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    pid=None
     try:
         pid=project();tid='t_'+uid()
         put('turn',{'project_id':pid,'actor_id':'owner','state':'done','outcome':'needs_input',
@@ -53,3 +54,8 @@ def test_large_api_capture_reports_capacity_and_does_not_publish(monkeypatch):
         assert not get('business_flow',flow['id']).get('published_run')
     finally:
         server.shutdown();server.server_close();thread.join()
+        # A failed workflow intentionally schedules an agent diagnosis. Do not
+        # let this test-owned background turn consume later tests' model mocks.
+        if pid:
+            for turn in all_items('turn'):
+                if turn.get('project_id')==pid:delete('turn',turn['id'])

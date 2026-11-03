@@ -160,11 +160,11 @@ def test_ambiguous_or_empty_record_candidates_never_drop_sibling_data(raw):
     assert fields[0]['label']=='JSON原文' and rows[0]['c_1']==raw.decode()
 
 
-def test_real_multi_attachment_message_probes_all_files_including_nested_json(monkeypatch):
+def test_real_multi_attachment_message_probes_all_files_including_nested_json(monkeypatch,request):
     from fastapi.testclient import TestClient
     from agent_service import api,conversation,execution,model_catalog
     from agent_service.config import TOKEN
-    from agent_service.store import get
+    from agent_service.store import delete,get
     from agent_service.connectors import verified_file_source
     monkeypatch.setattr(model_catalog,'select',lambda *a,**k:{})
     headers={'Authorization':'Bearer '+TOKEN}
@@ -183,6 +183,8 @@ def test_real_multi_attachment_message_probes_all_files_including_nested_json(mo
             'text':'结合三份资料核对','source_ids':ids,'interaction_mode':'work','request_id':'message-'+uid()})
         assert result.status_code==200,result.text
         turn=get('turn',result.json()['id'])
+        # This inspection deliberately leaves the task unexecuted.
+        request.addfinalizer(lambda:delete('turn',turn['id']))
         assert turn['source_ids']==ids and not conversation.prepare_attachments(turn)
         for _ in range(20):
             if all(get('source',sid)['status']=='ready' for sid in ids):break

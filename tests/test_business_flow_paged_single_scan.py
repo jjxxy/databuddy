@@ -9,7 +9,17 @@ from agent_service import business_flow_data as data,provider,business_flows
 from agent_service.actor_context import actor_scope
 
 
-def test_paging_verifies_every_snapshot_and_scans_target_once(monkeypatch):
+@pytest.fixture
+def created_turns():
+    """Remove only test-owned messages so a later global worker cannot run them."""
+    from agent_service.store import delete
+    ids=[]
+    try:yield ids
+    finally:
+        for turn_id in ids:delete('turn',turn_id)
+
+
+def test_paging_verifies_every_snapshot_and_scans_target_once(monkeypatch,created_turns):
     monkeypatch.setattr(data,'_INLINE_ROWS_LIMIT',1)
     monkeypatch.setattr(provider,'settings',lambda:{'base_url':'','model':'','share_data':True})
     c=TestClient(app);h={'Authorization':'Bearer '+TOKEN}
@@ -22,6 +32,7 @@ def test_paging_verifies_every_snapshot_and_scans_target_once(monkeypatch):
         assert process_once()
     source=get('source',source['id']);assert source['status']=='ready'
     turn=req('POST',base+'/messages',json={'text':'按办事处生成收入汇总','request_id':uid(),'source_id':source['id']})
+    created_turns.append(turn['id'])
     schema={'meaning':'收入明细','grain':['nexus_row'],'columns':[{'name':'nexus_row','data_type':'text','meaning':'行号'},
         {'name':'c_1','data_type':'text','meaning':'办事处'}, {'name':'c_2','data_type':'decimal','meaning':'收入','unit':'CNY','aggregation':'additive'}]}
     plan={'version':1,'name':'汇总','inputs':{'table':schema},'stages':[{'id':'total','kind':'aggregate','description':'汇总','input':'table',

@@ -13,7 +13,17 @@ from agent_service.business_flow_engine import BusinessFlow, Handler, run
 from agent_service.business_flow_data import source_table, table_workflow, validate_source, validate_table
 
 
-def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts():
+@pytest.fixture
+def created_turns():
+    """Remove only test-owned messages so a later global worker cannot run them."""
+    from agent_service.store import delete
+    ids=[]
+    try:yield ids
+    finally:
+        for turn_id in ids:delete('turn',turn_id)
+
+
+def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts(created_turns):
     client=TestClient(app);headers={'Authorization':'Bearer '+TOKEN}
     def request(method,path,**kwargs):
         response=client.request(method,path,headers=headers,**kwargs)
@@ -26,6 +36,7 @@ def test_real_csv_source_and_typed_sum_preserve_duplicate_amounts():
         data={'request_id':uid(),'local_processing':'true'})
     assert process_once(); source=get('source',source['id'])
     turn=request('POST',root+'/messages',json={'text':'按办事处汇总','request_id':uid(),'source_id':source['id']})
+    created_turns.append(turn['id'])
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     plan={'version':1,'name':'精确汇总','inputs':{'table':{'meaning':'收入明细','grain':['nexus_row'],
         'columns':[{'name':'nexus_row','data_type':'text','meaning':'本次资料行号'},
@@ -109,7 +120,7 @@ def test_model_or_untrusted_user_input_cannot_be_a_table_workflow_source():
             BusinessFlow.model_validate(doc)
 
 
-def test_same_workbook_distinct_selections_and_mapping_survive_processing():
+def test_same_workbook_distinct_selections_and_mapping_survive_processing(created_turns):
     from io import BytesIO
     from openpyxl import Workbook
     workbook=Workbook();first=workbook.active;first.title='上半年'
@@ -130,6 +141,7 @@ def test_same_workbook_distinct_selections_and_mapping_survive_processing():
         assert process_once()
     assert source['status']=='ready'
     turn=req('POST',root+'/messages',json={'text':'汇总两张表','request_id':uid(),'source_id':source['id']})
+    created_turns.append(turn['id'])
     context={'project_id':pid,'turn_id':turn['id'],'actor_id':'owner'}
     pin={'source_id':source['id'],'revision':source['revision'],'content_hash':source['content_hash']}
     reads=[]

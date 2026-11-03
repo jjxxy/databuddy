@@ -1,8 +1,11 @@
 import json,time,threading,subprocess,sys,os
 from pathlib import Path
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from croniter import croniter
 from fastapi.testclient import TestClient
 from agent_service.api import app
-from agent_service.config import DATA,TOKEN
+from agent_service.config import DATA,TOKEN,TIMEZONE
 from agent_service.store import get,put,all_items,patch,engine
 from agent_service.execution import process_once,enqueue,queue_due
 from agent_service import jobs as q
@@ -34,8 +37,12 @@ def test_manual_release_rollback_and_schedule_uses_active_code():
     assert process_once();new=get('pipeline',p['id'])
     assert new['active_commit']==p['commit'] and new['commit']!=p['commit']
     assert client.get(f'/api/pipelines/{p["id"]}/result',headers=headers).json()['manifest']['spec']['object_label']!=spec['object_label']
-    client.post(f'/api/pipelines/{p["id"]}/schedule',headers=headers,json={'cron':'0 9 * * *'})
-    patch('pipeline',p['id'],next_due='2000-01-01T00:00:00+00:00')
+    schedule=client.post(f'/api/pipelines/{p["id"]}/schedule',headers=headers,json={'cron':'0 9 * * *'})
+    assert schedule.status_code==200,schedule.text
+    # Use the most recent occurrence: old dates deliberately pause catch-up
+    # instead of silently skipping potentially material business periods.
+    due=croniter('0 9 * * *',datetime.now(ZoneInfo(TIMEZONE))).get_prev(datetime).astimezone(timezone.utc)
+    patch('pipeline',p['id'],next_due=due.isoformat())
     queue_due();queued=q.list_jobs(target=p['id'],status='queued');assert queued[0]['commit']==p['commit']
     assert process_once()
     latest=get('pipeline',p['id']);assert latest['candidate_run']==new['candidate_run']

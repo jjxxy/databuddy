@@ -3,8 +3,19 @@ from fastapi.testclient import TestClient
 from agent_service.api import app
 from agent_service.config import TOKEN
 from agent_service import conversation,project_data,workspace
-from agent_service.store import get,uid
+from agent_service.store import all_items, delete, get,uid
 from test_project_data import project,source,document,registered
+
+
+@pytest.fixture(autouse=True)
+def cleanup_submitted_turns():
+    # These tests inspect submissions without executing them. Leaving their
+    # pending rows behind lets the real global scheduler process them in later
+    # tests and consume another test's mocked model response.
+    previous={item['id'] for item in all_items('turn')}
+    yield
+    for item in all_items('turn'):
+        if item['id'] not in previous:delete('turn',item['id'])
 
 
 def test_selected_flow_is_project_scoped_versioned_and_preserves_text():

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import select
 import signal
 import socket
 import sqlite3
@@ -65,19 +66,45 @@ def process_identity(pid):
         return None
 
 
-def owns_process(record):
-    if not isinstance(record, dict) or type(record.get('pid')) is not int or record['pid'] <= 1:
-        return False
+def process_state(record):
+    """Return owned, missing, different or unknown without signalling a process."""
+    if record is None:
+        return 'missing'
+    if (not isinstance(record, dict) or type(record.get('pid')) is not int or record['pid'] <= 1
+            or not isinstance(record.get('identity'), dict) or not isinstance(record.get('instance'), str)):
+        return 'unknown'
     pid = record['pid']
-    if process_identity(pid) != record.get('identity') or not record.get('identity'):
-        return False
     try:
+        # A /proc mount from a different PID namespace cannot identify this PID.
+        if os.readlink('/proc/self') != str(os.getpid()):
+            return 'unknown'
+        stat = Path(f'/proc/{pid}/stat').read_text()
+        fields = stat[stat.rfind(')') + 2:].split()
+        if fields[0] == 'Z':
+            return 'missing'
+        identity = {'start_ticks': fields[19],
+                    'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip()}
+        if identity != record['identity']:
+            return 'different'
         command = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
         environment = Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
-        return (command[1:3] == [b'-m', b'agent_service.cloud']
-                and ('NEXUS_NATIVE_INSTANCE=' + record['instance']).encode() in environment)
-    except (OSError, KeyError):
-        return False
+        return ('owned' if command[1:3] == [b'-m', b'agent_service.cloud']
+                and ('NEXUS_NATIVE_INSTANCE=' + record['instance']).encode() in environment else 'different')
+    except FileNotFoundError:
+        # hidepid and concurrent exit are distinct; kill(0) never sends a signal.
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return 'missing'
+        except OSError:
+            pass
+        return 'unknown'
+    except (OSError, IndexError, ValueError):
+        return 'unknown'
+
+
+def owns_process(record):
+    return process_state(record) == 'owned'
 
 
 def credentials(state):
@@ -128,13 +155,60 @@ def display(record):
 
 
 def stop_service(record):
-    if not owns_process(record):
+    """Stop only the verified recorded process, using a non-reusable handle."""
+    state = process_state(record)
+    if state == 'missing':
         return True
-    os.kill(record['pid'], signal.SIGTERM)
-    deadline = time.monotonic() + 25
-    while owns_process(record) and time.monotonic() < deadline:
-        time.sleep(0.2)
-    return not owns_process(record)
+    if state != 'owned':
+        return False
+    if not (hasattr(os, 'pidfd_open') and hasattr(signal, 'pidfd_send_signal')):
+        return False
+    try:
+        fd = os.pidfd_open(record['pid'])
+    except OSError:
+        return process_state(record) == 'missing'
+    try:
+        # Recheck after acquiring the handle; never signal a replacement PID.
+        if process_state(record) != 'owned':
+            return False
+        try:
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+            poller = select.poll()
+            poller.register(fd, select.POLLIN)
+            return bool(poller.poll(25000))
+        except OSError:
+            return False
+    finally:
+        os.close(fd)
+
+
+def stop_launched_process(process):
+    """Stop our still-owned child through a kernel PID handle, never a reused PID.
+
+    A pidfd names the original process even if a numeric PID is later reused.
+    waitid(P_PIDFD) also verifies it is our child before signalling. If this
+    kernel cannot provide those guarantees, report an unconfirmed stop.
+    """
+    if process.poll() is not None:
+        return True
+    if not (hasattr(os, 'pidfd_open') and hasattr(os, 'P_PIDFD')
+            and hasattr(os, 'waitid') and hasattr(signal, 'pidfd_send_signal')):
+        return False
+    try:
+        fd = os.pidfd_open(process.pid)
+    except OSError:
+        return process.poll() is not None
+    try:
+        try:
+            status = os.waitid(os.P_PIDFD, fd, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if status is None:
+                signal.pidfd_send_signal(fd, signal.SIGTERM)
+            process.wait(timeout=25)
+            return True
+        except (OSError, ChildProcessError, subprocess.TimeoutExpired):
+            return False
+    finally:
+        os.close(fd)
 
 
 def persisted_model(state):
@@ -159,7 +233,10 @@ def validate_opencode(binary):
 def start(args, state):
     old = read_json(state / 'process.json')
     access = credentials(state)
-    if owns_process(old):
+    old_state = process_state(old)
+    if old_state in ('unknown', 'different'):
+        raise ValueError('Existing supervisor identity cannot be confirmed; inspect the process record before starting. No process was signalled.')
+    if old_state == 'owned':
         if not service_ready(old, access['APP_TOKEN']):
             raise ValueError('Nexus WorkStudio supervisor is running but services are not ready. Check logs or stop before restarting.')
         display(old)
@@ -227,9 +304,11 @@ def start(args, state):
             display(record)
             return record
         time.sleep(1)
-    stopped = stop_service(record)
+    stopped = stop_launched_process(process)
+    if stopped:
+        (state / 'process.json').unlink(missing_ok=True)
     raise ValueError(f'Services did not become ready within {args.wait}s. See {logfile}. '
-                     + ('Supervisor stopped.' if stopped else 'Supervisor still running; use stop and inspect logs.'))
+                     + ('Supervisor stopped.' if stopped else 'Supervisor stop could not be confirmed; inspect the process and logs.'))
 
 
 def main(argv=None):
@@ -270,13 +349,19 @@ def main(argv=None):
                 else:
                     print('No log file yet.')
             elif args.action == 'stop':
+                current_state = process_state(record)
+                if current_state == 'different':
+                    raise ValueError('Recorded PID identifies a different process; no process was signalled. Inspect the process record.')
+                if current_state == 'unknown':
+                    raise ValueError('Supervisor identity could not be confirmed; no process was signalled. Inspect the process record.')
                 if not stop_service(record):
-                    raise ValueError('Supervisor did not stop in 25 seconds; inspect logs. No unrelated process was signalled.')
+                    raise ValueError('Supervisor identity or shutdown could not be confirmed; inspect the process record and logs. No unrelated process was signalled.')
                 (state / 'process.json').unlink(missing_ok=True)
                 print('Nexus WorkStudio stopped. Data and credentials retained.')
             elif args.action == 'status':
-                if not owns_process(record):
-                    print('Nexus WorkStudio is stopped.')
+                current_state = process_state(record)
+                if current_state != 'owned':
+                    print({'missing':'Nexus WorkStudio is stopped.', 'different':'Recorded PID identifies a different process; inspect the process record.', 'unknown':'Supervisor identity cannot be confirmed; inspect the process record.'}[current_state])
                     return 1
                 display(record)
                 if not service_ready(record, credentials(state)['APP_TOKEN']):
@@ -285,8 +370,8 @@ def main(argv=None):
                 print('API, worker and agent are ready.')
             elif args.action == 'start':
                 record = start(args, state)
-            elif not owns_process(record):
-                raise ValueError('Nexus WorkStudio is stopped. Run start first.')
+            elif process_state(record) != 'owned':
+                raise ValueError('Supervisor is stopped or its identity cannot be confirmed. Inspect the process record before opening.')
             else:
                 display(record)
         if args.action in ('start', 'open') and not args.no_open:

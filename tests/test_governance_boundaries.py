@@ -38,7 +38,12 @@ def test_quote_contains_exact_code_and_does_not_inherit_model_status():
     m=registry.declaration(p,{'id':'run','commit':'b'*40},{'spec':{'amount_field':'a','metric_definition':'退款后收入','currency':'CNY','metric_status':'confirmed'}})
     assert m['status']=='proposed'
     assert registry.confirmation_text(m)=='确认指标：退款后收入；单位：CNY；版本：bbbbbbbbbbbb'
-    assert registry.status(p,{'id':'run','commit':'b'*40},{'spec':{'amount_field':'a'}})=='draft'
+    assert registry.status(p,{'id':'run','commit':'b'*40},{'spec':{'amount_field':'a'}})=='requires_review'
+    source={'id':'source','kind':'file','name':'orders.csv','revision':1,'content_hash':'a'*64}
+    run={'id':'run','commit':'b'*40,'source_snapshot':{'source':source}}
+    manifest={'spec':{'amount_field':'a','metric_status':'confirmed'},'inputs':[
+        {'source_id':'source','source_revision':1,'evidence':{'content_sha256':'a'*64}}]}
+    assert registry.status(p,run,manifest)=='draft'
 
 
 def test_chat_only_discovers_read_tools_for_governance():
