@@ -99,6 +99,10 @@ def test_real_report_uses_frozen_sources_steps_and_exact_report_values():
     assert value['steps'][0]['input_rows'] == value['steps'][0]['output_rows'] == 2
     assert '本期净收入' in value['steps'][0]['description']
     assert value['metrics'][0]['value'] == '300.000002'  # Never a JSON float.
+    term=next(item for item in value['terms'] if item['name']=='actual')
+    assert term['meaning']=='本期净收入' and term['unit']=='CNY'
+    assert term['period']=='2026-09' and term['aggregation']=='additive'
+    assert 'source_ref' not in term and 'input_evidence' not in term
     assert value['metrics'][1]['value'] == '0.000002'
     assert '实际值 300.000002，比较基数 300' in value['metrics'][1]['description']
     assert '变化率保留12位' in value['metrics'][1]['description']
@@ -536,3 +540,20 @@ def test_actual_historic_float_rounding_is_visible_and_not_certified(monkeypatch
     warning=next(item for item in explanation['checks'] if item['label']=='历史数值计算')
     assert warning['status']=='needs_review' and '可能丢失精度' in warning['detail']
     assert 'SELECT' not in response.text and 'CAST(' not in response.text
+
+
+def test_report_terms_reject_a_frozen_schema_mismatch(monkeypatch):
+    from agent_service import result_delivery
+    pid, rid, report, artifact = create_report()
+    original=result_delivery.read_handoff
+    def changed(*args,**kwargs):
+        page=original(*args,**kwargs)
+        context=dict(page['context']);semantics=dict(context['output_semantics'])
+        columns=[dict(column) for column in semantics['columns']]
+        columns[0]['meaning']='虚构口径'
+        semantics['columns']=columns;context['output_semantics']=semantics;page['context']=context
+        return page
+    monkeypatch.setattr(result_delivery,'read_handoff',changed)
+    response=client.get(url(pid,artifact['id']),headers=HEADERS)
+    assert response.status_code==409 and '字段含义' in response.text
+    assert '虚构口径' not in response.text

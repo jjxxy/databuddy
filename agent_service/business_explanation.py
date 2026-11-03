@@ -453,9 +453,28 @@ def explain_artifact(pid: str, artifact_id: str) -> dict:
     if (type(evaluation.get('input_rows')) is int and evaluation['input_rows']!=page['total']
             or type(evaluation.get('selected_rows')) is int and not 0<=evaluation['selected_rows']<=page['total']):
         raise ArtifactError('报告计算范围与完整结果的行数不一致')
-    output_semantics = manifest.get('output_semantics') or {}
+    output_semantics = manifest.get('output_semantics')
+    frozen_semantics = context.get('output_semantics') or page.get('schema')
+    if not isinstance(output_semantics,(dict,list)) or digest(output_semantics)!=digest(frozen_semantics):
+        raise ArtifactError('报告字段含义与固定结果的语义记录不一致，未返回说明')
+    columns = output_semantics.get('columns',[]) if isinstance(output_semantics,dict) else output_semantics
+    if not isinstance(columns,list) or len(columns)>200:
+        raise ArtifactError('报告字段说明不完整，未返回说明')
     formats = {column.get('name'):column.get('value_format')
-               for column in output_semantics.get('columns',[]) if isinstance(column,dict)}
+               for column in columns if isinstance(column,dict)}
+    terms=[]
+    for column in columns:
+        if not isinstance(column,dict) or not isinstance(column.get('name'),str):
+            raise ArtifactError('报告字段说明不完整，未返回说明')
+        # These are declarations in the frozen output, never model-generated
+        # definitions or a claim that business terminology has been approved.
+        def text_value(key):
+            value=column.get(key)
+            return _bounded(value) if isinstance(value,str) else ''
+        terms.append({'name':text_value('name'),'label':text_value('label') or text_value('name'),
+                      'meaning':text_value('meaning'),'data_type':text_value('data_type'),'unit':text_value('unit'),
+                      'period':text_value('period'),'aggregation':text_value('aggregation'),
+                      'value_format':text_value('value_format')})
     metrics=[]
     for item in evaluation['assertions']:
         if not isinstance(item,dict):
@@ -566,4 +585,4 @@ def explain_artifact(pid: str, artifact_id: str) -> dict:
         result_artifact_id = None
     return {'report':{'id':report_id,'title':recipe.get('title') or '业务报告','period':recipe.get('period')},
             'run_id':run_id,'integrity':{'status':'verified','detail':'报告清单、文字版与完整结果摘要已核对；Office 文件下载时另行核验，业务正确性仍需核实。'},
-            'result_artifact_id':result_artifact_id,'sources':sources,'steps':steps,'metrics':metrics,'checks':checks,'limitations':limitations}
+            'result_artifact_id':result_artifact_id,'sources':sources,'steps':steps,'metrics':metrics,'terms':terms,'checks':checks,'limitations':limitations}

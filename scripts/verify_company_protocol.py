@@ -42,12 +42,15 @@ def main():
         with tempfile.TemporaryDirectory(prefix='nexus-company-protocol-') as tmp:
             tmp=Path(tmp)
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-            env=dict(os.environ,DATA_DIR=str(tmp/'data'),DATABASE_URL='sqlite:///'+str(tmp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
+            env=dict(os.environ,DATA_DIR=str(tmp/'data'),DATABASE_URL='sqlite:///'+str(tmp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),NEXUS_OPERATOR_TOKEN=secrets.token_urlsafe(32),NEXUS_AUTH_MODE='token',PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
+            env.pop('ATLAS_OPERATOR_TOKEN',None)
             process=None
             with (tmp/'service.log').open('w') as log:
                 try:
                     with httpx.Client(base_url=f'http://127.0.0.1:{port}',headers={'Authorization':'Bearer '+env['APP_TOKEN']},trust_env=False,timeout=20) as client:
                         def request(method,path,**kwargs):
+                            if path=='/api/model' or path.endswith('/company-search'):
+                                kwargs['headers']={**kwargs.get('headers',{}),'X-Nexus-Operator-Token':env['NEXUS_OPERATOR_TOKEN']}
                             result=client.request(method,path,**kwargs);result.raise_for_status();return result.json()
                         def wait(check):
                             deadline=time.monotonic()+90

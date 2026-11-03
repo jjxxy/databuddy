@@ -138,6 +138,20 @@
    item.append(textNode('p',evidenceText(metric.description)||'计算口径未记录，请核对报告与保存的规则。'));
    const count=evidenceCount(metric.rows);if(count!=='')item.append(textNode('p','涉及记录 '+count+' 条'));metrics.append(item);
   }
+  const terms=evidenceList(value?.terms);
+  if(terms.length){
+   const detail=document.createElement('details'),summary=textNode('summary','查看报告字段与口径');detail.append(summary);
+   detail.append(textNode('p','以下是该报告固定结果中保存的字段声明，不代表业务口径已核准。','dialog-description'));
+   const list=document.createElement('ul');for(const term of terms){
+    const item=document.createElement('li'),label=evidenceText(term.label)||evidenceText(term.name)||'字段未命名';
+    item.append(textNode('strong',label));if(evidenceText(term.name)&&term.name!==label)item.append(document.createTextNode('（'+term.name+'）'));
+    item.append(textNode('p',evidenceText(term.meaning)||'字段含义未记录，请核对业务口径。'));
+    const parts=[];if(evidenceText(term.unit))parts.push('单位：'+term.unit);if(evidenceText(term.period))parts.push('期间：'+term.period);
+    if(['decimal','integer'].includes(term.data_type))parts.push('可加性：'+({'additive':'可加','non_additive':'不可直接相加','unknown':'未确认'}[term.aggregation]||'未记录'));
+    if(term.value_format==='percent_fraction')parts.push('百分比按比例小数保存');else if(term.value_format==='percent_points')parts.push('百分比按百分点保存');
+    if(parts.length)item.append(textNode('p',parts.join('；')));list.append(item);
+   }detail.append(list);box.append(detail);
+  }
   const checks=evidenceSection(box,'4. 做了哪些检查');evidenceChecks(checks,value?.checks);
   const limits=evidenceSection(box,'仍需注意');limits.className='evidence-limitations';
   const limitations=Array.isArray(value?.limitations)?value.limitations.filter(v=>typeof v==='string'&&v):[];
@@ -169,7 +183,7 @@
     const numericEvidence=contract?.numeric_policy==='exact_decimal_v1'&&Number.isSafeInteger(contract?.rows)&&contract.rows>=0&&Number.isSafeInteger(total)&&total>=0&&contract.rows===total;
     const legacy=checks.some(check=>typeof check?.name==='string'&&/^(range|total):/.test(check.name))&&!numericEvidence,substantive=checks.filter(check=>typeof check?.name==='string'&&check.name.trim()&&check.name!=='row_count');
     note.textContent=legacy?'数值范围或对账检查的精度或记录范围未确认，请从原始资料重新运行并复核；范围检查本身不检查缺失值。':!checks.length?'未记录可验证的业务验收规则；请核对缺失值、来源、计算口径与结果。':checks.some(check=>check?.status==='fail')?'保存记录显示部分检查未通过，请先核对来源、计算口径与结果。':!substantive.length?'未记录可核对的行数范围或其他业务验收规则；请核对缺失值、来源、计算口径与结果。':'已记录的检查不代表来源齐全或财务口径正确；范围检查本身不检查缺失值，请确认是否另有缺失值检查。';note.hidden=false;
-   }else if(['office','agent','code'].includes(value.kind)){note.textContent='此成果的预览未提供完整计算过程，请另行核对来源和处理依据。';note.hidden=false}
+   }else if(['office','agent','code'].includes(value.kind)){note.textContent=value.kind==='office'&&typeof value.semantic_warning==='string'&&value.semantic_warning?value.semantic_warning:'此成果的预览未提供完整计算过程，请另行核对来源和处理依据。';note.hidden=false}
    else if(['application','chart'].includes(value.kind)){note.textContent='文件完整性不代表数值和业务口径正确，请结合来源和处理依据复核。';note.hidden=false}
    return;
   }

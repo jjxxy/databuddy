@@ -5,7 +5,7 @@
  const id=new URLSearchParams(location.search).get('id')||'',el=s=>document.querySelector(s);
  const status=el('#share-status'),content=el('#share-content'),head=el('#share-head'),body=el('#share-body');
  const previous=el('#share-previous'),next=el('#share-next'),download=el('#share-download');
- let offset=0,stamp=0,scope=null,busy=false;const limit=50;
+ let offset=0,stamp=0,scope=null,busy=false,unresolvedComment=false;const limit=50;
  function clear(message){content.hidden=true;head.replaceChildren();body.replaceChildren();status.textContent=message}
  const cell=(tag,value)=>{const n=document.createElement(tag);n.textContent=value==null?'—':typeof value==='object'?JSON.stringify(value):String(value);return n};
  async function load(start){
@@ -21,12 +21,21 @@
    for(const item of data.rows){const tr=document.createElement('tr');for(const col of data.schema)tr.append(cell('td',item[col.name]));body.append(tr)}
    el('#share-version').textContent='结果版本 '+data.run_id+' · 方案 '+data.plan_sha256.slice(0,12)+'；请结合来源和口径核对。';
    el('#share-page').textContent=data.total?'第 '+(start+1)+'–'+(start+data.rows.length)+' 条，共 '+data.total+' 条':'共 0 条';
-   previous.disabled=start<=0;next.disabled=data.next_offset==null;next.dataset.offset=data.next_offset==null?'':String(data.next_offset);content.hidden=false;status.textContent='仅显示当前页；已展示内容不能因撤销而从接收者设备自动收回。';
-  }catch(error){if(ticket===stamp)clear(error.message||'暂时无法读取分享结果。')}
+   previous.disabled=start<=0;next.disabled=data.next_offset==null;next.dataset.offset=data.next_offset==null?'':String(data.next_offset);content.hidden=false;status.textContent='仅显示当前页；已展示内容不能因撤销而从接收者设备自动收回。'+(unresolvedComment?' 切换页面前评论提交状态未确认，请用原账号核对评论列表，勿重复提交。':'');window.nexusSharedComments?.activate({shareId:id,manifest:scope.manifest});
+  }catch(error){if(ticket===stamp){window.nexusSharedComments?.reset();clear(error.message||'暂时无法读取分享结果。')}}
   finally{if(ticket===stamp)busy=false}
  }
  previous.onclick=()=>load(Math.max(0,offset-limit));next.onclick=()=>{const value=Number(next.dataset.offset);if(Number.isSafeInteger(value)&&value>=0)load(value)};
  download.onclick=()=>{if(busy)return;const a=document.createElement('a');a.href='/api/shared-data/'+encodeURIComponent(id)+'/download';a.download='共享数据结果.csv';a.target='_blank';a.rel='noopener noreferrer';a.click();status.textContent='已发起下载请求；服务端会再次校验权限。CSV 的空值与空字符串无法区分，类公式文本会加单引号；高精度数字和长编号须按文本导入。'};
  if(location.protocol!=='https:'&&!['localhost','127.0.0.1','[::1]'].includes(location.hostname)){clear('请使用 HTTPS 安全地址查看分享。');return}
- if(!/^share_[a-f0-9]{24}$/.test(id)){clear('分享链接格式无效。');return}void load(0);
+ if(!/^share_[a-f0-9]{24}$/.test(id)){clear('分享链接格式无效。');return}
+ // A trusted reverse proxy may change the browser's identity without exposing
+ // its tokens to JavaScript. Hide stale results and reauthorize on return.
+ function suspend(){unresolvedComment ||= !!window.nexusSharedComments?.hasPending();el('#share-resolved').hidden=!unresolvedComment;stamp++;busy=false;scope=null;window.nexusSharedComments?.reset();clear('页面已离开，返回时将重新验证账号权限。'+(unresolvedComment?' 之前评论状态未确认，请用原账号核对记录，勿重复提交。':''))}
+ el('#share-resolved').onclick=()=>{unresolvedComment=false;el('#share-resolved').hidden=true;status.textContent='已关闭提醒；请以实际评论记录为准。'};
+ window.addEventListener('beforeunload',event=>{if(unresolvedComment||window.nexusSharedComments?.hasPending()){event.preventDefault();event.returnValue=''}});
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();else if(!scope&&!busy)void load(0)});
+ window.addEventListener('blur',suspend);
+ window.addEventListener('focus',()=>{if(!document.hidden&&!scope&&!busy)void load(0)});
+ void load(0);
 })();

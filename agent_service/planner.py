@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 from .config import LLM_BASE, LLM_KEY, LLM_MODEL
 from .connectors import read_source
 from .models import TransformSpec
-from .store import put, now, all_items
+from .store import now, all_items
 
 class State(TypedDict, total=False):
     source: dict
@@ -89,16 +89,16 @@ def persist_node(state):
     source=state['source']
     old=source.get('profile',{}).get('fields',[])
     old_names={f['label'] for f in old};new_names={f['label'] for f in state['profile']['fields']}
+    updates={k:state[k] for k in ('profile','suggestions','proposed_spec','planner_mode','warning') if k in state}
     if old:
         changed=[f['label'] for f in state['profile']['fields'] if f['label'] in old_names and next(o['numeric'] for o in old if o['label']==f['label'])!=f['numeric']]
         reordered=[f['label'] for f in old]!=[f['label'] for f in state['profile']['fields']]
-        source['schema_diff']={'added':sorted(new_names-old_names),'removed':sorted(old_names-new_names),'numeric_changed':changed,'order_changed':reordered,'review_required':old_names!=new_names or bool(changed) or reordered}
-    source.pop('warning',None)
-    source.pop('error',None)
-    source.pop('error_code',None)
-    source.update({k:state[k] for k in ('profile','suggestions','proposed_spec','planner_mode','warning') if k in state})
-    source['status']='ready'
-    put('source',source)
+        updates['schema_diff']={'added':sorted(new_names-old_names),'removed':sorted(old_names-new_names),'numeric_changed':changed,'order_changed':reordered,'review_required':old_names!=new_names or bool(changed) or reordered}
+    updates['status']='ready'
+    from .sources import patch_probe_if_current
+    if patch_probe_if_current(source,updates,remove=('warning','error','error_code')) is None:
+        from .connectors import SourceError
+        raise SourceError('探查期间来源或版本已变化，本次结果未覆盖新来源','SOURCE_VERSION_CHANGED')
     return {}
 
 graph=StateGraph(State)

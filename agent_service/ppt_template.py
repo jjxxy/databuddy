@@ -196,4 +196,6 @@ def render_for_project(pid,source_id,revision,expected_sha256,name,replacements,
             pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,build=build,save_pending=pending,save_committed=committed,before_publish=assert_owned,
             publication_guard=checked_publication,after_publish=lambda:office._verify_structure(file,'pptx'))
     return {'artifact_id':aid,'sha256':record['sha256'],'format':'pptx','template_source_id':source_id,'template_revision':revision,'template_sha256':expected_sha256,
-            'visual_validation':False,'notice':'已填充指定文本位置；版式和财务内容仍需人工核对。','download':{'label':name+'.pptx','url':'/api/projects/'+pid+'/deliverables/'+aid}}
+            'template_freshness':'version_bound_not_guaranteed_current',
+            'visual_validation':False,'notice':'已使用指定版本与哈希的模板字节；来源可能已更新，成果不会自动切换版本。版式和财务内容仍需人工核对。',
+            'download':{'label':name+'.pptx','url':'/api/projects/'+pid+'/deliverables/'+aid}}

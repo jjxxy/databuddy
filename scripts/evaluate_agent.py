@@ -46,7 +46,9 @@ def main():
                 if value:return value
                 time.sleep(.5)
             raise TimeoutError('Evaluation task exceeded timeout')
-        model=request('GET','/api/model')
+        operator=os.getenv('NEXUS_OPERATOR_TOKEN')
+        if not operator:raise ValueError('NEXUS_OPERATOR_TOKEN is required to read the configured model for evaluation')
+        model=request('GET','/api/model',headers={'X-Nexus-Operator-Token':operator})
         if not model['configured']:raise ValueError('Connect a real model before evaluation; no score produced')
         report['model']=model['model']
         report['tool_protocol']=model.get('tool_protocol','json');report['project_content_reading']=model.get('share_data',False);report['service_version']=request('GET','/api/status')['version']

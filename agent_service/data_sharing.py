@@ -107,7 +107,7 @@ def _require_published_result(project_id,result_id):
 
 
 def create_share(project_id, result_id, allowed_subjects, actor,
-                 expires_hours=168, allow_download=False):
+                 expires_hours=168, allow_download=False, allow_comments=False):
     """Owner API only; no invitations or messages are sent by this function."""
     from . import workspace
     from .workspace_lifecycle import _project_lock, assert_project_live
@@ -115,10 +115,10 @@ def create_share(project_id, result_id, allowed_subjects, actor,
     # appearing after project removal has completed its revocation scan.
     with workspace.lock(project_id), _project_lock(project_id):
         assert_project_live(project_id)
-        return _create_share(project_id,result_id,allowed_subjects,actor,expires_hours,allow_download)
+        return _create_share(project_id,result_id,allowed_subjects,actor,expires_hours,allow_download,allow_comments)
 
 
-def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours, allow_download):
+def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours, allow_download, allow_comments):
     _require_oidc()
     actor_hash = _actor(actor)
     get('project', project_id)
@@ -126,6 +126,8 @@ def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours,
         raise ValueError('分享有效期必须为1至720小时')
     if type(allow_download) is not bool:
         raise ValueError('下载权限必须是明确的布尔值')
+    if type(allow_comments) is not bool:
+        raise ValueError('评论权限必须是明确的布尔值')
     if not isinstance(allowed_subjects, list) or not 1 <= len(allowed_subjects) <= 100:
         raise ValueError('必须明确指定1至100个OIDC主体')
     if any(not isinstance(s, str) or not s or s != s.strip() or len(s) > 2000
@@ -148,8 +150,9 @@ def _create_share(project_id, result_id, allowed_subjects, actor, expires_hours,
               'issuer': issuer, 'audience': os.environ['OIDC_AUDIENCE'],
               'allowed_subject_hashes': [_subject_hash(s, issuer) for s in allowed_subjects],
               'allowed_subject_count': len(allowed_subjects), 'allow_download': allow_download,
+              'allow_comments': allow_comments,
               'plan_sha256': metadata['plan_sha256'], 'handoff_sha256': metadata['handoff_sha256'],
-              'scope': 'one_immutable_result; read_only; signed_oidc_identity_required'}
+              'scope': 'one_immutable_result; '+('read_and_comment' if allow_comments else 'read_only')+'; signed_oidc_identity_required'}
     return _public(put(KIND, record, 'share_' + uid()))
 
 
@@ -275,16 +278,22 @@ def _locked_snapshot(request, share_id, materialize):
             from .actor_context import actor_scope,actor_from_identity
             actor=actor_from_identity({'authenticated':True,'mode':'oidc','subject':subject,
                                        'issuer':record['issuer']})
-            with actor_scope(actor):value=materialize(record)
+            with actor_scope(actor):value=materialize(record,connection,actor)
             # Check again before releasing either lock; no path is opened by
             # the HTTP response after the authorization boundary.
             _authorize_record(record,subject)
+            # The generic API audit middleware otherwise labels this verified
+            # recipient as the shared owner token. This is request-local only;
+            # owner endpoints still run their own identity.principal check.
+            if hasattr(request,'state'):
+                request.state.identity={'authenticated':True,'mode':'oidc','subject':subject,
+                                        'scope':'shared_result_recipient'}
             return value
 
 
 def read_shared(request,share_id,offset=0,limit=100):
     from .project_data import read_result
-    def capture(record):
+    def capture(record,connection,actor):
         page=read_result(record['project_id'],record['result_id'],offset,limit)
         # Only the shared result and its version/pagination are public to a
         # recipient. Owner-only alignment receipts, workflow context, source
@@ -312,7 +321,7 @@ def download_shared(request,share_id):
     path=result_download(first['project_id'],first['result_id'],'csv',expected_handoff_sha256=first['handoff_sha256'])
     snapshot=tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b')
     try:
-        def capture(record):
+        def capture(record,connection,actor):
             if record.get('allow_download') is not True:raise HTTPException(403,'该共享不允许下载')
             if (record.get('project_id')!=first['project_id'] or record.get('result_id')!=first['result_id']
                     or record.get('handoff_sha256')!=first['handoff_sha256']):
@@ -335,3 +344,103 @@ def download_shared(request,share_id):
     except BaseException:
         snapshot.close()
         raise
+
+
+COMMENT_KIND='data_share_comment'
+MAX_COMMENTS_PER_SHARE=1000
+
+
+def _comment_prefix(share_id):
+    # Hex-only prefix is safe for SQL LIKE and does not expose the share ID.
+    return 'sc_'+_hash(share_id)[:16]+'_'
+
+
+def _comment_public(item,record):
+    from .store import unseal
+    try:
+        payload=unseal(item['sealed'])
+        if (not isinstance(payload,dict) or payload.get('id')!=item.get('id')
+                or payload.get('share_id')!=record['id'] or payload.get('result_id')!=record['result_id']
+                or payload.get('handoff_sha256')!=record['handoff_sha256']
+                or not isinstance(payload.get('author'),str) or not isinstance(payload.get('text'),str)
+                or not isinstance(payload.get('created_at'),str)):
+            raise ValueError('inconsistent comment')
+        return {k:payload[k] for k in ('id','author','text','created_at','handoff_sha256')}
+    except Exception:
+        raise HTTPException(409,'评论记录完整性校验失败，请联系管理员') from None
+
+
+def _comment_rows(connection,share_id):
+    prefix=_comment_prefix(share_id)
+    # Bound the number of stored comments examined and fail instead of
+    # returning an apparently complete truncated discussion.
+    pattern=prefix.replace('_',r'\_')+'%'
+    rows=connection.execute(select(items.c.body).where(items.c.kind==COMMENT_KIND,
+                            items.c.id.like(pattern,escape='\\')).limit(MAX_COMMENTS_PER_SHARE+1)).all()
+    if len(rows)>MAX_COMMENTS_PER_SHARE:
+        raise HTTPException(409,'评论数量超过当前服务容量，未返回不完整记录')
+    try:return [json.loads(row[0]) for row in rows]
+    except (TypeError,ValueError):raise HTTPException(409,'评论记录完整性校验失败，请联系管理员') from None
+
+
+def list_comments(request,share_id,offset=0,limit=50):
+    if type(offset) is not int or offset<0 or type(limit) is not int or not 1<=limit<=100:
+        raise HTTPException(400,'评论分页参数无效')
+    def capture(record,connection,actor):
+        if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
+        comments=[_comment_public(item,record) for item in _comment_rows(connection,share_id)]
+        comments.sort(key=lambda item:(item['created_at'],item['id']))
+        return {'items':comments[offset:offset+limit],'offset':offset,'total':len(comments),
+                'has_more':offset+limit<len(comments),'handoff_sha256':record['handoff_sha256'],
+                'notice':'评论对获此分享访问权的账号可见，仅供交流，不构成财务审批或准确性确认。'}
+    return _locked_snapshot(request,share_id,capture)
+
+
+def add_comment(request,share_id,text,request_id,expected_handoff_sha256):
+    import re
+    from .store import cipher,now,seal,unseal
+    if (not isinstance(text,str) or not text.strip() or len(text)>2000
+            or any(ord(c)<32 and c not in '\n\r\t' for c in text)):
+        raise HTTPException(400,'评论内容须为1至2000字的普通文本')
+    if not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',request_id):
+        raise HTTPException(400,'评论请求编号无效')
+    if not isinstance(expected_handoff_sha256,str) or not re.fullmatch(r'[a-f0-9]{64}',expected_handoff_sha256):
+        raise HTTPException(400,'请先核对结果版本')
+    content=text.strip()
+    # Initialize the shared encryption/audit key outside the SQL transaction.
+    cipher()
+    from . import audit
+    def capture(record,connection,actor):
+        if record.get('allow_comments') is not True:raise HTTPException(403,'此分享未开放评论')
+        if record['handoff_sha256']!=expected_handoff_sha256:raise HTTPException(409,'分享结果版本已变化')
+        ident=_comment_prefix(share_id)+_hash(json.dumps([share_id,actor,request_id],separators=(',',':')))[:44]
+        existing=connection.execute(select(items.c.body).where(items.c.id==ident,items.c.kind==COMMENT_KIND)).first()
+        if existing:
+            try:item=json.loads(existing[0]);payload=unseal(item['sealed'])
+            except Exception:raise HTTPException(409,'评论记录完整性校验失败，请联系管理员') from None
+            if (payload.get('share_id')!=share_id or payload.get('actor')!=actor
+                    or payload.get('handoff_sha256')!=expected_handoff_sha256 or payload.get('text')!=content):
+                raise HTTPException(409,'请求编号已用于不同评论')
+            return _comment_public(item,record)
+        if len(_comment_rows(connection,share_id))>=MAX_COMMENTS_PER_SHARE:
+            raise HTTPException(409,'评论数量达到当前服务容量，未写入')
+        stamp=now();author='用户 '+_hash(share_id+'\x00'+actor)[:12]
+        payload={'id':ident,'share_id':share_id,'result_id':record['result_id'],
+                 'handoff_sha256':expected_handoff_sha256,'actor':actor,'author':author,'text':content,'created_at':stamp}
+        item={'id':ident,'project_id':record['project_id'],'share_id':share_id,'sealed':seal(payload)}
+        connection.execute(items.insert().values(id=ident,kind=COMMENT_KIND,body=json.dumps(item,ensure_ascii=False)))
+        # Add the privacy-preserving audit event atomically with the comment;
+        # an idempotent retry returns above and never creates a second event.
+        sentinel=connection.execute(select(items.c.id).where(items.c.id=='audit-lock',items.c.kind=='system').with_for_update()).first()
+        if not sentinel:raise HTTPException(503,'审计服务不可用，评论未写入')
+        previous=connection.execute(select(audit.events.c.event_hash).order_by(audit.events.c.sequence.desc()).limit(1)).first()
+        previous=previous[0] if previous else '0'*64
+        action='share.comment.created'
+        details={'share_id':share_id,'result_id':record['result_id'],'comment_id':ident,
+                 'author':author,'handoff_sha256':expected_handoff_sha256}
+        body=json.dumps(details,ensure_ascii=False,sort_keys=True,default=str)
+        signature=audit.digest(stamp,action,ident,body,previous)
+        connection.execute(audit.events.insert().values(created=stamp,action=action,subject=ident,
+                           body=body,previous_hash=previous,event_hash=signature))
+        return _comment_public(item,record)
+    return _locked_snapshot(request,share_id,capture)

@@ -242,7 +242,20 @@ def catalog(pid,kind='',offset=0,limit=40):
         except (ValueError,OSError,KeyError):unavailable.append({'kind':'code','name':file['path'],'reason':'该文件暂不能完整读取'})
     for value in all_items('office_artifact'):
         if value.get('project_id')!=pid or _gone(value):continue
-        add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),private={'office_id':value['id']})
+        references=[];warning=None
+        if any(key in value for key in ('template_source_id','template_revision','template_sha256')):
+            sid=value.get('template_source_id');rev=value.get('template_revision');checksum=value.get('template_sha256')
+            try:
+                source=get('source',sid) if isinstance(sid,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,64}',sid) else None
+            except KeyError:source=None
+            if (source and source.get('project_id')==pid and not _gone(source) and type(rev) is int and rev>=1
+                    and isinstance(checksum,str) and re.fullmatch(r'[a-f0-9]{64}',checksum)):
+                references=[{'source_id':sid,'revision':rev,'content_sha256':checksum,'role':'template_snapshot'}]
+                warning='此成果使用所列固定模板版本；来源可能已更新，成果不会自动切换版本。请核对版式及财务内容。'
+            else:
+                warning='模板来源记录不可用或不完整，无法在此核对所用版本；请核对版式及财务内容。'
+        add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),
+            private={'office_id':value['id']},source_refs=references,semantic_warning=warning)
     from .actor_context import current_actor
     from .workspace_lifecycle import visible_turn
     for value in all_items('business_flow_artifact'):

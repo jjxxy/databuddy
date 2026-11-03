@@ -43,7 +43,12 @@ class Model(BaseHTTPRequestHandler):
                 steps=[{'kind':'tool','tool':'project_context'}, {'kind':'tool','tool':'write_file','arguments':{'path':'reports/plan.md','content':'# 验收计划\n只使用已付款订单。\n'}}, {'kind':'tool','tool':'read_file','arguments':{'path':'reports/plan.md'}}, {'kind':'final','answer':'报告已生成并检查，约定只使用已付款订单。'}]
                 content=json.dumps(steps[min(step,len(steps)-1)],ensure_ascii=False)
             else:
-                steps=[{'kind':'tool','tool':'search_project_history','arguments':{'query':'已付款'}},{'kind':'final','answer':'本项目之前约定只使用已付款订单。'}]
+                # Native tools are exposed on demand: discover the history
+                # tool before calling it, rather than assuming its schema is
+                # always present. JSON mode keeps its original direct path.
+                steps=([{'kind':'tool','tool':'discover_tools','arguments':{'query':'search_project_history'}}] if Model.native else []) + [
+                    {'kind':'tool','tool':'search_project_history','arguments':{'query':'已付款'}},
+                    {'kind':'final','answer':'本项目之前约定只使用已付款订单。'}]
                 content=json.dumps(steps[min(step,len(steps)-1)],ensure_ascii=False)
         message={'content':content}
         if body.get('tools'):
@@ -76,7 +81,7 @@ def main():
                 (oc_dir/'config/opencode').mkdir(parents=True);(oc_dir/'config/opencode/opencode.json').write_text(json.dumps(module.config(upstream)))
                 with socket.socket() as sock:sock.bind(('127.0.0.1',0));oc_port=sock.getsockname()[1]
                 password=secrets.token_urlsafe(32)
-                oc_env={k:v for k,v in os.environ.items() if k not in ('APP_TOKEN','DATABASE_URL','LLM_API_KEY')}
+                oc_env={k:v for k,v in os.environ.items() if k not in ('APP_TOKEN','DATABASE_URL','LLM_API_KEY','NEXUS_OPERATOR_TOKEN','ATLAS_OPERATOR_TOKEN')}
                 oc_env.update(XDG_DATA_HOME=str(oc_dir/'data'),XDG_CONFIG_HOME=str(oc_dir/'config'),OPENCODE_SERVER_PASSWORD=password,NEXUS_MODEL_KEY='simulated-only',OPENCODE_DISABLE_MODELS_FETCH='true')
                 oc_log=(temp/'opencode.log').open('w');oc_process=subprocess.Popen([str(args.opencode_binary.resolve()),'serve','--hostname','127.0.0.1','--port',str(oc_port)],cwd=oc_dir,env=oc_env,stdout=oc_log,stderr=oc_log)
                 oc_config={'engine':'opencode','base_url':f'http://127.0.0.1:{oc_port}','model':'nexus/deepseek-v4-pro','api_key':password,'upstream_base_url':upstream,'share_data':True,'tool_protocol':'json'}
@@ -89,12 +94,15 @@ def main():
                         time.sleep(.25)
                     else:raise RuntimeError('OpenCode startup failed')
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-            env=dict(os.environ,DATA_DIR=str(temp/'data'),DATABASE_URL='sqlite:///'+str(temp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
+            env=dict(os.environ,DATA_DIR=str(temp/'data'),DATABASE_URL='sqlite:///'+str(temp/'data/metadata.sqlite'),APP_TOKEN=secrets.token_urlsafe(32),NEXUS_OPERATOR_TOKEN=secrets.token_urlsafe(32),NEXUS_AUTH_MODE='token',PORT=str(port),PYTHONPATH=str(ROOT),LLM_BASE_URL='',LLM_MODEL='',API_ALLOWED_HOSTS='127.0.0.1',NEXUS_CLOUD_VERIFY='0')
+            env.pop('ATLAS_OPERATOR_TOKEN',None)
             with (temp/'service.log').open('w') as log:
                 process=None
                 try:
                     with httpx.Client(base_url=f'http://127.0.0.1:{port}',headers={'Authorization':'Bearer '+env['APP_TOKEN']},trust_env=False,timeout=15) as client:
                         def request(method,path,**kwargs):
+                            if path=='/api/model':
+                                kwargs['headers']={**kwargs.get('headers',{}),'X-Nexus-Operator-Token':env['NEXUS_OPERATOR_TOKEN']}
                             response=client.request(method,path,**kwargs);response.raise_for_status();return response.json()
                         def wait(check):
                             until=time.monotonic()+90
@@ -104,6 +112,13 @@ def main():
                                     value=check()
                                     if value:return value
                                 except (httpx.ConnectError,httpx.ReadError):pass
+                                except httpx.HTTPStatusError as error:
+                                    # Restore intentionally blocks reads while its journal is
+                                    # applying. Retry only that exact transient state; a
+                                    # deleted project/session remains a real failure.
+                                    try: detail=error.response.json().get('detail')
+                                    except (ValueError,AttributeError):detail=None
+                                    if error.response.status_code!=410 or detail!='项目回退尚未完成，请等待恢复后再查看或操作':raise
                                 time.sleep(.2)
                             raise TimeoutError('agent protocol acceptance timed out')
                         def start():return subprocess.Popen([sys.executable,'-m','agent_service.cloud'],cwd=ROOT,env=env,stdout=log,stderr=log)
@@ -128,7 +143,10 @@ def main():
                         assert request('GET','/api/model')['configured']
                         session=request('POST',path+'/sessions',json={'name':'另一段对话','request_id':'protocol-session-1'})
                         chat=say('之前约定什么口径','protocol-chat-1','chat',session['id'])
-                        assert not chat.get('work_version') and chat['agent_trace'][0]['observation']['matches']
+                        history=[step for step in chat['agent_trace'] if step.get('tool')=='search_project_history' and step.get('status')=='done']
+                        assert not chat.get('work_version') and len(history)==1 and history[0]['observation']['matches']
+                        if args.native:
+                            assert chat['agent_trace'][0]['tool']=='discover_tools'
                         restored=say('回退到 '+initial,'protocol-restore-1','work',session['id'])
                         assert restored['work_version']['changed']
                         assert client.get(path+'/file',params={'path':'reports/plan.md'}).status_code==404

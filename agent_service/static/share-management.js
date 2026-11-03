@@ -32,17 +32,18 @@ window.nexusShareUI=(()=>{
   const form=node('form');const label=node('label','接收账号的企业身份主体标识（每行一个）');const subjects=node('textarea');subjects.required=true;subjects.rows=3;subjects.maxLength=20000;subjects.placeholder='请从企业身份管理员处确认账号主体标识';label.append(subjects);
   const hoursLabel=node('label','有效时间（小时，1–720）');const hours=node('input');hours.type='number';hours.min='1';hours.max='720';hours.value='168';hours.required=true;hoursLabel.append(hours);
   const downloadLabel=node('label');const download=node('input');download.type='checkbox';downloadLabel.append(download,document.createTextNode('允许下载完整结果 CSV'));
+  const commentLabel=node('label');const comments=node('input');comments.type='checkbox';commentLabel.append(comments,document.createTextNode('允许获准账号评论（所有分享接收者均可见，不构成财务审批）'));
   const create=node('button','创建分享链接');create.type='submit';const refresh=node('button','刷新分享记录');refresh.type='button';const message=node('p');message.setAttribute('role','status');const list=node('div');
-  form.append(label,hoursLabel,downloadLabel,create,refresh);body.append(form,message,list);panel.append(heading,note,mode,body);
+  form.append(label,hoursLabel,downloadLabel,commentLabel,create,refresh);body.append(form,message,list);panel.append(heading,note,mode,body);
   function setBusy(value){busy=value;create.disabled=value||uncertain;refresh.disabled=value;for(const button of list.querySelectorAll('button'))button.disabled=value}
   async function refreshList(){
    const ticket=++serial;setBusy(true);message.textContent='正在读取分享记录…';
-   try{const records=await s.request('/api/projects/'+encodeURIComponent(s.project)+'/data-shares');if(!valid(s)||ticket!==serial)return;
-    if(!Array.isArray(records))throw Error('分享记录格式异常');list.replaceChildren();
+   try{const payload=await s.request('/api/projects/'+encodeURIComponent(s.project)+'/data-shares');if(!valid(s)||ticket!==serial)return;
+    const records=payload?.items;if(!Array.isArray(records))throw Error('分享记录格式异常');list.replaceChildren();
     const relevant=records.filter(r=>r.result_id===s.published);
     if(!relevant.length)list.append(node('p','当前正式版本还没有分享记录。'));
     for(const record of relevant){
-     const box=node('div'),info=node('p');const expiry=Date.parse(record.expires_at),active=record.state==='active'&&Number.isFinite(expiry)&&expiry>Date.now();info.textContent=(active?'有效':record.state==='revoked'?'已撤销':'已过期或状态不可确认')+' · 有效期至 '+(record.expires_at||'未记录')+' · '+(Number.isInteger(record.allowed_subject_count)?record.allowed_subject_count+' 个账号 · ':'')+(record.allow_download?'允许下载':'仅查看');box.append(info);
+     const box=node('div'),info=node('p');const expiry=Date.parse(record.expires_at),active=record.state==='active'&&Number.isFinite(expiry)&&expiry>Date.now();info.textContent=(active?'有效':record.state==='revoked'?'已撤销':'已过期或状态不可确认')+' · 有效期至 '+(record.expires_at||'未记录')+' · '+(Number.isInteger(record.allowed_subject_count)?record.allowed_subject_count+' 个账号 · ':'')+(record.allow_download?'允许下载':'不允许下载')+' · '+(record.allow_comments?'允许评论':'不允许评论');box.append(info);
      if(active){
       const url=shareUrl(record.id), field=node('input');field.readOnly=true;field.value=url;field.setAttribute('aria-label','分享链接');box.append(field);
       const copy=node('button','复制链接');copy.type='button';copy.onclick=async()=>{try{if(!navigator.clipboard?.writeText)throw Error();await navigator.clipboard.writeText(url);if(valid(s))message.textContent='链接已复制，请自行发送给获准访问的账号。'}catch(_){field.focus();field.select();if(valid(s))message.textContent='无法自动复制，已选中链接，请手动复制。'}};box.append(copy);
@@ -58,7 +59,7 @@ window.nexusShareUI=(()=>{
    const allowed=subjects.value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),n=Number(hours.value);
    if(!allowed.length||allowed.length>100||new Set(allowed).size!==allowed.length||!Number.isInteger(n)||n<1||n>720){message.textContent='请检查账号主体标识和有效时间，账号不能重复。';return}
    const stamp=++serial;setBusy(true);message.textContent='正在创建分享…';
-   try{const created=await s.request('/api/projects/'+encodeURIComponent(s.project)+'/data-results/'+encodeURIComponent(s.published)+'/shares',{method:'POST',body:{allowed_subjects:allowed,expires_hours:n,allow_download:download.checked}});
+   try{const created=await s.request('/api/projects/'+encodeURIComponent(s.project)+'/data-results/'+encodeURIComponent(s.published)+'/shares',{method:'POST',body:{allowed_subjects:allowed,expires_hours:n,allow_download:download.checked,allow_comments:comments.checked}});
     if(!valid(s)||stamp!==serial)return;if(created.result_id!==s.published||created.state!=='active')throw Error('分享结果与当前版本不符');subjects.value='';await refreshList();
    }catch(error){if(valid(s)&&stamp===serial){if([400,403,404,409,422].includes(error.status)){uncertain=false;message.textContent=error.detail||error.message||'分享未创建，请核对后重试。'}else{uncertain=true;message.textContent='未确认是否创建成功。请先刷新分享记录核对，避免重复创建。'}setBusy(false)}}
   };

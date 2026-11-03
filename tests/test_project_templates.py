@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.testclient import TestClient
 from pptx import Presentation
 import pytest
+from sqlalchemy import select
 
 from agent_service.api import app
 from agent_service.config import TOKEN
@@ -15,12 +16,25 @@ from agent_service.store import get, patch, uid
 H={'Authorization':'Bearer '+TOKEN}
 
 
+@pytest.fixture(autouse=True)
+def cleanup_test_jobs():
+    """Template uploads enqueue probes; do not run them in later tests."""
+    from agent_service.jobs import jobs,engine
+    with engine.connect() as connection:before=set(connection.execute(select(jobs.c.id)).scalars())
+    yield
+    with engine.begin() as connection:
+        query=jobs.delete()
+        if before:query=query.where(jobs.c.id.not_in(before))
+        connection.execute(query)
+
+
 def setup_template():
     client=TestClient(app)
     p=client.post('/api/projects',headers=H,json={'name':'模板目录','request_id':uid()})
     assert p.status_code==200,p.text
     pid=p.json()['id'];root=f'/api/projects/{pid}'
     deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[0]);slide.shapes.title.text='旧标题'
+    slide.placeholders[1].text='原模板保留标识'
     data=io.BytesIO();deck.save(data)
     response=client.post(root+'/attachments',headers=H,files={'file':('template.pptx',data.getvalue(),
         'application/vnd.openxmlformats-officedocument.presentationml.presentation')},data={'request_id':uid(),'local_processing':'true'})
@@ -44,6 +58,7 @@ def test_template_personal_registry_to_real_download_and_soft_remove():
         'replacements':[{'page':1,'shape_id':shape,'text':'收入 118.15 元'}]})
     assert response.status_code==200,response.text
     artifact=response.json();assert artifact['visual_validation'] is False and artifact['template_sha256']==value['sha256']
+    assert artifact['template_freshness']=='version_bound_not_guaranteed_current'
     result=client.get(artifact['download']['url'],headers=H)
     assert result.status_code==200 and Presentation(io.BytesIO(result.content)).slides[0].shapes.title.text=='收入 118.15 元'
     renamed=client.put(root+'/personal-ppt-templates/'+tid,headers=H,json={'version':1,'title':'新名称'})
@@ -143,3 +158,60 @@ def test_project_delete_waits_until_registration_finishes(monkeypatch):
         assert registration.result(timeout=5)['title']=='月度汇报'
         assert deletion.result(timeout=5)['deleted_at']
     with pytest.raises(workspace_lifecycle.WorkspaceDeleted):templates.list_templates(pid,'owner')
+
+
+def test_concurrent_source_replacement_cannot_change_frozen_template_bytes(monkeypatch):
+    """A writer can replace source after final check: result must retain its pinned bytes.
+
+    Source replacement does not share the template publication lock, so this
+    test intentionally makes no claim that the pinned revision is still current.
+    """
+    from agent_service import result_delivery,office,workspace_artifacts
+    from agent_service.execution import process_once
+    from agent_service.jobs import list_jobs,ACTIVE
+    client,pid,source,value,shape,raw=setup_template();root=f'/api/projects/{pid}'
+    while any(r['status'] in ACTIVE for r in list_jobs(target=source['id'])):
+        assert process_once()
+    saved=client.post(root+'/personal-ppt-templates',headers=H,json=value)
+    assert saved.status_code==200,saved.text
+    new=Presentation();slide=new.slides.add_slide(new.slide_layouts[0]);slide.shapes.title.text='不同模板'
+    slide.placeholders[1].text='新模板标识';buf=io.BytesIO();new.save(buf);new_bytes=buf.getvalue()
+    original=result_delivery.atomic_replace;changed=[]
+    def race(src,dst):
+        if str(dst).endswith('并发汇报.pptx'):
+            response=client.post('/api/sources/'+source['id']+'/replace-file',headers=H,
+                files={'file':('new.pptx',new_bytes,'application/vnd.openxmlformats-officedocument.presentationml.presentation')})
+            assert response.status_code==200,response.text
+            changed.append(response.json())
+        return original(src,dst)
+    monkeypatch.setattr(result_delivery,'atomic_replace',race)
+    rendered=client.post(root+'/personal-ppt-templates/'+saved.json()['id']+'/render',headers=H,json={
+        'version':1,'name':'并发汇报','replacements':[{'page':1,'shape_id':shape,'text':'本次填写'}]})
+    assert rendered.status_code==200,rendered.text
+    result=rendered.json();assert changed and changed[0]['revision']==value['revision']+1
+    assert changed[0]['content_hash']==hashlib.sha256(new_bytes).hexdigest()
+    assert result['template_sha256']==hashlib.sha256(raw).hexdigest()
+    assert result['template_freshness']=='version_bound_not_guaranteed_current'
+    file,receipt=office.artifact(pid,result['artifact_id']);deck=Presentation(file)
+    assert deck.slides[0].shapes.title.text=='本次填写'
+    assert deck.slides[0].placeholders[1].text=='原模板保留标识'
+    assert receipt['template_sha256']==value['sha256'] and receipt['template_revision']==value['revision']
+    catalog=workspace_artifacts.catalog(pid,'office')['items']
+    item=next(x for x in catalog if x['name']=='并发汇报.pptx')
+    assert item['source_refs']==[{'source_id':source['id'],'revision':value['revision'],
+                                  'content_sha256':value['sha256'],'role':'template_snapshot'}]
+    assert '可能已更新' in item['semantic_warning'] and not item['financial_verified']
+    # If access to the source record no longer belongs to this project, its
+    # identifier and hash must not be exposed through an older artifact.
+    patch('source',source['id'],project_id='p_foreign')
+    item=next(x for x in workspace_artifacts.catalog(pid,'office')['items'] if x['name']=='并发汇报.pptx')
+    assert item['source_refs']==[] and '不可用或不完整' in item['semantic_warning']
+
+
+def test_legacy_office_artifact_without_template_metadata_still_lists():
+    from agent_service import workspace_artifacts
+    from agent_service.store import put
+    _,pid,_,_,_,_=setup_template()
+    put('office_artifact',{'project_id':pid,'name':'legacy.pptx','sha256':'c'*64,'state':'committed'},'of_'+uid())
+    item=next(x for x in workspace_artifacts.catalog(pid,'office')['items'] if x['name']=='legacy.pptx')
+    assert item['source_refs']==[] and 'semantic_warning' not in item

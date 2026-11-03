@@ -113,6 +113,7 @@ def execute(run):
     folder=DATA/'runs'/run['id']/('attempt-'+str(run['attempts']));folder.mkdir(parents=True,exist_ok=True)
     patch_run(run,started_at=now(),stage='探查' if run['kind']=='probe' else '采集',artifact_dir=str(folder.relative_to(DATA)))
     runtime_env=dict(os.environ,RUN_DIR=str(folder),PYTHONPATH=str(Path(__file__).resolve().parent.parent))
+    probe_snapshot=None
     try:
         checkpoint(run)
         if run['kind']=='business_flow_debug':
@@ -147,6 +148,11 @@ def execute(run):
             patch_run(run,status='succeeded' if result['state']=='succeeded' else 'failed',finished_at=now(),stage='外部操作'+result['state'])
             return
         if run['kind']=='probe':
+            # The subprocess can take time; never attach its failure to a
+            # different version that replaced this input during execution.
+            probe_snapshot=get('source',run['target'])
+            from .sources import probe_fingerprint
+            runtime_env['NEXUS_PROBE_INPUT_SHA256']=probe_fingerprint(probe_snapshot)
             runtime_env['NEXUS_MODEL_SOURCE_ID']=run['target']
             invoke([sys.executable,'-m','agent_service.probe',run['target'],str(folder/'error.json')],run,folder,runtime_env)
             checkpoint(run)
@@ -244,7 +250,11 @@ def execute(run):
         except RuntimeError:return
         if run.get('scheduled_key') and not run.get('schedule_snapshot') and status in ('failed','cancelled'):
             _scheduled_failure_notice(run,status)
-        if run['kind']=='probe' and status=='failed':patch('source',run['target'],status='failed',error=str(error),error_code=error.code)
+        # Record failures on the captured source only. Another request may
+        # have replaced or re-probed it since the worker began.
+        if run['kind']=='probe' and status=='failed' and error.code!='SOURCE_VERSION_CHANGED' and probe_snapshot is not None:
+            from .sources import patch_probe_if_current
+            patch_probe_if_current(probe_snapshot,{'status':'failed','error':str(error),'error_code':error.code})
         record('run.'+status,run['target'],{'run_id':run['id'],'code':error.code,'attempt':run['attempts']})
 
 def _patch_schedule_if_current(kind,snapshot,fields,**values):

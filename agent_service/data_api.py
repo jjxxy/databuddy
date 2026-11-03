@@ -10,6 +10,7 @@ from .config import DATA
 from . import project_data as data,workspace
 from .interactive_analysis import ExploreRequest
 from .factor_analysis import FactorRequest
+from .gap_analysis import GapRequest
 
 
 class CheckedRun(StrictModel):
@@ -71,6 +72,11 @@ class ShareInput(StrictModel):
     allowed_subjects:list[str]=Field(min_length=1,max_length=100)
     expires_hours:int=Field(default=168,ge=1,le=720)
     allow_download:bool=False
+    allow_comments:bool=Field(default=False,strict=True)
+class ShareComment(StrictModel):
+    text:str=Field(min_length=1,max_length=2000)
+    request_id:str=Field(pattern=r'^[A-Za-z0-9_-]{16,80}$')
+    expected_handoff_sha256:str=Field(pattern=r'^[a-f0-9]{64}$')
 class BriefInput(StrictModel):
     run_id:str=Field(min_length=1,max_length=64)
     recipe_path:str=Field(min_length=1,max_length=200)
@@ -219,6 +225,11 @@ def install(app,auth):
     @app.post('/api/projects/{pid}/data-results/{rid}/factor-analysis',dependencies=dependencies)
     def factor_result(pid:str,rid:str,value:FactorRequest):
         from .factor_analysis import analyze
+        return analyze(pid,rid,value)
+
+    @app.post('/api/projects/{pid}/data-results/{rid}/gap-analysis',dependencies=dependencies)
+    def gap_result(pid:str,rid:str,value:GapRequest):
+        from .gap_analysis import analyze
         return analyze(pid,rid,value)
 
     @app.get('/api/projects/{pid}/data-results/{rid}/external-alignment',dependencies=dependencies)
@@ -422,7 +433,7 @@ def install(app,auth):
     @app.post('/api/projects/{pid}/data-results/{rid}/shares',dependencies=dependencies)
     def create_share(pid:str,rid:str,value:ShareInput,request:Request):
         from .data_sharing import create_share
-        return create_share(pid,rid,value.allowed_subjects,actor(request),value.expires_hours,value.allow_download)
+        return create_share(pid,rid,value.allowed_subjects,actor(request),value.expires_hours,value.allow_download,value.allow_comments)
 
     @app.get('/api/projects/{pid}/data-shares',dependencies=dependencies)
     def shares(pid:str):
@@ -440,6 +451,40 @@ def install(app,auth):
         response.headers['Cache-Control']='private, no-store'
         response.headers['X-Content-Type-Options']='nosniff'
         return read_shared(request,sid,offset,limit)
+
+    @app.get('/api/shared-data/{sid}/comments')
+    def shared_comments(sid:str,request:Request,response:Response,offset:int=0,limit:int=50):
+        from .data_sharing import list_comments
+        response.headers['Cache-Control']='private, no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        return list_comments(request,sid,offset,limit)
+
+    @app.post('/api/shared-data/{sid}/comments')
+    def shared_comment(sid:str,value:ShareComment,request:Request,response:Response):
+        from .data_sharing import add_comment
+        from urllib.parse import urlsplit
+        origin=request.headers.get('origin')
+        site=request.headers.get('sec-fetch-site')
+        if site and site not in ('same-origin','none'):
+            raise HTTPException(403,'评论需要同源请求')
+        if origin:
+            from .activity import public_origin
+            try:
+                parsed=urlsplit(origin)
+                configured=public_origin()
+                expected=urlsplit(configured or (request.url.scheme+'://'+request.headers.get('host','')))
+                valid=(parsed.scheme in ('http','https') and parsed.hostname and not parsed.username and not parsed.password
+                       and parsed.path in ('','/') and not parsed.query and not parsed.fragment
+                       and expected.scheme==parsed.scheme and expected.hostname and
+                       expected.hostname.lower()==parsed.hostname.lower() and
+                       (expected.port or (443 if expected.scheme=='https' else 80))==
+                       (parsed.port or (443 if parsed.scheme=='https' else 80)))
+            except ValueError:valid=False
+            if not valid:
+                raise HTTPException(403,'评论需要同源请求')
+        response.headers['Cache-Control']='private, no-store'
+        response.headers['X-Content-Type-Options']='nosniff'
+        return add_comment(request,sid,value.text,value.request_id,value.expected_handoff_sha256)
 
     @app.get('/api/shared-data/{sid}/download')
     def shared_download(sid:str,request:Request):

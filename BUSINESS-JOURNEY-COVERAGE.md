@@ -12,7 +12,7 @@
 | 数据加工 | 数据变化后的增量更新 | 待建设：可重跑或计划更新，但当前数据应用描述为全量快照，不能将定时重跑等同于增量计算或 CDC。 | `agent_service/codegen.py`、`agent_service/execution.py` |
 | 数据分析 | 数据问答 | 部分：对已发布数据可执行受约束的只读 SQL 或规则问答；限制返回量、时间和类型，复杂问题需模型及真实资料。 | `agent_service/analysis.py` |
 | 数据分析 | 透视、下钻、筛选和切月 | 部分：当前已采用结果可按文本、日期或布尔维度筛选、分组、逐级下钻，按严格月份或日期切月，并进行记录数或明确可加数值求和；限制20 MiB和500个分组，尚无拖拽透视或多指标图表。 | `agent_service/interactive_analysis.py`、`agent_service/data_workflows.py` |
-| 数据分析 | GAP、归因和双因素分析 | 部分：报告支持差异、比率；工作台提供基于固定正式结果的数量与单价两因素逐行分解，严格要求字段单位和期间。分解顺序影响贡献，数学分解不证明业务因果；其他因素模型尚未覆盖。 | `agent_service/factor_analysis.py`、`agent_service/business_reports.py` |
+| 数据分析 | GAP、归因和双因素分析 | 部分：工作台支持基于固定正式结果的全表/分组 GAP 差额和变化率，以及数量与单价两因素逐行分解，严格要求字段单位和期间。GAP 尚不支持在该面板筛选；分解顺序影响贡献，数学分解不证明业务因果。 | `agent_service/gap_analysis.py`、`agent_service/factor_analysis.py`、`agent_service/business_reports.py` |
 | 数据分析 | 分析结论提炼、解释和验证 | 部分：报告可记录完整结果、公式、筛选与假设；业务原因不能自动视为事实，仍需真实依据与复核。 | `agent_service/business_reports.py`、`agent_service/business_explanation.py` |
 | 模板 | 上传、检查、选用 PPT 模板 | 部分：可检查项目中固定版本的 PPTX，占位符、文本框及组合内文本可按明确位置填充，并检查整个替换后文本；不承诺复杂图表和版式保真。 | `agent_service/ppt_template.py` |
 | 模板 | 组织级和个人级模板管理、切换、调试 | 部分：当前账号可在项目内登记、重命名、移除并使用固定版本的 PPTX 文本模板；源文件仍为项目共享。没有完整组织级模板库、跨项目权限和设计保真调试。 | `agent_service/ppt_template.py` |
@@ -30,8 +30,8 @@
 | 发布分享 | 权限配置、链接分享、有效期、撤销 | 部分：当前已采用数据结果支持 OIDC 指定主体只读分享、期限、撤销和可选结果 CSV 下载；版本替换后旧链接失效。直接部署接收页需可信身份反向代理，独立工作空间网关不支持跨账号分享；无法撤回已捕获或发送的数据。 | `agent_service/data_sharing.py`、`agent_service/data_api.py` |
 | 发布分享 | 消息通知与分享通知 | 部分：已有工作完成提醒和动态；不代表对指定收件人自动发送分享通知。 | `agent_service/static/index.html`、`agent_service/data_sharing.py` |
 | 发布物查看 | 分享链接查看、列表、下载 | 部分：数据结果支持分享管理、分页接收页和可选 CSV 下载；CSV 不区分空值与空串，类公式文本会被转义。统一报告发布物列表、PPT/HTML 分享和跨空间访问尚未完成。 | `agent_service/data_api.py`、`agent_service/workspace_artifacts.py` |
-| 发布物查看 | 评论、批注、反馈与二次编辑 | 待建设：未发现覆盖已发布成果的完整评论、批注、反馈及受控二次编辑闭环。 | `agent_service/data_sharing.py`、`agent_service/onlyoffice_readonly.py` |
-| 发布物查看 | 术语解析、指标解读留痕 | 部分：存在指标登记、确认、定义及报告依据；没有因此证明跨报告的完整术语解析与阅读交互留痕。 | `agent_service/metric_registry.py`、`agent_service/business_explanation.py` |
+| 发布物查看 | 评论、批注、反馈与二次编辑 | 部分：正式数据结果分享可由分享者选择开启版本绑定的纯文本评论，获准接收者可见；报告/PPT 版面批注和受控二次编辑尚未完成。评论不是财务审批。 | `agent_service/data_sharing.py`、`agent_service/onlyoffice_readonly.py` |
+| 发布物查看 | 术语解析、指标解读留痕 | 部分：存在指标登记、确认和报告依据；报告依据可查看固定结果声明的字段含义、单位、期间和可加性。这些声明不是财务审批，跨报告术语目录与阅读交互留痕尚未完整。 | `agent_service/metric_registry.py`、`agent_service/business_explanation.py` |
 
 ## 生产验证边界
 
