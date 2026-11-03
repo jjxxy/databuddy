@@ -15,7 +15,9 @@ from .result_delivery import read_all_handoff
 from .config import MAX_ROWS
 
 MAX_ANALYSIS_BYTES = 20 * 1024 * 1024
-MAX_GROUPS = 500
+MAX_GROUPS = 500  # Other consumers, including factor and GAP, remain capped.
+MAX_EXPLORE_GROUPS = 5000
+MAX_GROUP_PAGE = 500
 
 
 class ExploreFilter(StrictModel):
@@ -32,6 +34,8 @@ class ExploreFilter(StrictModel):
 class ExploreRequest(StrictModel):
     expected_handoff_sha256: str = Field(pattern=r'^[a-f0-9]{64}$')
     group_by: list[str] = Field(min_length=1, max_length=3)
+    group_offset: int = Field(default=0, ge=0, strict=True)
+    group_limit: int = Field(default=MAX_GROUP_PAGE, ge=1, le=MAX_GROUP_PAGE, strict=True)
     filters: list[ExploreFilter] = Field(default_factory=list, max_length=10)
     metric: Literal['count', 'sum'] = 'count'
     measure: str | None = Field(default=None, pattern=NAME)
@@ -156,7 +160,7 @@ def explore(pid, rid, value):
             for row in rows:
                 key = tuple(_as_dimension(row.get(name),fields[name]) for name in value.group_by)
                 if key not in groups:
-                    if len(groups) >= MAX_GROUPS:raise ValueError('分组超过500项，请增加筛选后重试；没有截断计算')
+                    if len(groups) >= MAX_EXPLORE_GROUPS:raise ValueError(f'分组超过{MAX_EXPLORE_GROUPS}项，请增加筛选后重试；没有截断计算')
                     groups[key] = {'values':list(key), 'count':0, 'amount':Decimal(0)}
                 group = groups[key];group['count'] += 1
                 if measure:
@@ -165,8 +169,15 @@ def explore(pid, rid, value):
                     number = decimal_value(raw)
                     if measure.data_type == 'integer' and number != number.to_integral_value():raise ValueError('数值字段不是有效整数')
                     group['amount'] += number
+        # Aggregate and sort all groups before paging. The page is a view of
+        # the complete calculation, not a summary of just the displayed rows.
+        keys = sorted(groups,key=lambda x:tuple('' if v is None else ('1' if v is True else '0' if v is False else '2'+v) for v in x))
+        total_groups = len(keys)
+        if value.group_offset > total_groups:
+            raise ValueError('分组页码超出完整计算结果，请重新开始分析')
+        page_keys = keys[value.group_offset:value.group_offset+value.group_limit]
         result = []
-        for key in sorted(groups,key=lambda x:tuple('' if v is None else ('1' if v is True else '0' if v is False else '2'+v) for v in x)):
+        for key in page_keys:
             group=groups[key]
             item={'values':group['values'],'count':group['count']}
             if measure:item.update(amount=format(group['amount'],'f'),unit=measure.unit,period=measure.period or value.period)
@@ -180,5 +191,12 @@ def explore(pid, rid, value):
                 'total_rows':table['total'],'selected_rows':len(rows),'group_by':value.group_by,
                 'filters':[f.model_dump() for f in value.filters],'period':value.period,
                 'period_column':value.period_column,'metric':value.metric,'measure':value.measure,
-                'groups':result,'complete':True,
-                'notice':'按固定结果的完整记录计算；这不是财务审批，也不证明原始资料完整或业务口径正确。'}
+                'groups':result,'input_complete':True,
+                # Old clients use complete to mean all groups returned. Keep
+                # that assertion false for any partial result page.
+                'complete':value.group_offset==0 and len(result)==total_groups,
+                'groups_total':total_groups,'grouped_rows':sum(group['count'] for group in groups.values()),
+                'group_offset':value.group_offset,
+                'group_limit':value.group_limit,
+                'next_group_offset':value.group_offset+len(result) if value.group_offset+len(result)<total_groups else None,
+                'notice':'按固定结果的完整记录计算；分组按页展示，不能把本页当作全部分组。这不是财务审批，也不证明原始资料完整或业务口径正确。'}

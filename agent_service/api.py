@@ -990,8 +990,12 @@ from .workspace_lifecycle import install as install_workspace_lifecycle
 from .workspace_artifacts import install as install_workspace_artifacts
 install_workspace_lifecycle(app,auth)
 install_workspace_artifacts(app,auth)
+from .artifact_sharing import install as install_artifact_sharing
+install_artifact_sharing(app,auth)
 from .project_templates import install as install_project_templates
 install_project_templates(app,auth)
+from .organization_templates import install as install_organization_templates
+install_organization_templates(app,auth,operator_auth)
 from .runtime_config_api import install as install_runtime_config
 install_runtime_config(app,auth,operator_auth)
 from .business_proposals import install as install_business_proposals
@@ -1015,5 +1019,8 @@ def desktop_runtime_status():
             'workspace_location':location,'cloud_workspace_configured':location=='cloud',
             'model_configured':public_catalog()['configured'],'connection_checked_at_startup':False,
             'notice':os.getenv('NEXUS_DESKTOP_MODEL_NOTICE','云端模型按需连接；断网时本地导入、加工、查看和导出仍可用。')}
+
+from .office_edit import install as install_office_edit
+install_office_edit(app,auth)
 
 app.mount('/',StaticFiles(directory=Path(__file__).parent/'static',html=True),name='workbench')

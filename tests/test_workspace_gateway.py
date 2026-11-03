@@ -135,7 +135,7 @@ def test_workbench_and_data_application_assets_are_served_by_isolated_gateway(se
                 self.files.append(urlsplit(values['href']).path)
 
     with client_for(settings) as client:
-        for page in ('/','/data-app.html','/project-templates.html','/data-workbench.html'):
+        for page in ('/','/data-app.html','/project-templates.html','/data-workbench.html','/office-edit.html'):
             markup=client.get(page);assert markup.status_code==200
             assets=Assets();assets.feed(markup.text)
             if page!='/data-workbench.html':assert assets.scripts[0]=='/secure-id.js'

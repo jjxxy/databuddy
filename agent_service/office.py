@@ -259,7 +259,7 @@ def _manifest_text(record,aid):
     return value
 
 
-def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_version=RENDERER):
+def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_version=RENDERER,publication_guard=None):
     from .intents import require
     from .result_delivery import durable_cached_artifact
     from .locks import assert_owned
@@ -331,7 +331,7 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
             durable_cached_artifact(file,expected_sha256=record.get('sha256') if record.get('state')=='committed' else None,
                 pending_sha256=record.get('sha256') if record.get('state')=='pending' else None,
                 build=build,save_pending=save_pending,save_committed=save_committed,before_publish=check_before_publish,
-                publication_guard=authority.publication_guard if authority else None,after_publish=complete_manifest)
+                publication_guard=authority.publication_guard if authority else publication_guard,after_publish=complete_manifest)
         except Exception:
             if slide_progress:slide_progress.finish(False)
             raise

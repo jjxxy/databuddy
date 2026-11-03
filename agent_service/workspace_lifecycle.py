@@ -301,11 +301,12 @@ def _cancel(connection,pid,sid=None):
                     record.update(lifecycle_paused_schedule={key:record.get(key) for key in ('cron','watch_sources','pending_schedule','next_due')},
                         cron=None,watch_sources=False,pending_schedule=None,next_due=None)
                     _write(connection,kind,record);paused.append(record['id'])
-        for share in _all(connection,'data_share'):
-            if share.get('project_id')==pid and share.get('state')=='active':
-                share.update(state='revoked',revoked_at=stamp,revoked_by_hash=hashlib.sha256(who.encode()).hexdigest(),
-                    version=share.get('version',0)+1,lifecycle_revoked=True)
-                _write(connection,'data_share',share);revoked.append(share['id'])
+        for share_kind in ('data_share','artifact_share'):
+            for share in _all(connection,share_kind):
+                if share.get('project_id')==pid and share.get('state')=='active':
+                    share.update(state='revoked',revoked_at=stamp,revoked_by_hash=hashlib.sha256(who.encode()).hexdigest(),
+                        version=share.get('version',0)+1,lifecycle_revoked=True)
+                    _write(connection,share_kind,share);revoked.append(share['id'])
     cancelled_jobs=[]
     rows=connection.execute(select(jobs).where(jobs.c.status.in_(ACTIVE)).with_for_update()).mappings().all()
     for row in rows:

@@ -78,7 +78,7 @@ def test_capacity_limits_stop_instead_of_truncating(monkeypatch):
     with pytest.raises(ValueError,match='没有截断计算'):
         explore(pid,job['id'],req(sha))
     monkeypatch.setattr(module,'MAX_ANALYSIS_BYTES',20*1024*1024)
-    monkeypatch.setattr(module,'MAX_GROUPS',1)
+    monkeypatch.setattr(module,'MAX_EXPLORE_GROUPS',1)
     with pytest.raises(ValueError,match='没有截断计算'):
         explore(pid,job['id'],req(sha))
 
@@ -131,3 +131,20 @@ def test_deletion_waits_until_snapshot_analysis_finishes(monkeypatch):
         removal.result(timeout=10)
     with pytest.raises(ValueError,match='回收站'):
         explore(pid,job['id'],req(sha))
+
+
+def test_more_than_500_groups_are_complete_before_stable_pagination():
+    # Every page is derived from the complete fixed result; it is never a
+    # partial aggregation of just the displayed input rows.
+    raw='id,office,month,amount\n'+''.join(f'{i},Office{i:04d},2026-09,1.000000000001\n' for i in range(501))
+    pid,wid,job,sha=adopted(raw.encode())
+    args=req(sha,metric='sum',measure='amount',period_column='month',period='2026-09')
+    first=explore(pid,job['id'],args);second=explore(pid,job['id'],{**args,'group_offset':500})
+    assert first['input_complete'] and not first['complete'] and first['groups_total']==501
+    assert first['grouped_rows']==first['selected_rows']==501 and first['next_group_offset']==500
+    assert len(first['groups'])==500 and len(second['groups'])==1 and second['next_group_offset'] is None
+    assert second['groups'][0]['values']==['Office0500'] and second['groups'][0]['amount']=='1.000000000001'
+    assert sum(int(group['count']) for group in first['groups']+second['groups'])==501
+    assert first['handoff_sha256']==second['handoff_sha256']==sha
+    with pytest.raises(ValueError,match='页码超出'):
+        explore(pid,job['id'],{**args,'group_offset':502})

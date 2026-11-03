@@ -111,7 +111,7 @@ def _preview_level(format):
     return 'download_only'
 
 
-def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=None,source_refs=None,updated_at=None,status='saved',private=None,downloads=None,origin=None,sha256_scope='file',semantic_status='not_confirmed',metric_status='not_confirmed',download_blocked_reason=None,semantic_warning=None):
+def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=None,source_refs=None,updated_at=None,status='saved',private=None,downloads=None,origin=None,sha256_scope='file',semantic_status='not_confirmed',metric_status='not_confirmed',download_blocked_reason=None,semantic_warning=None,office_edit_available=False):
     fmt=format or Path(name).suffix.lower().lstrip('.') or 'bin'
     aid='wa_'+_hash(json.dumps([pid,kind,identity,fmt,checksum],ensure_ascii=False,separators=(',',':')).encode())[:44]
     base=f'/api/projects/{pid}/artifacts/{aid}'
@@ -125,6 +125,7 @@ def _register(pid,kind,identity,name,checksum,*,format=None,version=None,bytes=N
         record['download_url']=None
         record['download_blocked_reason']=download_blocked_reason or '该候选暂不能下载完整结果'
     if semantic_warning:record['semantic_warning']=semantic_warning
+    if office_edit_available:record['office_edit_available']=True
     try:old=get('workspace_artifact',aid)
     except KeyError:old=None
     if old and _gone(old):return None
@@ -255,7 +256,10 @@ def catalog(pid,kind='',offset=0,limit=40):
             else:
                 warning='模板来源记录不可用或不完整，无法在此核对所用版本；请核对版式及财务内容。'
         add('office',value['id'],value['name'],value['sha256'],bytes=value.get('bytes'),updated_at=value.get('created_at'),origin=_origin(value,pid),
-            private={'office_id':value['id']},source_refs=references,semantic_warning=warning)
+            private={'office_id':value['id']},source_refs=references,semantic_warning=warning,
+            office_edit_available=(isinstance(value.get('source_spec'),str) and bool(value.get('source_spec'))
+                and bool(re.fullmatch(r'[a-f0-9]{64}',value.get('source_sha256') or ''))
+                and Path(value.get('name','')).suffix.lower() in ('.docx','.pptx')))
     from .actor_context import current_actor
     from .workspace_lifecycle import visible_turn
     for value in all_items('business_flow_artifact'):

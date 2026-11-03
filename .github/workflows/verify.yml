@@ -27,7 +27,8 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --prefix tests/ui --no-audit --no-fund
-      - run: npm test --prefix tests/ui
+      - name: UI tests with failure location
+        run: python scripts/run_ci_ui.py
       - run: node --check agent_service/static/app.js
       - run: node --check agent_service/static/lifecycle.js
       - run: node --check agent_service/static/sw.js

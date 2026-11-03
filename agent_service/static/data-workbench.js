@@ -20,7 +20,7 @@ const wbVisual={loaded:false,loading:false,generation:0,offset:null,sources:[],b
 const wbSingle={key:'',generation:0,blobUrl:null,preview:null};
 function wbReloadAuthDocument(){location.reload()}
 function wbAuthError(){return Object.assign(Error('登录状态已变化，请在新页面继续'),{authTransition:true})}
-function wbChangeAuthentication(nextToken=''){wbAuthClosed=true;window.nexusShareUI?.clear();window.nexusExplore?.sync({});window.nexusFactorAnalysis?.sync({});window.nexusGapAnalysis?.sync({});clearTimeout(wbState.pollTimer);for(const c of wbAuthRequests)c.abort();wbAuthRequests.clear();wbLogin();for(const key of Object.keys(sessionStorage))if(key.startsWith('nexus_'))sessionStorage.removeItem(key);if(nextToken)sessionStorage.setItem('nexus_token',nextToken);wbReloadAuthDocument()}
+function wbChangeAuthentication(nextToken=''){wbAuthClosed=true;window.nexusShareUI?.clear();window.nexusExplore?.sync({});window.nexusFactorAnalysis?.sync({});window.nexusGapAnalysis?.sync({});window.nexusAppendResults?.sync({});clearTimeout(wbState.pollTimer);for(const c of wbAuthRequests)c.abort();wbAuthRequests.clear();wbLogin();for(const key of Object.keys(sessionStorage))if(key.startsWith('nexus_'))sessionStorage.removeItem(key);if(nextToken)sessionStorage.setItem('nexus_token',nextToken);wbReloadAuthDocument()}
 const wbEnc = encodeURIComponent;
 const wbRoot = () => '/api/projects/' + wbEnc(wbProject);
 const wbWorkflowUrl = () => wbRoot() + '/data-workflows/' + wbEnc(wbState.workflowId);
@@ -591,7 +591,7 @@ function wbRenderResult() {
   const activeProject=wbProject,activeWorkflow=wbState.workflowId,activeRun=wbState.resultId,activeToken=wbState.token,activeHash=wbState.result?.manifest_sha256;
   const analysisScope={project:activeProject,workflow:wbState.workflow,result:wbState.result,resultId:activeRun,request:wbRequest,
     isCurrent:()=>wbCurrentProject()&&!wbAuthClosed&&wbProject===activeProject&&wbState.token===activeToken&&wbState.workflowId===activeWorkflow&&wbState.resultId===activeRun&&wbRunId(wbState.workflow?.published_run)===activeRun&&wbState.result?.manifest_sha256===activeHash};
-  window.nexusExplore?.sync(analysisScope);window.nexusFactorAnalysis?.sync(analysisScope);window.nexusGapAnalysis?.sync(analysisScope);window.nexusShareUI?.sync(analysisScope);
+  window.nexusExplore?.sync(analysisScope);window.nexusFactorAnalysis?.sync(analysisScope);window.nexusGapAnalysis?.sync(analysisScope);window.nexusAppendResults?.sync(analysisScope);window.nexusShareUI?.sync(analysisScope);
 }
 async function wbLoadResult(offset = 0) {
   const requestId = ++wbState.resultLoading;

@@ -9,6 +9,7 @@ from .store import get,put,patch,all_items,seal,unseal,uid,now
 from .config import DATA
 from . import project_data as data,workspace
 from .interactive_analysis import ExploreRequest
+from .incremental_append import AppendInput
 from .factor_analysis import FactorRequest
 from .gap_analysis import GapRequest
 
@@ -216,6 +217,12 @@ def install(app,auth):
     def data_result(pid:str,rid:str,request:Request,offset:int=0,limit:int=100):
         from .actor_context import actor_from_identity,actor_scope
         with actor_scope(actor_from_identity(getattr(request.state,'identity',{}))):return data.read_result(pid,rid,offset,limit)
+
+    @app.post('/api/projects/{pid}/data-append-candidates',dependencies=dependencies)
+    def append_candidate(pid:str,value:AppendInput,request:Request):
+        from .actor_context import actor_from_identity
+        from .incremental_append import create
+        return create(pid,actor_from_identity(getattr(request.state,'identity',{})),value)
 
     @app.post('/api/projects/{pid}/data-results/{rid}/explore',dependencies=dependencies)
     def explore_result(pid:str,rid:str,value:ExploreRequest):
