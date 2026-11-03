@@ -1,5 +1,5 @@
 """Explicit, deterministic checks over an already authenticated table."""
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 from typing import Annotated, Literal
 from pydantic import Field, model_validator
 from .models import StrictModel
@@ -37,7 +37,24 @@ class Range(StrictModel):
         if lower is not None and upper is not None and lower>upper:raise ValueError('范围下限不能大于上限')
         return self
 
-Rule=Annotated[Required|Unique|Range,Field(discriminator='kind')]
+class Balance(StrictModel):
+    """Explicit, same-unit grouped equality; no inferred accounting policy."""
+    kind:Literal['balance']
+    left_column:str=Field(pattern=NAME)
+    right_column:str=Field(pattern=NAME)
+    group_by:list[str]=Field(min_length=1,max_length=20)
+
+    @model_validator(mode='after')
+    def distinct_fields(self):
+        import re
+        if (self.left_column==self.right_column or len(set(self.group_by))!=len(self.group_by)
+                or any(not re.fullmatch(NAME,x) for x in self.group_by)
+                or self.left_column in self.group_by or self.right_column in self.group_by):
+            raise ValueError('平衡检查需要不同的金额字段和明确分组字段')
+        return self
+
+
+Rule=Annotated[Required|Unique|Range|Balance,Field(discriminator='kind')]
 class Config(StrictModel):
     rules:list[Rule]=Field(min_length=1,max_length=50)
 
@@ -55,8 +72,42 @@ def run(context,config,inputs):
         raise ValueError('检查节点的数据快照不完整')
     fields={x.name:x for x in parsed.columns}
     for rule in cfg.rules:
-        columns=rule.columns if isinstance(rule,Unique) else [rule.column]
+        columns=rule.columns if isinstance(rule,Unique) else [*rule.group_by,rule.left_column,rule.right_column] if isinstance(rule,Balance) else [rule.column]
         if not set(columns)<=set(fields):raise ValueError('检查规则引用的字段不存在')
+        if isinstance(rule,Balance):
+            left=fields[rule.left_column];right=fields[rule.right_column]
+            if (left.data_type not in ('decimal','integer') or right.data_type not in ('decimal','integer')
+                    or left.unit!=right.unit or left.period!=right.period or left.value_format!=right.value_format
+                    or left.aggregation!='additive' or right.aggregation!='additive'):
+                raise ValueError('平衡检查需要单位、期间和格式一致的可加数值字段')
+            if not rows:raise FlowStepError('CHECK_BALANCE_FAILED','没有记录可供平衡检查')
+            groups={}
+            for row in rows:
+                if not isinstance(row,dict):raise ValueError('检查节点的数据行无效')
+                keys=[]
+                for column in rule.group_by:
+                    v=row.get(column)
+                    if v is None or isinstance(v,str) and not v.strip():
+                        raise FlowStepError('CHECK_BALANCE_FAILED','平衡检查的分组字段缺失：'+column)
+                    if fields[column].data_type in ('decimal','integer'):
+                        try:
+                            v=decimal_value(v)
+                            if fields[column].data_type=='integer' and v!=v.to_integral_value():raise ValueError()
+                        except ValueError:raise FlowStepError('CHECK_BALANCE_FAILED','平衡检查的分组数值无效：'+column) from None
+                    keys.append(v)
+                try:key=tuple(keys);hash(key)
+                except TypeError:raise ValueError('平衡检查的分组字段不能包含复杂值') from None
+                try:
+                    l=decimal_value(row.get(rule.left_column));r=decimal_value(row.get(rule.right_column))
+                    if (left.data_type=='integer' and l!=l.to_integral_value()) or (right.data_type=='integer' and r!=r.to_integral_value()):raise ValueError()
+                except (ValueError,TypeError):raise FlowStepError('CHECK_BALANCE_FAILED','平衡检查的金额缺失或无效，请核对') from None
+                with localcontext() as ctx:
+                    ctx.prec=100
+                    totals=groups.setdefault(key,[Decimal(0),Decimal(0)])
+                    totals[0]+=l;totals[1]+=r
+            if any(left!=right for left,right in groups.values()):
+                raise FlowStepError('CHECK_BALANCE_FAILED','分组平衡检查未通过，请核对两侧金额和业务口径')
+            continue
         if isinstance(rule,Range) and fields[rule.column].data_type not in ('decimal','integer'):raise ValueError('范围检查仅支持明确声明的数值字段')
         seen=set()
         for row in rows:

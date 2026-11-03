@@ -168,22 +168,22 @@ def _table_folder(context):
     return folder,scope
 
 
-def _table_key(scope):
+def _table_key(scope, *, legacy=False):
     from .store import cipher
     from .config import DATA
     cipher() # Exclusive key initialization shared with encrypted checkpoints.
     master=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
     return HKDF(algorithm=hashes.SHA256(),length=32,salt=bytes.fromhex(scope),
-                info=b'nexus-business-flow-table-v1').derive(master)
+                info=b'atlas-business-flow-table-v1' if legacy else b'nexus-business-flow-table-v1').derive(master)
 
 
-def _index_key():
+def _index_key(*, legacy=False):
     from .store import cipher
     from .config import DATA
     cipher()
     master=base64.urlsafe_b64decode((DATA/'connector.key').read_bytes())
     return HKDF(algorithm=hashes.SHA256(),length=32,salt=None,
-                info=b'nexus-business-flow-owner-index-v1').derive(master)
+                info=b'atlas-business-flow-owner-index-v1' if legacy else b'nexus-business-flow-owner-index-v1').derive(master)
 
 
 def _owner_claim(context,scope,key):
@@ -205,7 +205,7 @@ def _scope_bytes(folder):
     return total
 
 
-def _indexed_usage(root,claim,key):
+def _indexed_usage(root,claim,key,legacy_claim=None,legacy_key=None):
     """Report attributed usage; unindexed legacy bytes remain global-only."""
     actor_bytes=project_bytes=unindexed_bytes=0
     for folder in root.iterdir():
@@ -220,19 +220,34 @@ def _indexed_usage(root,claim,key):
             if set(saved)!={'version','scope','actor','project','mac'} or saved['version']!=1 or saved['scope']!=folder.name:
                 raise ValueError()
             msg={k:saved[k] for k in ('version','scope','actor','project')}
+            if any(not isinstance(saved.get(field),str) for field in ('actor','project','mac')):raise ValueError()
             actual=hmac.new(key,canonical(msg),hashlib.sha256).hexdigest()
-            if not isinstance(saved['mac'],str) or not hmac.compare_digest(saved['mac'],actual):raise ValueError()
+            if hmac.compare_digest(saved['mac'],actual):
+                expected=claim
+            elif legacy_key is not None and legacy_claim is not None and hmac.compare_digest(saved['mac'],hmac.new(legacy_key,canonical(msg),hashlib.sha256).hexdigest()):
+                expected=legacy_claim
+            else:raise ValueError()
         except (ValueError,TypeError,KeyError,OSError):
             raise ValueError('数据快照归属索引损坏，请管理员核对；未删除数据') from None
-        if saved['actor']==claim['actor']:
+        if hmac.compare_digest(saved['actor'],expected['actor']):
             actor_bytes+=size
-            if saved['project']==claim['project']:project_bytes+=size
+            if hmac.compare_digest(saved['project'],expected['project']):project_bytes+=size
     return actor_bytes,project_bytes,unindexed_bytes
 
 
 def _quota_mb(name,default):
-    try:value=int(os.getenv(name,str(default)))
-    except ValueError:raise ValueError('数据快照存储配额配置无效') from None
+    # Preserve the configured limit after the Atlas -> Nexus rename. Never
+    # silently choose either value when both versions disagree, because that
+    # could widen a user's storage quota after an upgrade.
+    legacy_name='ATLAS_'+name[len('NEXUS_'):] if name.startswith('NEXUS_FLOW_SNAPSHOT_') else None
+    configured=os.environ.get(name)
+    legacy=os.environ.get(legacy_name) if legacy_name else None
+    try:
+        value=int(configured if configured is not None else legacy if legacy is not None else str(default))
+        legacy_value=int(legacy) if legacy is not None else value
+    except (TypeError,ValueError):raise ValueError('数据快照存储配额配置无效') from None
+    if configured is not None and legacy is not None and legacy_value!=value:
+        raise ValueError('数据快照新旧配额配置冲突，请统一后重试')
     if not 1<=value<=131072:raise ValueError('数据快照存储配额配置无效')
     return value
 
@@ -243,11 +258,13 @@ def snapshot_storage_usage(project_id,actor_id):
     from .locks import FileLock
     if not all(isinstance(x,str) and x for x in (project_id,actor_id)):raise ValueError('数据快照身份无效')
     root=DATA/'business-flow-tables';key=_index_key()
-    claim=_owner_claim({'project_id':project_id,'actor_id':actor_id},'0'*64,key)
+    context={'project_id':project_id,'actor_id':actor_id}
+    claim=_owner_claim(context,'0'*64,key)
+    legacy_key=_index_key(legacy=True);legacy_claim=_owner_claim(context,'0'*64,legacy_key)
     with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
         if root.exists() and (root.is_symlink() or root.resolve()!=root.absolute()):
             raise ValueError('数据快照目录无效')
-        actor,project,unindexed=_indexed_usage(root,claim,key) if root.is_dir() else (0,0,0)
+        actor,project,unindexed=_indexed_usage(root,claim,key,legacy_claim,legacy_key) if root.is_dir() else (0,0,0)
         return {'actor_bytes':actor,'project_bytes':project,'has_unindexed_legacy':bool(unindexed),
                 'actor_limit_bytes':_quota_mb('NEXUS_FLOW_SNAPSHOT_ACTOR_MB',_DEFAULT_ACTOR_MB)*1024*1024,
                 'project_limit_bytes':_quota_mb('NEXUS_FLOW_SNAPSHOT_PROJECT_MB',_DEFAULT_PROJECT_MB)*1024*1024,
@@ -273,9 +290,10 @@ def _save_rows(context,rows,raw):
     # are available. We never evict retained snapshots to make room.
     with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
         key=_index_key();claim=_owner_claim(context,scope,key);marker=folder/'.owner.json'
-        actor_used,project_used,_=_indexed_usage(root,claim,key)
+        legacy_key=_index_key(legacy=True);legacy_claim=_owner_claim(context,scope,legacy_key)
+        actor_used,project_used,_=_indexed_usage(root,claim,key,legacy_claim,legacy_key)
         if marker.exists():
-            if marker.is_symlink() or json.loads(marker.read_bytes())!=claim:
+            if marker.is_symlink() or json.loads(marker.read_bytes()) not in (claim,legacy_claim):
                 raise ValueError('数据快照归属与当前用户或项目不一致')
         else:
             # Legacy scopes are attributed when next used with the exact run
@@ -352,7 +370,8 @@ def _read_rows(context,ref):
         raise ValueError('数据快照丢失或大小不一致')
     try:
         encrypted=path.read_bytes()
-        raw=AESGCM(_table_key(scope)).decrypt(encrypted[:12],encrypted[12:],scope.encode())
+        try:raw=AESGCM(_table_key(scope)).decrypt(encrypted[:12],encrypted[12:],scope.encode())
+        except Exception:raw=AESGCM(_table_key(scope,legacy=True)).decrypt(encrypted[:12],encrypted[12:],scope.encode())
         if hashlib.sha256(raw).hexdigest()!=ref['sha256']:raise ValueError('数据快照摘要不一致')
         rows=json.loads(raw)
     except Exception:
@@ -396,8 +415,9 @@ def _paged_index(stream,ref,scope):
         raise ValueError('数据快照索引无效')
     index_start=size-index_length-40;stream.seek(index_start)
     raw=stream.read(index_length);tag=stream.read(32)
-    if not hmac.compare_digest(tag,hmac.new(_table_key(scope),raw,hashlib.sha256).digest()):
-        raise ValueError('数据快照索引校验失败')
+    if hmac.compare_digest(tag,hmac.new(_table_key(scope),raw,hashlib.sha256).digest()):legacy=False
+    elif hmac.compare_digest(tag,hmac.new(_table_key(scope,legacy=True),raw,hashlib.sha256).digest()):legacy=True
+    else:raise ValueError('数据快照索引校验失败')
     try:meta=json.loads(raw)
     except (ValueError,UnicodeError):raise ValueError('数据快照索引损坏') from None
     if (not isinstance(meta,dict) or set(meta)!={'version','scope','sha256','bytes','row_count','chunks'}
@@ -414,14 +434,14 @@ def _paged_index(stream,ref,scope):
             raise ValueError('数据快照分块索引无效')
         row+=item['count'];position+=item['length']
     if row!=ref['row_count'] or position!=index_start:raise ValueError('数据快照分块不完整')
-    return meta
+    return meta,legacy
 
 
-def _page_chunk(stream,scope,ref,index,item):
+def _page_chunk(stream,scope,ref,index,item,*,legacy=False):
     stream.seek(item['offset']);encrypted=stream.read(item['length'])
     if hashlib.sha256(encrypted).hexdigest()!=item['sha256']:raise ValueError('数据快照分块校验失败')
-    aad=canonical(['nexus-table-page-v2',scope,ref['sha256'],index,item['start'],item['count']])
-    try:plain=AESGCM(_table_key(scope)).decrypt(encrypted[:12],encrypted[12:],aad);rows=json.loads(plain)
+    aad=canonical(['atlas-table-page-v2' if legacy else 'nexus-table-page-v2',scope,ref['sha256'],index,item['start'],item['count']])
+    try:plain=AESGCM(_table_key(scope,legacy=legacy)).decrypt(encrypted[:12],encrypted[12:],aad);rows=json.loads(plain)
     except Exception:raise ValueError('数据快照分块无法解密') from None
     if not isinstance(rows,list) or len(rows)!=item['count'] or any(not isinstance(row,dict) for row in rows):
         raise ValueError('数据快照分块行数不一致')
@@ -432,13 +452,13 @@ def _read_paged(context,ref,offset,limit,*,whole=False,verify_only=False):
     path,scope=_paged_ref(context,ref)
     if type(offset) is not int or offset<0 or type(limit) is not int or limit<0:raise ValueError('分页参数无效')
     with path.open('rb') as stream:
-        index=_paged_index(stream,ref,scope)
+        index,legacy=_paged_index(stream,ref,scope)
         if verify_only:return None
         result=[]
         for number,item in enumerate(index['chunks']):
             start=item['start'];end=start+item['count']
             if end<=offset or start>=offset+limit:continue
-            rows=_page_chunk(stream,scope,ref,number,item)
+            rows=_page_chunk(stream,scope,ref,number,item,legacy=legacy)
             result.extend(rows[max(0,offset-start):min(item['count'],offset+limit-start)])
     if len(result)!=max(0,min(limit,ref['row_count']-offset)):
         raise ValueError('数据快照分页不完整')
@@ -494,9 +514,10 @@ def _save_rows_paged(context,rows,raw,table_sha=None):
     root=DATA/'business-flow-tables'
     with FileLock(str(DATA/'business-flow-tables.lock'),timeout=10):
         key=_index_key();claim=_owner_claim(context,scope,key);marker=folder/'.owner.json'
-        actor_used,project_used,_=_indexed_usage(root,claim,key)
+        legacy_key=_index_key(legacy=True);legacy_claim=_owner_claim(context,scope,legacy_key)
+        actor_used,project_used,_=_indexed_usage(root,claim,key,legacy_claim,legacy_key)
         if marker.exists():
-            if marker.is_symlink() or json.loads(marker.read_bytes())!=claim:raise ValueError('数据快照归属与当前用户或项目不一致')
+            if marker.is_symlink() or json.loads(marker.read_bytes()) not in (claim,legacy_claim):raise ValueError('数据快照归属与当前用户或项目不一致')
         else:
             own_legacy=_scope_bytes(folder);actor_used+=own_legacy;project_used+=own_legacy
         if target.exists():
@@ -767,7 +788,32 @@ def table_workflow(context, config, inputs):
                             'content_hash':pin.content_hash,'name':str(source.get('name') or pin.source_id)}
                 if basis is not None:source_ref.update(read_basis=basis,read_basis_sha256=basis_hash)
                 source_refs.append(source_ref)
-        tables[alias]=value['rows']
+        rows=value['rows']
+        expected={column.name for column in cfg.plan.inputs[alias].columns}
+        # Frozen pre-rename plans declare the server-generated atlas_row field.
+        # Adapt only a proven source-table ordinal and only when the old name
+        # cannot shadow a real source column. The frozen plan is unchanged and
+        # the typed engine still validates every input row and receipt.
+        if ('atlas_row' in expected and 'nexus_row' not in expected
+                and value.get('kind')=='source_table_v1'
+                and value.get('row_identity')=='snapshot_scoped_ordinal_not_business_key'):
+            fields=value.get('fields')
+            if not isinstance(fields,list) or any(not isinstance(field,dict) for field in fields):
+                raise ValueError('旧版内部行标识与来源字段冲突，不能自动迁移')
+            old_count=sum(field.get('name')=='atlas_row' for field in fields)
+            new_count=sum(field.get('name')=='nexus_row' for field in fields)
+            if old_count==1 and new_count==0:
+                # A persisted, already-read Atlas checkpoint remains valid.
+                if any(not isinstance(row,dict) or 'nexus_row' in row or row.get('atlas_row')!=str(index)
+                       for index,row in enumerate(rows,1)):
+                    raise ValueError('旧版内部行标识与来源字段冲突，不能自动迁移')
+            elif old_count==0 and new_count==1:
+                if any(not isinstance(row,dict) or 'atlas_row' in row or row.get('nexus_row')!=str(index)
+                       for index,row in enumerate(rows,1)):
+                    raise ValueError('旧版内部行标识与来源字段冲突，不能自动迁移')
+                rows=[{('atlas_row' if key=='nexus_row' else key):val for key,val in row.items()} for row in rows]
+            else:raise ValueError('旧版内部行标识与来源字段冲突，不能自动迁移')
+        tables[alias]=rows
         source_review |= value.get('requires_source_review') is True
         semantic_review |= value.get('requires_semantic_review') is True
     # User parameters can replace only the declared scalar filter values,

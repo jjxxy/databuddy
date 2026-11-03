@@ -157,7 +157,10 @@ def validate_snapshot(binding):
     from .provider import ModelServiceError
     if not isinstance(binding, dict) or not isinstance(binding.get('name'), str) or not isinstance(binding.get('version'), str):
         raise ModelServiceError('任务的 Agent 执行器记录无效；已有工作已保留')
-    adapter = _ADAPTERS.get(binding['name'])
+    # Atlas and Nexus name the same bundled legacy adapter and retain its
+    # version check. Do not rewrite the durable historical binding itself.
+    name = 'nexus_legacy' if binding['name'] == 'atlas_legacy' else binding['name']
+    adapter = _ADAPTERS.get(name)
     if adapter is None:
         raise ModelServiceError('任务固定的 Agent 执行器不可用；已有工作已保留，请恢复原执行器')
     if binding['version'] != adapter.version:

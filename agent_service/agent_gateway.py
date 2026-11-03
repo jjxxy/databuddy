@@ -143,7 +143,7 @@ def authenticate(token):
     digest=_hash(token);matched=None
     for c in all_items('agent_client'):
         if hmac.compare_digest(c.get('token_hash') or '0'*64,digest):matched=c
-    if not token.startswith('nexus_ag_') or not matched:raise GatewayError(401,'invalid_client','需要有效的 Agent 调用凭据')
+    if not token.startswith(('nexus_ag_','atlas_ag_')) or not matched:raise GatewayError(401,'invalid_client','需要有效的 Agent 调用凭据')
     return _fresh(matched['id'])
 
 def assert_turn_allowed(turn):
@@ -361,7 +361,7 @@ def agent_card(version='1.0'):
     card['description']+=' A2A 1.0 SendMessage requires configuration.returnImmediately=true; no streaming, push or task continuation.'
     return card
 
-def _a2a_task(value,version='0.3'):
+def _a2a_task(value,version='0.3',legacy=False):
     state=value['status']
     text=value.get('answer') or value.get('progress') or '任务已接收，尚未完成'
     message={'kind':'message','role':'agent','messageId':'status_'+value['id'],
@@ -378,6 +378,11 @@ def _a2a_task(value,version='0.3'):
             'failed':'TASK_STATE_FAILED','cancelled':'TASK_STATE_CANCELED','input-required':'TASK_STATE_INPUT_REQUIRED','auth-required':'TASK_STATE_AUTH_REQUIRED'}[state]
         task['artifacts'][0]['parts']=[{'data':{'nexus':data}}]
         task['metadata']['nexusProtocolProfile']='1.0-jsonrpc-async-polling'
+    if legacy:
+        task['artifacts'][0]['artifactId']='atlas-task-receipt'
+        task['artifacts'][0]['name']='Atlas task receipt'
+        task['artifacts'][0]['parts'][0]['data']={'atlas':data}
+        task['metadata']['atlasProtocolProfile']=task['metadata'].pop('nexusProtocolProfile')
     return task
 
 def _a2a_send(params,version='0.3'):
@@ -401,7 +406,7 @@ def _a2a_send(params,version='0.3'):
             kind='text' if 'text' in part else 'data' if 'data' in part else None
         else:kind=part.get('kind')
         if kind=='text' and isinstance(part.get('text'),str):texts.append(part['text'])
-        elif kind=='data' and isinstance(part.get('data'),dict) and set(part['data'])=={'nexus'} and data is None:data=part['data']['nexus']
+        elif kind=='data' and isinstance(part.get('data'),dict) and set(part['data']) in ({'nexus'},{'atlas'}) and data is None:data=next(iter(part['data'].values()))
         else:raise GatewayError(400,'unsupported_part','仅接收文本和明确的 Nexus WorkStudio 交接数据，不下载外部文件 URL')
     if not isinstance(data,dict):raise GatewayError(400,'project_required','A2A 数据片段需明确 Nexus WorkStudio 项目及任务参数')
     data=dict(data);data.setdefault('request_id',message['messageId']);data.setdefault('goal','\n'.join(texts))
@@ -503,12 +508,17 @@ def install(app,auth,operator_auth):
                 if not isinstance(params,dict) or set(params)-{'id','historyLength','metadata'} or not isinstance(params.get('id'),str):raise GatewayError(400,'invalid_params','任务参数无效')
                 value=await run_in_threadpool(task_status,client,params['id']) if method==get_method else await run_in_threadpool(cancel_task,client,params['id'],strict=True)
             else:return {'jsonrpc':'2.0','id':identity,'error':{'code':-32601,'message':'Method not found; polling profile only'}}
-            task=_a2a_task(value,version)
+            is_legacy=request.headers.get('authorization','').startswith('Bearer atlas_ag_')
+            if method==send_method:
+                parts=(params.get('message') or {}).get('parts',[])
+                is_legacy=is_legacy or any(isinstance(p,dict) and isinstance(p.get('data'),dict) and set(p['data'])=={'atlas'} for p in parts)
+            task=_a2a_task(value,version,legacy=is_legacy)
             return {'jsonrpc':'2.0','id':identity,'result':{'task':task} if version=='1.0' and method==send_method else task}
         except (GatewayError,KeyError,ValueError) as exc:
             code=-32001 if isinstance(exc,KeyError) else -32602 if isinstance(exc,ValidationError) else -32000
             return {'jsonrpc':'2.0','id':identity,'error':{'code':code,'message':str(exc) if isinstance(exc,GatewayError) else 'Task or parameters unavailable'}}
 
+    @app.post('/mcp/atlas')  # Compatibility for pre-rename clients; same auth and grants.
     @app.post('/mcp/nexus')
     async def mcp(request:Request,client=Depends(machine)):
         header=request.headers.get('MCP-Protocol-Version')
@@ -530,10 +540,13 @@ def install(app,auth,operator_auth):
             elif method=='ping':result={}
             elif method=='tools/list':
                 if params.get('cursor'):raise GatewayError(400,'cursor','此目录无下一页')
-                result={'tools':TOOL_SCHEMAS}
+                legacy=request.url.path=='/mcp/atlas'
+                result={'tools':[{**tool,'name':tool['name'].replace('nexus_','atlas_',1)} for tool in TOOL_SCHEMAS] if legacy else TOOL_SCHEMAS}
             elif method=='tools/call':
                 if not isinstance(params,dict) or set(params)-{'name','arguments','_meta'}:raise GatewayError(400,'invalid_params','工具参数无效')
                 name=params.get('name');args=params.get('arguments',{})
+                if request.url.path=='/mcp/atlas' and isinstance(name,str) and name.startswith('atlas_'):
+                    name='nexus_'+name[len('atlas_'):]
                 schema=next((tool['inputSchema'] for tool in TOOL_SCHEMAS if tool['name']==name),None)
                 if schema is None:return {'jsonrpc':'2.0','id':identity,'error':{'code':-32602,'message':'Unknown tool'}}
                 import jsonschema

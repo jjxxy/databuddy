@@ -8,7 +8,36 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from .store import put,now
 
-def configured():return all(os.getenv(k) for k in ('NEXUS_S3_ENDPOINT','NEXUS_S3_BUCKET','NEXUS_S3_ACCESS_KEY_ID','NEXUS_S3_SECRET_ACCESS_KEY','NEXUS_BACKUP_KEY'))
+_CORE=('S3_ENDPOINT','S3_BUCKET','S3_ACCESS_KEY_ID','S3_SECRET_ACCESS_KEY','BACKUP_KEY')
+
+def _setting(name,default=None):
+    current=os.getenv('NEXUS_'+name);legacy=os.getenv('ATLAS_'+name)
+    if current is not None and legacy is not None and current!=legacy:
+        raise ValueError('新旧备份配置冲突：'+name)
+    return current if current is not None else legacy if legacy is not None else default
+
+def _prefix():
+    requested=os.getenv('NEXUS_BACKUP_REPOSITORY_PREFIX')
+    if requested is not None:
+        if requested not in ('atlas','nexus'):raise ValueError('备份仓路径标识只能为 atlas 或 nexus')
+        return requested
+    # An existing legacy configuration must continue using its old repository.
+    # Migrating credentials alone must not silently switch backup histories.
+    if any(os.getenv('ATLAS_'+key) is not None for key in _CORE):return 'atlas'
+    from .store import get
+    try:previous=get('system','backup-health')
+    except KeyError:return 'nexus'
+    if previous.get('backend')!='restic':return 'nexus'
+    saved=previous.get('repository_prefix')
+    if saved in ('atlas','nexus'):return saved
+    # Old receipts have no location. Neither infer a new empty repo nor init it:
+    # the administrator can explicitly select the location after checking it.
+    raise ValueError('历史备份仓路径不明确，请设置 NEXUS_BACKUP_REPOSITORY_PREFIX 为 atlas 或 nexus')
+
+def configured():
+    ready=all(_setting(key) for key in _CORE)
+    if ready:_prefix()
+    return ready
 def file_sha(path):
     digest=hashlib.sha256()
     with Path(path).open('rb') as f:
@@ -18,12 +47,13 @@ def file_sha(path):
 def environment():
     from .network_policy import mode
     if mode()=='local_only':raise ValueError('仅本地连接模式不启用远程S3备份；请使用本地一致备份')
-    endpoint=os.environ['NEXUS_S3_ENDPOINT'];p=urlsplit(endpoint)
-    if p.scheme!='https' or p.username or p.password or p.query or p.fragment:raise ValueError('备份端点必须为HTTPS且不携带凭证')
-    if len(os.environ['NEXUS_BACKUP_KEY'])<32:raise ValueError('备份仓密码至少32个随机字符')
+    if not configured():raise ValueError('异卷备份尚未配置')
+    endpoint=_setting('S3_ENDPOINT');p=urlsplit(endpoint)
+    if p.scheme!='https' or not p.hostname or p.username or p.password or p.query or p.fragment:raise ValueError('备份端点必须为HTTPS且不携带凭证')
+    if len(_setting('BACKUP_KEY'))<32:raise ValueError('备份仓密码至少32个随机字符')
     # No app/model/database credentials are inherited by the backup executable.
     env={k:v for k,v in os.environ.items() if k in ('PATH','LANG','LC_ALL','HOME','SSL_CERT_FILE','SSL_CERT_DIR')}
-    env.update(RESTIC_REPOSITORY='s3:'+endpoint.rstrip('/')+'/'+os.environ['NEXUS_S3_BUCKET']+'/nexus',RESTIC_PASSWORD=os.environ['NEXUS_BACKUP_KEY'],AWS_ACCESS_KEY_ID=os.environ['NEXUS_S3_ACCESS_KEY_ID'],AWS_SECRET_ACCESS_KEY=os.environ['NEXUS_S3_SECRET_ACCESS_KEY'],AWS_DEFAULT_REGION=os.getenv('NEXUS_S3_REGION','auto'),RESTIC_CACHE_DIR=os.getenv('RESTIC_CACHE_DIR','/tmp/nexus-restic-cache'),GOGC='50')
+    env.update(RESTIC_REPOSITORY='s3:'+endpoint.rstrip('/')+'/'+_setting('S3_BUCKET')+'/'+_prefix(),RESTIC_PASSWORD=_setting('BACKUP_KEY'),AWS_ACCESS_KEY_ID=_setting('S3_ACCESS_KEY_ID'),AWS_SECRET_ACCESS_KEY=_setting('S3_SECRET_ACCESS_KEY'),AWS_DEFAULT_REGION=_setting('S3_REGION','auto'),RESTIC_CACHE_DIR=os.getenv('RESTIC_CACHE_DIR','/tmp/nexus-restic-cache'),GOGC='50')
     return env
 
 def command(args,env,check=True):
@@ -31,8 +61,8 @@ def command(args,env,check=True):
     if mode()=='local_only':raise ValueError('仅本地连接模式不运行远程备份进程；请使用本地一致备份')
     binary=shutil.which('restic')
     if not binary:raise ValueError('未安装Restic，未创建备份')
-    style=os.getenv('NEXUS_S3_URL_STYLE','path');lookup='dns' if style=='virtual-host' else 'path'
-    result=subprocess.run([binary,'-o','s3.bucket-lookup='+lookup,*args],env=env,capture_output=True,text=True,timeout=int(os.getenv('NEXUS_BACKUP_TIMEOUT_SECONDS','3600')))
+    style=_setting('S3_URL_STYLE','path');lookup='dns' if style=='virtual-host' else 'path'
+    result=subprocess.run([binary,'-o','s3.bucket-lookup='+lookup,*args],env=env,capture_output=True,text=True,timeout=int(_setting('BACKUP_TIMEOUT_SECONDS','3600')))
     if len(result.stdout)>2000000 or len(result.stderr)>2000000:raise ValueError('备份命令返回超过限制')
     if check and result.returncode:raise ValueError('Restic操作未完成，请检查备份服务权限和日志状态')
     return result
@@ -56,9 +86,9 @@ def save():
         restored=Path(folder)/'readback';command(['restore',snapshot,'--target',str(restored)],env)
         files=list(restored.rglob('workspace.zip'))
         if len(files)!=1 or file_sha(files[0])!=digest:raise ValueError('异卷备份回读校验失败')
-        value={'ok':True,'backend':'restic','snapshot_id':snapshot,'sha256':digest,'plaintext_bytes':size,'offsite_readback_verified':True,'finished_at':now(),'independent_disaster_recovery_verified':False}
+        value={'ok':True,'backend':'restic','snapshot_id':snapshot,'sha256':digest,'plaintext_bytes':size,'offsite_readback_verified':True,'finished_at':now(),'independent_disaster_recovery_verified':False,'repository_prefix':_prefix()}
         put('system',value,'backup-health')
-        days=int(os.getenv('NEXUS_BACKUP_RETENTION_DAYS','0'))
+        days=int(_setting('BACKUP_RETENTION_DAYS','0'))
         if days>0:command(['forget','--tag','nexus-workspace','--host','nexus-workspace','--group-by','host,tags','--keep-daily',str(days),'--prune'],env)
         return value
 

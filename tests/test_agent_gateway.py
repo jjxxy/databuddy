@@ -244,3 +244,33 @@ def test_hop_limit_and_changed_grants_never_resume_old_work(setup):
     assert result.status_code==200,result.text
     with pytest.raises(gateway.GatewayError):gateway.assert_turn_allowed(turn)
 
+
+
+def test_legacy_mcp_endpoint_preserves_authorization_and_tool_names(setup):
+    client,pid,other=setup
+    _,headers=issue(setup)
+    def rpc(method,params=None,auth=headers):
+        return client.post('/mcp/atlas',headers=auth,json={'jsonrpc':'2.0','id':1,'method':method,'params':params or {}})
+    assert rpc('tools/list',auth={}).status_code==401
+    names={item['name'] for item in rpc('tools/list').json()['result']['tools']}
+    assert names=={'atlas_submit_task','atlas_get_task','atlas_cancel_task','atlas_read_artifact'}
+    result=rpc('tools/call',{'name':'atlas_submit_task','arguments':{'project_id':pid,'request_id':'legacy-mcp-request','goal':'只解释已有结果'}}).json()['result']
+    assert result['isError'] is False
+    assert result['structuredContent']['id']
+    denied=rpc('tools/call',{'name':'atlas_submit_task','arguments':{'project_id':other,'request_id':'legacy-mcp-other','goal':'只解释已有结果'}}).json()['result']
+    assert denied['isError'] is True
+    assert 'error' in rpc('tools/call',{'name':'atlas_shell','arguments':{}}).json()
+
+
+def test_legacy_a2a_input_and_receipts_keep_existing_protocol_shape():
+    payload={'message':{'role':'user','messageId':'legacy-request-1','parts':[{'kind':'data','data':{'atlas':{'project_id':'p_example','goal':'检查','request_id':'legacy-request-1'}}}]}}
+    parsed=gateway._a2a_send(payload,'0.3')
+    assert parsed.project_id=='p_example'
+    value={'id':'job1','status':'queued','outcome':None}
+    legacy=gateway._a2a_task(value,'0.3',legacy=True)
+    assert set(legacy['artifacts'][0]['parts'][0]['data'])=={'atlas'}
+    assert 'atlasProtocolProfile' in legacy['metadata']
+    current=gateway._a2a_task(value,'0.3')
+    assert set(current['artifacts'][0]['parts'][0]['data'])=={'nexus'}
+    payload['message']['parts'][0]['data']['nexus']={}
+    with pytest.raises(gateway.GatewayError):gateway._a2a_send(payload,'0.3')

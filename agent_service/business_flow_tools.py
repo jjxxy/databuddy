@@ -79,7 +79,7 @@ def execute(turn,name,args):
                 'nodes':{'source_table':{'config_schema':SourceConfig.model_json_schema(),'output':'source_table_v1'},
                          'api_capture':{'config_schema':ApiCaptureConfig.model_json_schema(),'output':'api_capture_v1','notice':'使用 prepare_business_flow_source 固定已授权 API 版本；每次新运行采集并保存快照，结果仍需核对范围和口径。'},
                          'table_workflow':{'config_schema':TableConfig.model_json_schema(),'output':'table_workflow_v1'},
-                         'quality_gate':{'config_schema':QualityConfig.model_json_schema(),'input':'table（table_workflow 或 quality_gate 输出）','output':'table_workflow_v1','notice':'只配置用户明确要求的字段和规则；失败阻断后续步骤，不改数据，不代表财务结果已核验。'},
+                         'quality_gate':{'config_schema':QualityConfig.model_json_schema(),'input':'table（table_workflow 或 quality_gate 输出）','output':'table_workflow_v1','notice':'只配置用户明确要求的字段和规则；balance 按明确选定的分组核对两列合计，仅表示这些分组的总额相等，凭证号、法人、期间等分组和口径须由用户确认。失败阻断后续步骤，不改数据，不代表财务结果已核验。'},
                          'human_review':{'config_schema':HumanReviewConfig.model_json_schema(),'input':'table（已加工或已核对的数据表）','output':'table_workflow_v1','notice':'仅用户明确要求人工复核时添加；此节点暂停，明确确认后继续。'},
                          'table_report_spec':{'config_schema':TableReportConfig.model_json_schema(),'input':'table','optional_input':'commentary（仅 model 或 skill 输出，明确标注未经核验）','output':'table_report_spec_v1'},
                          'office_document':{'config_schema':DeliveryConfig.model_json_schema(),'renderer_version':RENDERER,'input':'spec'},

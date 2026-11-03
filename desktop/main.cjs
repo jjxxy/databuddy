@@ -9,6 +9,11 @@ const { configureDesktopWindow } = require('./window-controls.cjs');
 const { sameOrigin, sameFile, validPipelineId, parseReady, trustedMainFrame, createTransitionGate } = require('./security.cjs');
 
 app.setName('Nexus WorkStudio');
+let stateDirectoryError=null;
+try {
+  const {chooseStateDirectory}=require('./state-path.cjs');
+  app.setPath('userData',chooseStateDirectory(app.getPath('appData'),app.getPath('userData')));
+} catch(error) {stateDirectoryError=error;}
 const root = path.resolve(__dirname, '..');
 const startFile = path.join(__dirname, 'start-screen.html');
 const lineageFile = path.join(root, 'ui', 'dist', 'index.html');
@@ -214,6 +219,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance',()=>{if(mainWindow){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.focus();}});
   app.whenReady().then(async()=>{
+    if(stateDirectoryError){dialog.showErrorBox('无法选择工作空间',String(stateDirectoryError.message));app.quit();return;}
     Menu.setApplicationMenu(null);
     fs.mkdirSync(app.getPath('userData'),{recursive:true});
     logFile=path.join(app.getPath('userData'),'desktop.log');

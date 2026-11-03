@@ -34,7 +34,10 @@ class ProviderInput(StrictModel):
 
 def legacy_settings():
     from .store import get,unseal
-    try:return unseal(get('system','model-provider')['secret_config'])
+    try:
+        value=unseal(get('system','model-provider')['secret_config'])
+        if value.get('engine')=='atlas':value=dict(value,engine='nexus')
+        return value
     except KeyError:return {'base_url':LLM_BASE,'model':LLM_MODEL,'api_key':LLM_KEY,'share_data':False}
 
 def settings():

@@ -275,7 +275,12 @@ def _new_tool_definitions(result,known):
     changed=[]
     for tool in result['available_tools']:
         key=tool.get('name') if isinstance(tool,dict) else None
-        digest=hashlib.sha256(json.dumps(tool,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+        # Initial planner schemas omit nonsemantic titles; hash the same
+        # projection here so discovery does not re-send every existing tool.
+        from .agent import _compact_model_schema
+        projected=({**tool,'arguments_schema':_compact_model_schema(tool['arguments_schema'])}
+                   if isinstance(tool,dict) and 'arguments_schema' in tool else tool)
+        digest=hashlib.sha256(json.dumps(projected,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         if key and known.get(key)!=digest:
             changed.append(tool);known[key]=digest
     output=dict(result,available_tools=changed,available_tools_scope='new_or_changed; existing definitions remain available')

@@ -87,7 +87,16 @@ def test_agent_builds_real_pipeline_waits_inspects_and_publishes(monkeypatch):
     steps=[tool('source_schema',source_id=sid),tool('build_transform',source_id=sid,spec=s['proposed_spec']),tool('view_result'),final('已生成并检查候选结果，请确认发布。')]
     fake_model(monkeypatch,steps)
     tid=send(pid,'按客户汇总并检查结果','agent-real-message',source_id=sid)
-    tick();tick();assert get('turn',tid)['state']=='waiting_run'
+    tick();tick()
+    waiting=get('turn',tid)
+    assert waiting['state']=='done' and waiting['outcome']=='needs_input'
+    proposal=get('business_proposal',waiting['business_proposal_id'])
+    assert not [p for p in all_items('pipeline') if p.get('project_id')==pid]
+    decision=client.post(f"/api/projects/{pid}/business-proposals/{proposal['id']}/decision",headers=H,
+        json={'digest':proposal['digest'],'session_id':waiting['session_id'],'approve':True})
+    assert decision.status_code==200,decision.text
+    assert decision.json()['state']=='approved'
+    tick();assert get('turn',tid)['state']=='waiting_run'
     assert process_once();t=run_until_done(tid)
     assert t['state']=='done' and t['result']['records']==2 and t['result']['candidate']
     assert t['work_version']['changed']

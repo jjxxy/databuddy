@@ -24,6 +24,7 @@ from .jobs import jobs,ACTIVE
 
 class WorkspaceDeleted(ValueError):pass
 class LifecycleConflict(ValueError):pass
+class WorkspaceRestoring(WorkspaceDeleted):pass
 
 
 _request_visibility=contextvars.ContextVar('nexus_request_workspace_visibility',default=None)
@@ -67,6 +68,10 @@ def public_session(value):
 def assert_project_live(pid):
     project=get('project',pid)
     if project.get('deleted_at'):raise WorkspaceDeleted('项目已移至回收站，请先恢复；未继续读取或执行')
+    try:journal=get('restore','restore-'+pid)
+    except KeyError:journal=None
+    if journal and journal.get('state')=='applying':
+        raise WorkspaceRestoring('项目回退尚未完成，请等待恢复后再查看或操作')
     scope=_request_visibility.get()
     if scope is not None:
         revision=int(project.get('context_visibility_revision',0))
@@ -205,6 +210,14 @@ def enqueue_guard(target,extra=None):
             if any(checked[pid]!=revision for pid,revision in projects.items() if pid in checked):
                 raise ValueError('工作空间可见性已变化，未将旧操作重新入队')
             if checked.keys()!=projects.keys():continue
+            for pid in checked:
+                try:restore=get('restore','restore-'+pid)
+                except KeyError:restore=None
+                if restore and restore.get('state')=='applying':
+                    raise ValueError('项目回退尚未完成，未安排新任务；请等待恢复完成')
+                expected=extra.get('workspace_visibility_revision')
+                if extra.get('project_id')==pid and expected is not None and expected!=checked[pid]:
+                    raise ValueError('项目版本在准备运行期间已变化，请重新核对后运行')
             yield
             return
     raise ValueError('任务关联的工作空间已变化，请刷新后重试；未晚入队')

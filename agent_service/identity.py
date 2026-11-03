@@ -9,9 +9,24 @@ import jwt,httpx
 from fastapi import HTTPException
 _cache={};_lock=threading.Lock()
 
-def mode():return os.getenv('NEXUS_AUTH_MODE','token')
+def _compatible_setting(name,default):
+    new=os.getenv('NEXUS_'+name);old=os.getenv('ATLAS_'+name)
+    if new is not None and old is not None and new!=old:
+        raise ValueError('新旧身份配置冲突：'+name)
+    return new if new is not None else old if old is not None else default
+
+def mode():
+    # Never turn a previously configured OIDC deployment into token mode merely
+    # because the product prefix changed. Both settings must remain consistent.
+    value=_compatible_setting('AUTH_MODE','token')
+    single=_compatible_setting('REQUIRE_SINGLE_OIDC_SUBJECT','0')
+    if value not in ('token','oidc'):raise ValueError('未知认证模式')
+    if single not in ('0','1'):raise ValueError('单用户身份策略配置无效')
+    if single=='1' and value!='oidc':raise ValueError('单用户隔离工作空间必须启用 OIDC')
+    return value
+
 def validate_config():
-    single=os.getenv('NEXUS_REQUIRE_SINGLE_OIDC_SUBJECT','0')
+    single=_compatible_setting('REQUIRE_SINGLE_OIDC_SUBJECT','0')
     if single not in ('0','1'):raise ValueError('单用户身份策略配置无效')
     if mode() not in ('token','oidc'):raise ValueError('未知认证模式')
     if single=='1' and mode()!='oidc':raise ValueError('单用户隔离工作空间必须启用 OIDC')

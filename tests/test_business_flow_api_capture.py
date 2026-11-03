@@ -76,10 +76,42 @@ def test_actual_api_capture_to_business_table_and_repeated_runs(monkeypatch):
         assert scheduled['steps'][1]['output']['rows'][0]['amount']=='23.00'
         assert first['evidence']['collection_scope_verified'] is False
         before=list(calls)
-        patch('source',sid,revision=2)
-        with pytest.raises(ValueError):capture(context,pin,{})
+        # Credential rotation and a new connection revision do not change
+        # immutable old data; inspecting it must not call the live API.
+        patch('source',sid,revision=2,secret_config=seal({**cfg,'token':'rotated'}),status='queued')
+        old_page=business_flows.get_run_table(pid,flow['id'],rid,'collect',0,2)
+        assert old_page['total']==2 and [row['c_2'] for row in old_page['rows']]==['9.00','4.00']
+        old_sum=business_flows.get_run_table(pid,flow['id'],rid,'sum',0,1)
+        assert old_sum['rows'][0]['amount']=='13.00'
+        assert verify(context,first)['content_hash']==first['content_hash']
+        with pytest.raises(ValueError):capture(context,pin,{})  # A new call needs the fixed version.
         assert calls==before
-        patch('source',sid,revision=1)
+        # Archival and wrong-project source access revoke historical access.
+        patch('source',sid,archived=True)
+        with pytest.raises(ValueError,match='停用'):verify(context,first)
+        with pytest.raises(ValueError):business_flows.get_run_table(pid,flow['id'],rid,'collect',0,2)
+        patch('source',sid,archived=False,project_id=project())
+        with pytest.raises(ValueError):verify(context,first)
+        patch('source',sid,project_id=pid,revision=1,secret_config=secret,status='ready')
+        # Stored source provenance is authenticated even when callers carry it.
+        with pytest.raises(ValueError,match='不属于当前运行'):
+            verify(context,{**first,'config_sha256':'0'*64})
+        # A deleted source or a revoked calling grant cannot read a snapshot,
+        # including when the frozen data was previously authenticated.
+        patch('source',sid,deleted_at=now())
+        with pytest.raises(ValueError,match='停用'):verify(context,first)
+        patch('source',sid,deleted_at=None)
+        from agent_service import agent_gateway,agent_team,agent_context
+        with monkeypatch.context() as denied:
+            denied.setattr(agent_gateway,'assert_turn_allowed',lambda turn: (_ for _ in ()).throw(ValueError('授权已撤销')))
+            with pytest.raises(ValueError,match='授权已撤销'):verify(context,first)
+        with monkeypatch.context() as denied:
+            denied.setattr(agent_team,'assert_turn_allowed',lambda turn,name,args: (_ for _ in ()).throw(ValueError('来源不在授权范围')))
+            with pytest.raises(ValueError,match='授权范围'):verify(context,first)
+        with monkeypatch.context() as denied:
+            denied.setattr(agent_context,'allowed',lambda turn:set())
+            with pytest.raises(ValueError,match='无权'):verify(context,first)
+        assert calls==before
         for field in ('evidence','collected_at'):
             tampered=unseal(record['secret_payload'])
             if field=='evidence':tampered['evidence']['page_evidence'][0]['response_sha256']='0'*64

@@ -112,7 +112,9 @@ def cleanup_failed_run(run_id, *, apply=False):
             try:
                 if marker.is_symlink() or not marker.is_file() or marker.stat().st_size > 2048:
                     raise ValueError()
-                if json.loads(marker.read_bytes()) != _owner_claim(context, scope, _index_key()):
+                if json.loads(marker.read_bytes()) not in (
+                        _owner_claim(context, scope, _index_key()),
+                        _owner_claim(context, scope, _index_key(legacy=True))):
                     raise ValueError()
             except (ValueError, OSError, TypeError):
                 raise ValueError('快照归属无法核验，未清理数据') from None

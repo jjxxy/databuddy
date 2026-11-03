@@ -19,6 +19,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from .release_info import RUNTIME_REVISION
+from .access_log import install as install_access_log_filter
+install_access_log_filter()
 from pydantic import Field,ValidationError
 from .config import DATA, TOKEN, MAX_UPLOAD, TIMEZONE, LLM_BASE, LLM_MODEL
 from .store import get,put,all_items,delete,now,uid,seal,patch
@@ -92,8 +94,15 @@ def operator_auth(request:Request, identity=Depends(auth)):
     An unset operator token intentionally leaves configuration file-only.
     OIDC business identities also need the separate operator credential.
     """
-    expected=os.getenv('NEXUS_OPERATOR_TOKEN','')
-    supplied=request.headers.get('X-Nexus-Operator-Token','')
+    current=os.getenv('NEXUS_OPERATOR_TOKEN');legacy=os.getenv('ATLAS_OPERATOR_TOKEN')
+    if current is not None and legacy is not None and not secrets.compare_digest(current.encode(),legacy.encode()):
+        raise HTTPException(403,'后台管理员凭据新旧配置冲突')
+    expected=current if current is not None else legacy or ''
+    supplied_current=request.headers.get('X-Nexus-Operator-Token')
+    supplied_legacy=request.headers.get('X-Atlas-Operator-Token')
+    if supplied_current is not None and supplied_legacy is not None and not secrets.compare_digest(supplied_current.encode(),supplied_legacy.encode()):
+        raise HTTPException(403,'后台管理员凭据请求冲突')
+    supplied=supplied_current if supplied_current is not None else supplied_legacy or ''
     if len(expected)<16 or secrets.compare_digest(expected.encode(),TOKEN.encode()) or not secrets.compare_digest(supplied.encode(),expected.encode()):
         raise HTTPException(403,'此配置仅供后台管理员维护')
     return identity
@@ -106,7 +115,7 @@ async def boundary(request:Request,call_next):
     from contextlib import nullcontext
     from .maintenance import guard
     request_id=uid();ip=request.client.host if request.client else 'local'
-    api_surface=request.url.path.startswith(('/api/','/a2a','/mcp/nexus'))
+    api_surface=request.url.path.startswith(('/api/','/a2a','/mcp/nexus','/mcp/atlas'))
     key=(ip,api_surface)
     if key[1]:
         bucket=_requests.setdefault(key,deque())
@@ -172,7 +181,8 @@ def platform_status():
     if os.getenv('NEXUS_STORAGE_MODE')!='rwx':gaps.append('storage_is_not_shared_rwx')
     for role,count in counts.items():
         if count<2:gaps.append(role+'_has_fewer_than_two_healthy_nodes')
-    if os.getenv('NEXUS_AUTH_MODE','token')!='oidc':gaps.append('oidc_not_enabled')
+    from .identity import mode as identity_mode
+    if identity_mode()!='oidc':gaps.append('oidc_not_enabled')
     try:backup_state=get('system','backup-health')
     except KeyError:backup_state={'ok':False}
     return {'backup':backup_state,'version':'0.20.0','readiness':readiness(),'metadata':engine.dialect.name,'healthy_nodes':counts,'nodes':roles,'ha_configuration_gaps':gaps,'high_availability_verified':False,'scope':'owner_workspace','note':'配置检查不能证明故障切换或SLO，需执行故障验收'}

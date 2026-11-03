@@ -511,6 +511,7 @@ def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_publis
     flow=_owned(pid,flow_id,actor_id)
     if flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs'):
         raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
+    workspace_revision=int(get('project',pid).get('context_visibility_revision',0))
     tid=flow.get('published_turn_id') if use_published else flow['turn_id']
     turn=_turn(pid,actor_id,tid)
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',request_id or ''):raise ValueError('请求标识无效')
@@ -547,7 +548,8 @@ def submit_run(pid,flow_id,actor_id,request_id,expected_digest,inputs,use_publis
             if _uncertain(previous[0],state) and not (_resolution_view(previous[0],state) or {}).get('confirmed_not_executed'):
                 raise ValueError('上次流程操作结果未知，请先核对外部状态；不能自动重复')
         job=enqueue('business_flow',flow_id,commit=sha,scheduled_key=key,max_attempts=2,
-                    extra={'project_id':pid,'actor_id':actor_id,'flow_turn_id':turn['id'],'project_commit':commit,'secret_flow_payload':seal(payload),'schedule_snapshot':schedule_snapshot})
+                    extra={'project_id':pid,'workspace_visibility_revision':workspace_revision,'actor_id':actor_id,'flow_turn_id':turn['id'],'project_commit':commit,'secret_flow_payload':seal(payload),'schedule_snapshot':schedule_snapshot,
+                           'manual_refresh_authorized':bool(use_published and schedule_snapshot is None)})
     if (job.get('target')!=flow_id or job.get('commit')!=sha or job.get('actor_id')!=actor_id or
             unseal(job.get('secret_flow_payload',''))!=payload):
         raise ValueError('同一请求标识已用于其他流程或输入')
@@ -1026,7 +1028,7 @@ def _patch_schedule_if_current(flow, **updates):
     from sqlalchemy import select,update
     from .store import transaction,items
     fields=('project_id','actor_id','archived','cron','next_due','schedule_generation','schedule_timezone',
-            'published_digest','published_commit','published_turn_id','published_run','refresh_error','schedule_uncertain_run','schedule_resume_required')
+            'published_digest','published_commit','published_turn_id','published_run','refresh_error','schedule_uncertain_run','schedule_resume_required','schedule_gap_pending')
     with transaction() as connection:
         row=connection.execute(select(items.c.body).where(items.c.id==flow['id'],
             items.c.kind=='business_flow').with_for_update()).first()
@@ -1068,7 +1070,7 @@ def queue_due():
             with workspace.lock(snapshot['project_id']),FileLock(str(DATA/'scheduler.lock'),timeout=5):
                 flow=get('business_flow',snapshot['id'])
                 if not flow.get('cron') or flow.get('archived') or not flow.get('published_digest'):continue
-                if flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs') or flow.get('schedule_resume_required'):continue
+                if flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs') or flow.get('schedule_resume_required') or flow.get('schedule_gap_pending'):continue
                 current=datetime.now(timezone.utc)
                 try:
                     retry=flow.get('refresh_retry_after')
@@ -1077,6 +1079,15 @@ def queue_due():
                     if due.tzinfo is None:raise ValueError('定时配置缺少时区')
                     if due>current:continue
                     zone=ZoneInfo(flow.get('schedule_timezone') or TIMEZONE)
+                    following=croniter(flow['cron'],due.astimezone(zone)).get_next(datetime).astimezone(timezone.utc)
+                    if following<=current:
+                        # Never combine an old business period with a current
+                        # dynamic source or silently publish it as formal.
+                        # Keep the original due occurrence until a human has
+                        # reconciled the missing periods and resets the plan.
+                        _patch_schedule_if_current(flow,schedule_gap_pending=True,
+                            refresh_error='存在多个未执行的计划时间；自动更新已暂停，请核对缺失期间和资料后重新设置定时')
+                        continue
                     actor=flow['actor_id'];inputs=unseal(flow['schedule_inputs'])
                     if any(isinstance(value,dict) and 'relative_date' in value for value in inputs.values()):
                         from .schedule_parameters import resolve_schedule_parameters
@@ -1085,7 +1096,23 @@ def queue_due():
                     for key,sid in (flow.get('schedule_source_bindings') or {}).items():
                         source=get('source',sid);_source_pin(flow['project_id'],sid,source.get('revision'),source.get('content_hash'))
                         inputs[key]={'source_id':sid,'revision':source['revision'],'content_hash':source['content_hash']}
-                    request_id='scheduled_'+hashlib.sha256((flow['id']+flow['next_due']).encode()).hexdigest()
+                    legacy_request='scheduled_'+hashlib.sha256((flow['id']+flow['next_due']).encode()).hexdigest()
+                    # Older releases did not include schedule generation in
+                    # the request id. A pre-existing old occurrence could
+                    # already have had external effects: never manufacture a
+                    # new key and replay it after an upgrade.
+                    legacy_key='bf-run:'+hashlib.sha256((flow['project_id']+'\0'+actor+'\0'+legacy_request).encode()).hexdigest()
+                    from .jobs import jobs
+                    from .store import engine
+                    from sqlalchemy import select
+                    with engine.connect() as connection:
+                        old=connection.execute(select(jobs.c.id).where(jobs.c.dedup_key==legacy_key)).first()
+                    if old:
+                        _patch_schedule_if_current(flow,schedule_gap_pending=True,
+                            refresh_error='旧版计划运行已存在；请先核对执行回执，再重新设置定时')
+                        continue
+                    identity='\0'.join((flow['id'],flow['next_due'],str(flow.get('schedule_generation') or 'legacy')))
+                    request_id='scheduled_'+hashlib.sha256(identity.encode()).hexdigest()
                     schedule_snapshot={'kind':'business_flow','generation':flow.get('schedule_generation'),'project_id':flow['project_id'],
                                        'actor_id':actor,'published_run':flow.get('published_run'),'published_commit':flow.get('published_commit'),
                                        'published_turn_id':flow.get('published_turn_id'),'timezone':flow.get('schedule_timezone')}
@@ -1096,11 +1123,8 @@ def queue_due():
                     # blindly may duplicate uncertain external side effects.
                     if admitted.get('status') not in ('queued','running','retrying','succeeded'):
                         raise ValueError('本次计划的历史运行未成功，请先核对执行状态')
-                    following=croniter(flow['cron'],due.astimezone(zone)).get_next(datetime).astimezone(timezone.utc)
-                    gap=bool(flow.get('schedule_gap_pending') or following<=current)
                     next_due=croniter(flow['cron'],current.astimezone(zone)).get_next(datetime).astimezone(timezone.utc).isoformat()
-                    _patch_schedule_if_current(flow,next_due=next_due,refresh_retry_after=None,schedule_gap_pending=gap,
-                          refresh_error='存在多个未执行的计划时间；本次仅安排一次运行，请核对缺失期间后重新设置定时' if gap else None)
+                    _patch_schedule_if_current(flow,next_due=next_due,refresh_retry_after=None,schedule_gap_pending=False,refresh_error=None)
                 except Exception:
                     # Do not advance a due occurrence when source validation,
                     # admission, or the time configuration fails.
@@ -1146,11 +1170,28 @@ def execute_job(job,folder):
                     for step in result.get('steps',[]) if isinstance(step,dict))
                 nondeterministic=any(node['kind'] in ('model','skill') for node in document['nodes'])
                 if payload['use_published']:
+                    flow=get('business_flow',job['target'])
+                    schedule=job.get('schedule_snapshot')
+                    scheduled=isinstance(schedule,dict)
+                    needs_schedule_review=bool(flow.get('schedule_gap_pending') or flow.get('schedule_resume_required')
+                                               or flow.get('schedule_uncertain_run') or flow.get('schedule_uncertain_runs'))
+                    if scheduled and (not flow.get('cron') or schedule.get('generation')!=flow.get('schedule_generation')):
+                        needs_schedule_review=True
+                    # Old jobs do not identify whether use_published was a
+                    # manual refresh or a scheduled action. Do not infer it.
+                    if not scheduled and job.get('manual_refresh_authorized') is not True:
+                        needs_schedule_review=True
                     # Do not automatically adopt data requiring review or new
-                    # non-deterministic model/Skill conclusions.
-                    update={'pending_refresh_run':job['id']} if needs_review or nondeterministic else {'published_run':job['id'],'pending_refresh_run':None}
+                    # non-deterministic model/Skill conclusions. A queued job
+                    # left by an older release must not publish while missing
+                    # schedule periods are unresolved either.
+                    update={'pending_refresh_run':job['id']} if needs_review or nondeterministic or needs_schedule_review else {'published_run':job['id'],'pending_refresh_run':None}
                     target={'kind':'business_flow','expected':{'published_digest':job['commit'],'published_commit':job['project_commit'],
                             'published_turn_id':job['flow_turn_id']},'values':update}
+                    # CAS closes schedule edits made while a worker was
+                    # executing. A lost CAS leaves results as history only.
+                    for key in ('schedule_gap_pending','schedule_resume_required','schedule_uncertain_run','schedule_uncertain_runs','schedule_generation','cron'):
+                        target['expected'][key]=flow.get(key)
                 else:target={'kind':'business_flow','expected':{'candidate_digest':job['commit'],'candidate_commit':job['project_commit'],
                              'turn_id':job['flow_turn_id']},'values':{'candidate_run':job['id']}}
                 patch_run(job,status='succeeded',finished_at=now(),stage='完成，等待业务核对',

@@ -24,6 +24,7 @@ class SettingsConflict(ValueError):
 
 def _validated(value):
     name = value.get('name')
+    if name == 'atlas_legacy':name = 'nexus_legacy'
     revision = value.get('revision')
     if name is not None and name not in _names():
         raise ValueError('已保存的执行器配置无效，请联系管理员')

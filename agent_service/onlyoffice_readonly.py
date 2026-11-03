@@ -11,19 +11,22 @@ import hashlib
 import hmac
 import os
 import secrets
-import threading
+import json
+import re
 import time
 from urllib.parse import urlsplit
 
 from fastapi import Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from sqlalchemy import delete, select
+from .store import items, transaction
 from .actor_context import actor_scope, current_actor
 from . import workspace_artifacts
 
-_entries = {}
-_lock = threading.Lock()
 _ttl = 90
 _max_entries = 256
+_ticket_kind = 'onlyoffice_ticket'
+_control_id = 'onlyoffice_ticket_control_v1'
 
 
 def _origin(raw):
@@ -64,14 +67,35 @@ def issue(pid, aid):
     actor = current_actor()
     token = secrets.token_urlsafe(32)
     deadline = time.time() + _ttl
-    with _lock:
-        for key, value in list(_entries.items()):
-            if value['expires'] < time.time():
-                del _entries[key]
-        if len(_entries) >= _max_entries:
-            raise HTTPException(503, '文件查看请求过多，请稍后重试')
-        _entries[token] = {'pid': pid, 'aid': aid, 'actor': actor, 'format': kind,
-                           'sha256': meta['download_sha256'], 'expires': deadline, 'source': allowed}
+    # Store only an irreversible digest of the bearer token. A dedicated DB
+    # row serializes issuance across API processes and enforces the global cap.
+    ticket_id = _ticket_id(token)
+    binding = _config_binding(server, bridge, allowed, secret)
+    entry = {'pid': pid, 'aid': aid, 'actor': actor, 'format': kind,
+             'sha256': meta['download_sha256'], 'expires': deadline,
+             'source': allowed, 'config_binding': binding}
+    with transaction() as connection:
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        insert = pg_insert if connection.dialect.name == 'postgresql' else sqlite_insert
+        connection.execute(insert(items).values(id=_control_id,kind='onlyoffice_control',body='{}')
+                           .on_conflict_do_nothing(index_elements=['id']))
+        control=connection.execute(select(items.c.id).where(items.c.id==_control_id,
+            items.c.kind=='onlyoffice_control').with_for_update()).first()
+        if not control:raise HTTPException(503, '文件查看服务暂不可用')
+        rows=connection.execute(select(items.c.id,items.c.body).where(items.c.kind==_ticket_kind)).all()
+        expired=[]
+        for row in rows:
+            try:
+                saved=json.loads(row.body);expires=saved['expires']
+                if type(expires) not in (int,float) or not __import__('math').isfinite(expires):raise ValueError()
+            except (ValueError,TypeError,KeyError):
+                raise HTTPException(503, '文件查看服务暂不可用') from None
+            if expires<=time.time():expired.append(row.id)
+        if expired:connection.execute(delete(items).where(items.c.kind==_ticket_kind,items.c.id.in_(expired)))
+        if len(rows)-len(expired)>=_max_entries:raise HTTPException(503, '文件查看请求过多，请稍后重试')
+        connection.execute(items.insert().values(id=ticket_id,kind=_ticket_kind,
+                           body=json.dumps(entry,ensure_ascii=False)))
     doc_key = hmac.new(secret.encode(), '\0'.join((pid, actor, aid, meta['download_sha256'])).encode(), hashlib.sha256).hexdigest()
     config = {'document': {'fileType': kind, 'key': doc_key,
                            'title': meta['name'], 'url': bridge + '/api/onlyoffice/file/' + token,
@@ -82,12 +106,39 @@ def issue(pid, aid):
     return {'server_origin': server, 'config': config, 'expires_in': _ttl}
 
 
+def _ticket_id(token):
+    if not isinstance(token,str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):
+        raise HTTPException(404, '文件链接无效或已过期')
+    return 'oft_'+hashlib.sha256(token.encode('ascii')).hexdigest()[:60]
+
+
+def _config_binding(server,bridge,allowed,secret):
+    # Rotating the secret or changing trusted endpoints revokes issued tickets.
+    value=json.dumps([server,bridge,allowed],ensure_ascii=True,separators=(',',':')).encode()
+    return hmac.new(secret.encode(),value,hashlib.sha256).hexdigest()
+
+
 def redeem(token, remote):
-    with _lock:
-        entry = _entries.get(token)
-        if not entry or entry['expires'] < time.time() or remote != entry['source']:
-            raise HTTPException(404, '文件链接无效或已过期')
-        del _entries[token]
+    identity=_ticket_id(token)
+    try:server,bridge,allowed,secret=_config()
+    except HTTPException:raise HTTPException(404, '文件链接无效或已过期') from None
+    if remote!=allowed:raise HTTPException(404, '文件链接无效或已过期')
+    with transaction() as connection:
+        row=connection.execute(select(items.c.body).where(items.c.id==identity,
+            items.c.kind==_ticket_kind).with_for_update()).first()
+        if not row:raise HTTPException(404, '文件链接无效或已过期')
+        try:
+            entry=json.loads(row.body)
+            if (not isinstance(entry,dict) or set(entry)!={'pid','aid','actor','format','sha256','expires','source','config_binding'}
+                    or type(entry['expires']) not in (int,float) or not __import__('math').isfinite(entry['expires'])
+                    or entry['expires']<=time.time() or entry['source']!=remote
+                    or not isinstance(entry['config_binding'],str)
+                    or not hmac.compare_digest(entry['config_binding'],_config_binding(server,bridge,allowed,secret))):
+                raise ValueError()
+        except (ValueError,TypeError,KeyError):
+            raise HTTPException(404, '文件链接无效或已过期') from None
+        # Same transaction/row lock makes redemption one-time across replicas.
+        connection.execute(delete(items).where(items.c.id==identity,items.c.kind==_ticket_kind))
     with actor_scope(entry['actor']):
         path, meta = workspace_artifacts.file(entry['pid'], entry['aid'], entry['format'])
     if meta['download_sha256'] != entry['sha256']:

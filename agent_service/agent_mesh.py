@@ -122,7 +122,7 @@ def _peer_config(value,old=None):
     from .provider import settings
     import os,secrets
     raw=credential.removeprefix('Bearer ')
-    protected=[TOKEN,os.getenv('NEXUS_OPERATOR_TOKEN',''),settings().get('api_key','')]
+    protected=[TOKEN,os.getenv('NEXUS_OPERATOR_TOKEN',''),os.getenv('ATLAS_OPERATOR_TOKEN',''),settings().get('api_key','')]
     from .model_catalog import owner_configuration
     try:protected.extend(entry.get('api_key','') for entry in owner_configuration().get('models',[]))
     except KeyError:pass

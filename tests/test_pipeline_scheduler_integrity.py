@@ -20,7 +20,8 @@ def pipeline(monkeypatch, due=None, **overrides):
 
 
 def accepted(kind,target,commit,key):
-    return {'kind':kind,'target':target,'commit':commit,'scheduled_key':key,'status':'queued'}
+    return {'kind':kind,'target':target,'commit':commit,'scheduled_key':key,'status':'queued',
+            'schedule_snapshot':{'generation':get('pipeline',target).get('schedule_generation')}}
 
 
 def test_failed_admission_preserves_due_and_retries(monkeypatch):
@@ -56,8 +57,9 @@ def test_local_timezone_missed_period_and_concurrent_schedule(monkeypatch):
     execution._queue_due()
     state=get('pipeline',p['id'])
     assert state['schedule_gap_pending'] and '未执行' in state['schedule_error']
-    assert datetime.fromisoformat(state['next_due']).astimezone(ZoneInfo('America/New_York')).hour==9
-    patch('pipeline',p['id'],next_due=due.isoformat())
+    assert state['next_due']==due.isoformat()
+    assert state['published_run']=='published'
+    patch('pipeline',p['id'],next_due=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),schedule_gap_pending=False,schedule_error=None)
     replacement=(datetime.now(timezone.utc)+timedelta(days=10)).isoformat()
     def racing(kind,target,commit,key):
         patch('pipeline',target,cron='0 10 * * *',next_due=replacement)
@@ -103,3 +105,12 @@ def test_explicit_reschedule_clears_previous_gap_and_retry(monkeypatch):
     assert not current.get('schedule_gap_pending') and current.get('schedule_error') is None
     assert current.get('schedule_retry_after') is None
     assert datetime.fromisoformat(current['next_due'])>datetime.now(timezone.utc)
+
+
+def test_existing_occurrence_from_previous_generation_does_not_advance(monkeypatch):
+    p=pipeline(monkeypatch,schedule_generation='new')
+    monkeypatch.setattr(execution,'enqueue',lambda *args:{**accepted(*args),'schedule_snapshot':{'generation':'old'},'status':'succeeded'})
+    execution._queue_due()
+    current=get('pipeline',p['id'])
+    assert current['next_due']==p['next_due'] and current['schedule_gap_pending']
+    assert '核对执行回执' in current['schedule_error'] and current['published_run']=='published'

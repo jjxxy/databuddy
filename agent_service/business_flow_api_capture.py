@@ -45,8 +45,18 @@ def _snapshot_digest(payload):
 
 
 def verify(context,ref):
+    """Read a frozen capture under current project, actor and source grants.
+
+    This is an immutable historical snapshot, not a new API request. A changed
+    connection revision or temporary probe failure must not rewrite its past;
+    source deletion/archival and revoked task permissions still deny access.
+    New capture and resumed execution remain subject to check_source's exact
+    connection pin in run().
+    """
     from .workflow_model_skill import _turn
-    _turn(context)  # Enforce actor, project and conversation lifecycle on reads.
+    from .project_data import owned
+    from . import agent_context, agent_gateway, agent_team
+    turn=_turn(context)
     scope=_scope({**context,'node_id':ref.get('capture_node_id')});ident=ref.get('snapshot_id')
     if not isinstance(ident,str):raise ValueError('采集快照标识无效')
     record=get('flow_api_snapshot',ident)
@@ -54,9 +64,21 @@ def verify(context,ref):
     if (record.get('status')!='complete' or record.get('project_id')!=scope['project_id'] or record.get('actor_id')!=scope['actor_id']
             or payload.get('scope')!=scope or payload.get('source_id')!=ref.get('source_id')
             or payload.get('revision')!=ref.get('revision') or payload.get('content_hash')!=ref.get('content_hash')
-            or payload.get('snapshot_sha256')!=ref.get('snapshot_sha256')):
+            or payload.get('snapshot_sha256')!=ref.get('snapshot_sha256')
+            or ('config_sha256' in ref and payload.get('config_sha256')!=ref['config_sha256'])):
         raise ValueError('采集快照不属于当前运行')
-    check_source(scope['project_id'],ApiCaptureConfig(source_id=payload['source_id'],revision=payload['revision'],config_sha256=payload['config_sha256']))
+    # Historical access is distinct from permission to execute the live API.
+    # Preserve source revocation, project ownership and the actual calling
+    # agent's grants; changing credentials or connection version alone does
+    # not revoke access to a previously captured, authenticated record.
+    try:source=owned(scope['project_id'],'source',payload['source_id'])
+    except KeyError:raise ValueError('API 来源已不可用，不能读取历史采集') from None
+    if source.get('kind')!='api' or source.get('archived') or source.get('deleted_at'):
+        raise ValueError('API 来源已停用，不能读取历史采集')
+    agent_gateway.assert_turn_allowed(turn)
+    agent_team.assert_turn_allowed(turn,'read_source_table',{'source_id':payload['source_id']})
+    if 'read_source_table' not in agent_context.allowed(turn):
+        raise ValueError('当前任务无权查看采集数据')
     actual=hashlib.sha256(_bytes({'rows':payload['rows'],'fields':payload['fields']})).hexdigest()
     if actual!=payload['content_hash']:raise ValueError('采集快照内容摘要不一致')
     if _snapshot_digest(payload)!=payload.get('snapshot_sha256'):raise ValueError('采集快照及来源证据摘要不一致')

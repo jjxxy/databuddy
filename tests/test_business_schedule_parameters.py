@@ -59,3 +59,25 @@ def test_scheduled_business_parameters_are_explicit_exact_and_version_bound(monk
     from agent_service.jobs import get_job
     frozen=unseal(get_job(last['id'])['secret_flow_payload'])['inputs'];assert frozen['file']['revision']==pin['revision']+1 and frozen['minimum']=='3.999999999999' and frozen['period']==previous_start
     assert req('GET',root+'/runs/'+last['id']+'/tables/sum')['rows'][0]['amount']=='4.00'
+    # A 95-day outage cannot combine an old accounting period with today's
+    # latest file, nor replace a previously adopted result automatically.
+    from agent_service.jobs import list_jobs
+    before=req('GET',root)['published_run'];count=len(list_jobs(target=f['id']))
+    missed=datetime.now(timezone.utc)-timedelta(days=95)
+    patch('business_flow',f['id'],next_due=missed.isoformat())
+    queue_due();state=get('business_flow',f['id'])
+    assert state['schedule_gap_pending'] is True and '已暂停' in state['refresh_error']
+    assert state['next_due']==missed.isoformat() and state['published_run']==before
+    assert len(list_jobs(target=f['id']))==count
+    queue_due();assert len(list_jobs(target=f['id']))==count
+    # A job already queued by an older release cannot auto-publish when the
+    # scheduler discovers the missing periods before this worker finishes.
+    new_due=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
+    patch('business_flow',f['id'],next_due=new_due,schedule_gap_pending=False,refresh_error=None)
+    queue_due();queued=list_jobs(target=f['id'])[0]
+    assert queued['status']=='queued'
+    patch('business_flow',f['id'],schedule_gap_pending=True)
+    assert process_once()
+    completed=get_job(queued['id']);assert completed['status']=='succeeded'
+    state=get('business_flow',f['id'])
+    assert state['published_run']==before and state['pending_refresh_run']==queued['id']

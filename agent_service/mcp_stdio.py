@@ -40,7 +40,7 @@ def validate(config):
     variables=config.get('env',{})
     if not isinstance(variables,dict) or len(variables)>40:raise ValueError('MCP环境配置无效')
     for key,value in variables.items():
-        if not isinstance(key,str) or not re.fullmatch('[A-Za-z_][A-Za-z0-9_]{0,79}',key) or key.upper() in RESERVED or key.upper().startswith(('NEXUS_','OPENCODE_','LLM_')):raise ValueError('MCP不能覆盖系统或模型环境配置')
+        if not isinstance(key,str) or not re.fullmatch('[A-Za-z_][A-Za-z0-9_]{0,79}',key) or key.upper() in RESERVED or key.upper().startswith(('NEXUS_','ATLAS_','OPENCODE_','LLM_')):raise ValueError('MCP不能覆盖系统或模型环境配置')
         if not isinstance(value,str) or len(value)>8000 or '\x00' in value:raise ValueError('MCP环境值无效')
     installed_files={}
     for candidate in [command,*fixed]:

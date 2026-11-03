@@ -69,7 +69,14 @@ def _config(value, version):
 
 
 def validate_office_config(value):
-    _config(value,office.RENDERER)
+    _office_config(value)
+
+
+def _office_config(value):
+    config=DeliveryConfig.model_validate(value)
+    if config.renderer_version not in (office.RENDERER,office.LEGACY_RENDERER):
+        raise ValueError('已确认的成果渲染器版本不可用，请重新验证后再运行')
+    return config
 
 
 def validate_html_config(value):
@@ -132,13 +139,13 @@ def _review_notice(inputs):
 
 
 def render_office(context,config,inputs):
-    cfg=_config(config,office.RENDERER);turn=_turn(context,'render_office_artifact')
+    cfg=_office_config(config);turn=_turn(context,'render_office_artifact')
     raw,spec_hash=_spec(inputs)
     # Existing renderer validates all fields, office structure and spreadsheet
     # precision. The source checksum is checked again while holding its lock.
     office._load_spec(raw.decode('utf-8'))
     path='business-flow-inputs/'+spec_hash+'.json'  # Identity only; no file is written.
-    result=office.render(turn,path,cfg.name,expected_sha256=spec_hash,frozen_spec=raw.decode('utf-8'))
+    result=office.render(turn,path,cfg.name,expected_sha256=spec_hash,frozen_spec=raw.decode('utf-8'),renderer_version=cfg.renderer_version)
     file,record=office.artifact(turn['project_id'],result['artifact_id'])
     if record.get('source_sha256')!=spec_hash or record.get('renderer')!=cfg.renderer_version or record.get('sha256')!=result.get('sha256'):
         raise ValueError('Office 成果与固定规格的回执不一致')
@@ -148,7 +155,7 @@ def render_office(context,config,inputs):
                          private={'office_id':result['artifact_id']})
     if not registered:raise ValueError('成果已归档，不能重新采用')
     return {'artifact_id':registered['id'],'format':result['format'],'sha256':result['sha256'],
-            'spec_sha256':spec_hash,'renderer_version':office.RENDERER,'download_url':registered['download_url'],
+            'spec_sha256':spec_hash,'renderer_version':cfg.renderer_version,'download_url':registered['download_url'],
             'structural_validation':True,'visual_validation':False,'financial_verified':False,'review':_review_notice(inputs)}
 
 

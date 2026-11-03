@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/verify.yml b/.github/workflows/verify.yml
+index 2fd1bee..ec6f6a8 100644
+--- a/.github/workflows/verify.yml
++++ b/.github/workflows/verify.yml
+@@ -35,7 +35,7 @@ jobs:
+       - name: OpenCode 2 binary protocol integration
+         if: matrix.metadata == 'sqlite'
+         run: |
+-          npm install --prefix /tmp/opencode-verified @opencode/cli@2.0.32 --no-audit --no-fund
++          npm install --prefix /tmp/opencode-verified @opencode/cli@2.1.2 --no-audit --no-fund
+           python scripts/verify_agent_protocol.py --opencode-binary /tmp/opencode-verified/node_modules/.bin/opencode
+       - name: Tests against SQLite
+         if: matrix.metadata == 'sqlite'

@@ -24,8 +24,8 @@ from .config import DATA, MAX_UPLOAD
 from .locks import FileLock
 from .store import all_items, get, now, put, seal, uid
 
-CODE_DIR = 'Nexus WorkStudio工作区'
-OUTPUT_DIR = 'Nexus WorkStudio成果'
+CODE_DIR = 'Atlas工作区' if DATA.name == '.atlas' else 'Nexus WorkStudio工作区'
+OUTPUT_DIR = 'Atlas成果' if DATA.name == '.atlas' else 'Nexus WorkStudio成果'
 EXTENSIONS = {'.csv', '.xlsx', '.json', '.jsonl', '.pdf', '.docx', '.pptx',
               '.png', '.jpg', '.jpeg', '.tiff', '.webp', '.html', '.htm', '.txt', '.md'}
 PRIVATE_NAMES = {'llm.json', 'llm.example.json', 'llm.multi.example.json', 'connector.key',
@@ -85,7 +85,7 @@ def _parts(relative, *, managed=False, allow_empty=False):
         raise ValueError('本地文件名不能包含数据流、设备名称或有歧义的结尾')
     if any(v.startswith('.') or any(ord(c) < 32 for c in v) for v in parts):
         raise ValueError('不能访问隐藏文件、私有配置或上级目录')
-    if not managed and any((v.casefold() in {CODE_DIR.casefold(),OUTPUT_DIR.casefold()} if os.name=='nt' else v in (CODE_DIR,OUTPUT_DIR)) or v.lower() in PRIVATE_NAMES
+    if not managed and any((v.casefold() in {x.casefold() for x in (CODE_DIR,OUTPUT_DIR,'Atlas工作区','Atlas成果','Nexus WorkStudio工作区','Nexus WorkStudio成果')} if os.name=='nt' else v in (CODE_DIR,OUTPUT_DIR,'Atlas工作区','Atlas成果','Nexus WorkStudio工作区','Nexus WorkStudio成果')) or v.lower() in PRIVATE_NAMES
                            or v.lower().startswith(('llm.', 'credentials.', 'secrets.'))
                            or Path(v).suffix.lower() in ('.key', '.pem', '.p12', '.pfx', '.env') for v in parts):
         raise ValueError('不能将系统成果、模型配置或凭据作为本地资料读取')

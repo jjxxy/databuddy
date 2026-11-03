@@ -43,7 +43,8 @@ CORE={'project_context','set_task_plan','load_workflow','business_rules','search
 # A working set is model context, not an authorization grant. The complete
 # allowed catalog remains discoverable, with unchanged server-side validators.
 ESSENTIAL={'project_context','set_task_plan','business_rules','discover_tools','read_tool_result'}
-OFFICE_WORKING_SET=ESSENTIAL|{'source_schema','read_source_table','write_file','render_office_artifact','inspect_pptx_template','render_pptx_template'}
+OFFICE_WORKING_SET=ESSENTIAL|{'source_schema','read_source_table','write_file','render_office_artifact'}
+OFFICE_TEMPLATE_TOOLS={'inspect_pptx_template','render_pptx_template'}
 INLINE_SCHEMA_CHARACTERS=2500
 AUTO_SCHEMA_CHARACTERS=8000
 DATA_WORKING_SET=('source_schema','inspect_source_tables','read_source_table','data_workflow_guide',
@@ -130,12 +131,20 @@ def selected(turn):
     data_task=re.search(r'汇总|对账|数据加工|工作流|底稿|库存|销售|人事|财务|金额|订单|CSV|SQL',text,re.I)
     document_output=re.search(r'(?:创建|生成|写|做|制作|导出|create|generate|export|write|make)[^。；;\n]{0,24}(?:Word|PPT|PowerPoint|docx|pptx|文档|幻灯片|演示文稿)',text,re.I)
     flow_task=re.search(r'业务流程|处理流程|第[一二三四五六七八九十\d]+步',text,re.I)
-    if office_task and (not data_task or document_output):
+    attached=turn.get('attached_sources') or []
+    has_deck=any(isinstance(item,dict) and isinstance(item.get('name'),str)
+                 and item['name'].lower().endswith('.pptx') for item in attached)
+    template_requested=bool(re.search(r'模板|母版|套版|套用|template',text,re.I)) or has_deck
+    if office_task and (not data_task or document_output or template_requested):
         # "Excel + report + source + verify" used to union unrelated application,
         # report-acquisition, semantic and delegation schemas (~40k characters).
         # Start with document/source tools; data-workflow/report capabilities are
         # still in the catalog and are loaded in full when the agent needs them.
         names=sorted(OFFICE_WORKING_SET)
+        # Existing decks and explicit template requests need the version-bound
+        # template tools. Ordinary report requests discover them on demand,
+        # rather than loading both sizeable schemas for every Office turn.
+        if template_requested:names+=sorted(OFFICE_TEMPLATE_TOOLS)
     elif data_task or flow_task:
         # A data task needs a small executable workflow frontier. Keywords such
         # as "口径、核对、报告、文件" must not union every unrelated subsystem.

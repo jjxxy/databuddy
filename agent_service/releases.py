@@ -176,9 +176,23 @@ def _verify_review_sources(connection,pipeline,run,details):
     return originals
 
 
+def _schedule_blocks_auto_adoption(run,pipeline):
+    if any(pipeline.get(k) for k in ('schedule_gap_pending','schedule_resume_required','schedule_uncertain_run','schedule_uncertain_runs')):
+        return True
+    snap=run.get('schedule_snapshot')
+    if isinstance(snap,dict):
+        return not pipeline.get('cron') or snap.get('generation')!=pipeline.get('schedule_generation')
+    from .jobs import is_scheduler_key
+    return is_scheduler_key('pipeline',run.get('target'),run.get('scheduled_key'))
+
+
 def publish(pipeline_id,run_id,lease_token=None,rollback=False,*,confirm_source_review=False,
             expected_commit=None,expected_parquet_sha256=None,review_actor=None):
     with transaction() as c:
+        # The pipeline row is locked before the job, consistent with queue
+        # admission and cancellation on PostgreSQL.
+        p_row=c.execute(select(items.c.body).where(items.c.id==pipeline_id,items.c.kind=='pipeline').with_for_update()).first()
+        if not p_row:raise KeyError(pipeline_id)
         row=c.execute(select(jobs).where(jobs.c.id==run_id).with_for_update()).mappings().first()
         if not row:raise KeyError(run_id)
         run=render(row)
@@ -187,9 +201,9 @@ def publish(pipeline_id,run_id,lease_token=None,rollback=False,*,confirm_source_
             import time
             if row['status']!='running' or row['lease_token']!=lease_token or row['lease_until']<time.time():raise ValueError('执行租约失效，禁止发布')
         elif row['status'] not in ('validated','succeeded'):raise ValueError('运行尚未完成验证')
-        p_row=c.execute(select(items.c.body).where(items.c.id==pipeline_id,items.c.kind=='pipeline').with_for_update()).first()
-        if not p_row:raise KeyError(pipeline_id)
         p=json.loads(p_row[0])
+        if lease_token and _schedule_blocks_auto_adoption(run,p):
+            raise ValueError('定时计划已变化或存在待核对的历史执行，后台结果不能自动发布')
         if not rollback and run['commit']!=p['commit'] and run['commit']!=p.get('active_commit'):raise ValueError('候选代码已被新版本替代，请重新验证或明确回滚')
         # Recheck under the locked pipeline row: the active version may have
         # changed after the worker decided this was a safe automatic refresh.

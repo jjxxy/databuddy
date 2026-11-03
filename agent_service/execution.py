@@ -12,7 +12,7 @@ from .codegen import checkout
 from .errors import TaskError,Cancelled
 from .sources import snapshot
 from .audit import record
-from .releases import publish
+from .releases import publish,_schedule_blocks_auto_adoption
 from .process_control import spawn,stop,executable
 
 RUN_TIMEOUT=int(os.getenv('MAX_RUN_TIMEOUT_SECONDS','3600'))
@@ -32,6 +32,8 @@ def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,*,frozen_s
         p=get('pipeline',target)
         if p.get('schedule_uncertain_run') or p.get('schedule_uncertain_runs'):
             raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
+        pid=p.get('project_id')
+        workspace_revision=int(get('project',pid).get('context_visibility_revision',0)) if pid else None
         # Freeze the source configurations used by this specific execution, outside Git.
         plan=json.loads(subprocess.run([executable('git'),'-C',p['repository'],'show',(commit or p['commit'])+':plan.json'],capture_output=True,text=True,encoding='utf-8',check=True).stdout)
         source_ids=[plan['source_id']]+[j['source_id'] for j in plan.get('joins',[])]
@@ -55,6 +57,7 @@ def enqueue(kind,target,commit=None,scheduled_key=None,max_attempts=3,*,frozen_s
                 raise ValueError('来源快照与确认的代码版本不一致')
     if kind=='pipeline':max_attempts=plan.get('runtime',{}).get('max_attempts',max_attempts)
     return queue_enqueue(kind,target,commit,scheduled_key,max_attempts,extra={'source_snapshot':sources,'runtime_snapshot':plan.get('runtime',{}) if kind=='pipeline' else {},
+        **({'project_id':pid,'workspace_visibility_revision':workspace_revision} if kind=='pipeline' and pid else {}),
         'schedule_snapshot':({'kind':'pipeline','generation':p.get('schedule_generation'),'project_id':p.get('project_id'),'actor_id':p.get('schedule_actor_id'),
                               'published_run':p.get('published_run'),'candidate_run':p.get('candidate_run')}
                              if kind=='pipeline' and is_scheduler_key(kind,target,scheduled_key) else None)})
@@ -222,7 +225,8 @@ def execute(run):
         # first adoption. Only a refresh of the already adopted commit may
         # update the published result automatically. Historic pipelines retain
         # their pre-existing auto policy until a new business plan is created.
-        auto=_automatic_adoption_allowed(latest,run['commit']) and not source_review and not fact_alignment
+        auto=(_automatic_adoption_allowed(latest,run['commit']) and not source_review and not fact_alignment
+              and not _schedule_blocks_auto_adoption(run,latest))
         if auto:
             publish(p['id'],run['id'],lease_token=run['lease_token'])
             patch_run(run,status='succeeded',finished_at=now(),stage='已发布')
@@ -293,7 +297,7 @@ def _queue_due():
                 'business_plan_confirmation_required','schedule_gap_pending','schedule_error','schedule_generation','schedule_uncertain_run','schedule_resume_required','schedule_actor_id')
         for p in all_items('pipeline'):
             if not p.get('cron') or p.get('archived'):continue
-            if p.get('schedule_uncertain_run') or p.get('schedule_uncertain_runs') or p.get('schedule_resume_required'):continue
+            if p.get('schedule_uncertain_run') or p.get('schedule_uncertain_runs') or p.get('schedule_resume_required') or p.get('schedule_gap_pending'):continue
             if not p.get('schedule_actor_id'):
                 _patch_schedule_if_current('pipeline',p,fields,schedule_error='历史自动更新缺少设置者身份，请重新设置后启用')
                 continue
@@ -304,6 +308,10 @@ def _queue_due():
                 if due>current:continue
                 # Validate cron before admission so invalid settings never start a job.
                 following=croniter(p['cron'],due.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
+                if following<=current:
+                    _patch_schedule_if_current('pipeline',p,fields,schedule_gap_pending=True,
+                        schedule_error='存在多个未执行的计划时间；自动更新已暂停，请核对缺失期间和资料后重新设置调度')
+                    continue
                 next_due=croniter(p['cron'],current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
                 commit=p.get('active_commit') or (p.get('commit') if p.get('release_mode','auto')=='auto' and not p.get('business_plan_confirmation_required') else None)
                 if not commit:
@@ -315,13 +323,16 @@ def _queue_due():
                         or queued.get('target')!=p['id'] or queued.get('commit')!=commit):
                     _patch_schedule_if_current('pipeline',p,fields,schedule_error='已有其他任务运行，自动更新等待后重试；正式结果保留',schedule_retry_after=current.timestamp()+30)
                     continue
+                accepted_schedule=queued.get('schedule_snapshot')
+                if not isinstance(accepted_schedule,dict) or accepted_schedule.get('generation')!=p.get('schedule_generation'):
+                    _patch_schedule_if_current('pipeline',p,fields,schedule_gap_pending=True,
+                        schedule_error='旧计划时间已有运行，请核对执行回执后重新设置调度')
+                    continue
                 if queued.get('status') not in (*ACTIVE,'succeeded','validated'):
                     _patch_schedule_if_current('pipeline',p,fields,schedule_error='该计划的运行未成功，请检查运行记录后处理；正式结果保留',schedule_retry_after=current.timestamp()+30)
                     continue
-                gap=p.get('schedule_gap_pending') or following<=current
-                notice='存在历史未执行的计划时间；本次仅安排一次刷新，请核对缺失期间后重新设置调度' if gap else None
-                _patch_schedule_if_current('pipeline',p,fields,next_due=next_due.isoformat(),schedule_error=notice,
-                                           schedule_retry_after=None,schedule_gap_pending=bool(gap))
+                _patch_schedule_if_current('pipeline',p,fields,next_due=next_due.isoformat(),schedule_error=None,
+                                           schedule_retry_after=None,schedule_gap_pending=False)
             except Exception:
                 # Admission and configuration errors must not consume this occurrence.
                 _patch_schedule_if_current('pipeline',p,fields,schedule_error='自动更新未能安排，请检查计划及来源；正式结果保留',schedule_retry_after=current.timestamp()+30)

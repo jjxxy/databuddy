@@ -38,6 +38,10 @@ def credentials(state):
     else:
         value = {'APP_TOKEN':secrets.token_urlsafe(36), 'NEXUS_OPERATOR_TOKEN':secrets.token_urlsafe(36)}
         write_json(path, value)
+    legacy=value.get('ATLAS_OPERATOR_TOKEN');current=value.get('NEXUS_OPERATOR_TOKEN')
+    if legacy is not None and current is not None and legacy!=current:
+        raise ValueError('本机新旧管理员凭据冲突；原凭据未修改。')
+    if current is None and legacy is not None:value=dict(value,NEXUS_OPERATOR_TOKEN=legacy)
     if (any(not isinstance(value.get(k), str) or len(value[k]) < 24 for k in ('APP_TOKEN','NEXUS_OPERATOR_TOKEN'))
             or value['APP_TOKEN'] == value['NEXUS_OPERATOR_TOKEN']):
         raise ValueError('本机访问凭据损坏，请保留数据并从备份恢复凭据文件。')
@@ -83,7 +87,8 @@ def environment(state, port, access, model_config, offline, workspace=None):
                DO_NOT_TRACK='1', DLT_TELEMETRY='false')
     if model_config:env['NEXUS_LLM_CONFIG_FILE'] = str(model_config)
     if workspace is not None:
-        data = workspace / '.nexus'
+        from agent_service.local_storage import selected_layout
+        data = selected_layout(workspace)
         env.update(NEXUS_LOCAL_MODE='1', NEXUS_LOCAL_WORKSPACE=str(workspace),
                    DATA_DIR=str(data), DATABASE_URL='sqlite:///'+str(data/'metadata.sqlite'))
     return env

@@ -113,15 +113,15 @@ def test_missed_schedule_occurrences_are_disclosed_not_automatically_replayed(mo
     try:
         data.schedule(pid,wid,cron='0 9 * * *')
         clock[0]=due+timedelta(days=2);before=len(list_jobs(target=wid));data.queue_due()
-        assert len(list_jobs(target=wid))==before+1
+        assert len(list_jobs(target=wid))==before
         state=get('data_workflow',wid)
-        assert state['schedule_gap_pending'] is True and '仅安排一次' in state['refresh_error']
-        assert datetime.fromisoformat(state['next_due'])==due+timedelta(days=3)
-        job=list_jobs(target=wid)[0];assert finish(job['id'])['status']=='succeeded'
-        # A later successful refresh cannot silently erase the missed-period warning.
+        assert state['schedule_gap_pending'] is True and '已暂停' in state['refresh_error']
+        assert datetime.fromisoformat(state['next_due'])==due
+        assert state['published_run']==first['id']
+        # The paused schedule cannot silently execute at a later tick.
         clock[0]=due+timedelta(days=3);data.queue_due()
-        assert '历史未执行' in get('data_workflow',wid)['refresh_error']
-        job=list_jobs(target=wid)[0];assert finish(job['id'])['status']=='succeeded'
+        assert len(list_jobs(target=wid))==before
+        assert get('data_workflow',wid)['published_run']==first['id']
         data.schedule(pid,wid,cron='0 9 * * *')
         assert get('data_workflow',wid)['schedule_gap_pending'] is False
     finally:patch('data_workflow',wid,cron=None,next_due=None,watch_sources=False)

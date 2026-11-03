@@ -13,6 +13,7 @@ services:
       NEXUS_LLM_CONFIG_FILE: /run/nexus/llm.json
       NEXUS_QUICKSTART_CONTAINER: "1"
       NEXUS_LOCAL_MODE: "1"
+      NEXUS_LOCAL_AUTO_STORAGE: "1"
       NEXUS_LOCAL_WORKSPACE: /local-workspace
       NEXUS_LOCAL_LABEL: "${NEXUS_LOCAL_LABEL:-本地文件夹}"
       NEXUS_RUN_UID: "${NEXUS_LOCAL_UID:-10001}"

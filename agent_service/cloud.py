@@ -19,17 +19,29 @@ def prepare():
     mode()
     local=bool(os.getenv('NEXUS_LOCAL_WORKSPACE'))
     if local!=(os.getenv('NEXUS_LOCAL_MODE')=='1'):raise ValueError('Local workspace requires both NEXUS_LOCAL_MODE=1 and NEXUS_LOCAL_WORKSPACE')
-    if local and all(os.getenv(key) for key in ('NEXUS_S3_ENDPOINT','NEXUS_S3_BUCKET','NEXUS_S3_ACCESS_KEY_ID','NEXUS_S3_SECRET_ACCESS_KEY','NEXUS_BACKUP_KEY')):
+    if local and all(os.getenv('NEXUS_'+key) or os.getenv('ATLAS_'+key) for key in ('S3_ENDPOINT','S3_BUCKET','S3_ACCESS_KEY_ID','S3_SECRET_ACCESS_KEY','BACKUP_KEY')):
         raise ValueError('本地文件夹模式不支持旧格式远程备份；请停止服务后备份完整工作文件夹和部署配置')
     dropping=os.getenv('NEXUS_DROP_PRIVILEGES')=='1'
     uid=int(os.getenv('NEXUS_RUN_UID','10001')) if local else 10001
     gid=int(os.getenv('NEXUS_RUN_GID','10001')) if local else 10001
     if not 1<=uid<=2147483647 or not 1<=gid<=2147483647:raise ValueError('Local workspace UID/GID must be non-root positive IDs')
     if local:
-        from .local_storage import prepare_storage
+        from .local_storage import prepare_storage,selected_layout
+        if os.getenv('NEXUS_LOCAL_AUTO_STORAGE')=='1':
+            # Reject an arbitrary database before creating any folders. Only
+            # compose's exact new default can follow the selected old location.
+            chosen=selected_layout(Path(os.environ['NEXUS_LOCAL_WORKSPACE']))
+            configured_db=os.getenv('DATABASE_URL','')
+            default_db='sqlite:///'+str(Path(os.environ['NEXUS_LOCAL_WORKSPACE'])/'.nexus'/'metadata.sqlite')
+            selected_db='sqlite:///'+str(chosen/'metadata.sqlite')
+            if configured_db and configured_db not in (default_db,selected_db):
+                raise ValueError('本地数据库配置与所选工作空间不一致；未覆盖或迁移数据')
         storage_uid=None if os.name=='nt' else uid if dropping and os.geteuid()==0 else os.getuid()
         storage_gid=None if os.name=='nt' else gid if dropping and os.geteuid()==0 else os.getgid()
         data=prepare_storage(storage_uid,storage_gid)
+        if os.getenv('NEXUS_LOCAL_AUTO_STORAGE')=='1':
+            if data!=chosen:raise ValueError('本地工作空间在启动期间变化；未切换数据库')
+            os.environ['DATABASE_URL']=selected_db
     else:data=Path(os.getenv('DATA_DIR','/data')).resolve()
     from .preset_configuration import load_presets_file
     preset_configuration=load_presets_file(preset_path) if preset_path else None

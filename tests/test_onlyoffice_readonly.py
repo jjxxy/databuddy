@@ -11,7 +11,9 @@ def settings(monkeypatch):
     monkeypatch.setenv('ATLAS_ONLYOFFICE_BROWSER_ORIGIN', 'http://127.0.0.1:18080')
     monkeypatch.setenv('ATLAS_ONLYOFFICE_FILE_ORIGIN', 'http://172.17.0.1:8000')
     monkeypatch.setenv('ATLAS_ONLYOFFICE_SOURCE_IP', '172.17.0.2')
-    office._entries.clear()
+    from sqlalchemy import delete
+    from agent_service.store import items,transaction
+    with transaction() as connection:connection.execute(delete(items).where(items.c.kind==office._ticket_kind))
 
 
 def test_scoped_single_use_signed_file(monkeypatch, tmp_path):
@@ -53,7 +55,9 @@ def test_expired_link_does_not_open_file(monkeypatch, tmp_path):
         return path, {'name':'a.docx', 'download_format':'docx', 'download_sha256':'a' * 64}
     monkeypatch.setattr(office.workspace_artifacts, 'file', file)
     token = office.issue('p', 'a')['config']['document']['url'].rsplit('/', 1)[-1]
-    office._entries[token]['expires'] = 0
+    from agent_service.store import get,put
+    key=office._ticket_id(token)
+    ticket=get(office._ticket_kind,key);ticket['expires']=0;put(office._ticket_kind,ticket,key)
     with pytest.raises(HTTPException):office.redeem(token, '172.17.0.2')
     assert len(calls) == 1
 

@@ -19,6 +19,7 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_STATE = Path.home() / '.local/share/nexus-databuddy-020'
+LEGACY_STATE = Path.home() / '.local/share/atlas-databuddy-020'
 DEFAULT_PYTHON = Path.home() / '.venvs/nexus-databuddy-020/bin/python'
 DEFAULT_OPENCODE = Path.home() / '.local/bin/opencode-nexus-2.1.2'
 
@@ -86,6 +87,11 @@ def credentials(state):
         value = {'APP_TOKEN': secrets.token_urlsafe(36),
                  'NEXUS_OPERATOR_TOKEN': secrets.token_urlsafe(36)}
         save_json(path, value)
+    if not isinstance(value,dict):raise ValueError('Invalid local credentials; restore credentials.json from your backup.')
+    legacy=value.get('ATLAS_OPERATOR_TOKEN');current=value.get('NEXUS_OPERATOR_TOKEN')
+    if legacy is not None and current is not None and legacy!=current:
+        raise ValueError('Conflicting legacy and current administrator credentials; no data changed.')
+    if current is None and legacy is not None:value=dict(value,NEXUS_OPERATOR_TOKEN=legacy)
     if (not isinstance(value, dict) or any(not isinstance(value.get(k), str) or len(value[k]) < 16
             for k in ('APP_TOKEN', 'NEXUS_OPERATOR_TOKEN'))
             or value['APP_TOKEN'] == value['NEXUS_OPERATOR_TOKEN']):
@@ -229,7 +235,7 @@ def start(args, state):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('start', 'stop', 'status', 'open', 'token', 'logs'), nargs='?', default='start')
-    parser.add_argument('--state-dir', default=str(DEFAULT_STATE))
+    parser.add_argument('--state-dir')
     parser.add_argument('--python', default=str(DEFAULT_PYTHON))
     parser.add_argument('--port', type=int, default=8000)
     parser.add_argument('--model-config')
@@ -242,9 +248,14 @@ def main(argv=None):
         parser.error('port must be 1..65535 and wait 1..900 seconds')
     if sys.platform != 'linux':
         parser.error('Run through start-native.cmd on Windows, or with Linux/WSL Python.')
-    state = Path(args.state_dir).expanduser().absolute()
     os.umask(0o077)
     try:
+        if args.state_dir is None:
+            if os.path.lexists(DEFAULT_STATE) and os.path.lexists(LEGACY_STATE):
+                raise ValueError('Both old and new workspace state directories exist; select one explicitly with --state-dir. No data changed.')
+            chosen=LEGACY_STATE if os.path.lexists(LEGACY_STATE) else DEFAULT_STATE
+        else:chosen=args.state_dir
+        state = Path(chosen).expanduser().absolute()
         with state_lock(state):
             record = read_json(state / 'process.json')
             if args.action == 'token':

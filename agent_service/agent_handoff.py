@@ -169,7 +169,7 @@ def _result_zip(raw,metadata):
 def _decode(bundle):
     if not isinstance(bundle,dict) or set(bundle)!={'format','version','complete','items','manifest_sha256'}:
         raise HandoffError('Agent交接包结构无效')
-    if bundle['format']!=FORMAT or type(bundle['version']) is not int or bundle['version']!=1 or bundle['complete'] is not True:
+    if bundle['format'] not in (FORMAT,'atlas-agent-handoff') or type(bundle['version']) is not int or bundle['version']!=1 or bundle['complete'] is not True:
         raise HandoffError('Agent交接版本不受支持或不是完整内容')
     if not isinstance(bundle['items'],list) or len(bundle['items'])>20:raise HandoffError('一次最多交接20份完整资料')
     if len(_json(bundle))>_limit()*4//3+256*1024:raise HandoffError('Agent交接报文超过体积预算；未截断')

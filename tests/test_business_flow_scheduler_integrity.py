@@ -71,14 +71,16 @@ def test_reused_unsuccessful_scheduled_job_does_not_advance(scheduler, monkeypat
     assert '历史运行未成功' in flow['refresh_error']
 
 
-def test_missed_periods_submit_only_once_and_remain_visible(scheduler):
+def test_missed_periods_pause_without_scheduling_or_changing_due(scheduler):
     _, submitted, add = scheduler
     flow = add('flow', NOW - timedelta(days=3))
     bf.queue_due()
-    assert len(submitted) == 1
+    assert len(submitted) == 0
     assert flow['schedule_gap_pending'] is True
     assert '多个未执行' in flow['refresh_error']
-    assert flow['next_due'] == (NOW + timedelta(days=1)).isoformat()
+    assert flow['next_due'] == (NOW - timedelta(days=3)).isoformat()
+    bf.queue_due()
+    assert submitted == []
 
 
 def test_concurrent_disabled_schedule_rechecked_before_admission(scheduler, monkeypatch):

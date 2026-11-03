@@ -258,6 +258,30 @@ def bounded(value,limit=12000):
     text=json.dumps(value,ensure_ascii=False,default=str)
     return value if len(text)<=limit else {'truncated':True,'preview':text[:limit]}
 
+def _compact_model_schema(value):
+    """Remove schema-node titles, preserving field names and literal data.
+
+    Only recurse through JSON Schema's schema-bearing keywords. Literal values
+    in defaults, constants, examples and enums are never modified. Canonical
+    schemas from discovery and the server-side validators remain unchanged.
+    """
+    if not isinstance(value,dict):return value
+    mappings={'properties','patternProperties','$defs','definitions','dependentSchemas'}
+    children={'items','additionalProperties','unevaluatedProperties','additionalItems',
+              'not','if','then','else','contains','propertyNames'}
+    alternatives={'allOf','anyOf','oneOf','prefixItems'}
+    result={}
+    for key,item in value.items():
+        if key=='title' and isinstance(item,str):continue
+        if key in mappings and isinstance(item,dict):
+            result[key]={name:_compact_model_schema(schema) for name,schema in item.items()}
+        elif key in children:result[key]=_compact_model_schema(item)
+        elif key in alternatives and isinstance(item,list):
+            result[key]=[_compact_model_schema(schema) for schema in item]
+        else:result[key]=item
+    return result
+
+
 def planning_context(turn, *, native=None):
     from . import agent_gateway,agent_team,agent_mesh
     assert_turn_live(turn);agent_gateway.assert_turn_allowed(turn);agent_team.assert_turn_allowed(turn)
@@ -272,7 +296,8 @@ def planning_context(turn, *, native=None):
     # model request must describe today's effective policy, not those old caps.
     contract=dict(contract,budgets=limits,budget_policy='bounded' if any(value is not None for value in limits.values()) else 'unlimited')
     pid=turn['project_id'];mode=turn.get('interaction_mode','work')
-    tools=[agent_context.definition(name) for name in agent_context.selected(turn)]
+    tools=[{**item,'arguments_schema':_compact_model_schema(item['arguments_schema'])}
+           for item in (agent_context.definition(name) for name in agent_context.selected(turn))]
     native=provider.settings().get('tool_protocol','json')=='native' if native is None else native
     p=get('project',pid)
     from .conversation import default_session
@@ -280,7 +305,7 @@ def planning_context(turn, *, native=None):
     info={'project':p['name'],'mode':mode,'request':turn.get('work_request',turn['text']),'continuation_request':turn['text'] if turn.get('resumed_from') else None,'target_application_id':turn.get('application_id'),'attached_source_id':turn.get('source_id'),'current_source_id':p.get('source_id'),'current_pipeline_id':turn.get('application_id') or p.get('pipeline_id'),
           'project_history_matches':search_history(pid,turn['text'],5),'conversation':[{'user':t['text'],'agent':t.get('answer','')[:3500]} for t in recent],
           'completed_steps':agent_context.trace_context(turn,public_observation,preserve_full=True),
-          'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':response_schema(Step)}
+          'task_contract':contract,'task_plan':turn.get('task_plan'),'verification_feedback':turn.get('verification_feedback'),'tools':tools,'response_schema':_compact_model_schema(response_schema(Step))}
     if turn.get('selected_workflow'):
         info['selected_workflow']={**turn['selected_workflow'],'usage':'这是用户当前界面选中的流程，仅在用户指代当前流程且未指定其他目标时作为辅助上下文；新建或明确指定其他流程的要求优先。修改或运行前读取并核对该版本，版本变化须询问用户；不得自动发布。'}
     active_names={tool['name'] for tool in tools}

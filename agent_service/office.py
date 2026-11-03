@@ -8,7 +8,8 @@ from .config import DATA
 from .store import get,put,now
 from . import workspace
 
-RENDERER='office-v5'
+RENDERER='office-v6'
+LEGACY_RENDERER='office-v5'
 PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
 MANIFEST_MAX_BYTES=256*1024
 
@@ -121,7 +122,24 @@ def _verify_structure(file,ext,spec=None):
                 raise ValueError('Office产物结构不完整')
         if ext=='docx':
             from docx import Document
-            Document(file)
+            doc=Document(file)
+            if spec is not None:
+                # Verify text, editable cells and document order, not only ZIP
+                # validity. A table beside the wrong section is misleading.
+                from docx.table import Table
+                from docx.text.paragraph import Paragraph
+                expected=[('paragraph',spec.title)]
+                for section in spec.sections:
+                    if section.heading:expected.append(('paragraph',section.heading))
+                    expected.extend(('paragraph',line) for line in section.body.splitlines())
+                    expected.extend(('paragraph',line) for line in section.bullets)
+                    if section.table is not None:expected.append(('table',[section.table.columns,*section.table.rows]))
+                actual=[]
+                for item in doc.iter_inner_content():
+                    if isinstance(item,Paragraph):actual.append(('paragraph',item.text))
+                    elif isinstance(item,Table):actual.append(('table',[[cell.text for cell in row.cells] for row in item.rows]))
+                    else:raise ValueError('Word 文档含无法核验的元素')
+                if actual!=expected:raise ValueError('Word 内容或顺序与规格不一致')
         elif ext=='pptx':
             from pptx import Presentation
             deck=Presentation(file)
@@ -136,9 +154,10 @@ def _verify_structure(file,ext,spec=None):
         raise ValueError('Office产物结构或完整性验证失败，未返回或覆盖') from None
 
 
-def _build_file(spec,tmp,precision_notes):
+def _build_file(spec,tmp,precision_notes,*,renderer_version=RENDERER):
     ext=tmp.suffix.lstrip('.')
-    if ext!='pptx' and any(section.table is not None or section.chart is not None for section in spec.sections):
+    if renderer_version not in (RENDERER,LEGACY_RENDERER):raise ValueError('Office渲染器版本不可用')
+    if ext!='pptx' and any(section.chart is not None or (section.table is not None and (ext!='docx' or renderer_version==LEGACY_RENDERER)) for section in spec.sections):
         raise ValueError('结构化章节表格或图表目前仅支持演示文稿，请使用工作簿交付完整数据')
     if ext=='docx':
         from docx import Document
@@ -150,6 +169,28 @@ def _build_file(spec,tmp,precision_notes):
             if section.heading:doc.add_heading(section.heading,1)
             for line in section.body.splitlines():doc.add_paragraph(line)
             for line in section.bullets:doc.add_paragraph(line,style='List Bullet')
+            if section.table is not None:
+                from docx.oxml import OxmlElement
+                values=[section.table.columns,*section.table.rows]
+                if any(any(any(ord(ch)<32 and ch not in ('\n','\t') for ch in cell) for cell in row) for row in values):
+                    raise ValueError('Word 表格含不支持的控制字符，未生成成果')
+                table=doc.add_table(rows=1,cols=len(section.table.columns))
+                table.style='Table Grid'
+                table.rows[0]._tr.get_or_add_trPr().append(OxmlElement('w:tblHeader'))
+                for index,value in enumerate(section.table.columns):table.rows[0].cells[index].text=value
+                for row in section.table.rows:
+                    cells=table.add_row().cells
+                    for index,value in enumerate(row):cells[index].text=value
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            for run in paragraph.runs:run.font.size=Pt(9)
+                from docx.shared import RGBColor
+                for cell in table.rows[0].cells:
+                    shade=OxmlElement('w:shd');shade.set(qn('w:fill'),'214F42');cell._tc.get_or_add_tcPr().append(shade)
+                    for paragraph in cell.paragraphs:
+                        for run in paragraph.runs:
+                            run.font.bold=True;run.font.color.rgb=RGBColor.from_string('FFFFFF')
         doc.save(tmp)
     elif ext=='xlsx':
         from openpyxl import Workbook
@@ -217,7 +258,7 @@ def _manifest_text(record,aid):
     return value
 
 
-def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
+def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_version=RENDERER):
     from .intents import require
     from .result_delivery import durable_cached_artifact
     from .locks import assert_owned
@@ -226,6 +267,7 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
     try:OfficeArgs.model_validate({'spec_path':spec_path,'name':name})
     except ValidationError:
         raise ValueError('交付文件名须为不含路径和扩展名的基名，仅支持文字、数字、空格、横线，最多91字符') from None
+    if renderer_version not in (RENDERER,LEGACY_RENDERER):raise ValueError('Office渲染器版本不可用')
     pid=turn['project_id']
     with workspace.lock(pid):
         # Business flows can provide a frozen JSON value in memory. Its actual
@@ -240,7 +282,7 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
         spec=_load_spec(text)
         ext={'document':'docx','spreadsheet':'xlsx','presentation':'pptx'}[spec.kind]
         identity={'project_id':pid,'source_spec':spec_path,'source_sha256':hashlib.sha256(text.encode()).hexdigest(),
-                  'renderer':RENDERER,'name':name+'.'+ext,'precision_policy':'text_exact','precision_notes_format':PRECISION_NOTES_FORMAT}
+                  'renderer':renderer_version,'name':name+'.'+ext,'precision_policy':'text_exact','precision_notes_format':PRECISION_NOTES_FORMAT}
         digest=hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
         aid='of_'+digest[:40];folder=DATA/'deliverables'/aid;file=folder/(name+'.'+ext)
         identity['relative_path']=str(file.relative_to(DATA))
@@ -259,7 +301,7 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None):
             _verify_structure(file,ext,spec)
         precision_notes=list(record.get('precision_notes',[]));built_bytes=[None]
         def build(temporary):
-            precision_notes.clear();_build_file(spec,temporary,precision_notes)
+            precision_notes.clear();_build_file(spec,temporary,precision_notes,renderer_version=renderer_version)
             _compact_precision_notes(precision_notes)
             built_bytes[0]=temporary.stat().st_size
         def save_pending(checksum):

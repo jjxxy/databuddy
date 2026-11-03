@@ -64,7 +64,18 @@ def test_100000_rows_from_real_csv_exact_sum_encrypted_snapshot(monkeypatch):
     monkeypatch.setattr(flow_data,'_INLINE_ROWS_LIMIT',0)
     referenced=flow_data._compact_table(context,result['outputs']['total'])
     report=delivery.table_report_spec(context,{'title':'核对','format':'html'},{'table':referenced})
-    assert '125000' in report['spec']['sections'][1]['body']
+    # Current reports carry verified results in a structured table; inspect
+    # the exact value and row count rather than looking in the old text body.
+    details=report['spec']['sections'][1]['table']
+    assert len(details['rows'])==report['row_count']==1
+    assert details['rows'][0][0]=='东部' and Decimal(details['rows'][0][1])==Decimal('125000.00')
+    assert report['table_sha256']==result['outputs']['total']['output_sha256']
+    rendered=delivery.render_html(context,{'name':'large-sum-report','renderer_version':delivery.HTML_RENDERER},{'spec':report})
+    from agent_service import workspace_artifacts
+    html_path,_=workspace_artifacts.file(pid,rendered['artifact_id'])
+    html=html_path.read_text(encoding='utf-8')
+    assert '东部' in html and '125000.00' in html and '不代表业务口径或财经数字已审核' in html
+    assert rendered['financial_verified'] is False
     # A full storage quota rejects new snapshots without deleting the old ones.
     monkeypatch.setenv('NEXUS_FLOW_SNAPSHOT_TOTAL_MB','1')
     with pytest.raises(ValueError,match='存储容量不足'):

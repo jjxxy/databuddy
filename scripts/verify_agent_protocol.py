@@ -84,7 +84,7 @@ def main():
                     for _ in range(80):
                         try:
                             r=check.get(oc_config['base_url']+'/api/info')
-                            if r.status_code==200:assert r.json()['version']=='2.0.32';break
+                            if r.status_code==200:assert r.json()['version']=='2.1.2';break
                         except httpx.TransportError:pass
                         time.sleep(.25)
                     else:raise RuntimeError('OpenCode startup failed')
@@ -139,7 +139,7 @@ def main():
                             evaluation=subprocess.run([sys.executable,str(ROOT/'scripts/evaluate_agent.py'),'--execute','--protocol-test','--limit','3','--output',str(report_file)],env=dict(env,NEXUS_URL=f'http://127.0.0.1:{port}'),capture_output=True,text=True,timeout=120)
                             assert evaluation.returncode==0,evaluation.stdout[-2000:]+evaluation.stderr[-1000:]
                             result=json.loads(report_file.read_text());assert result['passed']==3 and result['real_model_evaluated'] is False and result['success_rate'] is None
-                        print(json.dumps({'ok':True,'simulated_model':True,'real_api_worker':True,'real_opencode_binary':bool(args.opencode_binary),'opencode_version':'2.0.32' if args.opencode_binary else None,'model_steps':6 if args.native else 3,'native_tool_calling':bool(args.native and Model.native_calls),'tool_discovery_search_exact_edit':bool(args.native),'evaluation_runner_protocol_test':args.check_evaluator,'transient_model_retry':True,'credentials_survive_restart':True,'cross_session_retrieval':True,'files_versioned_and_restored':True}))
+                        print(json.dumps({'ok':True,'simulated_model':True,'real_api_worker':True,'real_opencode_binary':bool(args.opencode_binary),'opencode_version':'2.1.2' if args.opencode_binary else None,'model_steps':6 if args.native else 3,'native_tool_calling':bool(args.native and Model.native_calls),'tool_discovery_search_exact_edit':bool(args.native),'evaluation_runner_protocol_test':args.check_evaluator,'transient_model_retry':True,'credentials_survive_restart':True,'cross_session_retrieval':True,'files_versioned_and_restored':True}))
                 except Exception:
                     print((temp/'service.log').read_text()[-4000:]);raise
                 finally:

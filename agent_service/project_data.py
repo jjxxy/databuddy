@@ -606,6 +606,7 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
     w=owned(pid,'data_workflow',wid)
     if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs'):
         raise ValueError('上次自动更新的外部操作状态待核对，请先记录核对结论')
+    workspace_revision=int(get('project',pid).get('context_visibility_revision',0))
     doc=WorkflowDocument.model_validate(w['active_document']) if use_published and w.get('active_document') else load_document(pid,w['path'])
     if use_published and not w.get('active_document'):raise ValueError('流程尚未正式发布')
     # Compare the exact frozen plan that will enter the queue, not just the
@@ -621,7 +622,7 @@ def _enqueue_workflow(pid,wid,*,use_published=False,scheduled_key=None,authority
         reused=_reusable_workflow_run(pid,wid,doc,frozen,originating_turn_id)
         if reused:return reused
     queued=enqueue('data_workflow',wid,commit=digest(doc.model_dump()),scheduled_key=scheduled_key,max_attempts=1,
-        extra={**({'gateway_authority':authority} if authority else {}),'project_id':pid,'workflow_document':doc.model_dump(),'source_snapshot':frozen,
+        extra={**({'gateway_authority':authority} if authority else {}),'project_id':pid,'workspace_visibility_revision':workspace_revision,'workflow_document':doc.model_dump(),'source_snapshot':frozen,
                'originating_turn_id':originating_turn_id,
                'workflow_pointer_snapshot':{'published_run':w.get('published_run'),'candidate_run':w.get('candidate_run')},
                'schedule_snapshot':({'kind':'data_workflow','generation':w.get('schedule_generation'),'project_id':pid,'actor_id':w.get('schedule_actor_id'),
@@ -1010,6 +1011,17 @@ def read_result(pid,rid,offset=0,limit=100):
                 semantic_review_confirmed=bool(confirmed))
 
 
+def _schedule_blocks_auto_adoption(run,workflow):
+    if any(workflow.get(k) for k in ('schedule_gap_pending','schedule_resume_required','schedule_uncertain_run','schedule_uncertain_runs')):
+        return True
+    snap=run.get('schedule_snapshot')
+    if isinstance(snap,dict):
+        return (not (workflow.get('cron') or workflow.get('watch_sources')) or
+                snap.get('generation')!=workflow.get('schedule_generation'))
+    from .jobs import is_scheduler_key
+    return is_scheduler_key('data_workflow',run.get('target'),run.get('scheduled_key'))
+
+
 def execute_job(run,folder):
     from .execution import patch_run,checkpoint
     from .jobs import heartbeat
@@ -1176,6 +1188,7 @@ def execute_job(run,folder):
         if (not run.get('manual_candidate_only') and valid_pointer and w.get('published_run') and w.get('active_sha256')==run['commit']
                 and w.get('published_run')==pointer['published_run']
                 and w.get('candidate_run')==pointer['candidate_run'] and not w.get('candidate_run')
+                and not _schedule_blocks_auto_adoption(run,w)
                 and not source_review and not context['requires_semantic_review']):
             try:publish_result(pid,run['id'],run['commit'],lease_token=run['lease_token'])
             except AutoRefreshConflict:keep_candidate()
@@ -1224,12 +1237,18 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
         except Exception:raise ValueError('来源原件或复核记录不可用，请重新打开并核对') from None
     if meta['plan_sha256']!=expected_sha256:raise ValueError('加工方案版本已变化，请重新核对')
     with transaction() as c:
-        row=c.execute(select(jobs).where(jobs.c.id==rid).with_for_update()).mappings().first();run=render(row)
+        # Match the target -> job row-lock order used by cancellation and
+        # fenced worker updates, avoiding PostgreSQL deadlock inversions.
+        target=before_review['target']
+        w_row=c.execute(select(items.c.body).where(items.c.id==target,items.c.kind=='data_workflow').with_for_update()).first()
+        if not w_row:raise ValueError('数据加工流程不存在，不能发布')
+        row=c.execute(select(jobs).where(jobs.c.id==rid).with_for_update()).mappings().first()
+        if not row or row['target']!=target:raise ValueError('结果归属已变化，不能发布')
+        run=render(row)
         leased=lease_token and run['status']=='running' and row['lease_token']==lease_token and (row['lease_until'] or 0)>=time.time()
         if run.get('cancel_requested') or (run['status'] not in ('validated','succeeded') and not leased):raise ValueError('结果不可发布或执行租约失效')
         row_job_until=row['lease_until']
-        row=c.execute(select(items.c.body).where(items.c.id==run['target'],items.c.kind=='data_workflow').with_for_update()).first()
-        w=json.loads(row[0])
+        w=json.loads(w_row[0])
         if w.get('project_id')!=pid:raise ValueError('流程不属于当前项目')
         # A later run can replace the candidate under the same plan hash.
         # Never let an old review page adopt that stale result over it.
@@ -1240,7 +1259,8 @@ def _publish_result(pid,rid,expected_sha256,*,lease_token=None,review_actor=None
             if (not isinstance(pointer,dict) or set(pointer)!={'published_run','candidate_run'}
                     or w.get('candidate_run') is not None
                     or w.get('candidate_run')!=pointer['candidate_run']
-                    or w.get('published_run')!=pointer['published_run']):
+                    or w.get('published_run')!=pointer['published_run']
+                    or _schedule_blocks_auto_adoption(run,w)):
                 raise AutoRefreshConflict('自动刷新期间候选或正式结果已变化，保留现有版本')
         doc=WorkflowDocument.model_validate(run['workflow_document'])
         if run['commit']!=digest(doc.model_dump()):raise ValueError('流程内容完整性校验失败')
@@ -1337,7 +1357,7 @@ def queue_due():
         for w in all_items('data_workflow'):
             if w.get('archived') or not w.get('active_document') or not w.get('published_run'):continue
             if not w.get('cron') and not w.get('watch_sources'):continue
-            if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs') or w.get('schedule_resume_required'):continue
+            if w.get('schedule_uncertain_run') or w.get('schedule_uncertain_runs') or w.get('schedule_resume_required') or w.get('schedule_gap_pending'):continue
             if not w.get('schedule_actor_id'):
                 _schedule_patch_if_current(w,refresh_error='历史自动更新缺少设置者身份，请重新设置后启用')
                 continue
@@ -1349,6 +1369,10 @@ def queue_due():
                     due_at=datetime.fromisoformat(w['next_due'])
                     if due_at.tzinfo is None:raise ValueError('定时配置缺少时区')
                     due=due_at<=current
+                    if due and croniter(cron,due_at.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)<=current:
+                        _schedule_patch_if_current(w,schedule_gap_pending=True,
+                            refresh_error='存在多个未执行的计划时间；自动更新已暂停，请核对缺失期间和资料后重新设置调度')
+                        continue
                 active=WorkflowDocument.model_validate(w['active_document'])
                 ids=[binding.source_id for binding in active.bindings.values() if binding.source_id]
                 revisions={sid:get('source',sid).get('revision',1) for sid in ids}
@@ -1359,6 +1383,11 @@ def queue_due():
                 # Queue admission may return an unrelated already-active job;
                 # it is not evidence this scheduled occurrence was accepted.
                 if queued.get('scheduled_key')!=key:raise WorkflowScheduleBusy('已有其他任务正在运行')
+                accepted_schedule=queued.get('schedule_snapshot')
+                if not isinstance(accepted_schedule,dict) or accepted_schedule.get('generation')!=w.get('schedule_generation'):
+                    _schedule_patch_if_current(w,schedule_gap_pending=True,
+                        refresh_error='旧计划时间或资料版本已有运行，请核对执行回执后重新设置调度')
+                    continue
                 if not due and queued.get('source_revisions')!=revisions:
                     raise WorkflowScheduleBusy('资料版本在入队期间发生变化')
                 gap_notice='存在历史未执行的计划时间；请核对缺失期间后重新设置调度'
@@ -1373,15 +1402,6 @@ def queue_due():
                     if w.get('schedule_gap_pending'):updates['refresh_error']+='；历史计划缺口尚待核对'
                     if not due:updates['refresh_retry_after']=(current+timedelta(seconds=30)).isoformat()
                 if due:
-                    # Do not blindly replay many missed occurrences: they may
-                    # perform external work or require historical input data.
-                    # A single current refresh is admitted, and the gap is
-                    # explicitly surfaced for the owner to reconcile.
-                    following=croniter(cron,due_at.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
-                    if following<=current:
-                        updates['schedule_gap_pending']=True
-                        gap='存在多个未执行的计划时间；本次仅安排一次刷新，请核对缺失期间后重新设置调度'
-                        updates['refresh_error']=(updates['refresh_error']+'；'+gap if updates['refresh_error'] else gap)
                     updates['next_due']=croniter(cron,current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
                 _schedule_patch_if_current(w,**updates)
             except WorkflowScheduleBusy:
