@@ -117,6 +117,10 @@ def test_cursor_offset_pagination_empty_intermediate_loop_and_total(monkeypatch)
     def read(path,**config):return api_rows({'secret_config':seal(dict(url=f'http://127.0.0.1:{server.server_port}'+path,records_path='data',max_pages=5,**config))},MAX_ROWS)
     try:
         rows,e=read('/cursor',pagination='cursor',cursor_param='after',next_cursor_path='next');assert rows==[{'id':'A'},{'id':'B'}] and e['pages']==3 and e['complete']
+        assert [p['records'] for p in e['page_evidence']]==[1,0,1]
+        assert [p['page'] for p in e['page_evidence']]==[1,2,3]
+        assert all(len(p['response_sha256'])==64 for p in e['page_evidence'])
+        assert 'mid' not in json.dumps(e['page_evidence']) and 'end' not in json.dumps(e['page_evidence'])
         rows,e=read('/offset',pagination='offset',offset_param='offset',page_size=2,total_path='total');assert len(rows)==3 and e['pages']==2
         with pytest.raises(SourceError) as error:read('/loop',pagination='cursor',cursor_param='after',next_cursor_path='next')
         assert error.value.code=='PAGINATION_LOOP'

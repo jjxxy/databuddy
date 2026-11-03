@@ -4,7 +4,7 @@ window.renderWorkflowOverview=function(container,{kind,workflow,plan,run,version
  const doc=container.ownerDocument,el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!=null)n.textContent=String(text);if(cls)n.className=cls;return n};
  container.replaceChildren();const nodes=[];
  const stageLabels={select:'选择字段',drop:'整理字段',filter:'筛选记录',reclassify:'业务分类',compute:'计算指标',aggregate:'汇总数据',lookup:'关联资料',lookup_multi:'关联资料',lookup_effective:'按有效期匹配',fx_convert:'币种换算',union_rows:'合并资料',normalize:'规范数据',sql:'查询数据'};
- const businessLabels={source:'获取资料',source_table:'读取资料',collect:'获取资料',parse:'解析资料',transform:'处理数据',data_workflow:'处理数据',table_workflow:'加工数据',quality_gate:'自动核对数据',human_review:'人工复核',model:'模型分析',skill:'执行工作方法',template:'应用模板',office:'生成办公文件',office_document:'生成办公文件',html:'生成报告',html_report:'生成报告',table_report_spec:'整理报告',output:'生成结果'};
+ const businessLabels={source:'获取资料',source_table:'读取资料',api_capture:'采集接口数据',collect:'获取资料',parse:'解析资料',transform:'处理数据',data_workflow:'处理数据',table_workflow:'加工数据',quality_gate:'自动核对数据',human_review:'人工复核',model:'模型分析',skill:'执行工作方法',template:'应用模板',office:'生成办公文件',office_document:'生成办公文件',html:'生成报告',html_report:'生成报告',table_report_spec:'整理报告',output:'生成结果'};
  if(kind==='data'){
   const p=workflow?.document?.plan;if(!p||!p.inputs||!Array.isArray(p.stages)){container.append(el('p','暂无可展示的流程。'));return}
   for(const [id,v] of Object.entries(p.inputs))nodes.push({id,label:typeof v?.meaning==='string'&&v.meaning.trim()?v.meaning:'读取资料',deps:[]});

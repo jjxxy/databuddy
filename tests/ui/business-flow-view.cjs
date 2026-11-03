@@ -19,7 +19,15 @@ try {
  assert.match(container.textContent,/候选方案/);assert.match(container.textContent,/读取资料/);
  assert.match(container.textContent,/执行完成/);assert.match(container.textContent,/正在执行/);
  assert.match(container.textContent,/本次未记录/);assert.match(container.textContent,/依赖：读取资料/);
- assert.match(container.textContent,/此步骤的输出可能因模型或外部服务变化/);
+ assert.match(container.textContent,/此步骤的运行记录可能受来源、外部服务或运行环境影响/);
+ assert.doesNotMatch(container.textContent,/此步骤使用模型或工作方法/);
+ const aiPlan={...plan,nodes:plan.nodes.map(x=>x.id==='analysis'?{...x,kind:'model'}:x)};
+ w.NexusBusinessFlowView.render(container,{plan:aiPlan,version,run});
+ assert.match(container.textContent,/此步骤使用模型或工作方法，输出可能变化/);
+ const apiPlan={...plan,nodes:plan.nodes.map(x=>x.id==='income'?{...x,kind:'api_capture'}:x)};
+ w.NexusBusinessFlowView.render(container,{plan:apiPlan,version,run});
+ assert.match(container.textContent,/采集接口数据/);
+ w.NexusBusinessFlowView.render(container,{plan,version,run});
  assert.equal(container.querySelectorAll('img').length,0,'untrusted title must remain text');
  assert.match(container.textContent,/模型及工作方法的输出可能变化/);
  w.NexusBusinessFlowView.render(container,{plan,version,run:{...run,commit:'other'}});

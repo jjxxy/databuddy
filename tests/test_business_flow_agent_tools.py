@@ -30,6 +30,7 @@ def test_agent_create_uses_stable_server_step_and_marks_only_draft(monkeypatch):
 def test_guide_uses_actual_schema_and_does_not_publish():
     turn={'project_id':'p_example','actor_id':'owner','id':'t_example'}
     with actor_scope('owner'):result=tools.execute(turn,'business_flow_guide',{})
-    assert {'source_table','table_workflow','table_report_spec','html_report','office_document','model','skill'}<=set(result['nodes'])
+    assert {'source_table','api_capture','table_workflow','table_report_spec','html_report','office_document','model','skill'}<=set(result['nodes'])
+    assert 'API' in tools.DEFINITIONS['prepare_business_flow_source'][2]
     assert result['nodes']['model']['nondeterministic'] is True
     assert '尚未执行或发布' in result['notice']

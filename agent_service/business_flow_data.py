@@ -701,7 +701,7 @@ def table_workflow(context, config, inputs):
     source_refs=[];seen_sources=set();source_lineage_complete=True;selection_lineage_complete=True
     for alias in cfg.plan.inputs:
         value=inputs[alias]
-        if (not isinstance(value,dict) or value.get('kind') not in ('source_table_v1','table_workflow_v1')
+        if (not isinstance(value,dict) or value.get('kind') not in ('source_table_v1','api_capture_v1','table_workflow_v1')
                 or value.get('complete') is not True):
             raise ValueError('加工输入不是完整数据来源或已完成的数据步骤')
         value=materialize_table(context,value)
@@ -711,6 +711,13 @@ def table_workflow(context, config, inputs):
         # their references as a complete audit trail.
         if value['kind']=='source_table_v1':
             refs=[{key:value.get(key) for key in ('source_id','revision','content_hash','read_basis','read_basis_sha256')}]
+        elif value['kind']=='api_capture_v1':
+            refs=[{key:value.get(key) for key in ('snapshot_id','capture_node_id','source_id','revision','content_hash','snapshot_sha256')}]
+            from .business_flow_api_capture import verify
+            snapshot=verify(context,refs[0])
+            if value['rows']!=snapshot['rows'] or value.get('fields')!=snapshot['fields']:
+                raise ValueError('API 快照结果与固定内容不一致')
+            selection_lineage_complete=False
         else:
             refs=value.get('source_refs')
             if value.get('source_lineage_complete') is not True or not isinstance(refs,list) or not refs:
@@ -721,6 +728,18 @@ def table_workflow(context, config, inputs):
         from .project_data import owned
         for ref in refs:
             if not isinstance(ref,dict):raise ValueError('资料来源引用无效')
+            if ref.get('snapshot_id'):
+                from .business_flow_api_capture import verify
+                snapshot=verify(context,ref)
+                agent_team.assert_turn_allowed(turn,'read_source_table',{'source_id':ref['source_id']})
+                source=owned(turn['project_id'],'source',ref['source_id'])
+                if source.get('archived') or source.get('kind')!='api':raise ValueError('API 连接不可用')
+                key=('api',ref['snapshot_id'],ref['content_hash'])
+                if key not in seen_sources:
+                    if len(source_refs)>=200:raise ValueError('资料来源数量超过处理上限')
+                    seen_sources.add(key);source_refs.append({**ref,'name':str(source.get('name') or ref['source_id'])})
+                selection_lineage_complete=False
+                continue
             pin=SourcePin.model_validate({key:ref.get(key) for key in ('source_id','revision','content_hash')})
             agent_team.assert_turn_allowed(turn,'read_source_table',{'source_id':pin.source_id})
             source=owned(turn['project_id'],'source',pin.source_id)

@@ -57,12 +57,23 @@ def ingest(run_dir,code_dir):
         con.execute('create schema if not exists raw')
         previous=json.loads((run_dir/'previous_schema.json').read_text(encoding='utf-8')) if (run_dir/'previous_schema.json').exists() else {}
         for entry,info in zip(all_sources,inputs):
+            # A successful dlt load receipt does not by itself prove that all
+            # rows reached every destination table. Check each input before
+            # creating the manifest or replacing a legitimate empty table.
+            table=entry['table']
+            quoted='"'+table.replace('"','""')+'"'
+            exists=con.execute("select count(*) from information_schema.tables where table_schema='raw' and lower(table_name)=lower(?) and table_type='BASE TABLE'",[table]).fetchone()[0]
+            try:actual=con.execute('select count(*) from raw.'+quoted).fetchone()[0] if exists else 0
+            except duckdb.Error:
+                raise TaskError('无法核对采集数据，请检查来源后重试；未发布结果','DLT_LOAD_INCOMPLETE') from None
+            if actual!=info['records'] or (not exists and info['records']):
+                raise TaskError('采集行数与来源记录不一致，已停止处理；未发布不完整结果','DLT_LOAD_INCOMPLETE')
             if info['records']==0:
                 columns=[f'"{f["name"]}" varchar' for f in entry['fields']]+['record_hash varchar','_source_index bigint','_dlt_id varchar','_dlt_load_id varchar']
                 if entry['source_id'] in previous:
                     columns=['"'+c['name']+'" '+c['type'] for c in previous[entry['source_id']]]
-                con.execute('drop table if exists raw.'+entry['table'])
-                con.execute('create table raw.'+entry['table']+' ('+', '.join(columns)+')')
+                con.execute('drop table if exists raw.'+quoted)
+                con.execute('create table raw.'+quoted+' ('+', '.join(columns)+')')
     (run_dir/'input.json').write_text(json.dumps({'sources':inputs,'source_id':plan['source_id'],'input_hash':hashlib.sha256(json.dumps(inputs,sort_keys=True,ensure_ascii=False).encode()).hexdigest(),'strategy':'full_refresh'},ensure_ascii=False,indent=2),encoding='utf-8')
 
 def main():

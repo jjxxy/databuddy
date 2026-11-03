@@ -143,7 +143,7 @@ class BusinessFlow(StrictModel):
                 if reference.source=='node' and reference.name not in node.depends_on:raise ValueError('节点输入必须引用声明过的前序依赖')
                 table_parameter=(node.kind=='table_workflow' and reference.source=='input'
                     and reference.name in (self.input_specs or {}) and key in (node.config.get('parameter_bindings') or {}))
-                if node.kind=='table_workflow' and not table_parameter and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','table_workflow','quality_gate','human_review')):
+                if node.kind=='table_workflow' and not table_parameter and (reference.source!='node' or kinds.get(reference.name) not in ('source_table','api_capture','table_workflow','quality_gate','human_review')):
                     raise ValueError('数据加工只能使用已执行的数据来源或加工结果，不能将模型内容作为已核验财务数据')
             if node.kind in ('quality_gate','human_review') and (set(node.inputs)!={'table'} or node.inputs['table'].source!='node' or kinds.get(node.inputs['table'].name) not in ('table_workflow','quality_gate','human_review')):
                 raise ValueError('检查节点必须引用已执行的数据加工结果')
@@ -284,7 +284,7 @@ def run(document, frozen_inputs, handlers, context, *, checkpoint=None, persist=
             receipt['status']='awaiting_review';state['status']='awaiting_review'
             persist(_copy(state,_MAX_CHECKPOINT));return state
         try:
-            output=_copy(handler.run(context,_copy(node.config,_MAX_INPUT),_copy(arguments,_MAX_INPUT)),_MAX_OUTPUT)
+            output=_copy(handler.run({**context,'node_id':node.id},_copy(node.config,_MAX_INPUT),_copy(arguments,_MAX_INPUT)),_MAX_OUTPUT)
             output_hash=digest(output,_MAX_OUTPUT)
         except Exception as exc:
             # A handler may already have committed an external operation. Do

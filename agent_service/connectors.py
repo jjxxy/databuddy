@@ -409,7 +409,7 @@ def json_path(value,path):
 def api_rows(source,limit):
     cfg=unseal(source['secret_config']);validate_config('api',cfg)
     mode=cfg.get('pagination') or ('page' if cfg.get('page_param') else 'none')
-    rows=[];cursor=cfg.get('initial_cursor');seen_cursors=set();seen_pages=set();expected_total=None;complete=False
+    rows=[];cursor=cfg.get('initial_cursor');seen_cursors=set();seen_pages=set();expected_total=None;complete=False;page_evidence=[]
     with httpx.Client(timeout=30,follow_redirects=False,trust_env=False) as client:
         for page in range(1,int(cfg.get('max_pages',10))+1):
             ip=safe_api_url(cfg['url']);original=httpx.URL(cfg['url']);url=original.copy_with(host=ip)
@@ -429,6 +429,9 @@ def api_rows(source,limit):
                 except ValueError as e:raise SourceError('API 返回的内容不是 JSON') from e
             payload=json_path(document,cfg.get('records_path',''))
             if not isinstance(payload,list) or any(not isinstance(x,dict) for x in payload):raise SourceError('记录路径必须指向对象数组')
+            # Bind collection evidence to the exact response bytes without
+            # saving request credentials, cursor values or response bodies.
+            page_evidence.append({'page':page,'records':len(payload),'response_sha256':hashlib.sha256(content).hexdigest()})
             if cfg.get('total_path'):
                 total=json_path(document,cfg['total_path'])
                 if not isinstance(total,int) or isinstance(total,bool) or total<0:raise SourceError('总数路径不是有效整数','TOTAL_INVALID')
@@ -439,7 +442,7 @@ def api_rows(source,limit):
                 if mode!='none' and fingerprint in seen_pages:raise SourceError('分页返回重复页面，停止采集以避免循环或重复计数','PAGINATION_LOOP')
                 seen_pages.add(fingerprint)
             rows.extend(payload)
-            evidence={'parser':'httpx','pages':page,'pagination':mode,'expected_total':expected_total,'strategy':'full_refresh'}
+            evidence={'parser':'httpx','pages':page,'pagination':mode,'expected_total':expected_total,'strategy':'full_refresh','page_evidence':list(page_evidence)}
             if len(rows)>limit:return rows[:limit+1],dict(evidence,probe_truncated=True)
             if expected_total is not None and len(rows)>expected_total:raise SourceError('采集行数超过来源总数','TOTAL_MISMATCH')
             if mode=='cursor':

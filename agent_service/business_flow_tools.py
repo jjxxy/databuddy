@@ -52,7 +52,7 @@ DEFINITIONS={
     'inspect_business_flow_run':(RunTarget,False,'读取指定业务流程运行的真实状态、成果和失败修复指引；根据实际回执核对并修复有依据的问题，缺少财务口径时询问。未知执行结果不得重试；执行完成不代表财务结果已核对。'),
     'inspect_business_flow_debug_run':(RunTarget,False,'读取指定业务流程调试运行的真实状态和失败修复指引；调试结果不可发布。'),
     'business_flow_guide':(Empty,False,'查看当前业务流程的实际节点、配置结构和数据连接方式，再据此创建可执行草稿。'),
-    'prepare_business_flow_source':(SourceTarget,False,'取得本项目已就绪文件的固定版本和摘要，供业务流程准确引用；不读取全部业务数据。'),
+    'prepare_business_flow_source':(SourceTarget,False,'取得本项目已就绪文件或已授权 API 连接的固定版本和摘要，供业务流程准确引用；不读取全部业务数据。'),
     'prepare_business_flow_model':(Empty,False,'读取本轮已授权的模型目录版本，供业务流程模型步骤固定使用；不调用模型。'),
     'prepare_business_flow_skill':(SkillTarget,True,'固定已启用 Skill 的授权版本和摘要供业务流程使用；不执行包内脚本，不授予额外权限。'),
 }
@@ -70,12 +70,14 @@ def execute(turn,name,args):
     context={'project_id':pid,'actor_id':actor,'turn_id':turn['id'],'originating_turn_id':turn['id']}
     if name=='business_flow_guide':
         from .business_flow_data import SourceConfig,TableConfig
+        from .business_flow_api_capture import ApiCaptureConfig
         from .business_flow_quality_gate import Config as QualityConfig
         from .business_flow_human_review import Config as HumanReviewConfig
         from .business_deliverables import DeliveryConfig,TableReportConfig,HTML_RENDERER
         from .office import RENDERER
         return {'flow_schema':BusinessFlow.model_json_schema(),
                 'nodes':{'source_table':{'config_schema':SourceConfig.model_json_schema(),'output':'source_table_v1'},
+                         'api_capture':{'config_schema':ApiCaptureConfig.model_json_schema(),'output':'api_capture_v1','notice':'使用 prepare_business_flow_source 固定已授权 API 版本；每次新运行采集并保存快照，结果仍需核对范围和口径。'},
                          'table_workflow':{'config_schema':TableConfig.model_json_schema(),'output':'table_workflow_v1'},
                          'quality_gate':{'config_schema':QualityConfig.model_json_schema(),'input':'table（table_workflow 或 quality_gate 输出）','output':'table_workflow_v1','notice':'只配置用户明确要求的字段和规则；失败阻断后续步骤，不改数据，不代表财务结果已核验。'},
                          'human_review':{'config_schema':HumanReviewConfig.model_json_schema(),'input':'table（已加工或已核对的数据表）','output':'table_workflow_v1','notice':'仅用户明确要求人工复核时添加；此节点暂停，明确确认后继续。'},
@@ -88,6 +90,8 @@ def execute(turn,name,args):
     if name=='prepare_business_flow_source':
         from .conversation import owned
         source=owned('source',args['source_id'],pid)
+        if source.get('kind')=='api' and source.get('status')=='ready' and not source.get('archived') and type(source.get('revision')) is int and isinstance(source.get('secret_config'),str):
+            return {'source_id':source['id'],'revision':source['revision'],'config_sha256':hashlib.sha256(source['secret_config'].encode()).hexdigest(),'name':source.get('name'),'kind':'api'}
         if (source.get('kind')!='file' or source.get('status')!='ready' or source.get('archived')
                 or type(source.get('revision')) is not int or not isinstance(source.get('content_hash'),str)):
             raise ValueError('资料未就绪或没有可固定的文件版本')
@@ -112,19 +116,19 @@ def execute(turn,name,args):
         flow=business_flows.get_view(pid,args['flow_id'],actor)
         if flow.get('candidate_digest')!=args['expected_digest']:raise ValueError('流程版本已变化，请重新查看')
         doc=BusinessFlow.model_validate(flow.get('candidate_document'))
-        permitted={'source_table','table_workflow','quality_gate','human_review','table_report_spec','html_report','office_document'}
+        permitted={'source_table','api_capture','table_workflow','quality_gate','human_review','table_report_spec','html_report','office_document'}
         if any(node.kind not in permitted for node in doc.nodes):raise ValueError('该流程包含需单独确认的模型、技能或外部步骤，请在业务流程页面核对后运行')
         # Check the current turn as well as the original flow's execution
         # authority, which submit_run and the worker validate independently.
         names=agent_context.allowed(turn)
-        required={'source_table':'read_source_table','table_workflow':'run_data_workflow','quality_gate':'run_data_workflow','human_review':'run_data_workflow',
+        required={'source_table':'read_source_table','api_capture':'read_source_table','table_workflow':'run_data_workflow','quality_gate':'run_data_workflow','human_review':'run_data_workflow',
                   'table_report_spec':'write_file','html_report':'write_file',
                   'office_document':'render_office_artifact'}
         for node in doc.nodes:
             tool=('render_office_artifact' if node.kind=='table_report_spec' and node.config.get('format')=='presentation' else required[node.kind])
             if tool not in names:raise ValueError('当前任务没有执行此步骤的权限')
             agent_team.assert_turn_allowed(turn,tool,{})
-            if node.kind=='source_table':
+            if node.kind in ('source_table','api_capture'):
                 source_id=node.config.get('source_id')
                 if not source_id and node.inputs.get('source'):
                     pin=args['inputs'].get(node.inputs['source'].name) or {}

@@ -29,6 +29,7 @@ def test_business_workflow_download_reads_locked_git_version_and_actor():
     doc={'name':'收入读取','inputs':[],'nodes':[{'id':'read','kind':'source_table','title':'读取','config':{'source_id':s['id'],'revision':s['revision'],'content_hash':s['content_hash']}}],'outputs':['read']}
     f=business_flows.create(pid,'owner',tid,doc,uid());url=f"/api/projects/{pid}/business-flows/{f['id']}/download";c=TestClient(app);h={'Authorization':'Bearer '+TOKEN}
     z=archive(c.get(url,params={'expected_digest':f['candidate_digest']},headers=h));assert set(z.namelist())=={'README.txt','workflow.json','runtime-lock.json','run.py'}
+    assert '尚未采用' in z.read('README.txt').decode('utf-8')
     assert TOKEN.encode() not in b''.join(z.read(n) for n in z.namelist())
     assert json.loads(z.read('workflow.json'))['name']=='收入读取'
     assert c.get(url,params={'expected_digest':'0'*64},headers=h).status_code==409
@@ -36,3 +37,33 @@ def test_business_workflow_download_reads_locked_git_version_and_actor():
     from agent_service.workflow_export import business_bundle
     import pytest
     with pytest.raises(ValueError):business_bundle(pid,f['id'],f['candidate_digest'],'u_'+'a'*64)
+
+
+def test_export_published_version_and_accept_only_exact_historical_entry(monkeypatch):
+    import pytest
+    from agent_service.store import patch
+    from agent_service.workflow_export import business_bundle, _legacy_business_entry
+    pid=project();s=source(pid);tid='t_'+uid()
+    put('turn',{'project_id':pid,'actor_id':'owner','state':'done','text':'创建流程','interaction_mode':'work','created_at':now()},tid)
+    doc={'name':'原流程','inputs':[],'nodes':[{'id':'read','kind':'source_table','title':'读取','config':{'source_id':s['id'],'revision':s['revision'],'content_hash':s['content_hash']}}],'outputs':['read']}
+    old=business_flows.create(pid,'owner',tid,doc,uid());fid=old['id'];sha=old['candidate_digest']
+    patch('business_flow',fid,published_digest=sha,published_commit=old['candidate_commit'],published_turn_id=tid)
+    updated={**doc,'name':'修改后流程'}
+    new=business_flows.update(pid,fid,'owner',tid,updated,uid(),sha)
+    assert new['candidate_digest'] != sha
+    actual=workspace.git_content
+    def historical(repo,commit,path):
+        if commit==old['candidate_commit'] and path.endswith('/'+business_flows._entry_path(fid)):
+            return _legacy_business_entry(pid,fid,sha).encode()
+        return actual(repo,commit,path)
+    monkeypatch.setattr(workspace,'git_content',historical)
+    z=zipfile.ZipFile(io.BytesIO(business_bundle(pid,fid,sha,'owner')))
+    assert json.loads(z.read('workflow.json'))['name']=='原流程'
+    assert z.read('run.py').decode()==business_flows._entry(pid,fid,sha)
+    assert b'use_published' in z.read('run.py')
+    def modified(repo,commit,path):
+        result=historical(repo,commit,path)
+        return result+b'\nprint("untrusted")\n' if path.endswith('/'+business_flows._entry_path(fid)) else result
+    monkeypatch.setattr(workspace,'git_content',modified)
+    with pytest.raises(ValueError,match='入口'):
+        business_bundle(pid,fid,sha,'owner')

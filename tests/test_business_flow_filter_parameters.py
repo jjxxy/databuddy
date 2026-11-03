@@ -40,6 +40,16 @@ def test_parameter_changes_exact_sum_without_changing_formula_or_schema():
     assert Decimal(east['outputs']['sum']['rows'][0]['amount'])==Decimal('9.00')
     assert Decimal(west['outputs']['sum']['rows'][0]['amount'])==Decimal('15.00')
     assert east['outputs']['sum']['plan_sha256']!=west['outputs']['sum']['plan_sha256']
+    # Reuse the exact pinned workflow and inputs in independent runs, rather
+    # than replaying a completed checkpoint. A different parameter must not
+    # leak into the next invocation of the immutable workflow document.
+    for region, expected in [('东部', '9.00'), ('西部', '15.00'), ('东部', '9.00')]:
+        independent_context={**context, 'run_id':uid()}
+        repeated=run(doc,{'region':region},handlers,independent_context,persist=lambda _:None)
+        assert repeated['status']=='succeeded'
+        assert Decimal(repeated['outputs']['sum']['rows'][0]['amount'])==Decimal(expected)
+        original=east if region=='东部' else west
+        assert repeated['outputs']['sum']['plan_sha256']==original['outputs']['sum']['plan_sha256']
     # The original immutable document is unchanged by parameter substitution.
     assert doc['nodes'][1]['config']['plan']['stages'][0]['conditions'][0]['value']=='东部'
     with pytest.raises(ValueError):run(doc,{'region':'外部'},handlers,context,persist=lambda _:None)

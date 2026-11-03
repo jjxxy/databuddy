@@ -55,9 +55,10 @@ def _owned(pid,fid,actor=None):
 
 
 def _handlers():
-    from . import business_flow_data,business_deliverables,workflow_model_skill,business_flow_quality_gate,business_flow_human_review
+    from . import business_flow_data,business_deliverables,workflow_model_skill,business_flow_quality_gate,business_flow_human_review,business_flow_api_capture
     from .business_flow_engine import Handler
     result={'source_table':Handler(business_flow_data.source_table,False,True,business_flow_data.validate_source),
+            'api_capture':Handler(business_flow_api_capture.run,False,True,business_flow_api_capture.validate),
             'table_workflow':Handler(business_flow_data.table_workflow,False,True,business_flow_data.validate_table),
             'quality_gate':Handler(business_flow_quality_gate.run,True,True,business_flow_quality_gate.validate),
             'human_review':Handler(business_flow_human_review.never_execute,True,True,business_flow_human_review.validate)}
@@ -91,6 +92,10 @@ def _validate(pid,actor,tid,document):
                 if node.kind=='skill':workflow_model_skill._skill_text(context,node.config)
             if node.kind=='source_table' and node.config.get('source_id'):
                 _source_pin(pid,node.config['source_id'],node.config.get('revision'),node.config.get('content_hash'))
+            if node.kind=='api_capture':
+                from .business_flow_api_capture import ApiCaptureConfig,check_source
+                if node.inputs:raise ValueError('API 采集节点不接受运行输入')
+                check_source(pid,ApiCaptureConfig.model_validate(node.config))
     return value
 
 
@@ -106,10 +111,11 @@ def _entry_path(fid):return 'business-flows/'+fid+'.py'
 def _runtime_lock(document):
     """Conservative runtime pin; a changed handler cannot silently rerun."""
     kinds={n['kind'] for n in document['nodes']}
-    names={'business_flow_engine.py','business_flows.py','workflow_model_skill.py',
+    names={'business_flow_engine.py','business_flows.py','workflow_model_skill.py','schedule_parameters.py',
            'agent_context.py','agent_gateway.py','agent_team.py','workspace.py'}
     if kinds & {'source_table','table_workflow','table_report_spec','quality_gate'}:
         names|={'business_flow_data.py','project_data.py','data_workflows.py','workbook_reader.py','connectors.py'}
+    if 'api_capture' in kinds:names|={'business_flow_api_capture.py','business_flow_data.py','connectors.py','network_policy.py','project_data.py'}
     if 'quality_gate' in kinds:names.add('business_flow_quality_gate.py')
     if 'human_review' in kinds:names|={'business_flow_human_review.py','business_flow_checkpoint.py'}
     if kinds & {'office_document','html_report','table_report_spec'}:
@@ -129,18 +135,36 @@ def _runtime_lock(document):
 
 
 def _entry(pid,fid,sha):
-    # This project entry submits to the authenticated service; it never loads
-    # user-supplied Python or bypasses the server's authorization/receipts.
+    # Pin the adopted version, even if a different candidate is being edited.
+    # A caller-supplied request ID makes an uncertain submission safely retryable.
     return ("#!/usr/bin/env python3\n"
-            "# 使用已授权 Nexus WorkStudio 服务执行固定的业务流程版本。数据和凭证不保存在代码中。\n"
-            "import json, os, sys, urllib.request\n"
+            "# 调用已授权服务中与本文件摘要一致的已采用业务流程。\n"
+            "import ipaddress, json, os, re, sys, urllib.request\n"
+            "from urllib.parse import urlsplit\n"
             "base=os.environ['NEXUS_URL'].rstrip('/')\n"
+            "url=urlsplit(base)\n"
+            "if url.scheme not in ('http','https') or not url.hostname or url.username is not None or url.password is not None or url.path or url.query or url.fragment: raise ValueError('服务地址无效')\n"
+            "if url.scheme=='http':\n"
+            "    try: local=ipaddress.ip_address(url.hostname).is_loopback\n"
+            "    except ValueError: local=url.hostname.lower()=='localhost'\n"
+            "    if not local: raise ValueError('远程服务必须使用 HTTPS')\n"
             "token=os.environ['NEXUS_TOKEN']\n"
             "inputs=json.load(open(sys.argv[1],encoding='utf-8')) if len(sys.argv)>1 else {}\n"
-            "body=json.dumps({'request_id':os.urandom(16).hex(),'expected_digest':"+repr(sha)+",'inputs':inputs}).encode()\n"
+            "request_id=os.environ.get('NEXUS_REQUEST_ID') or os.urandom(16).hex()\n"
+            "if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',request_id): raise ValueError('请求编号无效')\n"
+            "print('请求编号：'+request_id+'；如未确认提交结果，请使用同一编号重试。',file=sys.stderr)\n"
+            "if not isinstance(inputs,dict): raise ValueError('流程参数必须是 JSON 对象')\n"
+            "body=json.dumps({'request_id':request_id,'expected_digest':"+repr(sha)+",'inputs':inputs,'use_published':True},ensure_ascii=False,allow_nan=False).encode('utf-8')\n"
+            "if len(body)>2*1024*1024: raise ValueError('流程参数过大')\n"
             "request=urllib.request.Request(base+"+repr('/api/projects/'+pid+'/business-flows/'+fid+'/runs')+",data=body,headers={'Content-Type':'application/json'},method='POST')\n"
             "request.add_header('Author'+'ization','Bearer '+token)\n"
-            "print(urllib.request.urlopen(request,timeout=30).read().decode())\n")
+            "class NoRedirect(urllib.request.HTTPRedirectHandler):\n"
+            "    def redirect_request(self,req,fp,code,msg,headers,newurl): return None\n"
+            "with urllib.request.build_opener(NoRedirect()).open(request,timeout=30) as response: result=response.read(1024*1024+1)\n"
+            "if len(result)>1024*1024: raise ValueError('运行回执过大')\n"
+            "receipt=json.loads(result)\n"
+            "if not isinstance(receipt,dict) or not isinstance(receipt.get('run_id'),str) or receipt.get('plan_digest')!="+repr(sha)+": raise ValueError('运行回执与流程版本不一致')\n"
+            "print(json.dumps(receipt,ensure_ascii=False))\n")
 
 
 def _write_version_files(pid,fid,document):
@@ -219,7 +243,9 @@ def get_view(pid,flow_id,actor_id=None):
              'published_digest','published_commit','published_run','created_at','updated_at','cron','next_due','refresh_error',
              'schedule_uncertain_run','schedule_resume_required')}|{
              'candidate_document':candidate,'published_document':published,'latest_run':latest,
-             'timezone':TIMEZONE,'schedule_source_bindings':flow.get('schedule_source_bindings') or {},
+             'timezone':(flow.get('schedule_timezone') if flow.get('cron') else None) or TIMEZONE,
+             'schedule_timezone_confirmed':not flow.get('cron') or bool(flow.get('schedule_timezone')),
+             'schedule_source_bindings':flow.get('schedule_source_bindings') or {},
              'notice':'流程说明是声明式定义，运行成功不等于财经结果已核验。'}
 
 
@@ -286,8 +312,11 @@ def _review_items(pid,state):
         if isinstance(sid,str):
             try:
                 source=get('source',sid)
+                is_api_snapshot=output.get('kind')=='api_capture_v1'
+                content_changed=(hashlib.sha256(source.get('secret_config','').encode()).hexdigest()!=output.get('config_sha256') if is_api_snapshot
+                                 else source.get('content_hash')!=output.get('content_hash'))
                 if (source.get('project_id')!=pid or source.get('revision')!=output.get('revision')
-                    or source.get('content_hash')!=output.get('content_hash') or source.get('archived')):
+                    or content_changed or source.get('archived')):
                     blocked='资料版本已变化，请重新运行并核对';continue
                 if source_requires_fact_alignment(source,output.get('evidence')):
                     blocked='资料存在待核对的事实语义，当前不能通过通用复核发布'
@@ -321,6 +350,10 @@ def _verify_completed_state(pid,job,state,*,verify_evidence=True,page_request=No
             or step.get('status')!='succeeded' or digest(step.get('output'))!=step.get('output_sha256')):
             raise ValueError('流程步骤回执不一致')
         output=step['output']
+        if isinstance(output,dict) and output.get('kind')=='api_capture_v1':
+            from .business_flow_api_capture import verify
+            context={'project_id':pid,'actor_id':job['actor_id'],'turn_id':job['flow_turn_id'],'run_id':job['id'],'node_id':node.id}
+            verify(context,output)
         if isinstance(output,dict) and 'rows_ref' in output:
             # The JSON reference alone is not evidence the encrypted table is
             # still present or belongs to this run. Verify the complete data.
@@ -533,9 +566,10 @@ def get_run(pid,flow_id,run_id,actor_id=None):
             steps[-1]['human_review']={k:item['approval'].get(k) for k in ('note','approved_at','checkpoint_sha256')}
         output=item.get('output')
         table_status=(job.get('status')=='succeeded' or (job.get('status') in ('failed','cancelled','awaiting_review') and state.get('status') in ('failed','unknown','running','awaiting_review')))
-        steps[-1]['table_available']=bool(table_status and item.get('status')=='succeeded' and
-                                         isinstance(output,dict) and output.get('kind')=='table_workflow_v1' and output.get('complete') is True)
-        if steps[-1]['table_available'] and job.get('status')=='succeeded':
+        steps[-1]['table_available']=bool(table_status and item.get('status')=='succeeded' and isinstance(output,dict)
+                                         and output.get('complete') is True and (output.get('kind')=='table_workflow_v1'
+                                         or (output.get('kind')=='api_capture_v1' and job.get('status')=='succeeded')))
+        if steps[-1]['table_available'] and output.get('kind')=='table_workflow_v1' and job.get('status')=='succeeded':
             try:
                 entries=output.get('evidence_tables',[])
                 if not isinstance(entries,list) or len(entries)>30 or any(not isinstance(entry,dict) for entry in entries):raise ValueError('明细记录无效')
@@ -573,8 +607,8 @@ def get_run(pid,flow_id,run_id,actor_id=None):
 def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
     """Page an actual completed table, with run identity and integrity checks.
 
-    Access is limited to the flow owner. Intermediate AI content and raw source
-    tables are not exposed through this endpoint. Snapshot decoding currently
+    Access is limited to the flow owner. Intermediate AI content and raw file
+    sources are not exposed. Authorized API capture snapshots may be inspected. Snapshot decoding currently
     materializes the table; this is not a streaming or large-concurrency claim.
     """
     actor=current_actor();_owned(pid,flow_id,actor);job=get_job(run_id)
@@ -594,12 +628,29 @@ def get_run_table(pid,flow_id,run_id,node_id,offset=0,limit=50):
         raise ValueError('流程步骤回执不完整')
     match=[item for item in state['steps'] if isinstance(item,dict) and item.get('node_id')==node_id]
     output=match[0].get('output') if len(match)==1 else None
-    if (len(match)!=1 or match[0].get('status')!='succeeded' or not isinstance(output,dict) or output.get('kind')!='table_workflow_v1' or output.get('complete') is not True):
+    if (len(match)!=1 or match[0].get('status')!='succeeded' or not isinstance(output,dict) or output.get('kind') not in ('table_workflow_v1','api_capture_v1') or output.get('complete') is not True):
         raise ValueError('该步骤没有完整可查看的数据结果')
     from .business_flow_data import get_table_page,materialize_table
     from .data_workflows import TableSchema, digest as table_digest
     context={'project_id':pid,'actor_id':actor,'turn_id':job['flow_turn_id'],
              'originating_turn_id':job['flow_turn_id'],'run_id':job['id']}
+    if output.get('kind')=='api_capture_v1':
+        if job['status']!='succeeded':raise ValueError('采集步骤仅在完整运行后可查看')
+        from . import agent_context
+        if 'read_source_table' not in agent_context.allowed(turn):raise ValueError('当前任务无权查看采集数据')
+        agent_team.assert_turn_allowed(turn,'read_source_table',{'source_id':output.get('source_id')})
+        _verify_completed_state(pid,job,state,verify_evidence=False)
+        from .business_flow_api_capture import verify
+        snapshot=verify({**context,'node_id':node_id},output)
+        if output.get('evidence')!=snapshot['evidence'] or output.get('provenance',{}).get('collected_at')!=snapshot['collected_at']:
+            raise ValueError('采集结果与来源证据不一致')
+        fields=snapshot['fields'];rows=snapshot['rows']
+        if not isinstance(fields,list) or not isinstance(rows,list):raise ValueError('采集快照无效')
+        page=rows[offset:offset+limit]
+        if len(json.dumps(page,ensure_ascii=False).encode('utf-8'))>1024*1024:raise ValueError('本页数据过大，请减少每页行数')
+        return {'run_id':run_id,'node_id':node_id,'columns':[{'name':x['name'],'label':x.get('label') or x['name'],'unit':None} for x in fields],
+                'rows':page,'total':len(rows),'offset':offset,'next_offset':offset+len(page) if offset+len(page)<len(rows) else None,
+                'output_sha256':snapshot['content_hash'],'financial_verified':False,'notice':'展示本次 API 采集快照；范围、一致性和财务口径仍需业务核对。'}
     schema=output.get('schema');parsed=TableSchema.model_validate(schema)
     ref=output.get('rows_ref')
     if isinstance(ref,dict) and ref.get('version')==2:
@@ -914,7 +965,7 @@ def publish(pid,flow_id,actor_id,run_id,expected_digest):
             workspace._checkpoint(pid,flow['turn_id'],'确认业务流程正式版本')
             return get_view(pid,flow_id,actor_id)
         changed=bool(flow.get('published_digest') and flow['published_digest']!=expected_digest)
-        schedule_changes=({'cron':None,'next_due':None,'schedule_inputs':None,'schedule_source_bindings':{},
+        schedule_changes=({'cron':None,'next_due':None,'schedule_inputs':None,'schedule_source_bindings':{},'schedule_timezone':None,
                            'refresh_error':'正式方案已改变，定时已暂停，请核对新参数后重新启用'}
                           if changed and flow.get('cron') else {})
         patch('business_flow',flow_id,published_digest=expected_digest,published_commit=job['project_commit'],published_run=run_id,
@@ -931,7 +982,7 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
     with workspace.lock(pid),FileLock(str(DATA/'scheduler.lock'),timeout=10):
         flow=_owned(pid,flow_id,actor_id)
         if flow.get('published_digest')!=expected_published_digest:raise ValueError('正式版本已变化，请重新查看再设置定时')
-        if parameter_values is None and flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending') and not flow.get('refresh_error') and not flow.get('schedule_resume_required'):
+        if parameter_values is None and (not cron or flow.get('schedule_timezone')) and flow.get('cron')==cron and (flow.get('schedule_source_bindings') or {})==(source_bindings or {}) and not flow.get('schedule_gap_pending') and not flow.get('refresh_error') and not flow.get('schedule_resume_required'):
             return get_view(pid,flow_id,actor_id)
         if cron and not flow.get('published_run'):raise ValueError('请先确认正式版本，再设置定时运行')
         if cron:
@@ -945,7 +996,7 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
             for key,sid in source_bindings.items():
                 if not isinstance(sid,str):raise ValueError('定时资料标识无效')
                 source=get('source',sid);_source_pin(pid,sid,source.get('revision'),source.get('content_hash'))
-            inputs=dict(payload['inputs'])
+            inputs=dict(unseal(flow['schedule_inputs']) if parameter_values is None and flow.get('cron') and flow.get('schedule_inputs') else payload['inputs'])
             if parameter_values is not None:
                 if not isinstance(parameter_values,dict) or set(parameter_values)!=set(definition.input_specs or {}):
                     raise ValueError('请明确填写全部定时业务参数')
@@ -953,15 +1004,18 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
             # Validate against the frozen published definition before saving;
             # decimals remain exact text and inputs never enter a public view.
             from .business_flow_engine import _prepare
-            _prepare(doc,inputs,_handlers())
+            from .schedule_parameters import resolve_schedule_parameters
+            schedule_timezone=(flow.get('schedule_timezone') if flow.get('cron') else None) or TIMEZONE
+            zone=ZoneInfo(schedule_timezone)
+            _prepare(doc,resolve_schedule_parameters(doc,inputs,datetime.now(zone)),_handlers())
             for key,sid in source_bindings.items():
                 source=get('source',sid)
                 inputs[key]={'source_id':sid,'revision':source['revision'],'content_hash':source['content_hash']}
             schedule_inputs=seal(inputs)
-            next_due=croniter(cron,datetime.now(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
-        else:schedule_inputs=None;next_due=None;source_bindings={}
+            next_due=croniter(cron,datetime.now(zone)).get_next(datetime).astimezone(timezone.utc).isoformat()
+        else:schedule_inputs=None;next_due=None;source_bindings={};schedule_timezone=None
         patch('business_flow',flow_id,cron=cron,next_due=next_due,schedule_inputs=schedule_inputs,
-              schedule_source_bindings=source_bindings,refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if flow.get('schedule_uncertain_run') else None),
+              schedule_source_bindings=source_bindings,schedule_timezone=schedule_timezone,refresh_error=('上次自动更新结果未知，请核对外部回执并记录结论' if flow.get('schedule_uncertain_run') else None),
               refresh_retry_after=None,schedule_gap_pending=False,schedule_generation=uid(),
               schedule_resume_required=bool(flow.get('schedule_uncertain_run')),updated_at=now())
         workspace._checkpoint(pid,flow['turn_id'],'设置业务流程定时运行')
@@ -971,7 +1025,7 @@ def set_schedule(pid,flow_id,actor_id,cron,source_bindings,expected_published_di
 def _patch_schedule_if_current(flow, **updates):
     from sqlalchemy import select,update
     from .store import transaction,items
-    fields=('project_id','actor_id','archived','cron','next_due','schedule_generation',
+    fields=('project_id','actor_id','archived','cron','next_due','schedule_generation','schedule_timezone',
             'published_digest','published_commit','published_turn_id','published_run','refresh_error','schedule_uncertain_run','schedule_resume_required')
     with transaction() as connection:
         row=connection.execute(select(items.c.body).where(items.c.id==flow['id'],
@@ -993,9 +1047,10 @@ def schedule_parameters(pid,flow_id,actor_id):
     doc=BusinessFlow.model_validate(_read_commit(pid,flow_id,flow['published_commit'],flow['published_digest']))
     inputs=unseal(flow['schedule_inputs']);values={}
     if not isinstance(inputs,dict):raise ValueError('定时参数记录无效')
-    for name,spec in (doc.input_specs or {}).items():
-        if name not in inputs:raise ValueError('定时参数记录不完整')
-        spec.validate_value(inputs[name]);values[name]=inputs[name]
+    from .config import TIMEZONE
+    from .schedule_parameters import resolve_schedule_parameters
+    resolve_schedule_parameters(doc.model_dump(),inputs,datetime.now(ZoneInfo(flow.get('schedule_timezone') or TIMEZONE)))
+    for name in (doc.input_specs or {}):values[name]=inputs[name]
     return {'flow_id':flow_id,'published_digest':flow['published_digest'],'parameter_values':values,
             'source_bindings':flow.get('schedule_source_bindings') or {}}
 
@@ -1021,14 +1076,19 @@ def queue_due():
                     due=datetime.fromisoformat(flow['next_due'])
                     if due.tzinfo is None:raise ValueError('定时配置缺少时区')
                     if due>current:continue
+                    zone=ZoneInfo(flow.get('schedule_timezone') or TIMEZONE)
                     actor=flow['actor_id'];inputs=unseal(flow['schedule_inputs'])
+                    if any(isinstance(value,dict) and 'relative_date' in value for value in inputs.values()):
+                        from .schedule_parameters import resolve_schedule_parameters
+                        scheduled_doc=_read_commit(flow['project_id'],flow['id'],flow['published_commit'],flow['published_digest'])
+                        inputs=resolve_schedule_parameters(scheduled_doc,inputs,due.astimezone(zone))
                     for key,sid in (flow.get('schedule_source_bindings') or {}).items():
                         source=get('source',sid);_source_pin(flow['project_id'],sid,source.get('revision'),source.get('content_hash'))
                         inputs[key]={'source_id':sid,'revision':source['revision'],'content_hash':source['content_hash']}
                     request_id='scheduled_'+hashlib.sha256((flow['id']+flow['next_due']).encode()).hexdigest()
                     schedule_snapshot={'kind':'business_flow','generation':flow.get('schedule_generation'),'project_id':flow['project_id'],
                                        'actor_id':actor,'published_run':flow.get('published_run'),'published_commit':flow.get('published_commit'),
-                                       'published_turn_id':flow.get('published_turn_id')}
+                                       'published_turn_id':flow.get('published_turn_id'),'timezone':flow.get('schedule_timezone')}
                     with actor_scope(actor):
                         admitted=submit_run(flow['project_id'],flow['id'],actor,request_id,flow['published_digest'],inputs,True,schedule_snapshot)
                     # A recovered submission may point to a failed/cancelled
@@ -1036,9 +1096,9 @@ def queue_due():
                     # blindly may duplicate uncertain external side effects.
                     if admitted.get('status') not in ('queued','running','retrying','succeeded'):
                         raise ValueError('本次计划的历史运行未成功，请先核对执行状态')
-                    following=croniter(flow['cron'],due.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc)
+                    following=croniter(flow['cron'],due.astimezone(zone)).get_next(datetime).astimezone(timezone.utc)
                     gap=bool(flow.get('schedule_gap_pending') or following<=current)
-                    next_due=croniter(flow['cron'],current.astimezone(ZoneInfo(TIMEZONE))).get_next(datetime).astimezone(timezone.utc).isoformat()
+                    next_due=croniter(flow['cron'],current.astimezone(zone)).get_next(datetime).astimezone(timezone.utc).isoformat()
                     _patch_schedule_if_current(flow,next_due=next_due,refresh_retry_after=None,schedule_gap_pending=gap,
                           refresh_error='存在多个未执行的计划时间；本次仅安排一次运行，请核对缺失期间后重新设置定时' if gap else None)
                 except Exception:

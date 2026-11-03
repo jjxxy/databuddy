@@ -114,3 +114,19 @@ def test_daily_schedule_tracks_new_york_dst(scheduler, monkeypatch):
     bf.queue_due()
     assert len(submitted) == 1
     assert flow['next_due'] == datetime(2026, 3, 8, 13, 0, tzinfo=timezone.utc).isoformat()
+
+
+def test_saved_timezone_survives_server_timezone_change_and_controls_dates(scheduler, monkeypatch):
+    _, submitted, add = scheduler
+    flow = add('flow')
+    flow.update(schedule_timezone='America/New_York', published_commit='commit')
+    document={'name':'日期','inputs':['date'],'input_specs':{'date':{'type':'date','label':'日期'}},
+              'nodes':[{'id':'m','kind':'model','title':'日期','inputs':{'content':{'source':'input','name':'date'}}}],'outputs':['m']}
+    monkeypatch.setattr(bf, '_read_commit', lambda *args: document)
+    monkeypatch.setattr(bf, 'unseal', lambda _: {'date':{'relative_date':'scheduled_day'}})
+    bf.queue_due()
+    assert len(submitted)==1
+    # 01:00 UTC is January 5 in New York but January 6 in Shanghai.
+    assert submitted[0][5]['date']=='2026-01-05'
+    assert flow['next_due']==datetime(2026,1,6,14,0,tzinfo=timezone.utc).isoformat()
+    assert submitted[0][7]['timezone']=='America/New_York'

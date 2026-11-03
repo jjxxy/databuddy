@@ -2,7 +2,7 @@
 /* Render only actual saved definitions and run receipts. Never interpret input
    descriptions or filenames as HTML, and never infer completion from a plan. */
 (function(root){
- const KIND_LABELS={source:'获取资料',source_table:'读取表格资料',collect:'获取资料',parse:'解析资料',transform:'数据处理',data_workflow:'数据处理',table_workflow:'数据处理',quality_gate:'自动核对数据',human_review:'人工复核',model:'AI 处理',skill:'使用工作方法',template:'使用模板',office:'生成办公文件',office_document:'生成办公文件',html:'生成网页报告',html_report:'生成网页报告',table_report_spec:'准备报告内容',output:'交付成果'};
+ const KIND_LABELS={source:'获取资料',source_table:'读取表格资料',api_capture:'采集接口数据',collect:'获取资料',parse:'解析资料',transform:'数据处理',data_workflow:'数据处理',table_workflow:'数据处理',quality_gate:'自动核对数据',human_review:'人工复核',model:'AI 处理',skill:'使用工作方法',template:'使用模板',office:'生成办公文件',office_document:'生成办公文件',html:'生成网页报告',html_report:'生成网页报告',table_report_spec:'准备报告内容',output:'交付成果'};
  const STATE_LABELS={pending:'等待执行',queued:'等待执行',running:'正在执行',succeeded:'执行完成',completed:'执行完成',failed:'未完成',unknown:'结果待核对',cancelled:'已停止',skipped:'已跳过',blocked:'等待处理',awaiting_review:'等待人工复核'};
  function node(document,tag,value,cls){const e=document.createElement(tag);if(value!==undefined&&value!==null)e.textContent=String(value);if(cls)e.className=cls;return e}
  function text(value,fallback){return typeof value==='string'&&value.trim()?value.trim():fallback}
@@ -92,7 +92,7 @@
     for(const [key,label] of [['started_at','开始时间'],['finished_at','结束时间'],['input_sha256','输入摘要'],['output_sha256','输出摘要']]){
      if(typeof receipt[key]==='string'&&receipt[key])details.append(node(document,'p',label+'：'+receipt[key]));
     }
-    if(receipt.deterministic===false)details.append(node(document,'p','此步骤的输出可能因模型或外部服务变化。'));
+    if(receipt.deterministic===false)details.append(node(document,'p',['model','skill'].includes(item.kind)?'此步骤使用模型或工作方法，输出可能变化。':'此步骤的运行记录可能受来源、外部服务或运行环境影响；请核对实际输入和结果。'));
     if(receipt.status==='unknown')details.append(node(document,'p','尚不能确认是否执行成功，请先核对结果；系统不会自动重复外部操作。'));
     appendFailure(document,details,receipt);
     if(typeof receipt.message==='string'&&receipt.message)details.append(node(document,'p',receipt.message));
