@@ -72,7 +72,7 @@ def test_editable_chart_keeps_original_numeric_text_and_units(tmp_path):
 
 
 def test_chart_rejects_unrepresentable_financial_values_or_ambiguous_categories():
-    for value in ('-1','1234567890123456','0.1234567890123456','1,000','NaN'):
+    for value in ('1234567890123456','0.1234567890123456','1,000','NaN'):
         with pytest.raises(ValidationError):
             make_spec(chart={'title':'金额','unit':'元','points':[{'label':'华东','value':value}]})
     with pytest.raises(ValidationError):

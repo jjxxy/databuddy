@@ -8,8 +8,10 @@ from .config import DATA
 from .store import get,put,now
 from . import workspace
 
-RENDERER='office-v6'
+RENDERER='office-v7'
+PREVIOUS_RENDERER='office-v6'
 LEGACY_RENDERER='office-v5'
+SUPPORTED_RENDERERS=(RENDERER,PREVIOUS_RENDERER,LEGACY_RENDERER)
 PRECISION_NOTES_FORMAT='grouped_cells_or_column_rows_v1'
 MANIFEST_MAX_BYTES=256*1024
 
@@ -36,9 +38,6 @@ class ChartPoint(StrictModel):
     def exact_chart_value(self):
         value=Decimal(self.value)
         numeric=float(value)
-        # LibreOffice may reverse negative bar direction for this editable
-        # chart format. Refuse it rather than present a misleading visual.
-        if value<0:raise ValueError('可编辑图表暂不支持负数，请使用完整表格展示')
         # The embedded workbook uses binary floating point and Excel supports
         # only 15 significant digits. Reject values it cannot represent
         # faithfully rather than silently changing a financial figure.
@@ -156,7 +155,9 @@ def _verify_structure(file,ext,spec=None):
 
 def _build_file(spec,tmp,precision_notes,*,renderer_version=RENDERER):
     ext=tmp.suffix.lstrip('.')
-    if renderer_version not in (RENDERER,LEGACY_RENDERER):raise ValueError('Office渲染器版本不可用')
+    if renderer_version not in SUPPORTED_RENDERERS:raise ValueError('Office渲染器版本不可用')
+    if ext=='pptx' and renderer_version!=RENDERER and any(s.chart and any(Decimal(p.value)<0 for p in s.chart.points) for s in spec.sections):
+        raise ValueError('旧版 Office 渲染器不支持负数图表，请重新验证并使用新版')
     if ext!='pptx' and any(section.chart is not None or (section.table is not None and (ext!='docx' or renderer_version==LEGACY_RENDERER)) for section in spec.sections):
         raise ValueError('结构化章节表格或图表目前仅支持演示文稿，请使用工作簿交付完整数据')
     if ext=='docx':
@@ -267,7 +268,7 @@ def render(turn,spec_path,name,*,expected_sha256=None,frozen_spec=None,renderer_
     try:OfficeArgs.model_validate({'spec_path':spec_path,'name':name})
     except ValidationError:
         raise ValueError('交付文件名须为不含路径和扩展名的基名，仅支持文字、数字、空格、横线，最多91字符') from None
-    if renderer_version not in (RENDERER,LEGACY_RENDERER):raise ValueError('Office渲染器版本不可用')
+    if renderer_version not in SUPPORTED_RENDERERS:raise ValueError('Office渲染器版本不可用')
     pid=turn['project_id']
     with workspace.lock(pid):
         # Business flows can provide a frozen JSON value in memory. Its actual

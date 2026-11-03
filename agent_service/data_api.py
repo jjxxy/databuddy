@@ -150,8 +150,14 @@ def install(app,auth):
     @app.get('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
     def workflow(pid:str,wid:str):
         from .config import TIMEZONE
-        info=data.inspect_workflow(pid,wid);info['document']=data.load_document(pid,info['path']).model_dump();info['timezone']=TIMEZONE
-        return info
+        from .workspace_lifecycle import assert_project_live
+        # Restore updates database pointers before replacing workspace files.
+        # Keep the whole combined read on one side of the project-wide lock,
+        # and recheck the request generation after waiting for the lock.
+        with workspace.lock(pid):
+            assert_project_live(pid)
+            info=data.inspect_workflow(pid,wid);info['document']=data.load_document(pid,info['path']).model_dump();info['timezone']=TIMEZONE
+            return info
 
     @app.put('/api/projects/{pid}/data-workflows/{wid}',dependencies=dependencies)
     def edit_workflow(pid:str,wid:str,value:EditWorkflow):

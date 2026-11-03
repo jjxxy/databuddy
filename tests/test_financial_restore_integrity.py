@@ -116,3 +116,111 @@ def test_old_or_reconfigured_schedules_never_auto_adopt_results():
         assert guard(run,{**target,'schedule_gap_pending':True})
         assert guard(run,{**target,'schedule_uncertain_run':'unknown'})
         assert guard({**run,'schedule_snapshot':None},target)
+
+
+def test_workflow_detail_cannot_mix_old_metadata_with_restored_file(monkeypatch):
+    """A read already in flight holds the project lock across both fields."""
+    from concurrent.futures import ThreadPoolExecutor,TimeoutError
+    from threading import Event,get_ident
+    from fastapi.testclient import TestClient
+    from agent_service.api import app
+    from agent_service.config import TOKEN
+
+    pid=project();s=source(pid);old=document(s['id']);wid=registered(pid,old)
+    old_version=workspace.checkpoint(pid,reason='旧版')['commit']
+    new=copy.deepcopy(old);new['plan']['name']='New calculation'
+    workspace.write_file(pid,'workflows/orders.json',json.dumps(new));data.register(pid,'workflows/orders.json')
+    workspace.checkpoint(pid,reason='新版')
+    paused=Event();release=Event();restore_lock_attempt=Event();original=data.inspect_workflow
+    original_lock=workspace.lock;restore_thread=[None]
+    def observed_lock(project_id):
+        if get_ident()==restore_thread[0]:restore_lock_attempt.set()
+        return original_lock(project_id)
+    monkeypatch.setattr(workspace,'lock',observed_lock)
+    def delayed(project_id,workflow_id):
+        result=original(project_id,workflow_id)
+        if project_id==pid and workflow_id==wid:
+            paused.set()
+            assert release.wait(10),'failed to release in-flight read'
+        return result
+    monkeypatch.setattr(data,'inspect_workflow',delayed)
+    def read():
+        return TestClient(app).get(f'/api/projects/{pid}/data-workflows/{wid}',headers={'Authorization':'Bearer '+TOKEN})
+    def restore():
+        restore_thread[0]=get_ident()
+        return workspace.restore(pid,old_version,'restore-race')
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reading=pool.submit(read)
+        assert paused.wait(10),'request did not start'
+        restoring=pool.submit(restore)
+        assert restore_lock_attempt.wait(5)
+        try:
+            # The restore cannot change the files while the response combines
+            # workflow state and its separately loaded code document.
+            with pytest.raises(TimeoutError):restoring.result(timeout=.2)
+        finally:release.set()
+        response=reading.result(timeout=10)
+        restoring.result(timeout=15)
+    assert response.status_code==200,response.text
+    body=response.json()
+    assert body['name']=='New calculation' and body['document']['plan']['name']=='New calculation'
+    assert data.load_document(pid,'workflows/orders.json').plan.name==old['plan']['name']
+
+
+def test_workflow_read_waiting_across_restore_is_rejected_as_stale(monkeypatch):
+    """Auth before rollback cannot authorize a mixed response after rollback."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from fastapi.testclient import TestClient
+    from agent_service.api import app
+    from agent_service.config import TOKEN
+
+    pid=project();s=source(pid);old=document(s['id']);wid=registered(pid,old)
+    old_version=workspace.checkpoint(pid,reason='旧版')['commit']
+    new=copy.deepcopy(old);new['plan']['name']='New calculation'
+    workspace.write_file(pid,'workflows/orders.json',json.dumps(new));data.register(pid,'workflows/orders.json')
+    workspace.checkpoint(pid,reason='新版')
+    waiting=Event();release=Event();original_lock=workspace.lock
+    def gated_lock(project_id):
+        if project_id==pid and not waiting.is_set():
+            waiting.set()
+            assert release.wait(10),'failed to release pending read'
+        return original_lock(project_id)
+    monkeypatch.setattr(workspace,'lock',gated_lock)
+    def read():
+        return TestClient(app).get(f'/api/projects/{pid}/data-workflows/{wid}',headers={'Authorization':'Bearer '+TOKEN})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        reading=pool.submit(read)
+        assert waiting.wait(10),'read did not reach lock'
+        try:workspace.restore(pid,old_version,'restore-read-stale')
+        finally:release.set()
+        response=reading.result(timeout=10)
+    assert response.status_code>=400 and '可见性已变化' in response.text
+    assert data.load_document(pid,'workflows/orders.json').plan.name==old['plan']['name']
+
+
+def test_workspace_read_barrier_is_shared_between_processes(tmp_path):
+    """The lock used by workflow reads also excludes a separate process."""
+    import subprocess,sys,time
+    pid=project();ready=tmp_path/'started';acquired=tmp_path/'acquired'
+    script=('from pathlib import Path; import sys; from agent_service import workspace; '
+            'Path(sys.argv[2]).write_text("started"); '
+            'lock=workspace.lock(sys.argv[1]); lock.acquire(); '
+            'Path(sys.argv[3]).write_text("acquired"); lock.release()')
+    process=None
+    try:
+        with workspace.lock(pid):
+            process=subprocess.Popen([sys.executable,'-c',script,pid,str(ready),str(acquired)],
+                                     stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10
+            while not ready.exists() and process.poll() is None and time.monotonic()<deadline:
+                time.sleep(.02)
+            assert ready.exists(),'child process did not attempt the lock'
+            time.sleep(.2)
+            assert not acquired.exists() and process.poll() is None
+        _,error=process.communicate(timeout=10)
+        assert process.returncode==0,error
+        assert acquired.read_text()=='acquired'
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill();process.wait()

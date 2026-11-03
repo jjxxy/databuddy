@@ -120,6 +120,30 @@ def test_complete_source_bytes_freeze_and_import_retries_without_replacement(mon
     assert data.source_path(imported).read_bytes()==original
 
 
+def test_unsigned_external_csv_cannot_launder_unknown_source_lineage():
+    # A self-consistent digest establishes byte integrity, not that a peer's
+    # claimed source is original or lacks fact-extraction ancestors. An
+    # untrusted peer can create this bundle without invoking build_input.
+    from test_project_data import csv_bytes, document, registered, run
+    raw=csv_bytes();checksum=hashlib.sha256(raw).hexdigest()
+    item=handoff._item('source_claimed','source','claimed-original.csv',raw,
+        source_version={'source_id':'unverified_source','revision':1,
+                        'revision_id':'unverified_revision','content_sha256':checksum})
+    bundle=handoff._bundle([item])
+    assert handoff.validate_bundle(bundle)['financial_verified'] is False
+    pid=project();imported=handoff.import_bundle(pid,bundle,scope_id='untrusted-peer',request_id=uid())
+    sid=imported['source_ids'][0];s=get('source',sid)
+    assert s['semantic_alignment_required'] is True
+    wid=registered(pid,document(sid,exact_total=True),path='workflows/unsigned-external.csv.json')
+    result=run(pid,wid)
+    assert data.read_result(pid,result['id'])['total']==215
+    with pytest.raises(ValueError,match='语义对齐'):
+        data.publish_result(pid,result['id'],result['commit'],review_actor='owner',
+            semantic_review_actor='owner',review_handoff_sha256=result['data_result']['handoff_sha256'])
+    with pytest.raises(ValueError,match='语义'):
+        data.ensure_candidate_bulk_allowed(pid,result['id'])
+
+
 def test_source_revision_and_file_byte_changes_block_export():
     pid=project();s=source(pid);t=turn(pid,source_ids=[s['id']],attached_sources=[{k:s[k] for k in ('id','revision','revision_id','content_hash')}])
     patch('source',s['id'],revision=s['revision']+1)

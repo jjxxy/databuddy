@@ -2,7 +2,7 @@
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uuid=()=>window.nexusSecureUUID?window.nexusSecureUUID():crypto.randomUUID();
-const CLIENT_REVISION='2026.11.03.1';
+const CLIENT_REVISION='2026.11.03.2';
 let runtimeNodeWarning=false;
 function runtimeVersion(r){
  const revision=r.headers.get('X-Nexus-Runtime-Revision'),label=$('#runtime-version');if(!label)return;

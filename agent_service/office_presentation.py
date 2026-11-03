@@ -163,6 +163,39 @@ def _rect(slide,x,y,w,h,color):
     return shape
 
 
+def _signed_geometry(chart):
+    """Use one exact zero axis and equal positive/negative Decimal scale.
+
+    If a nonzero bar would be below the safe visible minimum, return None and
+    use an exact table rather than exaggerating the value or hiding its sign.
+    """
+    from decimal import Decimal, localcontext
+    from pptx.util import Inches
+    values=[Decimal(point.value) for point in chart.points]
+    largest=max(abs(value) for value in values)
+    half=int(Inches(2.25));axis=int(Inches(5.15));minimum=int(Inches(.04))
+    result=[]
+    with localcontext() as ctx:
+        ctx.prec=80
+        for i,value in enumerate(values):
+            width=int(Decimal(half)*abs(value)/largest) if value else 0
+            if value and width<minimum:return None
+            left=axis-width if value<0 else axis
+            result.append((left,int(Inches(2.35+i*.46)),width,int(Inches(.22)),value<0))
+    return result
+
+
+def _signed_bar(slide,geometry,index,section):
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.dml.color import RGBColor
+    left,top,width,height,negative=geometry
+    if not width:return
+    shape=slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,left,top,width,height)
+    shape.name=f'nexus:signed-bar:{section}:{index}'
+    shape.fill.solid();shape.fill.fore_color.rgb=RGBColor.from_string('B94E43' if negative else '2A7960')
+    shape.line.fill.background()
+
+
 def build(spec,path):
     from pptx import Presentation
     from pptx.util import Inches,Pt
@@ -214,31 +247,56 @@ def build(spec,path):
                   f"完整数据：{page['total']} 行 · 本页 {page['row_offset']+1 if page['rows'] else 0}–{page['row_offset']+len(page['rows'])} 行 · 列组 {page['group']+1}/{page['groups']}",
                   10,'5D756C')
         else:
-            from pptx.chart.data import ChartData
-            from pptx.enum.chart import XL_CHART_TYPE
+            from decimal import Decimal
             chart_spec=section.chart
             _text(slide,.75,1.58,7.35,.45,chart_spec.title,18,'17352D',True,name=f"nexus:chart-title:{page['section']}")
-            # A horizontal chart displays the first data category at the
-            # bottom in the standard Office axis order. Reverse category/value
-            # pairs in the embedded chart together, leaving the displayed
-            # exact-value list in the user's original order. This also avoids
-            # relying on maxMin, which some browser viewers ignore.
-            chart_points=list(reversed(chart_spec.points))
-            data=ChartData();data.categories=[point.label for point in chart_points]
-            data.add_series(chart_spec.title,[float(point.value) for point in chart_points])
-            shape=slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED,Inches(.76),Inches(2.15),Inches(7.15),Inches(4.24),data)
-            shape.name=f"nexus:chart:{page['section']}"
-            chart=shape.chart;chart.has_legend=False;chart.has_title=False
-            chart.category_axis.reverse_order=False
-            chart.category_axis.tick_labels.font.name='Noto Sans CJK SC';chart.category_axis.tick_labels.font.size=Pt(11)
-            chart.value_axis.tick_labels.font.name='Noto Sans CJK SC';chart.value_axis.tick_labels.font.size=Pt(10)
-            chart.value_axis.tick_labels.number_format='#,##0'
-            chart.value_axis.tick_labels.number_format_is_linked=False
-            values=[float(point.value) for point in chart_spec.points]
-            if min(values)>=0:chart.value_axis.minimum_scale=0
-            if max(values)<=0 and min(values)<0:chart.value_axis.maximum_scale=0
-            series=chart.series[0]
-            series.format.fill.solid();series.format.fill.fore_color.rgb=RGBColor.from_string('2A7960')
+            if any(Decimal(point.value)<0 for point in chart_spec.points):
+                geometry=_signed_geometry(chart_spec)
+                if geometry is None:
+                    # Magnitudes too small for reliable visual display are not
+                    # enlarged: show every exact value in an editable table.
+                    table=slide.shapes.add_table(len(chart_spec.points)+1,2,Inches(.76),Inches(2.16),Inches(7.12),Inches(.45*(len(chart_spec.points)+1)))
+                    table.name=f"nexus:signed-table:{page['section']}"
+                    table.table.columns[0].width=Inches(3.5);table.table.columns[1].width=Inches(3.62)
+                    for row,(label,value) in enumerate([('类别','原始数值 · '+chart_spec.unit),*[(p.label,p.value) for p in chart_spec.points]]):
+                        for col,text in enumerate((label,value)):
+                            cell=table.table.cell(row,col);cell.text=text;cell.margin_left=cell.margin_right=Pt(6);cell.margin_top=cell.margin_bottom=Pt(2)
+                            cell.vertical_anchor=MSO_ANCHOR.MIDDLE;cell.fill.solid();cell.fill.fore_color.rgb=RGBColor.from_string('E7F1EC' if row==0 else ('F5F8F6' if row%2==0 else 'FFFFFF'))
+                            for para in cell.text_frame.paragraphs:_font(para,13,'17352D',row==0)
+                    _text(slide,.8,6.20,7.0,.3,'数值跨度较大，以完整原值表格展示',10,'5D756C',name=f"nexus:signed-fallback:{page['section']}")
+                    _text(slide,.8,6.47,7.0,.20,'Exact values shown; range exceeds chart scale',9,'5D756C',name=f"nexus:signed-fallback-en:{page['section']}")
+                else:
+                    axis=_rect(slide,5.15,2.17,.015,4.02,'667E72');axis.name=f"nexus:signed-axis:{page['section']}"
+                    _text(slide,5.03,2.04,.5,.2,'0',10,'5D756C',name=f"nexus:signed-zero:{page['section']}")
+                    for i,(point,bar) in enumerate(zip(chart_spec.points,geometry)):
+                        _text(slide,.8,2.25+i*.46,1.95,.40,point.label,12,'435B50',name=f"nexus:signed-label:{page['section']}:{i}")
+                        _signed_bar(slide,bar,i,page['section'])
+                    _text(slide,.8,6.20,7.0,.3,'条形为独立形状，修改数值后需重新生成',10,'5D756C',name=f"nexus:signed-note:{page['section']}")
+                    _text(slide,.8,6.47,7.0,.20,'Shapes do not update automatically after edits',9,'5D756C',name=f"nexus:signed-note-en:{page['section']}")
+            else:
+                from pptx.chart.data import ChartData
+                from pptx.enum.chart import XL_CHART_TYPE
+                # A horizontal chart displays the first data category at the
+                # bottom in the standard Office axis order. Reverse category/value
+                # pairs in the embedded chart together, leaving the displayed
+                # exact-value list in the user's original order. This also avoids
+                # relying on maxMin, which some browser viewers ignore.
+                chart_points=list(reversed(chart_spec.points))
+                data=ChartData();data.categories=[point.label for point in chart_points]
+                data.add_series(chart_spec.title,[float(point.value) for point in chart_points])
+                shape=slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED,Inches(.76),Inches(2.15),Inches(7.15),Inches(4.24),data)
+                shape.name=f"nexus:chart:{page['section']}"
+                chart=shape.chart;chart.has_legend=False;chart.has_title=False
+                chart.category_axis.reverse_order=False
+                chart.category_axis.tick_labels.font.name='Noto Sans CJK SC';chart.category_axis.tick_labels.font.size=Pt(11)
+                chart.value_axis.tick_labels.font.name='Noto Sans CJK SC';chart.value_axis.tick_labels.font.size=Pt(10)
+                chart.value_axis.tick_labels.number_format='#,##0'
+                chart.value_axis.tick_labels.number_format_is_linked=False
+                values=[float(point.value) for point in chart_spec.points]
+                if min(values)>=0:chart.value_axis.minimum_scale=0
+                if max(values)<=0 and min(values)<0:chart.value_axis.maximum_scale=0
+                series=chart.series[0]
+                series.format.fill.solid();series.format.fill.fore_color.rgb=RGBColor.from_string('2A7960')
             _rect(slide,8.15,1.7,4.4,4.68,'F3F8F5')
             _text(slide,8.38,1.86,3.95,.33,'原始数值 · '+chart_spec.unit,14,'17352D',True,name=f"nexus:chart-unit:{page['section']}")
             for i,point in enumerate(chart_spec.points):
@@ -274,36 +332,82 @@ def verify(spec,deck):
                 raise ValueError('演示文稿数据单元格不一致')
         else:
             chart_spec=section.chart
-            charts=[s for s in slide.shapes if s.has_chart]
-            if len(charts)!=1 or len(charts[0].chart.series)!=1:raise ValueError('演示文稿图表不完整')
-            chart=charts[0].chart
-            chart_points=list(reversed(chart_spec.points))
-            if chart.category_axis.reverse_order is not False:
-                raise ValueError('演示文稿图表类别方向不一致')
-            if [c.label for c in chart.plots[0].categories]!=[p.label for p in chart_points]:
-                raise ValueError('演示文稿图表类别不一致')
             from decimal import Decimal
-            if [Decimal(str(v)) for v in chart.series[0].values]!=[Decimal(p.value) for p in chart_points]:
-                raise ValueError('演示文稿图表数值不一致')
-            # PowerPoint edits charts through a separate embedded workbook.
-            # Verify it too, so opening the editor cannot reveal different
-            # numbers from those visible in the slide's chart cache.
-            from io import BytesIO
-            from openpyxl import load_workbook
-            workbook=load_workbook(BytesIO(chart.part.chart_workbook.xlsx_part.blob),read_only=True,data_only=False)
-            try:
-                if len(workbook.worksheets)!=1:raise ValueError('图表数据工作簿不一致')
-                sheet=workbook.worksheets[0]
-                if sheet.max_row!=len(chart_spec.points)+1 or sheet.max_column!=2:
-                    raise ValueError('图表数据工作簿尺寸不一致')
-                rows=list(sheet.iter_rows())
-                if rows[0][1].data_type!='s' or rows[0][1].value!=chart_spec.title:raise ValueError('图表数据系列不一致')
-                for cells,point in zip(rows[1:],chart_points):
-                    if (cells[0].data_type!='s' or cells[0].value!=point.label or cells[1].data_type!='n'
-                            or isinstance(cells[1].value,bool)
-                            or Decimal(str(cells[1].value))!=Decimal(point.value)):
-                        raise ValueError('图表数据工作簿数值不一致')
-            finally:workbook.close()
+            if any(Decimal(point.value)<0 for point in chart_spec.points):
+                from pptx.util import Inches
+                if any(shape.has_chart for shape in slide.shapes):raise ValueError('负数图表包含未经验证的原生图表')
+                named={}
+                for shape in slide.shapes:
+                    if shape.name.startswith('nexus:signed-'):
+                        if shape.name in named:raise ValueError('负数图表含重复标识')
+                        named[shape.name]=shape
+                geometry=_signed_geometry(chart_spec);index=page['section']
+                if geometry is None:
+                    shape=named.get(f'nexus:signed-table:{index}')
+                    if shape is None or not shape.has_table:raise ValueError('精确数据表缺失')
+                    actual=shape.table
+                    expected=[['类别','原始数值 · '+chart_spec.unit],*[[p.label,p.value] for p in chart_spec.points]]
+                    if len(actual.rows)!=len(expected) or len(actual.columns)!=2 or [[actual.cell(r,c).text for c in range(2)] for r in range(len(expected))]!=expected:
+                        raise ValueError('精确数据表不一致')
+                    note=named.get(f'nexus:signed-fallback:{index}')
+                    if note is None or note.text!='数值跨度较大，以完整原值表格展示':raise ValueError('数据表说明缺失')
+                    note_en=named.get(f'nexus:signed-fallback-en:{index}')
+                    if note_en is None or note_en.text!='Exact values shown; range exceeds chart scale':raise ValueError('数据表说明缺失')
+                    if len(named)!=3:raise ValueError('数据表含额外图形')
+                else:
+                    axis=named.get(f'nexus:signed-axis:{index}')
+                    zero=named.get(f'nexus:signed-zero:{index}')
+                    note=named.get(f'nexus:signed-note:{index}')
+                    note_en=named.get(f'nexus:signed-note-en:{index}')
+                    if (axis is None or axis.left!=int(Inches(5.15)) or axis.top!=int(Inches(2.17))
+                            or axis.width!=int(Inches(.015)) or axis.height!=int(Inches(4.02))
+                            or str(axis.fill.fore_color.rgb)!='667E72' or zero is None or zero.text!='0'
+                            or note is None or note.text!='条形为独立形状，修改数值后需重新生成'
+                            or note_en is None or note_en.text!='Shapes do not update automatically after edits'):
+                        raise ValueError('负数图表零轴或说明不一致')
+                    expected_count=4+len(chart_spec.points)+sum(bar[2]>0 for bar in geometry)
+                    if len(named)!=expected_count:raise ValueError('负数图表标记数量不一致')
+                    for i,(point,bar) in enumerate(zip(chart_spec.points,geometry)):
+                        label=named.get(f'nexus:signed-label:{index}:{i}')
+                        if label is None or label.text!=point.label:raise ValueError('负数图表类别不一致')
+                        shape=named.get(f'nexus:signed-bar:{index}:{i}')
+                        if not bar[2]:
+                            if shape is not None:raise ValueError('零值不能显示条形')
+                            continue
+                        if (shape is None or (shape.left,shape.top,shape.width,shape.height)!=bar[:4]
+                                or str(shape.fill.fore_color.rgb)!=('B94E43' if bar[4] else '2A7960')):
+                            raise ValueError('负数图表条形方向或长度不一致')
+            else:
+                charts=[s for s in slide.shapes if s.has_chart]
+                if len(charts)!=1 or len(charts[0].chart.series)!=1:raise ValueError('演示文稿图表不完整')
+                chart=charts[0].chart
+                chart_points=list(reversed(chart_spec.points))
+                if chart.category_axis.reverse_order is not False:
+                    raise ValueError('演示文稿图表类别方向不一致')
+                if [c.label for c in chart.plots[0].categories]!=[p.label for p in chart_points]:
+                    raise ValueError('演示文稿图表类别不一致')
+                from decimal import Decimal
+                if [Decimal(str(v)) for v in chart.series[0].values]!=[Decimal(p.value) for p in chart_points]:
+                    raise ValueError('演示文稿图表数值不一致')
+                # PowerPoint edits charts through a separate embedded workbook.
+                # Verify it too, so opening the editor cannot reveal different
+                # numbers from those visible in the slide's chart cache.
+                from io import BytesIO
+                from openpyxl import load_workbook
+                workbook=load_workbook(BytesIO(chart.part.chart_workbook.xlsx_part.blob),read_only=True,data_only=False)
+                try:
+                    if len(workbook.worksheets)!=1:raise ValueError('图表数据工作簿不一致')
+                    sheet=workbook.worksheets[0]
+                    if sheet.max_row!=len(chart_spec.points)+1 or sheet.max_column!=2:
+                        raise ValueError('图表数据工作簿尺寸不一致')
+                    rows=list(sheet.iter_rows())
+                    if rows[0][1].data_type!='s' or rows[0][1].value!=chart_spec.title:raise ValueError('图表数据系列不一致')
+                    for cells,point in zip(rows[1:],chart_points):
+                        if (cells[0].data_type!='s' or cells[0].value!=point.label or cells[1].data_type!='n'
+                                or isinstance(cells[1].value,bool)
+                                or Decimal(str(cells[1].value))!=Decimal(point.value)):
+                            raise ValueError('图表数据工作簿数值不一致')
+                finally:workbook.close()
             texts={s.name:s.text for s in slide.shapes if s.has_text_frame and s.name.startswith('nexus:chart-')}
             expected={f"nexus:chart-title:{page['section']}":chart_spec.title,
                       f"nexus:chart-unit:{page['section']}":'原始数值 · '+chart_spec.unit}

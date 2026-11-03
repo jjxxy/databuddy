@@ -74,7 +74,7 @@ def validate_office_config(value):
 
 def _office_config(value):
     config=DeliveryConfig.model_validate(value)
-    if config.renderer_version not in (office.RENDERER,office.LEGACY_RENDERER):
+    if config.renderer_version not in office.SUPPORTED_RENDERERS:
         raise ValueError('已确认的成果渲染器版本不可用，请重新验证后再运行')
     return config
 
