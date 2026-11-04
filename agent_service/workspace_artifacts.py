@@ -301,10 +301,24 @@ def catalog(pid,kind='',offset=0,limit=40):
             private={'report_id':value['id']},downloads=['docx','pptx','md','json'],origin=_origin(value,pid),sha256_scope='frozen_report_manifest')
     workflows={v['id']:v for v in all_items('data_workflow') if v.get('project_id')==pid}
     pipelines={v['id']:v for v in all_items('pipeline') if v.get('project_id')==pid}
-    for run in _runs(pid):
+    runs=list(_runs(pid))
+    # 每个数据工作流只保留“最新版”：正式版、候选版；两者都没有时只保留最新一次成功运行。
+    # 历史版本与中间过程版本不进入成果目录，除非用户明确查看。
+    keep={}
+    for run in runs:
+        if run['kind']!='data_workflow':continue
+        parent=workflows.get(run['target'],{})
+        if _gone(parent):continue
+        published=parent.get('published_run');candidate=parent.get('candidate_run')
+        kept=keep.setdefault(run['target'],set())
+        if published or candidate:
+            if run['id'] in (published,candidate):kept.add(run['id'])
+        elif not kept:
+            kept.add(run['id'])
+    for run in runs:
         if run['kind']=='data_workflow':
             parent=workflows.get(run['target'],{})
-            if _gone(parent):continue
+            if _gone(parent) or run['id'] not in keep.get(run['target'],()):continue
             try:
                 _,meta=project_data.result_folder(pid,run['id'])
                 status='adopted' if parent.get('published_run')==run['id'] else 'candidate' if parent.get('candidate_run')==run['id'] else 'needs_review' if run.get('external_agent_import') else 'historical'

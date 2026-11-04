@@ -142,9 +142,16 @@ class Calculation(StrictModel):
     left: str = Field(pattern=NAME)
     right: str = Field(pattern=NAME)
     operation: Literal['add', 'subtract', 'multiply', 'divide']
+    rounding_mode: Literal['exact', 'half_even', 'half_up'] = 'half_even'
     rounding_scale: int | None = Field(default=None, ge=0, le=12)
     constant_scaling: bool = Field(default=False,
         description='Right operand is a reviewed constant scaling factor (e.g. a fixed tax divisor 1.13), not a row-varying measure. Scaling an additive measure by a constant preserves additivity. Business correctness requires review.')
+
+    @model_validator(mode='after')
+    def explicit_rounding(self):
+        if self.rounding_mode == 'exact' and self.rounding_scale is not None:
+            raise ValueError('Exact mode requires no rounding scale')
+        return self
 
 
 class Compute(Stage):
@@ -615,7 +622,8 @@ def _calculate(rule: Calculation, row, fields):
         result = {'add': lambda: a + b, 'subtract': lambda: a - b,
                   'multiply': lambda: a * b, 'divide': lambda: a / b}[rule.operation]()
         if rule.rounding_scale is not None:
-            result = result.quantize(Decimal(1).scaleb(-rule.rounding_scale), rounding=ROUND_HALF_EVEN)
+            result = result.quantize(Decimal(1).scaleb(-rule.rounding_scale),
+                                     rounding=ROUND_HALF_EVEN if rule.rounding_mode == 'half_even' else ROUND_HALF_UP)
         return _coerce(result, rule.output)
 
 
